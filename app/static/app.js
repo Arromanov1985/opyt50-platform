@@ -120,7 +120,7 @@ function tabsMarkup(items, heading, subtitle) {
   return `<aside class="panel side-panel"><span class="section-kicker">${esc(heading)}</span><h3 class="tab-heading">${esc(subtitle)}</h3><nav class="dashboard-tabs" aria-label="Разделы личного кабинета">${items.map(t => `<button type="button" data-tab="${esc(t.id)}" class="${state.tab === t.id ? 'active' : ''}">${esc(t.label)}</button>`).join('')}</nav></aside>`;
 }
 function profileMarkup(profile = {}, user = {}) {
-  const showExtra = Boolean(profile.about || user.phone || (profile.employment && profile.employment !== 'Любая'));
+  // Additional details stay optional; open them explicitly when the candidate is ready.
   return `<div class="panel candidate-profile">
     <span class="section-kicker">ВАШ ПРОФЕССИОНАЛЬНЫЙ ОПЫТ</span>
     <h3>Расскажите, какую работу вы ищете</h3>
@@ -141,7 +141,7 @@ function profileMarkup(profile = {}, user = {}) {
         <div class="field"><label for="profile-schedule">Удобный график</label>
           <select id="profile-schedule" name="schedule">${optList(schedules,profile.schedule)}</select></div>
         <div class="field wide">
-          <details class="profile-optional" ${showExtra?'open':''}>
+          <details class="profile-optional">
             <summary>Дополнительные сведения (по желанию)</summary>
             <p class="muted">Эти поля можно заполнить позже. Они не обязательны для начала поиска.</p>
             <div class="form-grid">
