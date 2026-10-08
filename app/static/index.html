@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="ОПЫТ — платформа поиска работы и сотрудников, где ценят навыки и профессиональный опыт.">
+  <meta name="theme-color" content="#142a39">
+  <link rel="icon" href="/static/favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="/static/styles.css">
+  <title>ОПЫТНО.РФ — ваш опыт работает на вас</title>
+  <script src="/static/app.js" defer></script>
+</head>
+<body>
+  <header class="site-header">
+    <div class="container nav-inner">
+      <a class="brand" href="/" aria-label="Опытно.рф, на главную"><span class="brand-mark">о<span class="brand-dot">.</span></span><span class="brand-word">опытно<span class="brand-plus">.рф</span></span></a>
+      <nav class="nav-links" aria-label="Главное меню"><a href="#jobs">Вакансии</a><a href="#how">Как работает</a><a href="#values">О платформе</a></nav>
+      <div class="nav-actions" id="guest-actions"><button class="btn btn-text" id="login-open">Войти</button><button class="btn btn-dark btn-sm" id="register-open">Начать <span aria-hidden="true">↗</span></button></div>
+      <div class="nav-actions hidden" id="member-actions"><button class="btn btn-text" id="account-open">Мой кабинет</button><button class="btn btn-outline btn-sm" id="logout">Выйти</button></div>
+    </div>
+  </header>
+  <main>
+    <section class="hero" id="home">
+      <div class="container hero-grid">
+        <div class="hero-content">
+          <span class="eyebrow"><span class="eyebrow-point"></span> ПЛАТФОРМА ДЛЯ ОПЫТНЫХ СПЕЦИАЛИСТОВ</span>
+          <h1>Ваш опыт <em>работает</em> на вас.</h1>
+          <p class="hero-copy">Помогаем специалистам находить подходящие вакансии, а компаниям — людей, которые действительно готовы к разговору. Никаких бесконечных откликов и сложных анкет.</p>
+          <div class="hero-actions"><button class="btn btn-primary btn-lg" data-register="candidate">Найти работу <span aria-hidden="true">↗</span></button><button class="btn btn-light btn-lg" data-register="employer">Найти сотрудника</button></div>
+          <div class="hero-foot"><span class="hero-tick">✓</span><span>Бесплатно для соискателей</span><span class="foot-divider"></span><span class="hero-tick">✓</span><span>Без возрастных барьеров</span></div>
+        </div>
+        <div class="hero-visual" aria-hidden="true">
+          <div class="hero-sun"></div><div class="hero-circles"><div></div><div></div></div>
+          <div class="visual-card card-primary"><div class="visual-line"><span class="avatar avatar-a">Н</span><div><strong>Наталья</strong><small>Финансовый специалист</small></div><span class="status-green">✓</span></div><div class="visual-rule"></div><div class="visual-tags"><span>20+ лет опыта</span><span>Москва</span></div><div class="visual-meter"><span></span></div><div class="visual-caption">Навыки совпадают с вакансией</div></div>
+          <div class="visual-card card-secondary"><span class="mini-icon">✦</span><div><strong>Подходящие люди</strong><small>Только после подтверждения интереса</small></div></div>
+          <div class="vertical-label">ЦЕННОСТЬ В ОПЫТЕ</div>
+        </div>
+      </div>
+    </section>
+    <section class="value-band" id="values"><div class="container value-grid"><div><span class="value-index">01 /</span><strong>Навыки важнее возраста</strong><small>Подбор по квалификации и задачам</small></div><div><span class="value-index">02 /</span><strong>Простая регистрация</strong><small>Короткая анкета вместо длинного резюме</small></div><div><span class="value-index">03 /</span><strong>Контакт по согласию</strong><small>Вы решаете, кому открывать свои данные</small></div></div></section>
+    <section class="section jobs-section" id="jobs"><div class="container"><div class="section-heading"><div><span class="section-kicker">ВАКАНСИИ</span><h2>Возможности для <em>вашего опыта</em></h2></div><p>От рабочих специальностей до управленческих позиций. Важны условия работы и профессиональные навыки.</p></div>
+      <div class="jobs-toolbar"><label for="city-filter">Город <span class="sr-only">для фильтрации вакансий</span></label><input id="city-filter" placeholder="Например, Москва"><button class="btn btn-dark" id="jobs-filter">Найти вакансии</button><span class="jobs-count" id="jobs-count"></span></div>
+      <div id="public-jobs" class="job-grid"><div class="empty-state">Загружаем вакансии...</div></div>
+      <p class="notice small">Все вакансии в демоверсии — тестовые. Реальная регистрация и публикация доступны, но платёжная функция не подключена.</p>
+    </div></section>
+    <section class="section how-section" id="how"><div class="container"><div class="section-heading"><div><span class="section-kicker">ВСЁ ПРОСТО</span><h2>Меньше ожидания. <em>Больше дела.</em></h2></div><p>У каждой стороны — свой понятный сценарий. Подбор и уведомления работают автоматически.</p></div>
+      <div class="step-grid"><article class="step-card"><span class="step-number">01</span><div class="step-symbol">✍</div><h3>Расскажите о себе</h3><p>Укажите профессию, город, навыки и желаемый график. Без загрузки большого резюме.</p></article><article class="step-card"><span class="step-number">02</span><div class="step-symbol">◎</div><h3>Получите приглашение</h3><p>Работодатель видит подходящий обезличенный профиль и может предложить вам вакансию.</p></article><article class="step-card"><span class="step-number">03</span><div class="step-symbol">↗</div><h3>Решите, общаться ли</h3><p>Ваши контакты раскрываются конкретной компании только после вашего согласия.</p></article></div>
+    </div></section>
+    <section class="cta-section"><div class="container cta-inner"><div><span class="section-kicker">НОВАЯ ГЛАВА</span><h2>Ваш опыт — <em>ваше преимущество.</em></h2><p>Начните с небольшой анкеты. Все базовые возможности для соискателя бесплатны.</p></div><button class="btn btn-white btn-lg" data-register="candidate">Создать профиль ↗</button></div></section>
+    <section class="section account-section hidden" id="dashboard"><div class="container"><div class="account-heading"><div><span class="section-kicker">ЛИЧНЫЙ КАБИНЕТ</span><h2 id="welcome">Добро пожаловать</h2><p id="account-subtitle" class="muted"></p></div><span class="demo-badge">ДЕМО · Платежи отключены</span></div><div id="account-content"></div></div></section>
+  </main>
+  <footer class="footer"><div class="container footer-inner"><div><div class="brand footer-brand"><span class="brand-mark">о<span class="brand-dot">.</span></span><span class="brand-word">опытно<span class="brand-plus">.рф</span></span></div><small>Платформа, на которой ценят профессиональный опыт.</small></div><div class="footer-right"><span>© 2026 опытно.рф · MVP 0.1</span><span>Демонстрационный запуск — без реальных платежей</span></div></div></footer>
+  <dialog id="auth-dialog" class="auth-dialog" aria-labelledby="auth-title"><form id="auth-form" novalidate><div class="modal-top"><div><span class="section-kicker">ДОБРО ПОЖАЛОВАТЬ</span><h2 id="auth-title">Создать аккаунт</h2></div><button class="icon-button" type="button" id="modal-close" aria-label="Закрыть">×</button></div><div id="signup-role" class="role-selector"><button type="button" class="role-btn active" data-role="candidate">Ищу работу</button><button type="button" class="role-btn" data-role="employer">Ищу сотрудников</button></div><div class="field hidden" id="auth-name-row"><label for="auth-name">Имя и фамилия</label><input id="auth-name" name="name" autocomplete="name" minlength="2" maxlength="100"></div><div class="field hidden" id="auth-company-row"><label for="auth-company">Компания</label><input id="auth-company" name="company_name" maxlength="120"></div><div class="field"><label for="auth-email">Email</label><input id="auth-email" name="email" type="email" autocomplete="email" required></div><div class="field"><label for="auth-password">Пароль</label><input id="auth-password" name="password" type="password" autocomplete="current-password" required></div><p class="form-hint hidden" id="password-hint">Не менее 10 символов.</p><button type="submit" class="btn btn-primary btn-lg btn-full" id="auth-submit">Продолжить →</button><p class="auth-switch" id="auth-switch"></p></form></dialog>
+  <div class="toast hidden" id="toast" role="status" aria-live="polite"></div>
+</body>
+</html>
