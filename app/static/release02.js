@@ -18,6 +18,20 @@
     }
     function searchValue(id) { return document.getElementById(id)?.value?.trim() || ''; }
 
+    // Keep application status beside recommended vacancies, so clicking twice
+    // never looks like a system failure. The server still enforces uniqueness.
+    let applicationByVacancy = new Map();
+    async function refreshMyApplications() {
+      if (state.user?.role !== 'candidate') { applicationByVacancy = new Map(); return; }
+      const result = await api('/api/candidate/applications');
+      applicationByVacancy = new Map((result.applications || []).map(a => [Number(a.vacancy_id), a]));
+    }
+    function jobApplicationAction(jobId) {
+      const known = applicationByVacancy.get(jobId);
+      if (!known) return `<button type="button" class="btn btn-primary btn-tiny" data-v02-action="apply" data-id="${jobId}">Откликнуться</button>`;
+      if (known.status === 'withdrawn') return `<button type="button" class="btn btn-primary btn-tiny" data-v02-action="reapply" data-id="${jobId}">Откликнуться повторно</button>`;
+      return `<button type="button" class="btn btn-outline btn-tiny" data-v02-action="see-applications">Отклик: ${esc(status[known.status] || known.status)} · история</button>`;
+    }
     jobMarkup = function(job, personalized = false) {
       const id = Number(job.id), open = job.status !== 'closed';
       return `<article class="job-card"><div class="job-top"><span class="job-company">${esc(job.company_name || 'Работодатель')}</span><span class="job-category">${personalized ? 'Совпадение '+Number(job.score)+'%' : (open ? 'Вакансия' : 'Закрыта')}</span></div>
@@ -25,7 +39,7 @@
         <div class="job-meta"><span>⌖ ${esc(job.city)}</span><span>${esc(job.schedule)}</span><span>${esc(job.employment)}</span></div>
         <p>${esc(job.skills || 'Подробности в описании вакансии')}</p>
         <div class="job-actions"><button class="btn btn-outline btn-tiny" data-v02-action="details" data-id="${id}">Подробнее</button>
-        ${open ? `<button class="btn btn-primary btn-tiny" data-v02-action="apply" data-id="${id}">Откликнуться</button><button class="btn btn-outline btn-tiny" data-v02-action="favorite" data-id="${id}" aria-label="Сохранить вакансию">♡</button>` : ''}</div></article>`;
+        ${open ? `${state.user?.role === 'candidate' ? jobApplicationAction(id) : `<button type="button" class="btn btn-primary btn-tiny" data-v02-action="apply" data-id="${id}">Откликнуться</button>`}<button class="btn btn-outline btn-tiny" data-v02-action="favorite" data-id="${id}" aria-label="Сохранить вакансию">♡</button>` : ''}</div></article>`;
     };
     loadPublicJobs = async function() {
       try {
@@ -53,6 +67,10 @@
 
     renderCandidate = async function() {
       if (!candidateExtra.some(t=>t.id===state.tab)) {
+        if (state.tab === 'offers') {
+          try { await refreshMyApplications(); }
+          catch (e) { applicationByVacancy = new Map(); toast('Не удалось загрузить статусы откликов', true); }
+        }
         await oldCandidate();
         const nav=$('.dashboard-tabs');
         if (nav) nav.insertAdjacentHTML('beforeend',candidateExtra.map(t=>`<button type="button" data-tab="${t.id}">${t.label}</button>`).join(''));
@@ -124,11 +142,28 @@
           $('#job-dialog').showModal();
         }else if(['apply','favorite'].includes(type)){
           if(state.user?.role!=='candidate'){ if($('#job-dialog').open) $('#job-dialog').close(); if(state.user)throw Error('Действие доступно только соискателю');openAuth('login','candidate');return; }
-          if(type==='apply'){await req('POST','/api/candidate/applications',{vacancy_id:id});toast('Отклик отправлен, статус появится в кабинете');if($('#job-dialog').open)$('#job-dialog').close();}
+          if(type==='apply'){
+            try {
+              await req('POST','/api/candidate/applications',{vacancy_id:id});
+              await refreshMyApplications();
+              toast('Отклик отправлен, статус появится в кабинете');
+              if($('#job-dialog').open)$('#job-dialog').close();
+              if(state.tab === 'offers') await showDashboard();
+              else await loadPublicJobs();
+            } catch(err) {
+              if(/уже откликались|уже существует/.test(err.message)){
+                await refreshMyApplications();
+                if($('#job-dialog').open)$('#job-dialog').close();
+                state.tab='applications'; await showDashboard(true);
+                toast('Заявка уже существует. Открыта ваша история откликов.');
+              } else throw err;
+            }
+          }
           else {await req('POST',`/api/candidate/favorites/${id}`);toast('Вакансия сохранена');}
         }else if(type==='remove-favorite'){await req('DELETE',`/api/candidate/favorites/${id}`);await showDashboard();toast('Вакансия удалена из избранного');}
         else if(type==='withdraw'){await req('POST',`/api/candidate/applications/${id}/withdraw`);await showDashboard();toast('Отклик отозван');}
-        else if(type==='reapply'){const result=await req('POST','/api/candidate/applications',{vacancy_id:id});await showDashboard();toast(result.reapplied?'Отклик отправлен повторно':'Отклик отправлен');}
+        else if(type==='reapply'){const result=await req('POST','/api/candidate/applications',{vacancy_id:id});await refreshMyApplications();await showDashboard();toast(result.reapplied?'Отклик отправлен повторно':'Отклик отправлен');}
+        else if(type==='see-applications'){state.tab='applications';await showDashboard(true);}
         else if(type==='application-status'){await req('PATCH',`/api/employer/applications/${id}/status`,{status:btn.dataset.status});await showDashboard();toast('Статус обновлён');}
         else if(type==='express-interest'){const data=await req('POST',`/api/employer/applications/${id}/interest`);await showDashboard();toast(data.created?'Кандидату направлен запрос на знакомство (демо)':'Запрос уже существует — повторно не отправлен');}
         else if(type==='open-introductions'){state.tab='invitations';await showDashboard();}
