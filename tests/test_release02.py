@@ -325,3 +325,96 @@ def test_recommended_jobs_include_only_my_application_state(app):
         withdrawn = a.get("/api/candidate/jobs").json()["jobs"][0]
         assert withdrawn["application_status"] == "withdrawn"
         assert withdrawn["application_id"] == first.json()["id"]
+
+
+def test_unified_status_timeline_consent_and_terminal_guards(app):
+    """Both roles get the same non-sensitive milestones; contact unlock is final."""
+    with TestClient(app) as candidate, TestClient(app) as employer, TestClient(app) as stranger:
+        cid = register(candidate, "candidate@demo.example")
+        register(employer, "employer@demo.example", "employer")
+        register(stranger, "stranger@demo.example", "employer")
+        profile(candidate)
+        jid = vacancy(employer)
+        aid = post(candidate, "/api/candidate/applications", {"vacancy_id": jid}).json()["id"]
+        assert employer.patch(
+            f"/api/employer/applications/{aid}/status", json={"status": "reviewing"}, headers=HEADERS
+        ).status_code == 200
+        requested = post(employer, f"/api/employer/applications/{aid}/interest")
+        assert requested.status_code == 200, requested.text
+        invite_id = requested.json()["invitation_id"]
+        em = employer.get("/api/employer/applications").json()["applications"][0]
+        cand = candidate.get("/api/candidate/applications").json()["applications"][0]
+        assert em["introduction_stage"] == cand["introduction_stage"] == "awaiting_consent"
+        assert [x["event"] for x in em["timeline"]][:2] == ["applied", "reviewing"]
+        assert "invitation_sent" in [x["event"] for x in em["timeline"]]
+        assert em["timeline"] == cand["timeline"]
+        assert "phone" not in em and "email" not in em
+        assert stranger.get("/api/employer/applications").json()["applications"] == []
+        assert post(candidate, f"/api/candidate/invitations/{invite_id}/respond", {
+            "decision": "accepted", "share_consent": True
+        }).status_code == 200
+        after_consent = employer.get("/api/employer/applications").json()["applications"][0]
+        assert after_consent["introduction_stage"] == "consented"
+        assert "invitation_accepted" in [event["event"] for event in after_consent["timeline"]]
+        assert "contact_opened" not in [event["event"] for event in after_consent["timeline"]]
+        assert employer.get("/api/employer/invitations").json()["invitations"][0]["introduction_stage"] == "consented"
+        assert "contact" not in employer.get("/api/employer/invitations").json()["invitations"][0]
+        for status in ("reviewing", "interview", "rejected"):
+            attempt = employer.patch(
+                f"/api/employer/applications/{aid}/status",
+                json={"status": status}, headers=HEADERS
+            )
+            assert attempt.status_code == 409, (status, attempt.text)
+        assert post(candidate, f"/api/candidate/applications/{aid}/withdraw").status_code == 409
+        assert stranger.patch(
+            f"/api/employer/applications/{aid}/status",
+            json={"status": "rejected"}, headers=HEADERS
+        ).status_code == 404
+        # Before demo unlock, the candidate's name/email/phone stay absent
+        # from every employer application and invitation response.
+        assert not employer.get("/api/employer/invitations").json()["invitations"][0].get("contact")
+
+        paid = post(employer, f"/api/employer/invitations/{invite_id}/demo-pay")
+        assert paid.status_code == 200, paid.text
+        for payload in (
+            candidate.get("/api/candidate/applications").json()["applications"][0],
+            employer.get("/api/employer/applications").json()["applications"][0],
+            candidate.get("/api/candidate/invitations").json()["invitations"][0],
+            employer.get("/api/employer/invitations").json()["invitations"][0],
+            candidate.get("/api/candidate/jobs").json()["jobs"][0],
+        ):
+            assert payload["introduction_stage"] == "introduced"
+        final = candidate.get("/api/candidate/applications").json()["applications"][0]
+        assert final["timeline"][-1]["event"] == "contact_opened"
+        assert final["timeline"] == employer.get("/api/employer/applications").json()["applications"][0]["timeline"]
+        assert employer.get("/api/employer/invitations").json()["invitations"][0]["contact"]["email"] == "candidate@demo.example"
+        assert post(employer, f"/api/employer/invitations/{invite_id}/demo-pay").status_code == 200
+        assert employer.patch(
+            f"/api/employer/applications/{aid}/status", json={"status": "rejected"}, headers=HEADERS
+        ).status_code == 409
+        with database(app.state.db_path) as db:
+            assert db.execute("SELECT COUNT(*) FROM demo_transactions WHERE invitation_id=?", (invite_id,)).fetchone()[0] == 1
+            assert db.execute(
+                "SELECT COUNT(*) FROM email_outbox WHERE event='contact_opened'"
+            ).fetchone()[0] == 1
+            assert db.execute("SELECT COUNT(*) FROM invitations WHERE vacancy_id=? AND candidate_id=?",
+                              (jid, cid)).fetchone()[0] == 1
+
+
+def test_proactive_invitation_has_unified_history_without_application(app):
+    """Contact flow works even if an employer invited a candidate proactively."""
+    with TestClient(app) as candidate, TestClient(app) as employer:
+        cid = register(candidate, "candidate@demo.example")
+        register(employer, "employer@demo.example", "employer")
+        profile(candidate)
+        jid = vacancy(employer)
+        invitation = post(employer, "/api/employer/invitations", {
+            "candidate_id": cid, "vacancy_id": jid
+        })
+        assert invitation.status_code == 201
+        employer_item = employer.get("/api/employer/invitations").json()["invitations"][0]
+        candidate_item = candidate.get("/api/candidate/invitations").json()["invitations"][0]
+        assert employer_item["introduction_stage"] == "awaiting_consent"
+        assert employer_item["timeline"] == candidate_item["timeline"]
+        assert [e["event"] for e in employer_item["timeline"]] == ["invitation_sent"]
+        assert "contact" not in employer_item
