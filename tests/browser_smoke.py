@@ -89,12 +89,12 @@ def run_browser(page):
     expect(page.locator("#dashboard-main")).to_contain_text("Подходящие вакансии")
     page.locator("#public-jobs [data-v02-action='favorite']").click()
     expect(page.locator("#toast")).to_contain_text("сохранена")
-    page.locator("#account-content [data-tab='favorites']").click()
+    page.locator(".dashboard-tabs [data-tab='favorites']").click()
     expect(page.locator("#dashboard-main")).to_contain_text("Избранные вакансии")
     expect(page.locator("#dashboard-main")).to_contain_text("Кладовщик")
     page.locator("#public-jobs [data-v02-action='apply']").click()
     expect(page.locator("#toast")).to_contain_text("Отклик отправлен")
-    page.locator("#account-content [data-tab='applications']").click()
+    page.locator(".dashboard-tabs [data-tab='applications']").click()
     expect(page.locator("#dashboard-main")).to_contain_text("История откликов")
     expect(page.locator("#dashboard-main")).to_contain_text("Отправлен")
     with page.expect_response(lambda response: (
@@ -113,7 +113,7 @@ def run_browser(page):
     assert retry_reply.value.json()["reapplied"] is True
     expect(page.locator("#dashboard-main")).to_contain_text("Отклик отправлен повторно")
     expect(page.locator("#dashboard-main")).to_contain_text("Отправлен")
-    page.locator("#account-content [data-tab='favorites']").click()
+    page.locator(".dashboard-tabs [data-tab='favorites']").click()
     with page.expect_response(lambda response: (
         "/api/candidate/favorites/" in response.url and
         response.request.method == "DELETE"
@@ -124,7 +124,7 @@ def run_browser(page):
     page.locator("#logout").click()
 
     login(page, "company@demo.example")
-    page.locator("#account-content [data-tab='applications']").click()
+    page.locator(".dashboard-tabs [data-tab='applications']").click()
     expect(page.locator("#dashboard-main")).to_contain_text("Отклики соискателей")
     expect(page.locator("#dashboard-main")).to_contain_text("Кладовщик")
     page.locator("#dashboard-main [data-v02-action='application-status'][data-status='reviewing']").click()
@@ -135,7 +135,7 @@ def run_browser(page):
     page.locator("#logout").click()
 
     login(page, "kladovshik@demo.example")
-    page.locator("#account-content [data-tab='applications']").click()
+    page.locator(".dashboard-tabs [data-tab='applications']").click()
     expect(page.locator("#dashboard-main")).to_contain_text("Работодатель заинтересован")
     expect(page.locator("#dashboard-main")).to_contain_text("Ожидается ваше решение")
     page.locator("#dashboard-main [data-v02-action='open-introductions']").click()
@@ -146,14 +146,14 @@ def run_browser(page):
     page.locator("#logout").click()
 
     login(page, "company@demo.example")
-    page.locator("#account-content [data-tab='invitations']").click()
+    page.locator(".dashboard-tabs [data-tab='invitations']").click()
     expect(page.locator("#dashboard-main")).to_contain_text("Согласие получено")
     page.once("dialog", lambda dialog: dialog.accept())
     page.locator("#dashboard-main [data-action='demo-pay']").click()
     expect(page.locator("#dashboard-main")).to_contain_text("Контакт открыт (демо)")
     expect(page.locator("#dashboard-main")).to_contain_text("Знакомство состоялось (демо)")
     expect(page.locator("#dashboard-main")).to_contain_text("История взаимодействия")
-    page.locator("#account-content [data-tab='applications']").click()
+    page.locator(".dashboard-tabs [data-tab='applications']").click()
     expect(page.locator("#dashboard-main")).to_contain_text("Знакомство состоялось (демо)")
     expect(page.locator("#dashboard-main")).to_contain_text("Приглашение отправлено")
     expect(page.locator("#dashboard-main")).to_contain_text("Согласие получено")
@@ -162,17 +162,17 @@ def run_browser(page):
     page.locator("#logout").click()
 
     login(page, "kladovshik@demo.example")
-    page.locator("#account-content [data-tab='applications']").click()
+    page.locator(".dashboard-tabs [data-tab='applications']").click()
     expect(page.locator("#dashboard-main")).to_contain_text("Знакомство состоялось (демо)")
     expect(page.locator("#dashboard-main [data-v02-action='withdraw']")).to_have_count(0)
-    page.locator("#account-content [data-tab='invitations']").click()
+    page.locator(".dashboard-tabs [data-tab='invitations']").click()
     expect(page.locator("#dashboard-main")).to_contain_text("Знакомство состоялось (демо)")
     page.locator("#logout").click()
 
     # Accountant must not receive an engineer recommendation merely
     # because both profiles mention Excel.
     login(page, "buhgalter@demo.example")
-    page.locator("#account-content [data-tab='offers']").click()
+    page.locator(".dashboard-tabs [data-tab='offers']").click()
     expect(page.locator("#dashboard-main")).to_contain_text("Бухгалтер")
     expect(page.locator("#dashboard-main")).not_to_contain_text("Инженер по эксплуатации")
     expect(page.locator("#dashboard-main [data-v02-action='apply']")).to_have_count(1)
@@ -183,7 +183,7 @@ def run_browser(page):
     # before reloading the website and opening recommended jobs again.
     page.reload(wait_until="networkidle")
     expect(page.locator(".release-ribbon")).to_contain_text("0.3.0-dev")
-    page.locator("#account-content [data-tab='offers']").click()
+    page.locator(".dashboard-tabs [data-tab='offers']").click()
     expect(page.locator("#dashboard-main")).to_contain_text("Отклик: Отправлен")
     expect(page.locator("#dashboard-main [data-v02-action='apply']")).to_have_count(0)
     page.locator("#dashboard-main [data-v02-action='see-applications']").click()
@@ -210,7 +210,7 @@ def run_browser(page):
     expect(page.locator(".dashboard-tabs")).to_be_visible()
     assert page.locator(".dashboard-tabs [data-tab='profile']").bounding_box()["height"] >= 44
     expect(page.locator("#profile-form")).to_be_visible()
-    page.locator("#account-content [data-tab='applications']").click()
+    page.locator(".dashboard-tabs [data-tab='applications']").click()
     expect(page.locator("#dashboard-main")).to_contain_text("Знакомство состоялось (демо")
 
     if console_errors:
