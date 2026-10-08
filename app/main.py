@@ -328,12 +328,13 @@ def create_app(db_path: str | None = None) -> FastAPI:
                  ON e.user_id=v.employer_id WHERE v.status='open'"""
         params: list = []
         if q.strip():
-            sql += " AND (lower(v.title) LIKE ? ESCAPE '\\' OR lower(v.skills) LIKE ? ESCAPE '\\')"
-            literal = q.strip().lower().replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
-            params.extend([f"%{literal}%", f"%{literal}%"])
+            # instr on Unicode-casefolded text ensures correct Cyrillic search.
+            sql += " AND (instr(unicode_fold(v.title), ?) > 0 OR instr(unicode_fold(v.skills), ?) > 0)"
+            needle = q.strip().casefold()
+            params.extend([needle, needle])
         if city.strip():
-            sql += " AND (lower(v.city)=lower(?) OR lower(v.city)='удалённо' OR lower(v.city)='любой город')"
-            params.append(city.strip())
+            sql += " AND (unicode_fold(v.city)=? OR unicode_fold(v.city)='удалённо' OR unicode_fold(v.city)='любой город')"
+            params.append(city.strip().casefold())
         if salary_min:
             sql += " AND v.salary_max >= ?"
             params.append(salary_min)
