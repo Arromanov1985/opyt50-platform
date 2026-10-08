@@ -1,15 +1,3 @@
-/* Navigation must stay legible when the candidate turns on large text.
-   Compact gaps before sacrificing font size; use a second nav row in tight widths. */
-.nav-inner{gap:clamp(8px,1.05vw,16px)}
-.nav-inner .brand,.nav-inner .reading-toggle,.nav-inner .nav-actions{flex-shrink:0}
-.nav-links{gap:clamp(11px,1.15vw,17px);flex-shrink:0}
-.nav-links a{white-space:nowrap}
-body.comfortable-view .nav-links a{white-space:nowrap}
-@media(max-width:1180px){
-  .site-header .nav-links{display:none}
-  .mobile-quick-nav{display:flex;justify-content:center;flex-wrap:wrap;gap:5px;padding:8px 12px;border-bottom:1px solid #e5edf5;background:#f6f9fc}
-  .mobile-quick-nav a{padding:9px 12px;min-height:44px;display:inline-flex;align-items:center;border-radius:9px;text-decoration:none;color:#083664;font-size:14px;font-weight:750}
-}
 /* Release 0.3: accessibility and first-time onboarding. Brandbook colors retained. */
 .reading-toggle{font-family:inherit;min-height:44px;min-width:44px;display:inline-flex;align-items:center;justify-content:center;gap:7px;border:1px solid #c6d9ed;border-radius:12px;background:#fff;color:#083664;font-size:15px;font-weight:800;cursor:pointer;white-space:nowrap;padding:8px 12px}
 .reading-toggle[aria-pressed="true"]{color:#083664;background:#d8f8f5;border-color:#00b6aa}
@@ -73,3 +61,23 @@ body.comfortable-view .profile-optional summary{font-size:18px}
 @media(prefers-reduced-motion: reduce){
   *,*::before,*::after{scroll-behavior:auto!important;transition-duration:.01ms!important;animation-duration:.01ms!important}
 }
+
+/* Navigation must stay legible when the candidate turns on large text.
+   Compact gaps before sacrificing font size; use a second nav row in tight widths. */
+.nav-inner{gap:clamp(8px,1.05vw,16px)}
+.nav-inner .brand,.nav-inner .reading-toggle,.nav-inner .nav-actions{flex-shrink:0}
+.nav-links{gap:clamp(11px,1.15vw,17px);flex-shrink:0}
+.nav-links a{white-space:nowrap}
+body.comfortable-view .nav-links a{white-space:nowrap}
+@media(max-width:1180px){
+  .site-header .nav-links{display:none}
+  .mobile-quick-nav{display:flex;justify-content:center;flex-wrap:wrap;gap:5px;padding:8px 12px;border-bottom:1px solid #e5edf5;background:#f6f9fc}
+  .mobile-quick-nav a{padding:9px 12px;min-height:44px;display:inline-flex;align-items:center;border-radius:9px;text-decoration:none;color:#083664;font-size:14px;font-weight:750}
+}
+
+/* Small labels must remain legible in the selected large-text mode. */
+body.comfortable-view .job-company{font-size:15px}
+body.comfortable-view .job-category{font-size:14px}
+body.comfortable-view .jobs-count{font-size:15px}
+body.comfortable-view .section-kicker{font-size:14px}
+body.comfortable-view .mobile-quick-nav a{font-size:16px}
