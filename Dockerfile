@@ -9,8 +9,7 @@ RUN useradd -r -u 10001 opyt && mkdir -p /srv/data && chown -R opyt /srv/data
 USER opyt
 ENV OPYT50_DB_PATH=/srv/data/opyt50.db
 EXPOSE 8000
-# Verify readiness inside the container. The public preview homepage is Basic Auth protected;
-# /api/health is intentionally unauthenticated and returns HTTP 200.
-HEALTHCHECK --interval=20s --timeout=5s --start-period=30s --retries=3 \
-    CMD python -c "import os, urllib.request; urllib.request.urlopen('http://127.0.0.1:' + os.getenv('PORT', '8000') + '/api/health', timeout=3).close()" || exit 1
+# Timeweb App Platform performs the HTTP health check at /api/health,
+# configured in application Settings > Deployment. A Dockerfile HEALTHCHECK
+# would override the platform's setting, so this image intentionally omits it.
 CMD ["sh", "./deploy/start.sh"]
