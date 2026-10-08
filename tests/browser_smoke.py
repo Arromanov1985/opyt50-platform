@@ -95,12 +95,39 @@ def run_browser(page):
     expect(page.locator("#profile-phone")).not_to_be_visible()
     page.locator(".profile-optional summary").click()
     expect(page.locator("#profile-phone")).to_be_visible()
+    # Three-question helper is optional, local and never replaces existing text.
+    page.locator("#experience-helper summary").click()
+    expect(page.locator("#experience-build")).to_be_visible()
+    page.locator("#experience-build").click()
+    expect(page.locator("#experience-helper-message")).to_contain_text("хотя бы один ответ")
+    page.locator("#experience-work").fill("example@demo.example")
+    page.locator("#experience-build").click()
+    expect(page.locator("#experience-helper-message")).to_contain_text("телефон или email")
+    expect(page.locator("#experience-insert")).to_be_disabled()
+    page.locator("#experience-work").fill("Складской учёт")
+    page.locator("#experience-tasks").fill("Приёмка поставок и инвентаризация")
+    page.locator("#experience-strengths").fill("1С и ведение документов")
+    page.locator("#profile-about").fill("Ранее записанный опыт.")
+    page.locator("#experience-build").click()
+    expect(page.locator("#experience-preview")).to_contain_text("Складской учёт")
+    expect(page.locator("#profile-about")).to_have_value("Ранее записанный опыт.")
+    page.locator("#experience-insert").click()
+    assert page.locator("#profile-about").input_value().startswith("Ранее записанный опыт.\n\nНаправление работы:")
+    assert "1С и ведение документов" in page.locator("#profile-about").input_value()
+    expect(page.locator("#experience-insert")).to_be_disabled()
+    expect(page.locator("#experience-helper-message")).to_contain_text("Для сохранения профиля")
     with page.expect_response(lambda response: (
         response.url.endswith("/api/candidate/profile") and response.request.method == "PUT"
     )) as save_profile:
         page.locator("#profile-form button[type='submit']").click()
     assert save_profile.value.status == 200, save_profile.value.text()
     expect(page.locator("#toast")).to_contain_text("Профиль сохранён")
+    saved_profile = page.request.get(URL + "/api/me").json()["user"]["profile"]
+    assert saved_profile["about"].startswith("Ранее записанный опыт.\n\nНаправление работы:")
+    assert "1С и ведение документов" in saved_profile["about"]
+    # The success message should fit entirely inside the browser viewport.
+    toast = page.locator("#toast").bounding_box()
+    assert toast and toast["x"] >= 0 and toast["x"] + toast["width"] <= 1281
     page.locator(".profile-next-actions [data-tab='offers']").click()
     expect(page.locator("#dashboard-main")).to_contain_text("Подходящие вакансии")
     page.locator("#public-jobs [data-v02-action='favorite']").click()
