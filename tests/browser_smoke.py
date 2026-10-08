@@ -88,6 +88,7 @@ def run_browser(page):
     login(page, "company@demo.example")
     page.locator("#account-content [data-tab='invitations']").click()
     expect(page.locator("#dashboard-main")).to_contain_text("Согласие получено")
+    page.once("dialog", lambda dialog: dialog.accept())
     page.locator("#dashboard-main [data-action='demo-pay']").click()
     expect(page.locator("#dashboard-main")).to_contain_text("Контакт открыт (демо)")
     page.locator("#logout").click()
