@@ -351,9 +351,18 @@ def create_app(db_path: str | None = None) -> FastAPI:
     def matching_jobs(user: dict = Depends(active_user), db: sqlite3.Connection = Depends(get_connection)):
         allowed(user, "candidate")
         profile = candidate_view(db, user["id"])
+        # Attach only the current candidate's application status. This keeps
+        # the recommendation card authoritative across sessions and reloads;
+        # no other candidate's application details are exposed.
         jobs_rows = db.execute(
-            """SELECT v.*,e.company_name FROM vacancies v JOIN employer_profiles e
-                 ON e.user_id=v.employer_id WHERE v.status='open' LIMIT 500"""
+            """SELECT v.*,e.company_name,
+                      a.id AS application_id, a.status AS application_status
+               FROM vacancies v
+               JOIN employer_profiles e ON e.user_id=v.employer_id
+               LEFT JOIN job_applications a
+                    ON a.vacancy_id=v.id AND a.candidate_id=?
+               WHERE v.status='open' LIMIT 500""",
+            (user["id"],),
         ).fetchall()
         matches = []
         for row in jobs_rows:
