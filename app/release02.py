@@ -189,9 +189,12 @@ def install_routes(app) -> None:
         allowed(user, "candidate")
         rows = db.execute("""SELECT a.id,a.vacancy_id,a.status,a.created_at,a.updated_at,
                              v.title,v.city,v.salary_min,v.salary_max,v.schedule,v.employment,
-                             e.company_name FROM job_applications a
+                             e.company_name,i.id AS invitation_id,i.status AS invitation_status,
+                             i.contact_shared AS contact_shared
+                             FROM job_applications a
                              JOIN vacancies v ON v.id=a.vacancy_id
                              JOIN employer_profiles e ON e.user_id=v.employer_id
+                             LEFT JOIN invitations i ON i.vacancy_id=a.vacancy_id AND i.candidate_id=a.candidate_id
                              WHERE a.candidate_id=? ORDER BY a.id DESC""", (user["id"],)).fetchall()
         return {"applications": [dict(r) for r in rows]}
 
@@ -218,14 +221,103 @@ def install_routes(app) -> None:
         allowed(user, "employer")
         params = [user["id"]]
         sql = """SELECT a.id,a.vacancy_id,a.status,a.created_at,a.updated_at,v.title,
-                 c.profession,c.city,c.skills,c.salary_min AS expected_salary FROM job_applications a
+                 c.profession,c.city,c.skills,c.salary_min AS expected_salary,
+                 i.id AS invitation_id,i.status AS invitation_status,i.contact_shared AS contact_shared
+                 FROM job_applications a
                  JOIN vacancies v ON v.id=a.vacancy_id
-                 JOIN candidate_profiles c ON c.user_id=a.candidate_id WHERE v.employer_id=?"""
+                 JOIN candidate_profiles c ON c.user_id=a.candidate_id
+                 LEFT JOIN invitations i ON i.vacancy_id=a.vacancy_id AND i.candidate_id=a.candidate_id
+                 WHERE v.employer_id=?"""
         if vacancy_id is not None:
             sql += " AND a.vacancy_id=?"
             params.append(vacancy_id)
         sql += " ORDER BY a.id DESC LIMIT 300"
         return {"applications": [dict(r) for r in db.execute(sql, params).fetchall()]}
+
+    @app.post("/api/employer/applications/{application_id}/interest")
+    def interested_in_application(
+        application_id: int,
+        user: dict = Depends(active_user),
+        db: sqlite3.Connection = Depends(get_connection),
+    ):
+        """One-click employer interest; invitation is reused, contacts stay private.
+
+        A candidate's application is not consent to share their contact information.
+        Each unique vacancy/candidate pair gets at most one introduction request.
+        """
+        allowed(user, "employer")
+        item = db.execute(
+            """SELECT a.id,a.vacancy_id,a.candidate_id,a.status,
+                      v.title,v.status AS vacancy_status
+               FROM job_applications a JOIN vacancies v ON v.id=a.vacancy_id
+               WHERE a.id=? AND v.employer_id=?""",
+            (application_id, user["id"]),
+        ).fetchone()
+        if item is None:
+            raise HTTPException(404, "Отклик не найден")
+        if item["vacancy_status"] != "open":
+            raise HTTPException(409, "Вакансия закрыта")
+        if item["status"] in {"withdrawn", "rejected", "hired"}:
+            raise HTTPException(409, "Обработка этого отклика завершена")
+        # Never generate a contact-sharing flow for a disabled candidate.
+        control = db.execute(
+            "SELECT status FROM account_controls WHERE user_id=?", (item["candidate_id"],)
+        ).fetchone()
+        if control is not None and control["status"] == "disabled":
+            raise HTTPException(409, "Профиль кандидата временно недоступен")
+
+        invite = db.execute(
+            "SELECT id,status,contact_shared FROM invitations WHERE vacancy_id=? AND candidate_id=?",
+            (item["vacancy_id"], item["candidate_id"]),
+        ).fetchone()
+        if invite is None:
+            from .matching import lead_price
+            db.execute(
+                """INSERT OR IGNORE INTO invitations(vacancy_id,candidate_id,employer_id,price_rub)
+                   VALUES(?,?,?,?)""",
+                (item["vacancy_id"], item["candidate_id"], user["id"], lead_price(item["title"])),
+            )
+            invite = db.execute(
+                "SELECT id,status,contact_shared FROM invitations WHERE vacancy_id=? AND candidate_id=?",
+                (item["vacancy_id"], item["candidate_id"]),
+            ).fetchone()
+            # Only the request that won the unique constraint sends a message.
+            # Reaching this state without an invitation cannot happen with a valid database.
+            if invite is None:
+                raise HTTPException(409, "Не удалось создать запрос на знакомство")
+            # The id is stable; a previously created row must not be re-notified.
+            created = db.execute(
+                "SELECT changes()"
+            ).fetchone()[0] == 1
+            if created:
+                enqueue_notice(
+                    db, item["candidate_id"], "invitation",
+                    "Работодатель заинтересован — ОПЫТНО.РФ",
+                    f"По вашему отклику на «{item['title']}» поступил запрос на знакомство. "
+                    "Контакты будут переданы только после отдельного согласия.",
+                )
+        else:
+            created = False
+
+        if item["status"] != "interview":
+            db.execute(
+                """UPDATE job_applications SET status='interview',updated_at=datetime('now')
+                   WHERE id=?""",
+                (application_id,),
+            )
+            enqueue_notice(
+                db, item["candidate_id"], "application_status",
+                "Статус отклика — ОПЫТНО.РФ",
+                f"Работодатель заинтересовался откликом на «{item['title']}». Откройте кабинет.",
+            )
+        return {
+            "ok": True,
+            "application_status": "interview",
+            "invitation_id": invite["id"],
+            "invitation_status": invite["status"],
+            "contact_shared": bool(invite["contact_shared"]),
+            "created": created,
+        }
 
     @app.patch("/api/employer/applications/{application_id}/status")
     def update_application(application_id: int, body: ApplicationStatusIn,
