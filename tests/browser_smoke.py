@@ -112,6 +112,22 @@ def run_browser(page):
     page.once("dialog", lambda dialog: dialog.accept())
     page.locator("#dashboard-main [data-action='demo-pay']").click()
     expect(page.locator("#dashboard-main")).to_contain_text("Контакт открыт (демо)")
+    expect(page.locator("#dashboard-main")).to_contain_text("Знакомство состоялось (демо)")
+    expect(page.locator("#dashboard-main")).to_contain_text("История взаимодействия")
+    page.locator("#account-content [data-tab='applications']").click()
+    expect(page.locator("#dashboard-main")).to_contain_text("Знакомство состоялось (демо)")
+    expect(page.locator("#dashboard-main")).to_contain_text("Приглашение отправлено")
+    expect(page.locator("#dashboard-main")).to_contain_text("Согласие получено")
+    expect(page.locator("#dashboard-main")).to_contain_text("Знакомство состоялось (демо)")
+    expect(page.locator("#dashboard-main [data-v02-action='application-status']")).to_have_count(0)
+    page.locator("#logout").click()
+
+    login(page, "kladovshik@demo.example")
+    page.locator("#account-content [data-tab='applications']").click()
+    expect(page.locator("#dashboard-main")).to_contain_text("Знакомство состоялось (демо)")
+    expect(page.locator("#dashboard-main [data-v02-action='withdraw']")).to_have_count(0)
+    page.locator("#account-content [data-tab='invitations']").click()
+    expect(page.locator("#dashboard-main")).to_contain_text("Знакомство состоялось (демо)")
     page.locator("#logout").click()
 
     # Accountant must not receive an engineer recommendation merely
@@ -143,6 +159,17 @@ def run_browser(page):
     expect(page.locator("#admin-v02-results")).to_contain_text("Пользователи")
     page.locator("[data-v02-action='admin-jobs']").click()
     expect(page.locator("#admin-v02-results")).to_contain_text("Вакансии")
+    page.locator("[data-v02-action='admin-mail']").click()
+    expect(page.locator("#admin-v02-results")).to_contain_text("Тестовая очередь")
+    expect(page.locator("#admin-v02-results")).to_contain_text("contact_opened")
+    # The same linked journey must remain navigable on a narrow phone viewport.
+    page.set_viewport_size({"width": 390, "height": 844})
+    expect(page.locator("#admin-v02-results")).to_be_visible()
+    page.locator("#logout").click()
+    login(page, "kladovshik@demo.example")
+    page.locator("#account-content [data-tab='applications']").click()
+    expect(page.locator("#dashboard-main")).to_contain_text("Знакомство состоялось (демо")
+
     if console_errors:
         raise AssertionError("Uncaught browser errors: " + " | ".join(console_errors))
 
