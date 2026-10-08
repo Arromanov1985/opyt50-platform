@@ -114,6 +114,20 @@ def run_browser(page):
     expect(page.locator("#dashboard-main")).to_contain_text("Контакт открыт (демо)")
     page.locator("#logout").click()
 
+    # Accountant must not receive an engineer recommendation merely
+    # because both profiles mention Excel.
+    login(page, "buhgalter@demo.example")
+    page.locator("#account-content [data-tab='offers']").click()
+    expect(page.locator("#dashboard-main")).to_contain_text("Бухгалтер")
+    expect(page.locator("#dashboard-main")).not_to_contain_text("Инженер по эксплуатации")
+    expect(page.locator("#dashboard-main [data-v02-action='apply']")).to_have_count(1)
+    page.locator("#dashboard-main [data-v02-action='apply']").click()
+    expect(page.locator("#dashboard-main")).to_contain_text("Отклик: Отправлен")
+    expect(page.locator("#dashboard-main [data-v02-action='apply']")).to_have_count(0)
+    page.locator("#dashboard-main [data-v02-action='see-applications']").click()
+    expect(page.locator("#dashboard-main")).to_contain_text("История откликов")
+    page.locator("#logout").click()
+
     login(page, "admin@demo.example")
     expect(page.locator("#admin-stats")).to_contain_text("Активные отклики")
     expect(page.locator("#admin-stats")).to_contain_text("Отозванные отклики")
