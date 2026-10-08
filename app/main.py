@@ -133,6 +133,10 @@ def active_user(request: Request, db: sqlite3.Connection = Depends(get_connectio
     ).fetchone()
     if row is None:
         raise HTTPException(401, "Сессия завершена. Войдите снова")
+    # User controls exist after the 0.2 migration; deny disabled accounts on every authenticated request.
+    control = db.execute("SELECT status FROM account_controls WHERE user_id=?", (row["id"],)).fetchone()
+    if control is not None and control["status"] == "disabled":
+        raise HTTPException(403, "Аккаунт временно заблокирован")
     return dict(row)
 
 
@@ -180,9 +184,11 @@ def create_app(db_path: str | None = None) -> FastAPI:
     @asynccontextmanager
     async def lifespan(app: FastAPI):
         init_db(app.state.db_path)
+        from .release02 import init_release02
+        init_release02(app.state.db_path)
         yield
 
-    app = FastAPI(title="ОПЫТ 50+", version="0.1.0", lifespan=lifespan, docs_url="/api/docs")
+    app = FastAPI(title="ОПЫТ 50+", version="0.2.0", lifespan=lifespan, docs_url="/api/docs")
     app.state.db_path = db_location
     app.state.auth_attempts = defaultdict(deque)
     app.mount("/static", StaticFiles(directory=str(BASE / "static")), name="static")
@@ -245,7 +251,7 @@ def create_app(db_path: str | None = None) -> FastAPI:
 
     @app.get("/api/health")
     def health():
-        return {"status": "ok", "version": "0.1.0", "payments": "demo_only"}
+        return {"status": "ok", "version": "0.2.0", "payments": "demo_only"}
 
     @app.post("/api/register", status_code=201)
     def register(data: Registration, response: Response, db: sqlite3.Connection = Depends(get_connection)):
@@ -263,6 +269,8 @@ def create_app(db_path: str | None = None) -> FastAPI:
                     (user_id, data.company_name.strip()),
                 )
             add_session(db, response, user_id)
+            from .release02 import enqueue_notice
+            enqueue_notice(db, user_id, "welcome", "Добро пожаловать в ОПЫТНО.РФ", "Ваш аккаунт создан. Письмо записано в тестовую очередь и НЕ отправлено.")
         except sqlite3.IntegrityError:
             raise HTTPException(409, "Этот email уже зарегистрирован") from None
         return {"user": user_response(dict(db.execute("SELECT id,email,role,name,phone FROM users WHERE id=?", (user_id,)).fetchone()), db)}
@@ -272,6 +280,9 @@ def create_app(db_path: str | None = None) -> FastAPI:
         row = db.execute("SELECT * FROM users WHERE email=?", (data.email.strip().casefold(),)).fetchone()
         if row is None or not verify_password(data.password, row["password_hash"]):
             raise HTTPException(401, "Неверный email или пароль")
+        block = db.execute("SELECT status FROM account_controls WHERE user_id=?", (row["id"],)).fetchone()
+        if block is not None and block["status"] == "disabled":
+            raise HTTPException(403, "Аккаунт временно заблокирован")
         add_session(db, response, row["id"])
         return {"user": user_response(dict(row), db)}
 
@@ -304,13 +315,34 @@ def create_app(db_path: str | None = None) -> FastAPI:
         return {"ok": True, "profile": candidate_view(db, user["id"])}
 
     @app.get("/api/jobs")
-    def jobs(city: str = "", db: sqlite3.Connection = Depends(get_connection)):
+    def jobs(q: str = "", city: str = "", salary_min: int = 0, schedule: str = "",
+             employment: str = "", db: sqlite3.Connection = Depends(get_connection)):
+        """Public job search: profession/title, location, minimum acceptable salary, schedule."""
+        if salary_min < 0 or salary_min > 10_000_000 or len(q) > 120 or len(city) > 100:
+            raise HTTPException(422, "Проверьте параметры поиска")
+        if schedule and schedule not in SCHEDULES:
+            raise HTTPException(422, "Недопустимый график")
+        if employment and employment not in EMPLOYMENTS:
+            raise HTTPException(422, "Недопустимая занятость")
         sql = """SELECT v.*,e.company_name FROM vacancies v JOIN employer_profiles e
                  ON e.user_id=v.employer_id WHERE v.status='open'"""
-        params: tuple = ()
+        params: list = []
+        if q.strip():
+            sql += " AND (lower(v.title) LIKE ? ESCAPE '\\' OR lower(v.skills) LIKE ? ESCAPE '\\')"
+            literal = q.strip().lower().replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+            params.extend([f"%{literal}%", f"%{literal}%"])
         if city.strip():
-            sql += " AND (lower(v.city)=lower(?) OR lower(v.city)='удалённо')"
-            params = (city.strip(),)
+            sql += " AND (lower(v.city)=lower(?) OR lower(v.city)='удалённо' OR lower(v.city)='любой город')"
+            params.append(city.strip())
+        if salary_min:
+            sql += " AND v.salary_max >= ?"
+            params.append(salary_min)
+        if schedule and schedule != "Любой":
+            sql += " AND (v.schedule=? OR v.schedule='Любой')"
+            params.append(schedule)
+        if employment and employment != "Любая":
+            sql += " AND (v.employment=? OR v.employment='Любая')"
+            params.append(employment)
         sql += " ORDER BY v.id DESC LIMIT 100"
         return {"jobs": [dict(row) for row in db.execute(sql, params).fetchall()]}
 
@@ -397,6 +429,9 @@ def create_app(db_path: str | None = None) -> FastAPI:
             )
         except sqlite3.IntegrityError:
             raise HTTPException(409, "Этому кандидату уже направлено приглашение") from None
+        from .release02 import enqueue_notice
+        enqueue_notice(db, data.candidate_id, "invitation", "Приглашение от компании — ОПЫТНО.РФ",
+                       f"Вы получили приглашение на вакансию «{vacancy['title']}». Откройте личный кабинет.")
         return {"id": cursor.lastrowid, "ok": True}
 
     @app.get("/api/candidate/invitations")
@@ -431,6 +466,10 @@ def create_app(db_path: str | None = None) -> FastAPI:
                WHERE id=? AND candidate_id=?""",
             (data.decision, int(data.decision == "accepted" and data.share_consent), invitation_id, user["id"]),
         )
+        from .release02 import enqueue_notice
+        employer = db.execute("SELECT employer_id FROM invitations WHERE id=?", (invitation_id,)).fetchone()
+        enqueue_notice(db, employer["employer_id"], "invitation_response", "Ответ кандидата — ОПЫТНО.РФ",
+                       f"Кандидат ответил на приглашение: {data.decision}. Откройте кабинет.")
         return {"ok": True}
 
     @app.get("/api/employer/invitations")
@@ -489,6 +528,8 @@ def create_app(db_path: str | None = None) -> FastAPI:
             "demo_turnover_rub": count("SELECT COALESCE(SUM(amount_rub),0) FROM demo_transactions"),
         }
 
+    from .release02 import install_routes
+    install_routes(app)
     return app
 
 
