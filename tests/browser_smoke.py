@@ -59,8 +59,13 @@ def run_browser(page):
     expect(page.locator("#dashboard-main")).to_contain_text("История откликов")
     expect(page.locator("#dashboard-main")).to_contain_text("Отправлен")
     page.locator("#account-content [data-tab='favorites']").click()
-    page.locator("#dashboard-main [data-v02-action='remove-favorite']").click()
-    expect(page.locator("#dashboard-main")).to_contain_text("Вы ещё не сохранили вакансий")
+    with page.expect_response(lambda response: (
+        "/api/candidate/favorites/" in response.url and
+        response.request.method == "DELETE"
+    )) as delete_response:
+        page.locator("#dashboard-main [data-v02-action='remove-favorite']").click()
+    assert delete_response.value.status == 200, delete_response.value.text()
+    expect(page.locator("#dashboard-main")).to_contain_text("Вы ещё не сохранили вакансий", timeout=10000)
     page.locator("#logout").click()
 
     login(page, "company@demo.example")
