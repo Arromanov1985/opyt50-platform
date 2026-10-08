@@ -16,3 +16,7 @@ jobs:
         run: python -m pytest -q
       - name: Compile
         run: python -m compileall -q app scripts
+      - name: Browser JavaScript syntax
+        run: |
+          node --check app/static/app.js
+          node --check app/static/release02.js
