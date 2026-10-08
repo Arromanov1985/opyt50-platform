@@ -132,6 +132,56 @@ def redeem_token(db: sqlite3.Connection, raw: str, purpose: str) -> sqlite3.Row:
     return row
 
 
+def introduction_stage(status: str | None, contact_shared: int | bool | None) -> str | None:
+    """Single, non-sensitive workflow status for all dashboards."""
+    if contact_shared:
+        return "introduced"
+    return {"sent": "awaiting_consent", "accepted": "consented", "declined": "declined"}.get(status)
+
+
+def interaction_timeline(
+    db: sqlite3.Connection, application_id: int | None, invitation_id: int | None
+) -> list[dict[str, str]]:
+    """Unified chronological activity without names, addresses or contact values."""
+    entries: list[tuple[str, int, dict[str, str]]] = []
+    if application_id is not None:
+        rows = db.execute(
+            """SELECT id,event,created_at FROM application_events
+               WHERE application_id=? ORDER BY id ASC""", (application_id,)
+        ).fetchall()
+        for row in rows:
+            entries.append((row["created_at"], row["id"], {
+                "event": row["event"], "created_at": row["created_at"]
+            }))
+    if invitation_id is not None:
+        invitation = db.execute(
+            """SELECT status,contact_shared,created_at,responded_at
+               FROM invitations WHERE id=?""", (invitation_id,)
+        ).fetchone()
+        if invitation:
+            entries.append((invitation["created_at"], 1000000, {
+                "event": "invitation_sent", "created_at": invitation["created_at"]
+            }))
+            if invitation["responded_at"] and invitation["status"] in ("accepted", "declined"):
+                entries.append((invitation["responded_at"], 2000000, {
+                    "event": "invitation_accepted" if invitation["status"] == "accepted" else "invitation_declined",
+                    "created_at": invitation["responded_at"]
+                }))
+            if invitation["contact_shared"]:
+                txn = db.execute(
+                    "SELECT created_at FROM demo_transactions WHERE invitation_id=?",
+                    (invitation_id,),
+                ).fetchone()
+                if txn:
+                    entries.append((txn["created_at"], 3000000, {
+                        "event": "contact_opened", "created_at": txn["created_at"]
+                    }))
+    # SQLite timestamps are second-resolution; an explicit sequence makes
+    # events from one request deterministic, without relying on client clocks.
+    entries.sort(key=lambda row: (row[0], row[1]))
+    return [entry for _, __, entry in entries]
+
+
 def install_routes(app) -> None:
     # Imported here to avoid a circular module initialization.
     from .main import active_user, allowed, candidate_view, get_connection
@@ -229,11 +279,8 @@ def install_routes(app) -> None:
         applications = []
         for row in rows:
             data = dict(row)
-            events = db.execute(
-                """SELECT event,created_at FROM application_events
-                   WHERE application_id=? ORDER BY id DESC LIMIT 20""", (row["id"],)
-            ).fetchall()
-            data["timeline"] = [dict(e) for e in reversed(events)]
+            data["timeline"] = interaction_timeline(db, row["id"], row["invitation_id"])
+            data["introduction_stage"] = introduction_stage(row["invitation_status"], row["contact_shared"])
             applications.append(data)
         return {"applications": applications}
 
@@ -248,6 +295,12 @@ def install_routes(app) -> None:
             raise HTTPException(404, "Отклик не найден")
         if item["status"] not in {"applied", "reviewing", "interview"}:
             raise HTTPException(409, "Этот отклик уже нельзя отозвать")
+        invitation = db.execute(
+            "SELECT status,contact_shared FROM invitations WHERE vacancy_id=? AND candidate_id=?",
+            (item["vacancy_id"], user["id"]),
+        ).fetchone()
+        if invitation and (invitation["status"] in {"sent", "accepted"} or invitation["contact_shared"]):
+            raise HTTPException(409, "Сначала завершите или отклоните запрос на знакомство")
         db.execute("UPDATE job_applications SET status='withdrawn',updated_at=datetime('now') WHERE id=?",
                    (application_id,))
         db.execute("INSERT INTO application_events(application_id,event) VALUES(?,?)",
@@ -273,7 +326,14 @@ def install_routes(app) -> None:
             sql += " AND a.vacancy_id=?"
             params.append(vacancy_id)
         sql += " ORDER BY a.id DESC LIMIT 300"
-        return {"applications": [dict(r) for r in db.execute(sql, params).fetchall()]}
+        rows = db.execute(sql, params).fetchall()
+        applications = []
+        for row in rows:
+            item = dict(row)
+            item["introduction_stage"] = introduction_stage(row["invitation_status"], row["contact_shared"])
+            item["timeline"] = interaction_timeline(db, row["id"], row["invitation_id"])
+            applications.append(item)
+        return {"applications": applications}
 
     @app.post("/api/employer/applications/{application_id}/interest")
     def interested_in_application(
@@ -374,6 +434,17 @@ def install_routes(app) -> None:
             raise HTTPException(404, "Отклик не найден")
         if item["status"] in {"withdrawn", "hired", "rejected"}:
             raise HTTPException(409, "Статус этого отклика уже окончательный")
+        invite = db.execute(
+            "SELECT status,contact_shared FROM invitations WHERE vacancy_id=? AND candidate_id=?",
+            (item["vacancy_id"], item["candidate_id"]),
+        ).fetchone()
+        if invite and (invite["status"] in ("sent", "accepted") or invite["contact_shared"]):
+            # Once an introduction has begun, application review cannot
+            # contradict consent. A hire may be recorded after contact unlock.
+            if not (body.status == "hired" and invite["contact_shared"]):
+                raise HTTPException(409, "Знакомство уже началось. Измените его через раздел приглашений")
+        if item["status"] == body.status:
+            return {"ok": True, "status": body.status}
         db.execute("UPDATE job_applications SET status=?,updated_at=datetime('now') WHERE id=?",
                    (body.status, application_id))
         db.execute("INSERT INTO application_events(application_id,event) VALUES(?,?)",
