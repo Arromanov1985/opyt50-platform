@@ -45,10 +45,26 @@ def run_browser(page):
     expect(mode).to_have_attribute("aria-pressed", "false")
     mode.click()
     expect(mode).to_have_attribute("aria-pressed", "true")
+    # The horizontal menu must remain readable in large-text mode without
+    # wrapping «О сервисе» into two lines, as happened in manual testing.
+    assert page.evaluate("""() => {
+      const links = [...document.querySelectorAll('.nav-links a')];
+      return links.every(el => el.getBoundingClientRect().height
+        <= parseFloat(getComputedStyle(el).lineHeight) + 2);
+    }"""), "Desktop navigation link wrapped in large text mode"
+    assert page.evaluate("""() => {
+      const nav = document.querySelector('.nav-inner');
+      return nav.scrollWidth <= nav.clientWidth + 2;
+    }"""), "Desktop navigation overflows its container"
     page.reload(wait_until="networkidle")
     expect(page.locator("#reading-mode-toggle")).to_have_attribute("aria-pressed", "true")
     page.locator("#reading-mode-toggle").click()
     expect(page.locator("#reading-mode-toggle")).to_have_attribute("aria-pressed", "false")
+    # At intermediate widths the full menu moves to a readable second row.
+    page.set_viewport_size({"width": 1060, "height": 760})
+    expect(page.locator(".mobile-quick-nav")).to_be_visible()
+    expect(page.locator(".nav-links")).not_to_be_visible()
+    page.set_viewport_size({"width": 1280, "height": 720})
 
     page.locator("#register-open").click()
     expect(page.locator("#auth-name")).to_be_focused()
