@@ -143,3 +143,108 @@ def test_admin_controls_and_existing_invitation_events(app):
         assert admin.patch("/api/admin/users/3/status",headers=HEADERS,json={"status":"disabled"}).status_code==403
         with database(app.state.db_path) as db:
             assert db.execute("SELECT COUNT(*) FROM admin_audit").fetchone()[0]==3
+
+
+def test_one_click_introduction_reuses_record_and_requires_consent(app):
+    """Self-initiated job application -> employer interest -> explicit consent -> demo unlock."""
+    with TestClient(app) as candidate, TestClient(app) as employer, TestClient(app) as other:
+        cid = register(candidate, "candidate@demo.example")
+        register(employer, "employer@demo.example", "employer")
+        register(other, "other@demo.example", "employer")
+        profile(candidate)
+        jid = vacancy(employer)
+
+        # An application alone must not reveal contact data.
+        submitted = post(candidate, "/api/candidate/applications", {"vacancy_id": jid})
+        assert submitted.status_code == 201, submitted.text
+        aid = submitted.json()["id"]
+        listing = employer.get("/api/employer/applications").json()["applications"][0]
+        assert listing["invitation_id"] is None
+        assert "email" not in listing and "phone" not in listing and "name" not in listing
+        assert other.post(f"/api/employer/applications/{aid}/interest", headers=HEADERS).status_code == 404
+        assert candidate.post(f"/api/employer/applications/{aid}/interest", headers=HEADERS).status_code == 403
+
+        response = post(employer, f"/api/employer/applications/{aid}/interest")
+        assert response.status_code == 200, response.text
+        body = response.json()
+        assert body["created"] is True
+        assert body["invitation_status"] == "sent"
+        assert body["contact_shared"] is False
+        invitation_id = body["invitation_id"]
+        assert employer.get("/api/employer/applications").json()["applications"][0]["status"] == "interview"
+        assert candidate.get("/api/candidate/applications").json()["applications"][0]["invitation_id"] == invitation_id
+        assert candidate.get("/api/candidate/applications").json()["applications"][0]["invitation_status"] == "sent"
+        assert post(candidate, f"/api/candidate/invitations/{invitation_id}/respond",
+                    {"decision": "accepted", "share_consent": False}).status_code == 422
+        assert post(employer, f"/api/employer/invitations/{invitation_id}/demo-pay").status_code == 409
+
+        with database(app.state.db_path) as db:
+            count = db.execute("SELECT COUNT(*) FROM invitations").fetchone()[0]
+            notices = db.execute(
+                "SELECT COUNT(*) FROM email_outbox WHERE event='invitation'"
+            ).fetchone()[0]
+        assert count == 1 and notices == 1
+
+        repeat = post(employer, f"/api/employer/applications/{aid}/interest")
+        assert repeat.status_code == 200
+        assert repeat.json()["invitation_id"] == invitation_id
+        assert repeat.json()["created"] is False
+        with database(app.state.db_path) as db:
+            assert db.execute("SELECT COUNT(*) FROM invitations").fetchone()[0] == 1
+            assert db.execute(
+                "SELECT COUNT(*) FROM email_outbox WHERE event='invitation'"
+            ).fetchone()[0] == 1
+
+        accepted = post(candidate, f"/api/candidate/invitations/{invitation_id}/respond",
+                        {"decision": "accepted", "share_consent": True})
+        assert accepted.status_code == 200
+        assert employer.get("/api/employer/applications").json()["applications"][0]["invitation_status"] == "accepted"
+        contact_before = employer.get("/api/employer/invitations").json()["invitations"][0]
+        assert "contact" not in contact_before
+        paid = post(employer, f"/api/employer/invitations/{invitation_id}/demo-pay")
+        assert paid.status_code == 200
+        assert paid.json()["contact"]["email"] == "candidate@demo.example"
+        assert employer.get("/api/employer/applications").json()["applications"][0]["contact_shared"] == 1
+        again = post(employer, f"/api/employer/invitations/{invitation_id}/demo-pay")
+        assert again.status_code == 200
+        with database(app.state.db_path) as db:
+            assert db.execute("SELECT COUNT(*) FROM demo_transactions").fetchone()[0] == 1
+
+
+def test_interest_uses_existing_proactive_invitation(app):
+    """A prior manual invitation isn't duplicated when an applicant later expresses interest."""
+    with TestClient(app) as candidate, TestClient(app) as employer:
+        cid = register(candidate, "candidate@demo.example")
+        register(employer, "employer@demo.example", "employer")
+        profile(candidate)
+        jid = vacancy(employer)
+        existing = post(employer, "/api/employer/invitations", {
+            "candidate_id": cid, "vacancy_id": jid
+        })
+        assert existing.status_code == 201, existing.text
+        old_id = existing.json()["id"]
+        applied = post(candidate, "/api/candidate/applications", {"vacancy_id": jid})
+        assert applied.status_code == 201, applied.text
+        aid = applied.json()["id"]
+        joined = employer.get("/api/employer/applications").json()["applications"][0]
+        assert joined["invitation_id"] == old_id
+        interest = post(employer, f"/api/employer/applications/{aid}/interest")
+        assert interest.status_code == 200
+        assert interest.json()["invitation_id"] == old_id
+        assert interest.json()["created"] is False
+        with database(app.state.db_path) as db:
+            assert db.execute("SELECT COUNT(*) FROM invitations").fetchone()[0] == 1
+            assert db.execute("SELECT COUNT(*) FROM email_outbox WHERE event='invitation'").fetchone()[0] == 1
+
+
+def test_interest_refuses_withdrawn_applications_and_closed_jobs(app):
+    with TestClient(app) as candidate, TestClient(app) as employer:
+        register(candidate, "candidate@demo.example")
+        register(employer, "employer@demo.example", "employer")
+        profile(candidate)
+        jid = vacancy(employer)
+        aid = post(candidate, "/api/candidate/applications", {"vacancy_id": jid}).json()["id"]
+        assert post(candidate, f"/api/candidate/applications/{aid}/withdraw").status_code == 200
+        assert post(employer, f"/api/employer/applications/{aid}/interest").status_code == 409
+        with database(app.state.db_path) as db:
+            assert db.execute("SELECT COUNT(*) FROM invitations").fetchone()[0] == 0
