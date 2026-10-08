@@ -211,6 +211,8 @@ def install_routes(app) -> None:
             raise HTTPException(404, "Вакансия не найдена")
         db.execute("INSERT OR IGNORE INTO candidate_favorites(candidate_id,vacancy_id) VALUES(?,?)",
                    (user["id"], job_id))
+        # Commit before the HTTP response: a new dashboard request may arrive immediately.
+        db.commit()
         return {"ok": True}
 
     @app.delete("/api/candidate/favorites/{job_id}")
@@ -218,6 +220,8 @@ def install_routes(app) -> None:
                         db: sqlite3.Connection = Depends(get_connection)):
         allowed(user, "candidate")
         db.execute("DELETE FROM candidate_favorites WHERE candidate_id=? AND vacancy_id=?", (user["id"], job_id))
+        # Commit before the HTTP response: a new dashboard request may arrive immediately.
+        db.commit()
         return {"ok": True}
 
     @app.post("/api/candidate/applications", status_code=201)
@@ -261,6 +265,8 @@ def install_routes(app) -> None:
         )
         enqueue_notice(db, job["employer_id"], "new_application", "Новый отклик — ОПЫТНО.РФ",
                        f"Получен обезличенный отклик на вакансию «{job['title']}». Откройте кабинет.")
+        # Commit before the HTTP response: a new dashboard request may arrive immediately.
+        db.commit()
         return {"ok": True, "id": application_id, "status": "applied", "reapplied": event == "reapplied"}
 
     @app.get("/api/candidate/applications")
@@ -307,6 +313,8 @@ def install_routes(app) -> None:
                    (application_id, "withdrawn"))
         enqueue_notice(db, item["employer_id"], "application_withdrawn", "Отклик отозван — ОПЫТНО.РФ",
                        f"Отклик на вакансию «{item['title']}» отозван.")
+        # Commit before the HTTP response: a new dashboard request may arrive immediately.
+        db.commit()
         return {"ok": True}
 
     @app.get("/api/employer/applications")
@@ -415,6 +423,8 @@ def install_routes(app) -> None:
                 "Статус отклика — ОПЫТНО.РФ",
                 f"Работодатель заинтересовался откликом на «{item['title']}». Откройте кабинет.",
             )
+        # Commit before the HTTP response: a new dashboard request may arrive immediately.
+        db.commit()
         return {
             "ok": True,
             "application_status": "interview",
@@ -451,6 +461,8 @@ def install_routes(app) -> None:
                    (application_id, body.status))
         enqueue_notice(db, item["candidate_id"], "application_status", "Статус отклика — ОПЫТНО.РФ",
                        f"Статус отклика на «{item['title']}» изменён на {body.status}. Откройте кабинет.")
+        # Commit before the HTTP response: a new dashboard request may arrive immediately.
+        db.commit()
         return {"ok": True, "status": body.status}
 
     @app.get("/api/account/email/status")
@@ -463,6 +475,8 @@ def install_routes(app) -> None:
     def request_verification(user: dict = Depends(active_user),
                              db: sqlite3.Connection = Depends(get_connection)):
         issue_email_token(db, user["id"], "verify")
+        # Commit before the HTTP response: a new dashboard request may arrive immediately.
+        db.commit()
         return {"ok": True, "delivery": "demo_outbox_only"}
 
     @app.post("/api/account/email/confirm")
@@ -470,6 +484,8 @@ def install_routes(app) -> None:
         row = redeem_token(db, data.token, "verify")
         db.execute("""INSERT INTO account_controls(user_id,email_verified) VALUES(?,1)
                       ON CONFLICT(user_id) DO UPDATE SET email_verified=1""", (row["user_id"],))
+        # Commit before the HTTP response: a new dashboard request may arrive immediately.
+        db.commit()
         return {"ok": True}
 
     @app.post("/api/account/password/request")
@@ -477,6 +493,8 @@ def install_routes(app) -> None:
         row = db.execute("SELECT id FROM users WHERE email=?", (data.email.strip().casefold(),)).fetchone()
         if row:
             issue_email_token(db, row["id"], "reset")
+        # Commit before the HTTP response: a new dashboard request may arrive immediately.
+        db.commit()
         return {"ok": True, "delivery": "demo_outbox_only"}
 
     @app.post("/api/account/password/reset")
@@ -485,6 +503,8 @@ def install_routes(app) -> None:
         db.execute("UPDATE users SET password_hash=? WHERE id=?",
                    (make_password_hash(data.password), row["user_id"]))
         db.execute("DELETE FROM sessions WHERE user_id=?", (row["user_id"],))
+        # Commit before the HTTP response: a new dashboard request may arrive immediately.
+        db.commit()
         return {"ok": True}
 
     @app.get("/api/admin/users")
@@ -512,6 +532,8 @@ def install_routes(app) -> None:
             db.execute("DELETE FROM sessions WHERE user_id=?", (user_id,))
         db.execute("INSERT INTO admin_audit(admin_id,action,target_id) VALUES(?,?,?)",
                    (user["id"], "user_" + data.status, user_id))
+        # Commit before the HTTP response: a new dashboard request may arrive immediately.
+        db.commit()
         return {"ok": True}
 
     @app.get("/api/admin/vacancies")
@@ -531,6 +553,8 @@ def install_routes(app) -> None:
             raise HTTPException(404, "Вакансия не найдена")
         db.execute("INSERT INTO admin_audit(admin_id,action,target_id) VALUES(?,?,?)",
                    (user["id"], "vacancy_" + data.status, job_id))
+        # Commit before the HTTP response: a new dashboard request may arrive immediately.
+        db.commit()
         return {"ok": True}
 
     @app.get("/api/admin/mail-preview")
