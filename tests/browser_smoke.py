@@ -58,6 +58,22 @@ def run_browser(page):
     page.locator("#account-content [data-tab='applications']").click()
     expect(page.locator("#dashboard-main")).to_contain_text("История откликов")
     expect(page.locator("#dashboard-main")).to_contain_text("Отправлен")
+    with page.expect_response(lambda response: (
+        "/api/candidate/applications/" in response.url and
+        response.url.endswith("/withdraw") and response.request.method == "POST"
+    )) as withdraw_reply:
+        page.locator("#dashboard-main [data-v02-action='withdraw']").click()
+    assert withdraw_reply.value.status == 200
+    expect(page.locator("#dashboard-main")).to_contain_text("Отозван")
+    with page.expect_response(lambda response: (
+        response.url.endswith("/api/candidate/applications") and
+        response.request.method == "POST"
+    )) as retry_reply:
+        page.locator("#dashboard-main [data-v02-action='reapply']").click()
+    assert retry_reply.value.status == 201
+    assert retry_reply.value.json()["reapplied"] is True
+    expect(page.locator("#dashboard-main")).to_contain_text("Отклик отправлен повторно")
+    expect(page.locator("#dashboard-main")).to_contain_text("Отправлен")
     page.locator("#account-content [data-tab='favorites']").click()
     with page.expect_response(lambda response: (
         "/api/candidate/favorites/" in response.url and
@@ -99,6 +115,8 @@ def run_browser(page):
     page.locator("#logout").click()
 
     login(page, "admin@demo.example")
+    expect(page.locator("#admin-stats")).to_contain_text("Активные отклики")
+    expect(page.locator("#admin-stats")).to_contain_text("Отозванные отклики")
     expect(page.locator("[data-v02-action='admin-users']")).to_be_visible()
     page.locator("[data-v02-action='admin-users']").click()
     expect(page.locator("#admin-v02-results")).to_contain_text("Пользователи")
