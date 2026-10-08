@@ -69,11 +69,27 @@ def run_browser(page):
     expect(page.locator("#dashboard-main")).to_contain_text("Кладовщик")
     page.locator("#dashboard-main [data-v02-action='application-status'][data-status='reviewing']").click()
     expect(page.locator("#dashboard-main")).to_contain_text("На рассмотрении")
+    page.locator("#dashboard-main [data-v02-action='express-interest']").click()
+    expect(page.locator("#dashboard-main")).to_contain_text("Запрос отправлен")
+    expect(page.locator("#dashboard-main [data-v02-action='express-interest']")).to_have_count(0)
     page.locator("#logout").click()
 
     login(page, "kladovshik@demo.example")
     page.locator("#account-content [data-tab='applications']").click()
-    expect(page.locator("#dashboard-main")).to_contain_text("На рассмотрении")
+    expect(page.locator("#dashboard-main")).to_contain_text("Работодатель заинтересован")
+    expect(page.locator("#dashboard-main")).to_contain_text("Ожидается ваше решение")
+    page.locator("#dashboard-main [data-v02-action='open-introductions']").click()
+    expect(page.locator("#dashboard-main")).to_contain_text("Приглашения от компаний")
+    page.locator("#dashboard-main [id^='consent-']").check()
+    page.locator("#dashboard-main [data-action='accept']").click()
+    expect(page.locator("#dashboard-main")).to_contain_text("Согласие получено")
+    page.locator("#logout").click()
+
+    login(page, "company@demo.example")
+    page.locator("#account-content [data-tab='invitations']").click()
+    expect(page.locator("#dashboard-main")).to_contain_text("Согласие получено")
+    page.locator("#dashboard-main [data-action='demo-pay']").click()
+    expect(page.locator("#dashboard-main")).to_contain_text("Контакт открыт (демо)")
     page.locator("#logout").click()
 
     login(page, "admin@demo.example")
@@ -125,7 +141,7 @@ def main():
                 server.wait(timeout=5)
             except subprocess.TimeoutExpired:
                 server.kill()
-    print("Browser smoke: search, detail, favorite, application, employer status, candidate status and admin PASSED")
+    print("Browser smoke: search, detail, favorite, linked interest, explicit consent, demo unlock and admin PASSED")
 
 
 if __name__ == "__main__":
