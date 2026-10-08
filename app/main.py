@@ -133,6 +133,10 @@ def active_user(request: Request, db: sqlite3.Connection = Depends(get_connectio
     ).fetchone()
     if row is None:
         raise HTTPException(401, "Сессия завершена. Войдите снова")
+    # User controls exist after the 0.2 migration; deny disabled accounts on every authenticated request.
+    control = db.execute("SELECT status FROM account_controls WHERE user_id=?", (row["id"],)).fetchone()
+    if control is not None and control["status"] == "disabled":
+        raise HTTPException(403, "Аккаунт временно заблокирован")
     return dict(row)
 
 
@@ -163,6 +167,9 @@ def user_response(user: dict, db: sqlite3.Connection) -> dict:
 def add_session(db: sqlite3.Connection, response: Response, user_id: int) -> None:
     token, digest = issue_session()
     db.execute("INSERT INTO sessions(token_hash,user_id,expires_at) VALUES(?,?,?)", (digest, user_id, utc_expiry()))
+    # FastAPI yield dependencies may finalize after the response is sent.
+    # Commit before issuing the session cookie, so the next /api/me sees it.
+    db.commit()
     response.set_cookie(
         COOKIE_NAME,
         token,
@@ -180,9 +187,11 @@ def create_app(db_path: str | None = None) -> FastAPI:
     @asynccontextmanager
     async def lifespan(app: FastAPI):
         init_db(app.state.db_path)
+        from .release02 import init_release02
+        init_release02(app.state.db_path)
         yield
 
-    app = FastAPI(title="ОПЫТ 50+", version="0.1.0", lifespan=lifespan, docs_url="/api/docs")
+    app = FastAPI(title="ОПЫТ 50+", version="0.2.1.4", lifespan=lifespan, docs_url="/api/docs")
     app.state.db_path = db_location
     app.state.auth_attempts = defaultdict(deque)
     app.mount("/static", StaticFiles(directory=str(BASE / "static")), name="static")
@@ -241,11 +250,13 @@ def create_app(db_path: str | None = None) -> FastAPI:
 
     @app.get("/", include_in_schema=False)
     def index():
-        return FileResponse(BASE / "static" / "index.html")
+        response = FileResponse(BASE / "static" / "index.html")
+        response.headers["Cache-Control"] = "no-store, max-age=0"
+        return response
 
     @app.get("/api/health")
     def health():
-        return {"status": "ok", "version": "0.1.0", "payments": "demo_only"}
+        return {"status": "ok", "version": "0.2.1.4", "payments": "demo_only"}
 
     @app.post("/api/register", status_code=201)
     def register(data: Registration, response: Response, db: sqlite3.Connection = Depends(get_connection)):
@@ -263,6 +274,8 @@ def create_app(db_path: str | None = None) -> FastAPI:
                     (user_id, data.company_name.strip()),
                 )
             add_session(db, response, user_id)
+            from .release02 import enqueue_notice
+            enqueue_notice(db, user_id, "welcome", "Добро пожаловать в ОПЫТНО.РФ", "Ваш аккаунт создан. Письмо записано в тестовую очередь и НЕ отправлено.")
         except sqlite3.IntegrityError:
             raise HTTPException(409, "Этот email уже зарегистрирован") from None
         return {"user": user_response(dict(db.execute("SELECT id,email,role,name,phone FROM users WHERE id=?", (user_id,)).fetchone()), db)}
@@ -272,6 +285,9 @@ def create_app(db_path: str | None = None) -> FastAPI:
         row = db.execute("SELECT * FROM users WHERE email=?", (data.email.strip().casefold(),)).fetchone()
         if row is None or not verify_password(data.password, row["password_hash"]):
             raise HTTPException(401, "Неверный email или пароль")
+        block = db.execute("SELECT status FROM account_controls WHERE user_id=?", (row["id"],)).fetchone()
+        if block is not None and block["status"] == "disabled":
+            raise HTTPException(403, "Аккаунт временно заблокирован")
         add_session(db, response, row["id"])
         return {"user": user_response(dict(row), db)}
 
@@ -280,6 +296,7 @@ def create_app(db_path: str | None = None) -> FastAPI:
         token = request.cookies.get(COOKIE_NAME)
         if token:
             db.execute("DELETE FROM sessions WHERE token_hash=?", (token_hash(token),))
+            db.commit()  # Prevent next /api/me from seeing a deleted session.
         response.delete_cookie(COOKIE_NAME, path="/")
         return {"ok": True}
 
@@ -301,16 +318,40 @@ def create_app(db_path: str | None = None) -> FastAPI:
             ),
         )
         db.execute("UPDATE users SET phone=? WHERE id=?", (data.phone.strip(), user["id"]))
+        # Commit before the HTTP response: a new dashboard request may arrive immediately.
+        db.commit()
         return {"ok": True, "profile": candidate_view(db, user["id"])}
 
     @app.get("/api/jobs")
-    def jobs(city: str = "", db: sqlite3.Connection = Depends(get_connection)):
+    def jobs(q: str = "", city: str = "", salary_min: int = 0, schedule: str = "",
+             employment: str = "", db: sqlite3.Connection = Depends(get_connection)):
+        """Public job search: profession/title, location, minimum acceptable salary, schedule."""
+        if salary_min < 0 or salary_min > 10_000_000 or len(q) > 120 or len(city) > 100:
+            raise HTTPException(422, "Проверьте параметры поиска")
+        if schedule and schedule not in SCHEDULES:
+            raise HTTPException(422, "Недопустимый график")
+        if employment and employment not in EMPLOYMENTS:
+            raise HTTPException(422, "Недопустимая занятость")
         sql = """SELECT v.*,e.company_name FROM vacancies v JOIN employer_profiles e
                  ON e.user_id=v.employer_id WHERE v.status='open'"""
-        params: tuple = ()
+        params: list = []
+        if q.strip():
+            # instr on Unicode-casefolded text ensures correct Cyrillic search.
+            sql += " AND (instr(unicode_fold(v.title), ?) > 0 OR instr(unicode_fold(v.skills), ?) > 0)"
+            needle = q.strip().casefold()
+            params.extend([needle, needle])
         if city.strip():
-            sql += " AND (lower(v.city)=lower(?) OR lower(v.city)='удалённо')"
-            params = (city.strip(),)
+            sql += " AND (unicode_fold(v.city)=? OR unicode_fold(v.city)='удалённо' OR unicode_fold(v.city)='любой город')"
+            params.append(city.strip().casefold())
+        if salary_min:
+            sql += " AND v.salary_max >= ?"
+            params.append(salary_min)
+        if schedule and schedule != "Любой":
+            sql += " AND (v.schedule=? OR v.schedule='Любой')"
+            params.append(schedule)
+        if employment and employment != "Любая":
+            sql += " AND (v.employment=? OR v.employment='Любая')"
+            params.append(employment)
         sql += " ORDER BY v.id DESC LIMIT 100"
         return {"jobs": [dict(row) for row in db.execute(sql, params).fetchall()]}
 
@@ -318,15 +359,30 @@ def create_app(db_path: str | None = None) -> FastAPI:
     def matching_jobs(user: dict = Depends(active_user), db: sqlite3.Connection = Depends(get_connection)):
         allowed(user, "candidate")
         profile = candidate_view(db, user["id"])
+        # Attach only the current candidate's application status. This keeps
+        # the recommendation card authoritative across sessions and reloads;
+        # no other candidate's application details are exposed.
         jobs_rows = db.execute(
-            """SELECT v.*,e.company_name FROM vacancies v JOIN employer_profiles e
-                 ON e.user_id=v.employer_id WHERE v.status='open' LIMIT 500"""
+            """SELECT v.*,e.company_name,
+                      a.id AS application_id, a.status AS application_status,
+                      i.id AS invitation_id,i.status AS invitation_status,
+                      i.contact_shared AS contact_shared
+               FROM vacancies v
+               JOIN employer_profiles e ON e.user_id=v.employer_id
+               LEFT JOIN job_applications a
+                    ON a.vacancy_id=v.id AND a.candidate_id=?
+               LEFT JOIN invitations i
+                    ON i.vacancy_id=v.id AND i.candidate_id=?
+               WHERE v.status='open' LIMIT 500""",
+            (user["id"],user["id"]),
         ).fetchall()
         matches = []
+        from .release02 import introduction_stage
         for row in jobs_rows:
             result = match_candidate(dict(row), profile)
             if result:
-                matches.append({**dict(row), **result})
+                matches.append({**dict(row), **result,
+                                "introduction_stage": introduction_stage(row["invitation_status"], row["contact_shared"])})
         return {"jobs": sorted(matches, key=lambda x: (-x["score"], -x["id"]))[:50]}
 
     @app.post("/api/employer/vacancies", status_code=201)
@@ -340,6 +396,8 @@ def create_app(db_path: str | None = None) -> FastAPI:
                 data.schedule, data.employment, data.skills.strip(), data.description.strip(),
             ),
         )
+        # Commit before the HTTP response: a new dashboard request may arrive immediately.
+        db.commit()
         return {"id": cursor.lastrowid, "ok": True}
 
     @app.get("/api/employer/vacancies")
@@ -356,6 +414,8 @@ def create_app(db_path: str | None = None) -> FastAPI:
         changed = db.execute("UPDATE vacancies SET status=? WHERE id=? AND employer_id=?", (data.status, job_id, user["id"]))
         if changed.rowcount == 0:
             raise HTTPException(404, "Вакансия не найдена")
+        # Commit before the HTTP response: a new dashboard request may arrive immediately.
+        db.commit()
         return {"ok": True}
 
     @app.get("/api/employer/vacancies/{job_id}/matches")
@@ -397,6 +457,11 @@ def create_app(db_path: str | None = None) -> FastAPI:
             )
         except sqlite3.IntegrityError:
             raise HTTPException(409, "Этому кандидату уже направлено приглашение") from None
+        from .release02 import enqueue_notice
+        enqueue_notice(db, data.candidate_id, "invitation", "Приглашение от компании — ОПЫТНО.РФ",
+                       f"Вы получили приглашение на вакансию «{vacancy['title']}». Откройте личный кабинет.")
+        # Commit before the HTTP response: a new dashboard request may arrive immediately.
+        db.commit()
         return {"id": cursor.lastrowid, "ok": True}
 
     @app.get("/api/candidate/invitations")
@@ -404,12 +469,22 @@ def create_app(db_path: str | None = None) -> FastAPI:
         allowed(user, "candidate")
         rows = db.execute(
             """SELECT i.id,i.status,i.share_consent,i.contact_shared,i.created_at,
-               v.title,v.city,v.salary_min,v.salary_max,v.schedule,v.employment,v.description,
-               e.company_name FROM invitations i JOIN vacancies v ON i.vacancy_id=v.id
+               i.responded_at,v.title,v.city,v.salary_min,v.salary_max,
+               v.schedule,v.employment,v.description,e.company_name,
+               a.id AS application_id
+               FROM invitations i JOIN vacancies v ON i.vacancy_id=v.id
                JOIN employer_profiles e ON e.user_id=i.employer_id
+               LEFT JOIN job_applications a
+                    ON a.vacancy_id=i.vacancy_id AND a.candidate_id=i.candidate_id
                WHERE i.candidate_id=? ORDER BY i.id DESC""", (user["id"],)
         ).fetchall()
-        return {"invitations": [dict(row) for row in rows]}
+        from .release02 import introduction_stage, interaction_timeline
+        return {"invitations": [
+            {**dict(row),
+             "introduction_stage": introduction_stage(row["status"], row["contact_shared"]),
+             "timeline": interaction_timeline(db, row["application_id"], row["id"])}
+            for row in rows
+        ]}
 
     @app.post("/api/candidate/invitations/{invitation_id}/respond")
     def respond(
@@ -431,27 +506,43 @@ def create_app(db_path: str | None = None) -> FastAPI:
                WHERE id=? AND candidate_id=?""",
             (data.decision, int(data.decision == "accepted" and data.share_consent), invitation_id, user["id"]),
         )
+        from .release02 import enqueue_notice
+        employer = db.execute("SELECT employer_id FROM invitations WHERE id=?", (invitation_id,)).fetchone()
+        enqueue_notice(db, employer["employer_id"], "invitation_response", "Ответ кандидата — ОПЫТНО.РФ",
+                       f"Кандидат ответил на приглашение: {data.decision}. Откройте кабинет.")
+        # Commit before the HTTP response: a new dashboard request may arrive immediately.
+        db.commit()
         return {"ok": True}
 
     @app.get("/api/employer/invitations")
     def employer_invitations(user: dict = Depends(active_user), db: sqlite3.Connection = Depends(get_connection)):
         allowed(user, "employer")
         rows = db.execute(
-            """SELECT i.*,v.title AS vacancy_title,u.name AS candidate_name,u.email AS candidate_email,
-               u.phone AS candidate_phone,c.profession AS candidate_profession
+            """SELECT i.*,v.title AS vacancy_title,u.name AS candidate_name,
+               u.email AS candidate_email,u.phone AS candidate_phone,
+               c.profession AS candidate_profession,a.id AS application_id
                FROM invitations i JOIN vacancies v ON v.id=i.vacancy_id
                JOIN users u ON u.id=i.candidate_id
                JOIN candidate_profiles c ON c.user_id=i.candidate_id
+               LEFT JOIN job_applications a
+                    ON a.vacancy_id=i.vacancy_id AND a.candidate_id=i.candidate_id
                WHERE i.employer_id=? ORDER BY i.id DESC""", (user["id"],)
         ).fetchall()
+        from .release02 import introduction_stage, interaction_timeline
         result = []
         for row in rows:
             item = {key: row[key] for key in (
-                "id", "vacancy_id", "candidate_id", "status", "price_rub", "contact_shared",
-                "vacancy_title", "candidate_profession", "created_at",
+                "id", "vacancy_id", "candidate_id", "status", "price_rub",
+                "contact_shared", "vacancy_title", "candidate_profession", "created_at",
             )}
+            item["introduction_stage"] = introduction_stage(row["status"], row["contact_shared"])
+            item["timeline"] = interaction_timeline(db, row["application_id"], row["id"])
             if row["contact_shared"] and row["share_consent"]:
-                item["contact"] = {"name": row["candidate_name"], "email": row["candidate_email"], "phone": row["candidate_phone"]}
+                item["contact"] = {
+                    "name": row["candidate_name"],
+                    "email": row["candidate_email"],
+                    "phone": row["candidate_phone"],
+                }
             result.append(item)
         return {"invitations": result}
 
@@ -470,8 +561,16 @@ def create_app(db_path: str | None = None) -> FastAPI:
             "INSERT OR IGNORE INTO demo_transactions(invitation_id,amount_rub) VALUES(?,?)",
             (invitation_id, row["price_rub"]),
         )
+        first_unlock = db.execute("SELECT changes()").fetchone()[0] == 1
         db.execute("UPDATE invitations SET contact_shared=1 WHERE id=?", (invitation_id,))
+        if first_unlock:
+            from .release02 import enqueue_notice
+            enqueue_notice(db, row["candidate_id"], "contact_opened",
+                           "Знакомство состоялось — ОПЫТНО.РФ",
+                           "Работодатель завершил демонстрационное знакомство. Контакт открыт в тестовом режиме.")
         contact = db.execute("SELECT name,email,phone FROM users WHERE id=?", (row["candidate_id"],)).fetchone()
+        # Commit before the HTTP response: a new dashboard request may arrive immediately.
+        db.commit()
         return {"ok": True, "mode": "demo_only", "amount_rub": row["price_rub"], "contact": dict(contact)}
 
     @app.get("/api/admin/stats")
@@ -483,12 +582,17 @@ def create_app(db_path: str | None = None) -> FastAPI:
             "candidates": count("SELECT COUNT(*) FROM users WHERE role='candidate'"),
             "employers": count("SELECT COUNT(*) FROM users WHERE role='employer'"),
             "open_vacancies": count("SELECT COUNT(*) FROM vacancies WHERE status='open'"),
+            "applications_total": count("SELECT COUNT(*) FROM job_applications"),
+            "applications_active": count("SELECT COUNT(*) FROM job_applications WHERE status IN ('applied','reviewing','interview')"),
+            "applications_withdrawn": count("SELECT COUNT(*) FROM job_applications WHERE status='withdrawn'"),
             "invitations": count("SELECT COUNT(*) FROM invitations"),
             "confirmed": count("SELECT COUNT(*) FROM invitations WHERE status='accepted'"),
             "demo_transactions": count("SELECT COUNT(*) FROM demo_transactions"),
             "demo_turnover_rub": count("SELECT COALESCE(SUM(amount_rub),0) FROM demo_transactions"),
         }
 
+    from .release02 import install_routes
+    install_routes(app)
     return app
 
 

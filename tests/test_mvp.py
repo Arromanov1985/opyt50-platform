@@ -182,6 +182,24 @@ def test_matching_never_reads_age():
     assert score1 == score2
 
 
+
+def test_personalized_recommendations_require_profession_relevance():
+    """Accounting knowledge of Excel doesn't qualify for an engineering vacancy."""
+    candidate = {"profession": "Бухгалтер", "city": "Москва", "salary_min": 90000,
+                 "schedule": "Полный день", "employment": "Полная",
+                 "skills": "1С, бухгалтерия, Excel", "is_active": 1}
+    engineer = {"title": "Инженер по эксплуатации", "city": "Москва", "salary_max": 160000,
+                "schedule": "Полный день", "employment": "Полная", "skills": "диагностика, Excel"}
+    accounting = {"title": "Бухгалтер", "city": "Москва", "salary_max": 130000,
+                  "schedule": "Полный день", "employment": "Полная", "skills": "1С, Excel"}
+    assert match_candidate(engineer, candidate) is None
+    assert match_candidate(accounting, candidate)["score"] == 100
+    engineer_candidate = dict(candidate, profession="Инженер", skills="автоматизация, диагностика, Excel")
+    assert match_candidate(engineer, engineer_candidate) is not None
+    # Age is never part of compatibility.
+    assert match_candidate(accounting, dict(candidate, age=25)) == match_candidate(accounting, dict(candidate, age=67))
+
+
 def test_password_protected_preview(app, monkeypatch):
     monkeypatch.setenv("OPYT50_PREVIEW_USERNAME", "review")
     monkeypatch.setenv("OPYT50_PREVIEW_PASSWORD", "strong-private-preview-password")

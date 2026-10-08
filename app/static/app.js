@@ -8,6 +8,27 @@ const money = value => Number(value || 0).toLocaleString('ru-RU') + ' ₽';
 const formatPay = job => job.salary_min === job.salary_max ? money(job.salary_min) : `${money(job.salary_min)} — ${money(job.salary_max)}`;
 const statusTitle = {sent:'Ожидает ответа',accepted:'Согласие получено',declined:'Не заинтересован'};
 const statusBadge = {sent:'orange',accepted:'',declined:'gray'};
+const activityLabels = {
+  applied:'Отклик отправлен',reapplied:'Отклик отправлен повторно',
+  withdrawn:'Отклик отозван',reviewing:'На рассмотрении',
+  interview:'Работодатель заинтересован',rejected:'Отказ',hired:'Принят',
+  invitation_sent:'Приглашение отправлено',invitation_accepted:'Согласие получено',
+  invitation_declined:'Кандидат отказался',contact_opened:'Знакомство состоялось (демо)'
+};
+function workflowStatus(x, fallback='') {
+  const stage = x.introduction_stage;
+  if (stage==='introduced' || x.contact_shared) return 'Знакомство состоялось (демо)';
+  if (stage==='consented') return 'Согласие получено';
+  if (stage==='awaiting_consent') return 'Ожидает согласия кандидата';
+  if (stage==='declined') return 'Кандидат отказался';
+  return fallback;
+}
+function activityTimelineMarkup(x) {
+  const entries = Array.isArray(x.timeline) ? x.timeline : [];
+  if (!entries.length) return '';
+  return '<div class="application-timeline" aria-label="История взаимодействия"><strong>История взаимодействия:</strong>' +
+    entries.map(e=>'<span>'+esc(activityLabels[e.event]||e.event)+' · '+esc(e.created_at)+'</span>').join('')+'</div>';
+}
 let toastTimeout;
 function toast(message, error = false) {
   const el = $('#toast'); el.textContent = message; el.className = 'toast' + (error ? ' error' : '');
@@ -125,8 +146,8 @@ async function renderCandidate() {
   } catch(e) { target.innerHTML = `<div class="panel">${esc(e.message)}</div>`; toast(e.message,true); }
 }
 function invitationCandidateMarkup(x) {
-  return `<article class="item-card"><header><div><h4>${esc(x.title)}</h4><p>${esc(x.company_name)} · ${esc(x.city)} · ${formatPay(x)}</p></div><span class="mini-badge ${statusBadge[x.status]}">${esc(statusTitle[x.status])}</span></header>
-   <p>${esc(x.description || 'Подробности на собеседовании.')}</p>${x.status === 'sent' ? `<div class="item-actions"><label class="checks"><input type="checkbox" id="consent-${x.id}"> Согласен(-на) передать мои имя и контакты этой компании после тестового подтверждения знакомства</label></div><div class="item-actions"><button class="btn btn-primary btn-tiny" data-action="accept" data-id="${x.id}">Интересно, согласен(-на)</button><button class="btn btn-outline btn-tiny" data-action="decline" data-id="${x.id}">Отказаться</button></div>` : (x.contact_shared ? '<div class="info-box">Контакты были открыты работодателю в демонстрационном режиме.</div>' : '')}</article>`;
+  return `<article class="item-card"><header><div><h4>${esc(x.title)}</h4><p>${esc(x.company_name)} · ${esc(x.city)} · ${formatPay(x)}</p></div><span class="mini-badge ${statusBadge[x.status]}">${esc(workflowStatus(x,statusTitle[x.status]))}</span></header>
+   <p>${esc(x.description || 'Подробности на собеседовании.')}</p>${activityTimelineMarkup(x)}${x.status === 'sent' ? `<div class="item-actions"><label class="checks"><input type="checkbox" id="consent-${x.id}"> Согласен(-на) передать мои имя и контакты этой компании после тестового подтверждения знакомства</label></div><div class="item-actions"><button class="btn btn-primary btn-tiny" data-action="accept" data-id="${x.id}">Интересно, согласен(-на)</button><button class="btn btn-outline btn-tiny" data-action="decline" data-id="${x.id}">Отказаться</button></div>` : (x.contact_shared ? '<div class="info-box">Контакты были открыты работодателю в демонстрационном режиме.</div>' : '')}</article>`;
 }
 async function renderEmployer() {
   const nav = [{id:'vacancies',label:'Мои вакансии'},{id:'create',label:'Новая вакансия'},{id:'invitations',label:'Приглашения и контакты'}];
@@ -175,7 +196,8 @@ async function loadEmployerInvitations() {
   $('#dashboard-main').innerHTML = `<div class="panel"><h3>Приглашения и контакты</h3><div class="banner">Демонстрационные платежи не списывают деньги. В промышленной версии до раскрытия контакта требуется настоящий платёж и подтверждение согласия кандидата.</div><div class="dashboard-list">${invitations.length ? invitations.map(invitationEmployerMarkup).join('') : '<div class="empty-state">Вы ещё не отправляли приглашений.</div>'}</div></div>`;
 }
 function invitationEmployerMarkup(x) {
-  return `<article class="item-card"><header><div><h4>${esc(x.candidate_profession)}</h4><p>Вакансия: ${esc(x.vacancy_title)} · кандидат #${x.candidate_id}</p></div><span class="mini-badge ${statusBadge[x.status]}">${esc(statusTitle[x.status])}</span></header>
+  return `<article class="item-card"><header><div><h4>${esc(x.candidate_profession)}</h4><p>Вакансия: ${esc(x.vacancy_title)} · кандидат #${x.candidate_id}</p></div><span class="mini-badge ${statusBadge[x.status]}">${esc(workflowStatus(x,statusTitle[x.status]))}</span></header>
+  ${activityTimelineMarkup(x)}
   <p>Демо-стоимость знакомства: <span class="price">${money(x.price_rub)}</span></p>
   ${x.contact ? `<div class="info-box"><strong>Контакт открыт (демо)</strong><div>Имя: ${esc(x.contact.name)}</div><div>Email: ${esc(x.contact.email)}</div><div>Телефон: ${esc(x.contact.phone || 'не указан')}</div></div>` : (x.status === 'accepted' ? `<button class="btn btn-primary btn-tiny" data-action="demo-pay" data-id="${x.id}">Тестовая оплата и открытие контакта ↗</button>` : '')}</article>`;
 }
@@ -183,7 +205,7 @@ async function renderAdmin() {
   $('#account-content').innerHTML = '<div class="panel"><h3>Панель управления</h3><p class="muted">Статистика работы MVP, без раскрытия персональных данных.</p><div class="stat-grid" id="admin-stats"><div class="loading">Загрузка...</div></div></div>';
   try {
     const stats = await api('/api/admin/stats');
-    const units = [['Соискатели',stats.candidates],['Работодатели',stats.employers],['Открытые вакансии',stats.open_vacancies],['Приглашения',stats.invitations],['Подтверждения',stats.confirmed],['Демо-знакомства',stats.demo_transactions],['Демо-оборот, ₽',stats.demo_turnover_rub]];
+    const units = [['Соискатели',stats.candidates],['Работодатели',stats.employers],['Открытые вакансии',stats.open_vacancies],['Всего откликов',stats.applications_total],['Активные отклики',stats.applications_active],['Отозванные отклики',stats.applications_withdrawn],['Приглашения',stats.invitations],['Подтверждения',stats.confirmed],['Демо-знакомства',stats.demo_transactions],['Демо-оборот, ₽',stats.demo_turnover_rub]];
     $('#admin-stats').innerHTML = units.map(([title,value]) => `<div class="stat-tile"><strong>${Number(value).toLocaleString('ru-RU')}</strong><span>${esc(title)}</span></div>`).join('');
   } catch(e) { toast(e.message,true); }
 }

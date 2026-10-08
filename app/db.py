@@ -85,6 +85,9 @@ def database(path: str) -> Iterator[sqlite3.Connection]:
     """Always close connections and roll back failed writes."""
     connection = sqlite3.connect(path, timeout=10)
     connection.row_factory = sqlite3.Row
+    # SQLite lower()/LIKE only handle ASCII case folding by default; vacancies are in Russian.
+    # A deterministic per-connection function provides correct Unicode casefold search.
+    connection.create_function("unicode_fold", 1, lambda value: str(value or "").casefold(), deterministic=True)
     connection.execute("PRAGMA foreign_keys = ON")
     try:
         yield connection
