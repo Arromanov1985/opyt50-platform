@@ -138,7 +138,7 @@
         if(type==='details'){
           const {job}=await api(`/api/jobs/${id}`);
           $('#job-dialog-title').textContent=job.title;
-          $('#job-dialog-content').innerHTML=`<p><strong>${esc(job.company_name)}</strong> · ${esc(job.city)}</p><p class="job-salary">${formatPay(job)}</p><p>График: ${esc(job.schedule)} · Занятость: ${esc(job.employment)}</p><p><strong>Навыки:</strong> ${esc(job.skills||'По договорённости')}</p><p class="detail-description">${esc(job.description||'Подробности у работодателя')}</p><button class="btn btn-primary" data-v02-action="apply" data-id="${Number(job.id)}">Откликнуться</button>`;
+          $('#job-dialog-content').innerHTML=`<p><strong>${esc(job.company_name)}</strong> · ${esc(job.city)}</p><p class="job-salary">${formatPay(job)}</p><p>График: ${esc(job.schedule)} · Занятость: ${esc(job.employment)}</p><p><strong>Навыки:</strong> ${esc(job.skills||'По договорённости')}</p><p class="detail-description">${esc(job.description||'Подробности у работодателя')}</p>${state.user?.role==='candidate' ? jobApplicationAction(Number(job.id)) : `<button class="btn btn-primary" data-v02-action="apply" data-id="${Number(job.id)}">Откликнуться</button>`}`;
           $('#job-dialog').showModal();
         }else if(['apply','favorite'].includes(type)){
           if(state.user?.role!=='candidate'){ if($('#job-dialog').open) $('#job-dialog').close(); if(state.user)throw Error('Действие доступно только соискателю');openAuth('login','candidate');return; }
