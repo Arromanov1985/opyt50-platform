@@ -188,7 +188,7 @@ def create_app(db_path: str | None = None) -> FastAPI:
         init_release02(app.state.db_path)
         yield
 
-    app = FastAPI(title="ОПЫТ 50+", version="0.2.1.3", lifespan=lifespan, docs_url="/api/docs")
+    app = FastAPI(title="ОПЫТ 50+", version="0.2.1.4", lifespan=lifespan, docs_url="/api/docs")
     app.state.db_path = db_location
     app.state.auth_attempts = defaultdict(deque)
     app.mount("/static", StaticFiles(directory=str(BASE / "static")), name="static")
@@ -253,7 +253,7 @@ def create_app(db_path: str | None = None) -> FastAPI:
 
     @app.get("/api/health")
     def health():
-        return {"status": "ok", "version": "0.2.1.3", "payments": "demo_only"}
+        return {"status": "ok", "version": "0.2.1.4", "payments": "demo_only"}
 
     @app.post("/api/register", status_code=201)
     def register(data: Registration, response: Response, db: sqlite3.Connection = Depends(get_connection)):
