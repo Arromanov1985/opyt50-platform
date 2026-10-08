@@ -358,19 +358,25 @@ def create_app(db_path: str | None = None) -> FastAPI:
         # no other candidate's application details are exposed.
         jobs_rows = db.execute(
             """SELECT v.*,e.company_name,
-                      a.id AS application_id, a.status AS application_status
+                      a.id AS application_id, a.status AS application_status,
+                      i.id AS invitation_id,i.status AS invitation_status,
+                      i.contact_shared AS contact_shared
                FROM vacancies v
                JOIN employer_profiles e ON e.user_id=v.employer_id
                LEFT JOIN job_applications a
                     ON a.vacancy_id=v.id AND a.candidate_id=?
+               LEFT JOIN invitations i
+                    ON i.vacancy_id=v.id AND i.candidate_id=?
                WHERE v.status='open' LIMIT 500""",
-            (user["id"],),
+            (user["id"],user["id"]),
         ).fetchall()
         matches = []
+        from .release02 import introduction_stage
         for row in jobs_rows:
             result = match_candidate(dict(row), profile)
             if result:
-                matches.append({**dict(row), **result})
+                matches.append({**dict(row), **result,
+                                "introduction_stage": introduction_stage(row["invitation_status"], row["contact_shared"])})
         return {"jobs": sorted(matches, key=lambda x: (-x["score"], -x["id"]))[:50]}
 
     @app.post("/api/employer/vacancies", status_code=201)
@@ -451,12 +457,22 @@ def create_app(db_path: str | None = None) -> FastAPI:
         allowed(user, "candidate")
         rows = db.execute(
             """SELECT i.id,i.status,i.share_consent,i.contact_shared,i.created_at,
-               v.title,v.city,v.salary_min,v.salary_max,v.schedule,v.employment,v.description,
-               e.company_name FROM invitations i JOIN vacancies v ON i.vacancy_id=v.id
+               i.responded_at,v.title,v.city,v.salary_min,v.salary_max,
+               v.schedule,v.employment,v.description,e.company_name,
+               a.id AS application_id
+               FROM invitations i JOIN vacancies v ON i.vacancy_id=v.id
                JOIN employer_profiles e ON e.user_id=i.employer_id
+               LEFT JOIN job_applications a
+                    ON a.vacancy_id=i.vacancy_id AND a.candidate_id=i.candidate_id
                WHERE i.candidate_id=? ORDER BY i.id DESC""", (user["id"],)
         ).fetchall()
-        return {"invitations": [dict(row) for row in rows]}
+        from .release02 import introduction_stage, interaction_timeline
+        return {"invitations": [
+            {**dict(row),
+             "introduction_stage": introduction_stage(row["status"], row["contact_shared"]),
+             "timeline": interaction_timeline(db, row["application_id"], row["id"])}
+            for row in rows
+        ]}
 
     @app.post("/api/candidate/invitations/{invitation_id}/respond")
     def respond(
@@ -488,21 +504,31 @@ def create_app(db_path: str | None = None) -> FastAPI:
     def employer_invitations(user: dict = Depends(active_user), db: sqlite3.Connection = Depends(get_connection)):
         allowed(user, "employer")
         rows = db.execute(
-            """SELECT i.*,v.title AS vacancy_title,u.name AS candidate_name,u.email AS candidate_email,
-               u.phone AS candidate_phone,c.profession AS candidate_profession
+            """SELECT i.*,v.title AS vacancy_title,u.name AS candidate_name,
+               u.email AS candidate_email,u.phone AS candidate_phone,
+               c.profession AS candidate_profession,a.id AS application_id
                FROM invitations i JOIN vacancies v ON v.id=i.vacancy_id
                JOIN users u ON u.id=i.candidate_id
                JOIN candidate_profiles c ON c.user_id=i.candidate_id
+               LEFT JOIN job_applications a
+                    ON a.vacancy_id=i.vacancy_id AND a.candidate_id=i.candidate_id
                WHERE i.employer_id=? ORDER BY i.id DESC""", (user["id"],)
         ).fetchall()
+        from .release02 import introduction_stage, interaction_timeline
         result = []
         for row in rows:
             item = {key: row[key] for key in (
-                "id", "vacancy_id", "candidate_id", "status", "price_rub", "contact_shared",
-                "vacancy_title", "candidate_profession", "created_at",
+                "id", "vacancy_id", "candidate_id", "status", "price_rub",
+                "contact_shared", "vacancy_title", "candidate_profession", "created_at",
             )}
+            item["introduction_stage"] = introduction_stage(row["status"], row["contact_shared"])
+            item["timeline"] = interaction_timeline(db, row["application_id"], row["id"])
             if row["contact_shared"] and row["share_consent"]:
-                item["contact"] = {"name": row["candidate_name"], "email": row["candidate_email"], "phone": row["candidate_phone"]}
+                item["contact"] = {
+                    "name": row["candidate_name"],
+                    "email": row["candidate_email"],
+                    "phone": row["candidate_phone"],
+                }
             result.append(item)
         return {"invitations": result}
 
@@ -521,7 +547,13 @@ def create_app(db_path: str | None = None) -> FastAPI:
             "INSERT OR IGNORE INTO demo_transactions(invitation_id,amount_rub) VALUES(?,?)",
             (invitation_id, row["price_rub"]),
         )
+        first_unlock = db.execute("SELECT changes()").fetchone()[0] == 1
         db.execute("UPDATE invitations SET contact_shared=1 WHERE id=?", (invitation_id,))
+        if first_unlock:
+            from .release02 import enqueue_notice
+            enqueue_notice(db, row["candidate_id"], "contact_opened",
+                           "Знакомство состоялось — ОПЫТНО.РФ",
+                           "Работодатель завершил демонстрационное знакомство. Контакт открыт в тестовом режиме.")
         contact = db.execute("SELECT name,email,phone FROM users WHERE id=?", (row["candidate_id"],)).fetchone()
         return {"ok": True, "mode": "demo_only", "amount_rub": row["price_rub"], "contact": dict(contact)}
 
