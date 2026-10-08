@@ -50,7 +50,7 @@
       try {
         if(state.tab==='favorites'){
           const {jobs}=await api('/api/candidate/favorites');
-          $('#dashboard-main').innerHTML=`<div class="panel"><h3>Избранные вакансии</h3><div class="dashboard-list">${jobs.length?jobs.map(j=>jobMarkup(j)).join(''):'<div class="empty-state">Вы ещё не сохранили вакансий.</div>'}</div></div>`;
+          $('#dashboard-main').innerHTML=`<div class="panel"><h3>Избранные вакансии</h3><div class="dashboard-list">${jobs.length?jobs.map(j=>`<div class="saved-job">${jobMarkup(j)}<button class="btn btn-outline btn-tiny" data-v02-action="remove-favorite" data-id="${Number(j.id)}">Убрать из избранного</button></div>`).join(''):'<div class="empty-state">Вы ещё не сохранили вакансий.</div>'}</div></div>`;
         }
         if(state.tab==='applications'){
           const {applications}=await api('/api/candidate/applications');
@@ -113,7 +113,8 @@
           if(state.user?.role!=='candidate'){ if($('#job-dialog').open) $('#job-dialog').close(); if(state.user)throw Error('Действие доступно только соискателю');openAuth('login','candidate');return; }
           if(type==='apply'){await req('POST','/api/candidate/applications',{vacancy_id:id});toast('Отклик отправлен, статус появится в кабинете');if($('#job-dialog').open)$('#job-dialog').close();}
           else {await req('POST',`/api/candidate/favorites/${id}`);toast('Вакансия сохранена');}
-        }else if(type==='withdraw'){await req('POST',`/api/candidate/applications/${id}/withdraw`);await showDashboard();toast('Отклик отозван');}
+        }else if(type==='remove-favorite'){await req('DELETE',`/api/candidate/favorites/${id}`);await showDashboard();toast('Вакансия удалена из избранного');}
+        else if(type==='withdraw'){await req('POST',`/api/candidate/applications/${id}/withdraw`);await showDashboard();toast('Отклик отозван');}
         else if(type==='application-status'){await req('PATCH',`/api/employer/applications/${id}/status`,{status:btn.dataset.status});await showDashboard();toast('Статус обновлён');}
         else if(type==='verify-email'){await req('POST','/api/account/email/request');toast('Запрос сохранён в тестовой очереди; реальное письмо не отправлено');}
         else if(type==='recover'){$('#auth-dialog').close();$('#reset-dialog').showModal();}
