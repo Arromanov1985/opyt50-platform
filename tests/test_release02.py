@@ -52,6 +52,11 @@ def test_search_filters_and_details(app):
         vacancy(employer,title="Инженер",city="Москва",salary_min=50000,schedule="Полный день")
         jobs=visitor.get("/api/jobs",params={"q":"клад","city":"Подольск","salary_min":80000,"schedule":"Сменный"}).json()["jobs"]
         assert [x["id"] for x in jobs]==[jid]
+        # SQLite built-in LOWER() fails for Cyrillic; test full Russian titles and cities.
+        for term in ("Кладовщик", "кладовщик", "КЛАДОВЩИК"):
+            result=visitor.get("/api/jobs",params={"q":term,"city":"подольск"})
+            assert [x["id"] for x in result.json()["jobs"]]==[jid],term
+        assert visitor.get("/api/jobs",params={"q":"НЕСУЩЕСТВУЮЩЕЕ"}).json()["jobs"]==[]
         assert visitor.get("/api/jobs",params={"salary_min":100000}).json()["jobs"]==[]
         assert visitor.get(f"/api/jobs/{jid}").json()["job"]["description"].startswith("Условия")
         assert visitor.get("/api/jobs",params={"schedule":"123"}).status_code==422
