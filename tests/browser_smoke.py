@@ -127,7 +127,7 @@ def run_browser(page):
     # Reproduce the real screenshot: account has an existing application
     # before reloading the website and opening recommended jobs again.
     page.reload(wait_until="networkidle")
-    expect(page.locator(".release-ribbon")).to_contain_text("0.2.1.3")
+    expect(page.locator(".release-ribbon")).to_contain_text("0.2.1.4")
     page.locator("#account-content [data-tab='offers']").click()
     expect(page.locator("#dashboard-main")).to_contain_text("Отклик: Отправлен")
     expect(page.locator("#dashboard-main [data-v02-action='apply']")).to_have_count(0)
