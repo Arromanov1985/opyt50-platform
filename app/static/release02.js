@@ -134,6 +134,21 @@
         $('#reset-dialog').close();toast('Запрос сохранён в тестовой очереди; письмо не отправлено');
       }catch(e){toast(e.message,true);}
     });
+    $('#reset-complete-form').addEventListener('submit',async event=>{
+      event.preventDefault();
+      try{
+        await req('POST','/api/account/password/reset',{token:$('#reset-token').value.trim(),password:$('#reset-new-password').value});
+        $('#reset-dialog').close();toast('Пароль изменён. Войдите с новым паролем.');openAuth('login');
+      }catch(e){toast(e.message,true);}
+    });
+    const params=new URLSearchParams(window.location.search);
+    const action=params.get('account_action'),token=params.get('token');
+    if(action && token){
+      params.delete('account_action');params.delete('token');
+      history.replaceState(null,'',window.location.pathname+(params.size?'?'+params:'')+window.location.hash);
+      if(action==='reset'){$('#reset-token').value=token;$('#reset-dialog').showModal();}
+      if(action==='verify'){req('POST','/api/account/email/confirm',{token}).then(()=>toast('Email подтверждён.')).catch(e=>toast(e.message,true));}
+    }
     ['profession-filter','salary-filter'].forEach(id=>$('#'+id).addEventListener('keydown',e=>{if(e.key==='Enter')loadPublicJobs();}));
     $('#schedule-filter').addEventListener('change',loadPublicJobs);
   });
