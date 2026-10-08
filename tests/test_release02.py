@@ -297,3 +297,31 @@ def test_resubmit_withdrawn_application_and_admin_counters(app):
             assert db.execute("SELECT COUNT(*) FROM job_applications").fetchone()[0] == 1
             assert db.execute("SELECT COUNT(*) FROM application_events").fetchone()[0] == 3
             assert db.execute("SELECT COUNT(*) FROM email_outbox WHERE event='new_application'").fetchone()[0] == 2
+
+
+def test_recommended_jobs_include_only_my_application_state(app):
+    """Recommendation payload is authoritative for returning applicants."""
+    with TestClient(app) as a, TestClient(app) as b, TestClient(app) as employer:
+        register(a, "applicant-a@demo.example")
+        register(b, "applicant-b@demo.example")
+        register(employer, "employer@demo.example", "employer")
+        profile(a)
+        profile(b)
+        jid = vacancy(employer)
+        before = a.get("/api/candidate/jobs")
+        assert before.status_code == 200, before.text
+        rows = [j for j in before.json()["jobs"] if j["id"] == jid]
+        assert len(rows) == 1
+        assert rows[0]["application_status"] is None
+        first = post(a, "/api/candidate/applications", {"vacancy_id": jid})
+        assert first.status_code == 201, first.text
+        saved = a.get("/api/candidate/jobs").json()["jobs"][0]
+        assert saved["application_status"] == "applied"
+        assert saved["application_id"] == first.json()["id"]
+        other = b.get("/api/candidate/jobs").json()["jobs"][0]
+        assert other["application_status"] is None
+        assert other["application_id"] is None
+        assert post(a, f"/api/candidate/applications/{first.json()['id']}/withdraw").status_code == 200
+        withdrawn = a.get("/api/candidate/jobs").json()["jobs"][0]
+        assert withdrawn["application_status"] == "withdrawn"
+        assert withdrawn["application_id"] == first.json()["id"]
