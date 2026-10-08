@@ -167,6 +167,9 @@ def user_response(user: dict, db: sqlite3.Connection) -> dict:
 def add_session(db: sqlite3.Connection, response: Response, user_id: int) -> None:
     token, digest = issue_session()
     db.execute("INSERT INTO sessions(token_hash,user_id,expires_at) VALUES(?,?,?)", (digest, user_id, utc_expiry()))
+    # FastAPI yield dependencies may finalize after the response is sent.
+    # Commit before issuing the session cookie, so the next /api/me sees it.
+    db.commit()
     response.set_cookie(
         COOKIE_NAME,
         token,
@@ -293,6 +296,7 @@ def create_app(db_path: str | None = None) -> FastAPI:
         token = request.cookies.get(COOKIE_NAME)
         if token:
             db.execute("DELETE FROM sessions WHERE token_hash=?", (token_hash(token),))
+            db.commit()  # Prevent next /api/me from seeing a deleted session.
         response.delete_cookie(COOKIE_NAME, path="/")
         return {"ok": True}
 
