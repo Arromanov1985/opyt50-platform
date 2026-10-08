@@ -26,8 +26,12 @@
       const result = await api('/api/candidate/applications');
       applicationByVacancy = new Map((result.applications || []).map(a => [Number(a.vacancy_id), a]));
     }
-    function jobApplicationAction(jobId) {
-      const known = applicationByVacancy.get(jobId);
+    function jobApplicationAction(jobId, job = null) {
+      // Prefer the server-annotated vacancy status; use separately fetched
+      // applications only for routes that return unannotated public jobs.
+      const known = (job && job.application_status)
+        ? {status:job.application_status, id:job.application_id}
+        : applicationByVacancy.get(jobId);
       if (!known) return `<button type="button" class="btn btn-primary btn-tiny" data-v02-action="apply" data-id="${jobId}">Откликнуться</button>`;
       if (known.status === 'withdrawn') return `<button type="button" class="btn btn-primary btn-tiny" data-v02-action="reapply" data-id="${jobId}">Откликнуться повторно</button>`;
       return `<button type="button" class="btn btn-outline btn-tiny" data-v02-action="see-applications">Отклик: ${esc(status[known.status] || known.status)} · история</button>`;
@@ -39,7 +43,7 @@
         <div class="job-meta"><span>⌖ ${esc(job.city)}</span><span>${esc(job.schedule)}</span><span>${esc(job.employment)}</span></div>
         <p>${esc(job.skills || 'Подробности в описании вакансии')}</p>
         <div class="job-actions"><button class="btn btn-outline btn-tiny" data-v02-action="details" data-id="${id}">Подробнее</button>
-        ${open ? `${state.user?.role === 'candidate' ? jobApplicationAction(id) : `<button type="button" class="btn btn-primary btn-tiny" data-v02-action="apply" data-id="${id}">Откликнуться</button>`}<button class="btn btn-outline btn-tiny" data-v02-action="favorite" data-id="${id}" aria-label="Сохранить вакансию">♡</button>` : ''}</div></article>`;
+        ${open ? `${state.user?.role === 'candidate' ? jobApplicationAction(id, job) : `<button type="button" class="btn btn-primary btn-tiny" data-v02-action="apply" data-id="${id}">Откликнуться</button>`}<button class="btn btn-outline btn-tiny" data-v02-action="favorite" data-id="${id}" aria-label="Сохранить вакансию">♡</button>` : ''}</div></article>`;
     };
     loadPublicJobs = async function() {
       try {
@@ -69,7 +73,11 @@
       if (!candidateExtra.some(t=>t.id===state.tab)) {
         if (state.tab === 'offers') {
           try { await refreshMyApplications(); }
-          catch (e) { applicationByVacancy = new Map(); toast('Не удалось загрузить статусы откликов', true); }
+          catch (e) {
+            applicationByVacancy = new Map();
+            // The recommended jobs API also returns application_status, so
+            // already-submitted requests still display correctly without this call.
+          }
         }
         await oldCandidate();
         const nav=$('.dashboard-tabs');
@@ -138,7 +146,7 @@
         if(type==='details'){
           const {job}=await api(`/api/jobs/${id}`);
           $('#job-dialog-title').textContent=job.title;
-          $('#job-dialog-content').innerHTML=`<p><strong>${esc(job.company_name)}</strong> · ${esc(job.city)}</p><p class="job-salary">${formatPay(job)}</p><p>График: ${esc(job.schedule)} · Занятость: ${esc(job.employment)}</p><p><strong>Навыки:</strong> ${esc(job.skills||'По договорённости')}</p><p class="detail-description">${esc(job.description||'Подробности у работодателя')}</p>${state.user?.role==='candidate' ? jobApplicationAction(Number(job.id)) : `<button class="btn btn-primary" data-v02-action="apply" data-id="${Number(job.id)}">Откликнуться</button>`}`;
+          $('#job-dialog-content').innerHTML=`<p><strong>${esc(job.company_name)}</strong> · ${esc(job.city)}</p><p class="job-salary">${formatPay(job)}</p><p>График: ${esc(job.schedule)} · Занятость: ${esc(job.employment)}</p><p><strong>Навыки:</strong> ${esc(job.skills||'По договорённости')}</p><p class="detail-description">${esc(job.description||'Подробности у работодателя')}</p>${state.user?.role==='candidate' ? jobApplicationAction(Number(job.id), job) : `<button class="btn btn-primary" data-v02-action="apply" data-id="${Number(job.id)}">Откликнуться</button>`}`;
           $('#job-dialog').showModal();
         }else if(['apply','favorite'].includes(type)){
           if(state.user?.role!=='candidate'){ if($('#job-dialog').open) $('#job-dialog').close(); if(state.user)throw Error('Действие доступно только соискателю');openAuth('login','candidate');return; }
