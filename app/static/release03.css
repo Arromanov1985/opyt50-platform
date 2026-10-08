@@ -81,3 +81,28 @@ body.comfortable-view .job-category{font-size:14px}
 body.comfortable-view .jobs-count{font-size:15px}
 body.comfortable-view .section-kicker{font-size:14px}
 body.comfortable-view .mobile-quick-nav a{font-size:16px}
+
+/* Local, optional assistance for describing experience in plain language. */
+.experience-helper{margin-top:16px;padding:16px 18px;border:1px solid #c9dfec;border-radius:14px;background:#f5fbfd}
+.experience-helper summary{font-weight:780;color:#083664;font-size:17px;line-height:1.45;min-height:44px;cursor:pointer}
+.experience-helper[open] summary{margin-bottom:12px}
+.experience-helper-intro{font-size:15px;color:#365873;line-height:1.65}
+.experience-helper-privacy{font-size:13px;color:#596e7b;line-height:1.65;padding:9px 11px;border-left:3px solid #00c7b8;background:white;border-radius:5px}
+.experience-helper-fields{display:grid;gap:9px}
+.experience-helper-fields label{font-weight:700;font-size:15px;color:#083664;margin-top:7px}
+.experience-helper-fields textarea{resize:vertical;min-height:80px;width:100%;border:1px solid #c9ddeb;border-radius:10px;padding:12px;font-size:16px;background:#fff;line-height:1.5}
+.experience-helper-actions{display:flex;align-items:center;flex-wrap:wrap;gap:10px;margin-top:17px}
+.experience-helper-actions .btn{min-height:47px}
+.experience-helper-actions .btn:disabled{opacity:.52}
+.experience-helper-preview{background:white;border:1px solid #cbdde8;border-radius:11px;padding:14px 15px;margin-top:16px}
+.experience-helper-preview[hidden]{display:none}
+.experience-helper-preview strong{color:#083664;font-size:16px}
+.experience-helper-preview p{white-space:pre-wrap;overflow-wrap:anywhere;margin:10px 0 0;color:#284963;font-size:15px;line-height:1.65}
+.experience-helper-message{font-size:14px;color:#1e695a;line-height:1.55;margin:12px 0 6px}
+.experience-helper-message:empty{display:none}
+.experience-helper-message.is-error{color:#a13a2c}
+body.comfortable-view .experience-helper summary,body.comfortable-view .experience-helper-fields label{font-size:18px}
+body.comfortable-view .experience-helper-intro,body.comfortable-view .experience-helper-fields textarea,body.comfortable-view .experience-helper-preview p,body.comfortable-view .experience-helper-message{font-size:18px}
+@media(max-width:570px){.experience-helper{padding:13px}.experience-helper-actions{flex-direction:column;align-items:stretch}.experience-helper-actions .btn{width:100%}}
+/* Make notifications readable without clipping at the browser's right edge. */
+.toast{right:16px;left:auto;bottom:20px;max-width:calc(100vw - 32px);width:max-content;line-height:1.55;overflow-wrap:anywhere}
