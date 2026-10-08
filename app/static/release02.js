@@ -3,6 +3,18 @@
   document.addEventListener('DOMContentLoaded', () => {
     const status = {applied:'Отправлен',reviewing:'На рассмотрении',interview:'Работодатель заинтересован',rejected:'Отказ',hired:'Принят',withdrawn:'Отозван'};
     const req = (method, path, data) => api(path,{method, ...(data ? {body:JSON.stringify(data)} : {})});
+    const introductionLabel = {sent:'Ожидается ваше решение',accepted:'Согласие получено',declined:'От знакомства отказались'};
+    function applicationIntroBadge(a) {
+      if (!a.invitation_id) return '';
+      const label = a.contact_shared ? 'Контакт открыт (демо)' : (introductionLabel[a.invitation_status] || 'Запрос отправлен');
+      return '<div class="interaction-note">Знакомство: ' + esc(label) + '</div>' +
+        (a.invitation_status === 'sent' ? '<button class="btn btn-outline btn-tiny" data-v02-action="open-introductions">Ответить на запрос компании</button>' : '');
+    }
+    function employerIntroBadge(a) {
+      if (!a.invitation_id) return '';
+      const label = a.contact_shared ? 'Контакт уже открыт (демо)' : (a.invitation_status==='sent' ? 'Запрос отправлен — ждём согласия кандидата' : a.invitation_status==='accepted' ? 'Согласие получено — контакт ещё закрыт' : 'Кандидат отказался от знакомства');
+      return '<div class="interaction-note">' + esc(label) + '</div><button class="btn btn-outline btn-tiny" data-v02-action="open-introductions">Открыть знакомства</button>';
+    }
     function searchValue(id) { return document.getElementById(id)?.value?.trim() || ''; }
 
     jobMarkup = function(job, personalized = false) {
@@ -54,7 +66,7 @@
         }
         if(state.tab==='applications'){
           const {applications}=await api('/api/candidate/applications');
-          $('#dashboard-main').innerHTML=`<div class="panel"><h3>История откликов</h3><p class="muted">Ваши контакты не раскрываются работодателю автоматически.</p><div class="dashboard-list">${applications.length ? applications.map(a=>`<article class="item-card"><header><div><h4>${esc(a.title)}</h4><p>${esc(a.company_name)} · ${esc(a.city)} · ${formatPay(a)}</p></div><span class="mini-badge">${esc(status[a.status]||a.status)}</span></header><p>Дата отклика: ${esc(a.created_at)}</p>${['applied','reviewing','interview'].includes(a.status)?`<button class="btn btn-outline btn-tiny" data-v02-action="withdraw" data-id="${Number(a.id)}">Отозвать отклик</button>`:''}</article>`).join(''):'<div class="empty-state">Откликов пока нет.</div>'}</div></div>`;
+          $('#dashboard-main').innerHTML=`<div class="panel"><h3>История откликов</h3><p class="muted">Ваши контакты не раскрываются работодателю автоматически.</p><div class="dashboard-list">${applications.length ? applications.map(a=>`<article class="item-card"><header><div><h4>${esc(a.title)}</h4><p>${esc(a.company_name)} · ${esc(a.city)} · ${formatPay(a)}</p></div><span class="mini-badge">${esc(status[a.status]||a.status)}</span></header><p>Дата отклика: ${esc(a.created_at)}</p>${applicationIntroBadge(a)}${['applied','reviewing','interview'].includes(a.status)?`<button class="btn btn-outline btn-tiny" data-v02-action="withdraw" data-id="${Number(a.id)}">Отозвать отклик</button>`:''}</article>`).join(''):'<div class="empty-state">Откликов пока нет.</div>'}</div></div>`;
         }
         if(state.tab==='email'){
           const result=await api('/api/account/email/status');
@@ -74,7 +86,7 @@
       $('#account-content').innerHTML=`<div class="dashboard-grid">${tabsMarkup(nav,'ДЛЯ КОМПАНИИ',state.user.company?.company_name||'Работодатель')}<div id="dashboard-main"></div></div>`;
       try {
         const {applications}=await api('/api/employer/applications');
-        $('#dashboard-main').innerHTML=`<div class="panel"><h3>Отклики соискателей</h3><p class="muted">Профили обезличены. Контакты — только через отдельное согласие кандидата и действующий процесс знакомства.</p><div class="dashboard-list">${applications.length?applications.map(a=>`<article class="item-card"><header><div><h4>${esc(a.profession)}</h4><p>${esc(a.title)} · ${esc(a.city)} · зарплатные ожидания от ${money(a.expected_salary)}</p></div><span class="mini-badge">${esc(status[a.status]||a.status)}</span></header><p>${esc(a.skills||'Навыки не указаны')}</p>${['applied','reviewing','interview'].includes(a.status)?`<div class="item-actions"><button class="btn btn-outline btn-tiny" data-v02-action="application-status" data-id="${Number(a.id)}" data-status="reviewing">Рассмотреть</button><button class="btn btn-outline btn-tiny" data-v02-action="application-status" data-id="${Number(a.id)}" data-status="interview">Заинтересован</button><button class="btn btn-outline btn-tiny" data-v02-action="application-status" data-id="${Number(a.id)}" data-status="rejected">Отказать</button></div>`:''}</article>`).join(''):'<div class="empty-state">Откликов пока нет.</div>'}</div></div>`;
+        $('#dashboard-main').innerHTML=`<div class="panel"><h3>Отклики соискателей</h3><p class="muted">Профили обезличены. Контакты — только через отдельное согласие кандидата и действующий процесс знакомства.</p><div class="dashboard-list">${applications.length?applications.map(a=>`<article class="item-card"><header><div><h4>${esc(a.profession)}</h4><p>${esc(a.title)} · ${esc(a.city)} · зарплатные ожидания от ${money(a.expected_salary)}</p></div><span class="mini-badge">${esc(status[a.status]||a.status)}</span></header><p>${esc(a.skills||'Навыки не указаны')}</p>${employerIntroBadge(a)}${['applied','reviewing','interview'].includes(a.status)?`<div class="item-actions"><button class="btn btn-outline btn-tiny" data-v02-action="application-status" data-id="${Number(a.id)}" data-status="reviewing">Рассмотреть</button>${!a.invitation_id ? `<button class="btn btn-primary btn-tiny" data-v02-action="express-interest" data-id="${Number(a.id)}">Заинтересован · запросить согласие</button>` : ''}<button class="btn btn-outline btn-tiny" data-v02-action="application-status" data-id="${Number(a.id)}" data-status="rejected">Отказать</button></div>`:''}</article>`).join(''):'<div class="empty-state">Откликов пока нет.</div>'}</div></div>`;
       } catch(e) { $('#dashboard-main').textContent=e.message;toast(e.message,true); }
     };
 
@@ -116,6 +128,8 @@
         }else if(type==='remove-favorite'){await req('DELETE',`/api/candidate/favorites/${id}`);await showDashboard();toast('Вакансия удалена из избранного');}
         else if(type==='withdraw'){await req('POST',`/api/candidate/applications/${id}/withdraw`);await showDashboard();toast('Отклик отозван');}
         else if(type==='application-status'){await req('PATCH',`/api/employer/applications/${id}/status`,{status:btn.dataset.status});await showDashboard();toast('Статус обновлён');}
+        else if(type==='express-interest'){const data=await req('POST',`/api/employer/applications/${id}/interest`);await showDashboard();toast(data.created?'Кандидату направлен запрос на знакомство (демо)':'Запрос уже существует — повторно не отправлен');}
+        else if(type==='open-introductions'){state.tab='invitations';await showDashboard();}
         else if(type==='verify-email'){await req('POST','/api/account/email/request');toast('Запрос сохранён в тестовой очереди; реальное письмо не отправлено');}
         else if(type==='recover'){$('#auth-dialog').close();$('#reset-dialog').showModal();}
         else if(type==='admin-users')await adminView('users');
