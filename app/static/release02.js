@@ -4,6 +4,7 @@
     const status = {applied:'Отправлен',reviewing:'На рассмотрении',interview:'Работодатель заинтересован',rejected:'Отказ',hired:'Принят',withdrawn:'Отозван'};
     const req = (method, path, data) => api(path,{method, ...(data ? {body:JSON.stringify(data)} : {})});
     const introductionLabel = {sent:'Ожидается ваше решение',accepted:'Согласие получено',declined:'От знакомства отказались'};
+    const eventLabels = {applied:'Отклик отправлен',reapplied:'Отклик отправлен повторно',withdrawn:'Отклик отозван',reviewing:'На рассмотрении',interview:'Работодатель заинтересован',rejected:'Получен отказ',hired:'Принят'};
     function applicationIntroBadge(a) {
       if (!a.invitation_id) return '';
       const label = a.contact_shared ? 'Контакт открыт (демо)' : (introductionLabel[a.invitation_status] || 'Запрос отправлен');
@@ -66,7 +67,7 @@
         }
         if(state.tab==='applications'){
           const {applications}=await api('/api/candidate/applications');
-          $('#dashboard-main').innerHTML=`<div class="panel"><h3>История откликов</h3><p class="muted">Ваши контакты не раскрываются работодателю автоматически.</p><div class="dashboard-list">${applications.length ? applications.map(a=>`<article class="item-card"><header><div><h4>${esc(a.title)}</h4><p>${esc(a.company_name)} · ${esc(a.city)} · ${formatPay(a)}</p></div><span class="mini-badge">${esc(status[a.status]||a.status)}</span></header><p>Дата отклика: ${esc(a.created_at)}</p>${applicationIntroBadge(a)}${['applied','reviewing','interview'].includes(a.status)?`<button class="btn btn-outline btn-tiny" data-v02-action="withdraw" data-id="${Number(a.id)}">Отозвать отклик</button>`:''}</article>`).join(''):'<div class="empty-state">Откликов пока нет.</div>'}</div></div>`;
+          $('#dashboard-main').innerHTML=`<div class="panel"><h3>История откликов</h3><p class="muted">Ваши контакты не раскрываются работодателю автоматически.</p><div class="dashboard-list">${applications.length ? applications.map(a=>`<article class="item-card"><header><div><h4>${esc(a.title)}</h4><p>${esc(a.company_name)} · ${esc(a.city)} · ${formatPay(a)}</p></div><span class="mini-badge">${esc(status[a.status]||a.status)}</span></header><p>Дата отклика: ${esc(a.created_at)}</p>${Array.isArray(a.timeline)&&a.timeline.length?`<div class="application-timeline"><strong>История изменений:</strong> ${a.timeline.map(e=>`<span>${esc(eventLabels[e.event]||e.event)} · ${esc(e.created_at)}</span>`).join('')}</div>`:''}${applicationIntroBadge(a)}${['applied','reviewing','interview'].includes(a.status)?`<button class="btn btn-outline btn-tiny" data-v02-action="withdraw" data-id="${Number(a.id)}">Отозвать отклик</button>`:a.status==='withdrawn'?`<button class="btn btn-primary btn-tiny" data-v02-action="reapply" data-id="${Number(a.vacancy_id)}">Откликнуться повторно</button>`:''}</article>`).join(''):'<div class="empty-state">Откликов пока нет.</div>'}</div></div>`;
         }
         if(state.tab==='email'){
           const result=await api('/api/account/email/status');
@@ -127,6 +128,7 @@
           else {await req('POST',`/api/candidate/favorites/${id}`);toast('Вакансия сохранена');}
         }else if(type==='remove-favorite'){await req('DELETE',`/api/candidate/favorites/${id}`);await showDashboard();toast('Вакансия удалена из избранного');}
         else if(type==='withdraw'){await req('POST',`/api/candidate/applications/${id}/withdraw`);await showDashboard();toast('Отклик отозван');}
+        else if(type==='reapply'){const result=await req('POST','/api/candidate/applications',{vacancy_id:id});await showDashboard();toast(result.reapplied?'Отклик отправлен повторно':'Отклик отправлен');}
         else if(type==='application-status'){await req('PATCH',`/api/employer/applications/${id}/status`,{status:btn.dataset.status});await showDashboard();toast('Статус обновлён');}
         else if(type==='express-interest'){const data=await req('POST',`/api/employer/applications/${id}/interest`);await showDashboard();toast(data.created?'Кандидату направлен запрос на знакомство (демо)':'Запрос уже существует — повторно не отправлен');}
         else if(type==='open-introductions'){state.tab='invitations';await showDashboard();}
