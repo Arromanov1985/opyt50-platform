@@ -7,13 +7,13 @@
     const eventLabels = {applied:'Отклик отправлен',reapplied:'Отклик отправлен повторно',withdrawn:'Отклик отозван',reviewing:'На рассмотрении',interview:'Работодатель заинтересован',rejected:'Получен отказ',hired:'Принят'};
     function applicationIntroBadge(a) {
       if (!a.invitation_id) return '';
-      const label = a.contact_shared ? 'Контакт открыт (демо)' : (introductionLabel[a.invitation_status] || 'Запрос отправлен');
+      const label = a.contact_shared ? 'Знакомство состоялось (демо)' : (introductionLabel[a.invitation_status] || 'Запрос отправлен');
       return '<div class="interaction-note">Знакомство: ' + esc(label) + '</div>' +
         (a.invitation_status === 'sent' ? '<button class="btn btn-outline btn-tiny" data-v02-action="open-introductions">Ответить на запрос компании</button>' : '');
     }
     function employerIntroBadge(a) {
       if (!a.invitation_id) return '';
-      const label = a.contact_shared ? 'Контакт уже открыт (демо)' : (a.invitation_status==='sent' ? 'Запрос отправлен — ждём согласия кандидата' : a.invitation_status==='accepted' ? 'Согласие получено — контакт ещё закрыт' : 'Кандидат отказался от знакомства');
+      const label = a.contact_shared ? 'Знакомство состоялось (демо)' : (a.invitation_status==='sent' ? 'Запрос отправлен — ждём согласия кандидата' : a.invitation_status==='accepted' ? 'Согласие получено — контакт ещё закрыт' : 'Кандидат отказался от знакомства');
       return '<div class="interaction-note">' + esc(label) + '</div><button class="btn btn-outline btn-tiny" data-v02-action="open-introductions">Открыть знакомства</button>';
     }
     function searchValue(id) { return document.getElementById(id)?.value?.trim() || ''; }
@@ -30,11 +30,11 @@
       // Prefer the server-annotated vacancy status; use separately fetched
       // applications only for routes that return unannotated public jobs.
       const known = (job && job.application_status)
-        ? {status:job.application_status, id:job.application_id}
+        ? {status:job.application_status, id:job.application_id, introduction_stage:job.introduction_stage, contact_shared:job.contact_shared}
         : applicationByVacancy.get(jobId);
       if (!known) return `<button type="button" class="btn btn-primary btn-tiny" data-v02-action="apply" data-id="${jobId}">Откликнуться</button>`;
       if (known.status === 'withdrawn') return `<button type="button" class="btn btn-primary btn-tiny" data-v02-action="reapply" data-id="${jobId}">Откликнуться повторно</button>`;
-      return `<button type="button" class="btn btn-outline btn-tiny" data-v02-action="see-applications">Отклик: ${esc(status[known.status] || known.status)} · история</button>`;
+      return `<button type="button" class="btn btn-outline btn-tiny" data-v02-action="see-applications">Отклик: ${esc(workflowStatus(known,status[known.status] || known.status))} · история</button>`;
     }
     jobMarkup = function(job, personalized = false) {
       const id = Number(job.id), open = job.status !== 'closed';
@@ -93,7 +93,7 @@
         }
         if(state.tab==='applications'){
           const {applications}=await api('/api/candidate/applications');
-          $('#dashboard-main').innerHTML=`<div class="panel"><h3>История откликов</h3><p class="muted">Ваши контакты не раскрываются работодателю автоматически.</p><div class="dashboard-list">${applications.length ? applications.map(a=>`<article class="item-card"><header><div><h4>${esc(a.title)}</h4><p>${esc(a.company_name)} · ${esc(a.city)} · ${formatPay(a)}</p></div><span class="mini-badge">${esc(status[a.status]||a.status)}</span></header><p>Дата отклика: ${esc(a.created_at)}</p>${Array.isArray(a.timeline)&&a.timeline.length?`<div class="application-timeline"><strong>История изменений:</strong> ${a.timeline.map(e=>`<span>${esc(eventLabels[e.event]||e.event)} · ${esc(e.created_at)}</span>`).join('')}</div>`:''}${applicationIntroBadge(a)}${['applied','reviewing','interview'].includes(a.status)?`<button class="btn btn-outline btn-tiny" data-v02-action="withdraw" data-id="${Number(a.id)}">Отозвать отклик</button>`:a.status==='withdrawn'?`<button class="btn btn-primary btn-tiny" data-v02-action="reapply" data-id="${Number(a.vacancy_id)}">Откликнуться повторно</button>`:''}</article>`).join(''):'<div class="empty-state">Откликов пока нет.</div>'}</div></div>`;
+          $('#dashboard-main').innerHTML=`<div class="panel"><h3>История откликов</h3><p class="muted">Ваши контакты не раскрываются работодателю автоматически.</p><div class="dashboard-list">${applications.length ? applications.map(a=>`<article class="item-card"><header><div><h4>${esc(a.title)}</h4><p>${esc(a.company_name)} · ${esc(a.city)} · ${formatPay(a)}</p></div><span class="mini-badge">${esc(workflowStatus(a,status[a.status]||a.status))}</span></header><p>Дата отклика: ${esc(a.created_at)}</p>${activityTimelineMarkup(a)}${applicationIntroBadge(a)}${['applied','reviewing','interview'].includes(a.status) && !a.invitation_id?`<button class="btn btn-outline btn-tiny" data-v02-action="withdraw" data-id="${Number(a.id)}">Отозвать отклик</button>`:a.status==='withdrawn'?`<button class="btn btn-primary btn-tiny" data-v02-action="reapply" data-id="${Number(a.vacancy_id)}">Откликнуться повторно</button>`:''}</article>`).join(''):'<div class="empty-state">Откликов пока нет.</div>'}</div></div>`;
         }
         if(state.tab==='email'){
           const result=await api('/api/account/email/status');
@@ -113,7 +113,7 @@
       $('#account-content').innerHTML=`<div class="dashboard-grid">${tabsMarkup(nav,'ДЛЯ КОМПАНИИ',state.user.company?.company_name||'Работодатель')}<div id="dashboard-main"></div></div>`;
       try {
         const {applications}=await api('/api/employer/applications');
-        $('#dashboard-main').innerHTML=`<div class="panel"><h3>Отклики соискателей</h3><p class="muted">Профили обезличены. Контакты — только через отдельное согласие кандидата и действующий процесс знакомства.</p><div class="dashboard-list">${applications.length?applications.map(a=>`<article class="item-card"><header><div><h4>${esc(a.profession)}</h4><p>${esc(a.title)} · ${esc(a.city)} · зарплатные ожидания от ${money(a.expected_salary)}</p></div><span class="mini-badge">${esc(status[a.status]||a.status)}</span></header><p>${esc(a.skills||'Навыки не указаны')}</p>${employerIntroBadge(a)}${['applied','reviewing','interview'].includes(a.status)?`<div class="item-actions"><button class="btn btn-outline btn-tiny" data-v02-action="application-status" data-id="${Number(a.id)}" data-status="reviewing">Рассмотреть</button>${!a.invitation_id ? `<button class="btn btn-primary btn-tiny" data-v02-action="express-interest" data-id="${Number(a.id)}">Заинтересован · запросить согласие</button>` : ''}<button class="btn btn-outline btn-tiny" data-v02-action="application-status" data-id="${Number(a.id)}" data-status="rejected">Отказать</button></div>`:''}</article>`).join(''):'<div class="empty-state">Откликов пока нет.</div>'}</div></div>`;
+        $('#dashboard-main').innerHTML=`<div class="panel"><h3>Отклики соискателей</h3><p class="muted">Профили обезличены. Контакты — только через отдельное согласие кандидата и действующий процесс знакомства.</p><div class="dashboard-list">${applications.length?applications.map(a=>`<article class="item-card"><header><div><h4>${esc(a.profession)}</h4><p>${esc(a.title)} · ${esc(a.city)} · зарплатные ожидания от ${money(a.expected_salary)}</p></div><span class="mini-badge">${esc(workflowStatus(a,status[a.status]||a.status))}</span></header><p>${esc(a.skills||'Навыки не указаны')}</p>${activityTimelineMarkup(a)}${employerIntroBadge(a)}${['applied','reviewing','interview'].includes(a.status) && !a.invitation_id?`<div class="item-actions"><button class="btn btn-outline btn-tiny" data-v02-action="application-status" data-id="${Number(a.id)}" data-status="reviewing">Рассмотреть</button>${!a.invitation_id ? `<button class="btn btn-primary btn-tiny" data-v02-action="express-interest" data-id="${Number(a.id)}">Заинтересован · запросить согласие</button>` : ''}<button class="btn btn-outline btn-tiny" data-v02-action="application-status" data-id="${Number(a.id)}" data-status="rejected">Отказать</button></div>`:''}</article>`).join(''):'<div class="empty-state">Откликов пока нет.</div>'}</div></div>`;
       } catch(e) { $('#dashboard-main').textContent=e.message;toast(e.message,true); }
     };
 
