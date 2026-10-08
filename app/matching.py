@@ -28,14 +28,20 @@ def match_candidate(vacancy: Mapping, candidate: Mapping) -> dict | None:
     for field, any_value in (("schedule", "Любой"), ("employment", "Любая")):
         if vacancy[field] != any_value and candidate[field] != any_value and vacancy[field] != candidate[field]:
             return None
+    # Matching a shared tool (e.g. Excel) is not evidence of experience in
+    # another profession. Cross-profession opportunities belong in public
+    # search, not in personalized "matching" or employer candidate leads.
+    job_words = words(vacancy["title"])
+    profession_words = words(candidate["profession"])
+    profession_match = job_words & profession_words
+    if not profession_match:
+        return None
     requested = skill_set(vacancy["skills"])
     present = skill_set(candidate["skills"])
     common = requested & present
     if requested and not common:
         return None
-    job_words = words(vacancy["title"])
-    profession_words = words(candidate["profession"])
-    title_overlap = len(job_words & profession_words) / max(1, len(job_words))
+    title_overlap = len(profession_match) / max(1, len(job_words))
     skills_ratio = len(common) / len(requested) if requested else 1.0
     score = round(min(100, 35 + 40 * skills_ratio + 20 * title_overlap + 5 * int(location_match)))
     notes = ["Подходит город/формат", "Подходят зарплатные ожидания"]
