@@ -35,7 +35,25 @@ def run_browser(page):
     console_errors = []
     page.on("pageerror", lambda error: console_errors.append(str(error)))
     page.goto(URL, wait_until="networkidle")
-    expect(page.locator(".release-ribbon")).to_contain_text("0.2")
+    expect(page.locator(".release-ribbon")).to_contain_text("0.3.0-dev")
+    # Search first; registration is not required to inspect a vacancy.
+    page.get_by_role("link", name="Посмотреть вакансии").first.click()
+    assert page.evaluate("location.hash") == "#jobs"
+    expect(page.locator("#guest-actions")).to_be_visible()
+
+    mode = page.locator("#reading-mode-toggle")
+    expect(mode).to_have_attribute("aria-pressed", "false")
+    mode.click()
+    expect(mode).to_have_attribute("aria-pressed", "true")
+    page.reload(wait_until="networkidle")
+    expect(page.locator("#reading-mode-toggle")).to_have_attribute("aria-pressed", "true")
+    page.locator("#reading-mode-toggle").click()
+    expect(page.locator("#reading-mode-toggle")).to_have_attribute("aria-pressed", "false")
+
+    page.locator("#register-open").click()
+    expect(page.locator("#auth-name")).to_be_focused()
+    expect(page.locator("#auth-guidance")).to_contain_text("вымышленные данные")
+    page.locator("#modal-close").click()
     expect(page.locator("#profession-filter")).to_be_visible()
     expect(page.locator("#schedule-filter")).to_be_visible()
 
@@ -55,6 +73,20 @@ def run_browser(page):
     expect(page.locator("#job-dialog")).not_to_be_visible()
 
     login(page, "kladovshik@demo.example")
+    expect(page.locator("#profile-form")).to_be_visible()
+    expect(page.locator("#profile-profession")).to_have_value("Кладовщик")
+    expect(page.locator(".profile-optional")).not_to_have_attribute("open", "")
+    expect(page.locator("#profile-phone")).not_to_be_visible()
+    page.locator(".profile-optional summary").click()
+    expect(page.locator("#profile-phone")).to_be_visible()
+    with page.expect_response(lambda response: (
+        response.url.endswith("/api/candidate/profile") and response.request.method == "PUT"
+    )) as save_profile:
+        page.locator("#profile-form button[type='submit']").click()
+    assert save_profile.value.status == 200, save_profile.value.text()
+    expect(page.locator("#toast")).to_contain_text("Профиль сохранён")
+    page.locator(".profile-next-actions [data-tab='offers']").click()
+    expect(page.locator("#dashboard-main")).to_contain_text("Подходящие вакансии")
     page.locator("#public-jobs [data-v02-action='favorite']").click()
     expect(page.locator("#toast")).to_contain_text("сохранена")
     page.locator("#account-content [data-tab='favorites']").click()
@@ -150,7 +182,7 @@ def run_browser(page):
     # Reproduce the real screenshot: account has an existing application
     # before reloading the website and opening recommended jobs again.
     page.reload(wait_until="networkidle")
-    expect(page.locator(".release-ribbon")).to_contain_text("0.2.1.4")
+    expect(page.locator(".release-ribbon")).to_contain_text("0.3.0-dev")
     page.locator("#account-content [data-tab='offers']").click()
     expect(page.locator("#dashboard-main")).to_contain_text("Отклик: Отправлен")
     expect(page.locator("#dashboard-main [data-v02-action='apply']")).to_have_count(0)
@@ -171,9 +203,13 @@ def run_browser(page):
     expect(page.locator("#admin-v02-results")).to_contain_text("contact_opened")
     # The same linked journey must remain navigable on a narrow phone viewport.
     page.set_viewport_size({"width": 390, "height": 844})
+    expect(page.locator(".mobile-quick-nav")).to_be_visible()
     expect(page.locator("#admin-v02-results")).to_be_visible()
     page.locator("#logout").click()
     login(page, "kladovshik@demo.example")
+    expect(page.locator(".dashboard-tabs")).to_be_visible()
+    assert page.locator(".dashboard-tabs [data-tab='profile']").bounding_box()["height"] >= 44
+    expect(page.locator("#profile-form")).to_be_visible()
     page.locator("#account-content [data-tab='applications']").click()
     expect(page.locator("#dashboard-main")).to_contain_text("Знакомство состоялось (демо")
 
@@ -220,7 +256,7 @@ def main():
                 server.wait(timeout=5)
             except subprocess.TimeoutExpired:
                 server.kill()
-    print("Browser smoke: search, detail, favorite, linked interest, explicit consent, demo unlock and admin PASSED")
+    print("Browser smoke: 0.3 guest browsing, readable UX, forms, mobile navigation and 0.2 regression PASSED")
 
 
 if __name__ == "__main__":
