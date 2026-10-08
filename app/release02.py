@@ -32,6 +32,13 @@ CREATE TABLE IF NOT EXISTS job_applications (
 );
 CREATE INDEX IF NOT EXISTS idx_job_applications_candidate ON job_applications(candidate_id);
 CREATE INDEX IF NOT EXISTS idx_job_applications_vacancy ON job_applications(vacancy_id);
+CREATE TABLE IF NOT EXISTS application_events (
+ id INTEGER PRIMARY KEY AUTOINCREMENT,
+ application_id INTEGER NOT NULL REFERENCES job_applications(id) ON DELETE CASCADE,
+ event TEXT NOT NULL CHECK(event IN ('applied','withdrawn','reapplied','reviewing','interview','rejected','hired')),
+ created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_application_events_application ON application_events(application_id,id);
 CREATE TABLE IF NOT EXISTS account_controls (
  user_id INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
  status TEXT NOT NULL DEFAULT 'active' CHECK(status IN ('active','disabled')),
@@ -174,14 +181,37 @@ def install_routes(app) -> None:
                          (data.vacancy_id,)).fetchone()
         if job is None or job["status"] != "open":
             raise HTTPException(404, "Вакансия закрыта или не найдена")
-        try:
-            cursor = db.execute("INSERT INTO job_applications(vacancy_id,candidate_id) VALUES(?,?)",
-                                (data.vacancy_id, user["id"]))
-        except sqlite3.IntegrityError:
-            raise HTTPException(409, "Вы уже откликались на эту вакансию") from None
+        previous = db.execute(
+            "SELECT id,status FROM job_applications WHERE vacancy_id=? AND candidate_id=?",
+            (data.vacancy_id, user["id"]),
+        ).fetchone()
+        if previous is None:
+            try:
+                cursor = db.execute(
+                    "INSERT INTO job_applications(vacancy_id,candidate_id) VALUES(?,?)",
+                    (data.vacancy_id, user["id"]),
+                )
+            except sqlite3.IntegrityError:
+                raise HTTPException(409, "Вы уже откликались на эту вакансию") from None
+            application_id, event = cursor.lastrowid, "applied"
+        elif previous["status"] == "withdrawn":
+            # Restore the same application ID: unique pair prevents duplicates.
+            # The previous withdrawal is retained in the events timeline.
+            db.execute(
+                """UPDATE job_applications SET status='applied',updated_at=datetime('now')
+                   WHERE id=? AND candidate_id=? AND status='withdrawn'""",
+                (previous["id"], user["id"]),
+            )
+            application_id, event = previous["id"], "reapplied"
+        else:
+            raise HTTPException(409, "Активный или завершённый отклик на эту вакансию уже существует")
+        db.execute(
+            "INSERT INTO application_events(application_id,event) VALUES(?,?)",
+            (application_id, event),
+        )
         enqueue_notice(db, job["employer_id"], "new_application", "Новый отклик — ОПЫТНО.РФ",
-                       f"Новый обезличенный отклик на вакансию «{job['title']}». Откройте кабинет.")
-        return {"ok": True, "id": cursor.lastrowid, "status": "applied"}
+                       f"Получен обезличенный отклик на вакансию «{job['title']}». Откройте кабинет.")
+        return {"ok": True, "id": application_id, "status": "applied", "reapplied": event == "reapplied"}
 
     @app.get("/api/candidate/applications")
     def candidate_applications(user: dict = Depends(active_user),
@@ -196,7 +226,16 @@ def install_routes(app) -> None:
                              JOIN employer_profiles e ON e.user_id=v.employer_id
                              LEFT JOIN invitations i ON i.vacancy_id=a.vacancy_id AND i.candidate_id=a.candidate_id
                              WHERE a.candidate_id=? ORDER BY a.id DESC""", (user["id"],)).fetchall()
-        return {"applications": [dict(r) for r in rows]}
+        applications = []
+        for row in rows:
+            data = dict(row)
+            events = db.execute(
+                """SELECT event,created_at FROM application_events
+                   WHERE application_id=? ORDER BY id DESC LIMIT 20""", (row["id"],)
+            ).fetchall()
+            data["timeline"] = [dict(e) for e in reversed(events)]
+            applications.append(data)
+        return {"applications": applications}
 
     @app.post("/api/candidate/applications/{application_id}/withdraw")
     def withdraw(application_id: int, user: dict = Depends(active_user),
@@ -211,6 +250,8 @@ def install_routes(app) -> None:
             raise HTTPException(409, "Этот отклик уже нельзя отозвать")
         db.execute("UPDATE job_applications SET status='withdrawn',updated_at=datetime('now') WHERE id=?",
                    (application_id,))
+        db.execute("INSERT INTO application_events(application_id,event) VALUES(?,?)",
+                   (application_id, "withdrawn"))
         enqueue_notice(db, item["employer_id"], "application_withdrawn", "Отклик отозван — ОПЫТНО.РФ",
                        f"Отклик на вакансию «{item['title']}» отозван.")
         return {"ok": True}
@@ -305,6 +346,10 @@ def install_routes(app) -> None:
                    WHERE id=?""",
                 (application_id,),
             )
+            db.execute(
+                "INSERT INTO application_events(application_id,event) VALUES(?,?)",
+                (application_id, "interview"),
+            )
             enqueue_notice(
                 db, item["candidate_id"], "application_status",
                 "Статус отклика — ОПЫТНО.РФ",
@@ -331,6 +376,8 @@ def install_routes(app) -> None:
             raise HTTPException(409, "Статус этого отклика уже окончательный")
         db.execute("UPDATE job_applications SET status=?,updated_at=datetime('now') WHERE id=?",
                    (body.status, application_id))
+        db.execute("INSERT INTO application_events(application_id,event) VALUES(?,?)",
+                   (application_id, body.status))
         enqueue_notice(db, item["candidate_id"], "application_status", "Статус отклика — ОПЫТНО.РФ",
                        f"Статус отклика на «{item['title']}» изменён на {body.status}. Откройте кабинет.")
         return {"ok": True, "status": body.status}
