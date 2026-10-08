@@ -248,3 +248,52 @@ def test_interest_refuses_withdrawn_applications_and_closed_jobs(app):
         assert post(employer, f"/api/employer/applications/{aid}/interest").status_code == 409
         with database(app.state.db_path) as db:
             assert db.execute("SELECT COUNT(*) FROM invitations").fetchone()[0] == 0
+
+
+def test_resubmit_withdrawn_application_and_admin_counters(app):
+    """Withdraw/reapply reuses the same row, preserves history, remains private."""
+    with TestClient(app) as candidate, TestClient(app) as employer, TestClient(app) as admin:
+        cid = register(candidate, "candidate@demo.example")
+        register(employer, "employer@demo.example", "employer")
+        profile(candidate)
+        jid = vacancy(employer, title="Бухгалтер", city="Москва")
+        first = post(candidate, "/api/candidate/applications", {"vacancy_id": jid})
+        assert first.status_code == 201, first.text
+        aid = first.json()["id"]
+        assert first.json()["reapplied"] is False
+        assert post(candidate, "/api/candidate/applications", {"vacancy_id": jid}).status_code == 409
+        withdrawn = post(candidate, f"/api/candidate/applications/{aid}/withdraw")
+        assert withdrawn.status_code == 200
+        before = candidate.get("/api/candidate/applications").json()["applications"]
+        assert before[0]["status"] == "withdrawn"
+        assert [e["event"] for e in before[0]["timeline"]] == ["applied", "withdrawn"]
+        with database(app.state.db_path) as db:
+            db.execute("INSERT INTO users(role,email,name,password_hash) VALUES(?,?,?,?)",
+                       ("admin","admin@demo.example","Админ",make_password_hash("StrongPass2026!")))
+        assert post(admin, "/api/login", {"email": "admin@demo.example",
+                                        "password": "StrongPass2026!"}).status_code == 200
+        stats = admin.get("/api/admin/stats").json()
+        assert stats["applications_total"] == 1
+        assert stats["applications_active"] == 0
+        assert stats["applications_withdrawn"] == 1
+        assert stats["invitations"] == 0
+        restored = post(candidate, "/api/candidate/applications", {"vacancy_id": jid})
+        assert restored.status_code == 201, restored.text
+        assert restored.json()["id"] == aid
+        assert restored.json()["reapplied"] is True
+        assert post(candidate, "/api/candidate/applications", {"vacancy_id": jid}).status_code == 409
+        after = candidate.get("/api/candidate/applications").json()["applications"]
+        assert len(after) == 1
+        assert after[0]["status"] == "applied"
+        assert [e["event"] for e in after[0]["timeline"]] == ["applied", "withdrawn", "reapplied"]
+        stats = admin.get("/api/admin/stats").json()
+        assert stats["applications_total"] == 1
+        assert stats["applications_active"] == 1
+        assert stats["applications_withdrawn"] == 0
+        rows = employer.get("/api/employer/applications").json()["applications"]
+        assert len(rows) == 1 and rows[0]["id"] == aid
+        assert "email" not in rows[0] and "phone" not in rows[0]
+        with database(app.state.db_path) as db:
+            assert db.execute("SELECT COUNT(*) FROM job_applications").fetchone()[0] == 1
+            assert db.execute("SELECT COUNT(*) FROM application_events").fetchone()[0] == 3
+            assert db.execute("SELECT COUNT(*) FROM email_outbox WHERE event='new_application'").fetchone()[0] == 2
