@@ -93,7 +93,7 @@ def run_browser(page):
     expect(page.locator("#profile-profession")).to_have_value("Кладовщик")
     expect(page.locator(".profile-optional")).not_to_have_attribute("open", "")
     expect(page.locator("#profile-phone")).not_to_be_visible()
-    page.locator(".profile-optional summary").click()
+    page.locator(".profile-optional > summary").click()
     expect(page.locator("#profile-phone")).to_be_visible()
     # Three-question helper is optional, local and never replaces existing text.
     page.locator("#experience-helper summary").click()
