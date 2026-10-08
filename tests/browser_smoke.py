@@ -58,6 +58,9 @@ def run_browser(page):
     page.locator("#account-content [data-tab='applications']").click()
     expect(page.locator("#dashboard-main")).to_contain_text("История откликов")
     expect(page.locator("#dashboard-main")).to_contain_text("Отправлен")
+    page.locator("#account-content [data-tab='favorites']").click()
+    page.locator("#dashboard-main [data-v02-action='remove-favorite']").click()
+    expect(page.locator("#dashboard-main")).to_contain_text("Вы ещё не сохранили вакансий")
     page.locator("#logout").click()
 
     login(page, "company@demo.example")
