@@ -19,9 +19,16 @@ def login(page, email):
     expect(page.locator("#auth-dialog")).to_be_visible()
     page.locator("#auth-email").fill(email)
     page.locator("#auth-password").fill("DemoPass2026!")
-    page.locator("#auth-submit").click()
-    expect(page.locator("#auth-dialog")).not_to_be_visible()
-    expect(page.locator("#dashboard")).to_be_visible()
+    with page.expect_response(lambda response: (
+        response.url.endswith("/api/login") and response.request.method == "POST"
+    ), timeout=20000) as login_reply:
+        page.locator("#auth-submit").click()
+    assert login_reply.value.status == 200, (
+        f"Login rejected for fictional account {email}: "
+        f"HTTP {login_reply.value.status} {login_reply.value.text()}"
+    )
+    expect(page.locator("#auth-dialog")).not_to_be_visible(timeout=15000)
+    expect(page.locator("#dashboard")).to_be_visible(timeout=15000)
 
 
 def run_browser(page):
