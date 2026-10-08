@@ -318,6 +318,8 @@ def create_app(db_path: str | None = None) -> FastAPI:
             ),
         )
         db.execute("UPDATE users SET phone=? WHERE id=?", (data.phone.strip(), user["id"]))
+        # Commit before the HTTP response: a new dashboard request may arrive immediately.
+        db.commit()
         return {"ok": True, "profile": candidate_view(db, user["id"])}
 
     @app.get("/api/jobs")
@@ -394,6 +396,8 @@ def create_app(db_path: str | None = None) -> FastAPI:
                 data.schedule, data.employment, data.skills.strip(), data.description.strip(),
             ),
         )
+        # Commit before the HTTP response: a new dashboard request may arrive immediately.
+        db.commit()
         return {"id": cursor.lastrowid, "ok": True}
 
     @app.get("/api/employer/vacancies")
@@ -410,6 +414,8 @@ def create_app(db_path: str | None = None) -> FastAPI:
         changed = db.execute("UPDATE vacancies SET status=? WHERE id=? AND employer_id=?", (data.status, job_id, user["id"]))
         if changed.rowcount == 0:
             raise HTTPException(404, "Вакансия не найдена")
+        # Commit before the HTTP response: a new dashboard request may arrive immediately.
+        db.commit()
         return {"ok": True}
 
     @app.get("/api/employer/vacancies/{job_id}/matches")
@@ -454,6 +460,8 @@ def create_app(db_path: str | None = None) -> FastAPI:
         from .release02 import enqueue_notice
         enqueue_notice(db, data.candidate_id, "invitation", "Приглашение от компании — ОПЫТНО.РФ",
                        f"Вы получили приглашение на вакансию «{vacancy['title']}». Откройте личный кабинет.")
+        # Commit before the HTTP response: a new dashboard request may arrive immediately.
+        db.commit()
         return {"id": cursor.lastrowid, "ok": True}
 
     @app.get("/api/candidate/invitations")
@@ -502,6 +510,8 @@ def create_app(db_path: str | None = None) -> FastAPI:
         employer = db.execute("SELECT employer_id FROM invitations WHERE id=?", (invitation_id,)).fetchone()
         enqueue_notice(db, employer["employer_id"], "invitation_response", "Ответ кандидата — ОПЫТНО.РФ",
                        f"Кандидат ответил на приглашение: {data.decision}. Откройте кабинет.")
+        # Commit before the HTTP response: a new dashboard request may arrive immediately.
+        db.commit()
         return {"ok": True}
 
     @app.get("/api/employer/invitations")
@@ -559,6 +569,8 @@ def create_app(db_path: str | None = None) -> FastAPI:
                            "Знакомство состоялось — ОПЫТНО.РФ",
                            "Работодатель завершил демонстрационное знакомство. Контакт открыт в тестовом режиме.")
         contact = db.execute("SELECT name,email,phone FROM users WHERE id=?", (row["candidate_id"],)).fetchone()
+        # Commit before the HTTP response: a new dashboard request may arrive immediately.
+        db.commit()
         return {"ok": True, "mode": "demo_only", "amount_rub": row["price_rub"], "contact": dict(contact)}
 
     @app.get("/api/admin/stats")
