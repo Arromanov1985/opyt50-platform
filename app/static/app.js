@@ -151,7 +151,30 @@ function profileMarkup(profile = {}, user = {}) {
                 <input id="profile-phone" name="phone" type="tel" value="${esc(user.phone)}" maxlength="30" autocomplete="off" placeholder="Только вымышленный номер для теста">
                 <small class="field-help">В тестовой версии не вводите реальный номер. Контакт защищён отдельным согласием.</small></div>
               <div class="field wide"><label for="profile-about">Немного о вашем опыте</label>
-                <textarea id="profile-about" name="about" maxlength="700" placeholder="Расскажите о своей работе и достижениях. Не указывайте здесь контакты.">${esc(profile.about)}</textarea></div>
+                <textarea id="profile-about" name="about" maxlength="700" placeholder="Расскажите о своей работе и достижениях. Не указывайте здесь контакты.">${esc(profile.about)}</textarea>
+                <details class="experience-helper" id="experience-helper">
+                  <summary>Не знаете, что написать? Поможем описать ваш опыт</summary>
+                  <p class="experience-helper-intro">Ответьте на три простых вопроса. Мы составим текст только из ваших слов. Проверьте его и при желании добавьте в профиль.</p>
+                  <p class="experience-helper-privacy">Это локальный помощник без ИИ и внешних сервисов. Не указывайте настоящие имена, телефон, email или адреса.</p>
+                  <div class="experience-helper-fields">
+                    <label for="experience-work">1. Какой работой вы занимались?</label>
+                    <textarea id="experience-work" rows="2" maxlength="220" placeholder="Например: учёт товаров на складе"></textarea>
+                    <label for="experience-tasks">2. Что входило в ваши задачи?</label>
+                    <textarea id="experience-tasks" rows="2" maxlength="240" placeholder="Например: принимал поставки, оформлял документы"></textarea>
+                    <label for="experience-strengths">3. Что у вас получается особенно хорошо?</label>
+                    <textarea id="experience-strengths" rows="2" maxlength="240" placeholder="Например: работа с 1С, аккуратный учёт"></textarea>
+                  </div>
+                  <div class="experience-helper-actions">
+                    <button type="button" class="btn btn-outline" id="experience-build">Составить текст</button>
+                    <button type="button" class="btn btn-primary" id="experience-insert" disabled>Добавить в профиль</button>
+                  </div>
+                  <div class="experience-helper-preview" id="experience-preview-block" hidden>
+                    <strong>Предварительный вариант</strong>
+                    <p id="experience-preview"></p>
+                  </div>
+                  <p class="experience-helper-message" id="experience-helper-message" role="status" aria-live="polite"></p>
+                  <p class="field-help">При добавлении помощник сохранит существующее описание и дополнит его. Чтобы изменения остались в профиле, нажмите ниже «Сохранить профиль».</p>
+                </details></div>
             </div>
           </details>
         </div>
