@@ -93,10 +93,14 @@ def run_browser(page):
     expect(page.locator("#profile-profession")).to_have_value("Кладовщик")
     expect(page.locator(".profile-optional")).not_to_have_attribute("open", "")
     expect(page.locator("#profile-phone")).not_to_be_visible()
-    page.locator(".profile-optional > summary").click()
+    # The guide is reachable directly from the main profile fields:
+    # one click opens both optional sections and focuses the first question.
+    page.locator("#experience-start").click()
+    expect(page.locator(".profile-optional")).to_have_attribute("open", "")
+    expect(page.locator("#experience-helper")).to_have_attribute("open", "")
+    expect(page.locator("#experience-start")).to_have_attribute("aria-expanded", "true")
+    expect(page.locator("#experience-work")).to_be_focused()
     expect(page.locator("#profile-phone")).to_be_visible()
-    # Three-question helper is optional, local and never replaces existing text.
-    page.locator("#experience-helper summary").click()
     expect(page.locator("#experience-build")).to_be_visible()
     page.locator("#experience-build").click()
     expect(page.locator("#experience-helper-message")).to_contain_text("хотя бы один ответ")
@@ -122,12 +126,20 @@ def run_browser(page):
         page.locator("#profile-form button[type='submit']").click()
     assert save_profile.value.status == 200, save_profile.value.text()
     expect(page.locator("#toast")).to_contain_text("Профиль сохранён")
+    # Check the toast before reload; otherwise it disappears correctly.
+    toast = page.locator("#toast").bounding_box()
+    assert toast and toast["x"] >= 0 and toast["x"] + toast["width"] <= 1281
     saved_profile = page.request.get(URL + "/api/me").json()["user"]["profile"]
     assert saved_profile["about"].startswith("Ранее записанный опыт.\n\nНаправление работы:")
     assert "1С и ведение документов" in saved_profile["about"]
-    # The success message should fit entirely inside the browser viewport.
-    toast = page.locator("#toast").bounding_box()
-    assert toast and toast["x"] >= 0 and toast["x"] + toast["width"] <= 1281
+    # A full browser reload must retain what the candidate saved.
+    page.reload(wait_until="networkidle")
+    expect(page.locator("#profile-about")).to_have_value(saved_profile["about"])
+    expect(page.locator(".profile-optional")).not_to_have_attribute("open", "")
+    expect(page.locator("#experience-start")).to_contain_text("Помочь описать опыт")
+    # Open the editor again; the description must still be available.
+    page.locator("#experience-start").click()
+    expect(page.locator("#profile-about")).to_have_value(saved_profile["about"])
     page.locator(".profile-next-actions [data-tab='offers']").click()
     expect(page.locator("#dashboard-main")).to_contain_text("Подходящие вакансии")
     page.locator("#public-jobs [data-v02-action='favorite']").click()
