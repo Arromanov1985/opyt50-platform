@@ -103,9 +103,30 @@ document.addEventListener('DOMContentLoaded', () => {
     input.focus();
   }
   document.addEventListener('click', event => {
+    const openGuide = event.target.closest('#experience-start');
+    if (openGuide) {
+      // Two collapsed sections must be opened together, otherwise candidates
+      // cannot discover the assistant from the main profile fields.
+      const details = document.querySelector('.profile-optional');
+      const guide = document.getElementById('experience-helper');
+      if (!details || !guide) return;
+      details.open = true;
+      guide.open = true;
+      openGuide.setAttribute('aria-expanded', 'true');
+      guide.scrollIntoView({block:'start',behavior:'smooth'});
+      document.getElementById('experience-work')?.focus({preventScroll:true});
+      say('Ответьте на один или несколько вопросов. Затем нажмите «Составить текст».', false);
+      return;
+    }
     if (event.target.closest('#experience-build')) compose();
     if (event.target.closest('#experience-insert')) insertText();
   });
+  document.addEventListener('toggle', event => {
+    if (event.target.id === 'experience-helper') {
+      const trigger = document.getElementById('experience-start');
+      if (trigger) trigger.setAttribute('aria-expanded', String(event.target.open));
+    }
+  }, true);
   document.addEventListener('input', event => {
     if (parts.some(id => event.target.id === id)) {
       invalidatePreview();
