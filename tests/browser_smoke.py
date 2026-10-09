@@ -342,6 +342,95 @@ def run_browser(page):
     assert page.locator("#job-dialog-content b").count() == 0, "Unsafe HTML in public job"
     page.locator("#job-dialog-close").click()
 
+    # Editing a freshly published structured vacancy preserves its ID and
+    # requires the same preview gate as new publication.
+    published_id = created[0]["id"]
+    old_revision = created[0]["revision"]
+    page.locator("#dashboard-main .item-card").filter(has_text=title).locator(
+        "[data-action='edit-job']").click()
+    expect(page.locator("#vacancy-form")).to_be_visible()
+    expect(page.locator("#vacancy-form")).to_have_attribute("data-edit-id", str(published_id))
+    expect(page.locator("#vacancy-title")).to_have_value(title)
+    expect(page.locator("#vacancy-responsibilities")).to_contain_text("<b>Учёт товаров</b>")
+    expect(page.locator("#vacancy-publish")).to_be_disabled()
+    expect(page.locator("#vacancy-publish")).to_have_text("Сохранить изменения ↗")
+    page.locator("#vacancy-show-preview").click()
+    expect(page.locator("#vacancy-publish")).to_be_enabled()
+    page.locator("#vacancy-salary-min").fill("82000")
+    page.locator("#vacancy-conditions").fill("Гибкий график 4/4, вымышленная компания")
+    expect(page.locator("#vacancy-preview")).to_be_hidden()
+    expect(page.locator("#vacancy-publish")).to_be_disabled()
+    page.locator("#vacancy-show-preview").click()
+    expect(page.locator("#vacancy-preview")).to_be_visible()
+    expect(page.locator("#vacancy-preview-description")).to_contain_text("Гибкий график 4/4")
+    assert page.evaluate("""() => {
+      const form = document.querySelector('#vacancy-form');
+      return form.scrollWidth <= form.clientWidth + 3;
+    }"""), "Edit form overflows 390px viewport"
+    with page.expect_response(lambda response: (
+        response.url.endswith(f"/api/employer/vacancies/{published_id}") and
+        response.request.method == "PATCH"
+    )) as edited:
+        page.locator("#vacancy-publish").click()
+    assert edited.value.status == 200, edited.value.text()
+    jobs_after_edit = page.request.get(URL + "/api/employer/vacancies").json()["jobs"]
+    assert len(jobs_after_edit) == len(job_list), "Editing must not create a second vacancy"
+    same_job = next(job for job in jobs_after_edit if job["id"] == published_id)
+    assert same_job["revision"] != old_revision
+    assert same_job["salary_min"] == 82000
+    assert "Гибкий график 4/4" in same_job["description"]
+    expect(page.locator("#dashboard-main")).to_contain_text(title)
+
+    # Old plain-text vacancies open without splitting or truncating description.
+    old_job = next(job for job in jobs_after_edit if job["title"] == "Кладовщик")
+    page.locator("#dashboard-main .item-card").filter(has_text="Кладовщик").locator(
+        "[data-action='edit-job']").click()
+    expect(page.locator("#vacancy-legacy")).to_have_value(old_job["description"])
+    expect(page.locator("#vacancy-responsibilities")).to_have_count(0)
+    page.locator("#vacancy-salary-min").fill(str(old_job["salary_min"] + 2000))
+    page.locator("#vacancy-show-preview").click()
+    expect(page.locator("#vacancy-preview-description")).to_have_text(old_job["description"])
+    with page.expect_response(lambda response: (
+        response.url.endswith(f"/api/employer/vacancies/{old_job['id']}") and
+        response.request.method == "PATCH"
+    )) as legacy_edit:
+        page.locator("#vacancy-publish").click()
+    assert legacy_edit.value.status == 200, legacy_edit.value.text()
+    legacy_updated = next(job for job in
+        page.request.get(URL + "/api/employer/vacancies").json()["jobs"]
+        if job["id"] == old_job["id"])
+    assert legacy_updated["description"] == old_job["description"]
+    assert legacy_updated["salary_min"] == old_job["salary_min"] + 2000
+    assert legacy_updated["status"] == old_job["status"]
+
+    # A concurrent edit in a second tab cannot be silently overwritten.
+    page.locator("#dashboard-main .item-card").filter(has_text="Кладовщик").locator(
+        "[data-action='edit-job']").click()
+    stale = legacy_updated
+    competing = {field:stale[field] for field in (
+        "title", "city", "salary_min", "salary_max",
+        "schedule", "employment", "skills", "description"
+    )}
+    competing["expected_revision"] = stale["revision"]
+    competing["salary_min"] = stale["salary_min"] + 1000
+    response = page.request.patch(
+        URL + f"/api/employer/vacancies/{stale['id']}",
+        headers={"X-Requested-With": "OPYT50"},
+        data=competing,
+    )
+    assert response.status == 200, response.text()
+    page.locator("#vacancy-show-preview").click()
+    with page.expect_response(lambda response: (
+        response.url.endswith(f"/api/employer/vacancies/{stale['id']}") and
+        response.request.method == "PATCH"
+    )) as conflict:
+        page.locator("#vacancy-publish").click()
+    assert conflict.value.status == 409, conflict.value.text()
+    expect(page.locator("#vacancy-form-message")).to_contain_text("Отмените редактирование")
+    expect(page.locator("#vacancy-publish")).to_be_disabled()
+    page.locator("[data-action='cancel-job-edit']").click()
+    expect(page.locator("#dashboard-main")).to_contain_text("Мои вакансии")
+
     if console_errors:
         raise AssertionError("Uncaught browser errors: " + " | ".join(console_errors))
 
@@ -385,7 +474,7 @@ def main():
                 server.wait(timeout=5)
             except subprocess.TimeoutExpired:
                 server.kill()
-    print("Browser smoke: 0.3 candidate+employer accessibility, guided vacancy preview and 0.2 regression PASSED")
+    print("Browser smoke: 0.3 vacancy preview/edit, legacy preservation, conflict guard and 0.2 regression PASSED")
 
 
 if __name__ == "__main__":
