@@ -273,7 +273,7 @@ function vacancyFormMarkup() {
       <section id="vacancy-preview" class="vacancy-preview" aria-label="Предварительный просмотр вакансии" hidden>
         <span class="section-kicker">ПРЕДПРОСМОТР ДЛЯ СОИСКАТЕЛЯ</span>
         <h4 id="vacancy-preview-title"></h4>
-        <p class="vacancy-preview-company">Компания «Пример» · <span id="vacancy-preview-city"></span></p>
+        <p class="vacancy-preview-company"><span id="vacancy-preview-company"></span> · <span id="vacancy-preview-city"></span></p>
         <p class="vacancy-preview-salary" id="vacancy-preview-salary"></p>
         <p id="vacancy-preview-schedule"></p>
         <p id="vacancy-preview-skills"></p>
