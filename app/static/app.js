@@ -140,6 +140,15 @@ function profileMarkup(profile = {}, user = {}) {
           <input id="profile-salary" name="salary_min" type="number" inputmode="numeric" value="${profile.salary_min || 0}" min="0" max="10000000" required></div>
         <div class="field"><label for="profile-schedule">Удобный график</label>
           <select id="profile-schedule" name="schedule">${optList(schedules,profile.schedule)}</select></div>
+        <div class="field wide experience-entry">
+          <div class="experience-entry-inner">
+            <div>
+              <strong>Хотите рассказать о своём опыте?</strong>
+              <p>${profile.about ? 'В вашем профиле уже есть описание. Его можно дополнить.' : 'Поможем подобрать слова по трём простым вопросам. Большое резюме не нужно.'}</p>
+            </div>
+            <button type="button" class="btn btn-outline" id="experience-start" aria-controls="experience-helper" aria-expanded="false">Помочь описать опыт →</button>
+          </div>
+        </div>
         <div class="field wide">
           <details class="profile-optional">
             <summary>Дополнительные сведения (по желанию)</summary>
