@@ -360,22 +360,31 @@ async function handleDashboardSubmit(event) {
   if (form.id === 'vacancy-form') {
     event.preventDefault();
     const description = window.OpytnovacancyWizard?.getReviewedDescription(form);
-    if (!description) {
+    if (description === null || description === undefined) {
       toast('Сначала проверьте вакансию в предпросмотре.', true);
       return;
     }
+    const editing = Boolean(form.dataset.editId);
     const body = {title:formValue(form,'title'),city:formValue(form,'city'),skills:formValue(form,'skills'),salary_min:parseNumber(form,'salary_min'),salary_max:parseNumber(form,'salary_max'),schedule:formValue(form,'schedule'),employment:formValue(form,'employment'),description};
+    if (editing) body.expected_revision = form.dataset.revision;
     const submit = form.querySelector('#vacancy-publish');
     submit.disabled = true;
     try {
-      await api('/api/employer/vacancies',{method:'POST',body:JSON.stringify(body)});
+      const endpoint = editing ? `/api/employer/vacancies/${form.dataset.editId}` : '/api/employer/vacancies';
+      await api(endpoint,{method:editing ? 'PATCH' : 'POST',body:JSON.stringify(body)});
+      state.editVacancy = null;
+      state.activeVacancy = null;
       state.tab='vacancies';
       await showDashboard();
       await loadPublicJobs();
-      toast('Вакансия опубликована. Теперь она доступна в поиске.');
+      toast(editing ? 'Изменения сохранены в прежней вакансии, отклики остались на месте.' : 'Вакансия опубликована. Теперь она доступна в поиске.');
     } catch(e) {
       toast(e.message,true);
-      if (submit.isConnected) submit.disabled = false;
+      // A stale edit must never silently overwrite another browser tab's changes.
+      if (editing && /изменилась|уже изменена/.test(e.message)) {
+        const line = form.querySelector('#vacancy-form-message');
+        if (line) line.textContent = 'Вакансия изменена в другой вкладке. Отмените редактирование и откройте её заново.';
+      } else if (submit.isConnected) submit.disabled = false;
     }
   }
 }
@@ -387,7 +396,9 @@ async function handleDashboardClick(event) {
   if (btn.disabled) return;
   btn.disabled = true;
   try {
-    if (action === 'new-job') { state.tab='create'; await showDashboard(); }
+    if (action === 'new-job') { state.editVacancy=null; state.tab='create'; await showDashboard(); }
+    if (action === 'edit-job') { state.editVacancy=id; state.activeVacancy=null; state.tab='edit'; await showDashboard(); }
+    if (action === 'cancel-job-edit') { state.editVacancy=null; state.tab='vacancies'; await showDashboard(); }
     if (action === 'matches') { await loadMatches(id); }
     if (action === 'job-status') { await api(`/api/employer/vacancies/${id}/status`,{method:'PATCH',body:JSON.stringify({status:btn.dataset.status})}); await showDashboard(); toast('Статус вакансии обновлён.'); }
     if (action === 'invite') { await api('/api/employer/invitations',{method:'POST',body:JSON.stringify({vacancy_id:Number(btn.dataset.job),candidate_id:id})}); toast('Приглашение отправлено.'); state.tab='invitations'; await showDashboard(); }
