@@ -409,6 +409,8 @@ def run_browser(page):
     page.locator("#dashboard-main .item-card").filter(has_text="Кладовщик").locator(
         "[data-action='edit-job']").click()
     stale = legacy_updated
+    expect(page.locator("#vacancy-form")).to_be_visible()
+    expect(page.locator("#vacancy-form")).to_have_attribute("data-revision", stale["revision"])
     competing = {field:stale[field] for field in (
         "title", "city", "salary_min", "salary_max",
         "schedule", "employment", "skills", "description"
@@ -421,6 +423,7 @@ def run_browser(page):
         data=competing,
     )
     assert response.status == 200, response.text()
+    expect(page.locator("#vacancy-form")).to_have_attribute("data-revision", stale["revision"])
     page.locator("#vacancy-show-preview").click()
     with page.expect_response(lambda response: (
         response.url.endswith(f"/api/employer/vacancies/{stale['id']}") and
