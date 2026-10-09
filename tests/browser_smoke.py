@@ -443,9 +443,11 @@ def main():
                    OPYT50_PREVIEW_SEED_DEMO="0", OPYT50_COOKIE_SECURE="0")
         subprocess.run([sys.executable, "scripts/seed_demo.py", "--db", env["OPYT50_DB_PATH"]],
                        cwd=ROOT, env=env, check=True, capture_output=True)
+        server_log_path = Path(tmp) / "uvicorn.log"
+        server_log = server_log_path.open("w", encoding="utf-8")
         server = subprocess.Popen([sys.executable, "-m", "uvicorn", "app.main:app",
                                    "--host", "127.0.0.1", "--port", "8765"],
-                                  cwd=ROOT, env=env, stdout=subprocess.DEVNULL, stderr=subprocess.STDOUT)
+                                  cwd=ROOT, env=env, stdout=server_log, stderr=subprocess.STDOUT)
         try:
             for attempt in range(80):
                 try:
@@ -465,6 +467,9 @@ def main():
                         run_browser(page)
                     except Exception:
                         page.screenshot(path=str(Path(tmp) / "failure.png"), full_page=True)
+                        server_log.flush()
+                        print("Uvicorn server error log:\n" + server_log_path.read_text(encoding="utf-8")[-12000:],
+                              file=sys.stderr)
                         raise
                     finally:
                         context.close()
@@ -476,6 +481,8 @@ def main():
                 server.wait(timeout=5)
             except subprocess.TimeoutExpired:
                 server.kill()
+            finally:
+                server_log.close()
     print("Browser smoke: 0.3 vacancy preview/edit, legacy preservation, conflict guard and 0.2 regression PASSED")
 
 
