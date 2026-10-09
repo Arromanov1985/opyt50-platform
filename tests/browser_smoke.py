@@ -35,7 +35,41 @@ def run_browser(page):
     console_errors = []
     page.on("pageerror", lambda error: console_errors.append(str(error)))
     page.goto(URL, wait_until="networkidle")
-    expect(page.locator(".release-ribbon")).to_contain_text("0.2")
+    expect(page.locator(".release-ribbon")).to_contain_text("0.3.0-dev")
+    # Search first; registration is not required to inspect a vacancy.
+    page.get_by_role("link", name="Посмотреть вакансии").first.click()
+    assert page.evaluate("location.hash") == "#jobs"
+    expect(page.locator("#guest-actions")).to_be_visible()
+
+    mode = page.locator("#reading-mode-toggle")
+    expect(mode).to_have_attribute("aria-pressed", "false")
+    mode.click()
+    expect(mode).to_have_attribute("aria-pressed", "true")
+    # The horizontal menu must remain readable in large-text mode without
+    # wrapping «О сервисе» into two lines, as happened in manual testing.
+    assert page.evaluate("""() => {
+      const links = [...document.querySelectorAll('.nav-links a')];
+      return links.every(el => el.getBoundingClientRect().height
+        <= parseFloat(getComputedStyle(el).lineHeight) + 2);
+    }"""), "Desktop navigation link wrapped in large text mode"
+    assert page.evaluate("""() => {
+      const nav = document.querySelector('.nav-inner');
+      return nav.scrollWidth <= nav.clientWidth + 2;
+    }"""), "Desktop navigation overflows its container"
+    page.reload(wait_until="networkidle")
+    expect(page.locator("#reading-mode-toggle")).to_have_attribute("aria-pressed", "true")
+    page.locator("#reading-mode-toggle").click()
+    expect(page.locator("#reading-mode-toggle")).to_have_attribute("aria-pressed", "false")
+    # At intermediate widths the full menu moves to a readable second row.
+    page.set_viewport_size({"width": 1060, "height": 760})
+    expect(page.locator(".mobile-quick-nav")).to_be_visible()
+    expect(page.locator(".nav-links")).not_to_be_visible()
+    page.set_viewport_size({"width": 1280, "height": 720})
+
+    page.locator("#register-open").click()
+    expect(page.locator("#auth-name")).to_be_focused()
+    expect(page.locator("#auth-guidance")).to_contain_text("вымышленные данные")
+    page.locator("#modal-close").click()
     expect(page.locator("#profession-filter")).to_be_visible()
     expect(page.locator("#schedule-filter")).to_be_visible()
 
@@ -55,14 +89,67 @@ def run_browser(page):
     expect(page.locator("#job-dialog")).not_to_be_visible()
 
     login(page, "kladovshik@demo.example")
-    page.locator("#public-jobs [data-v02-action='favorite']").click()
+    expect(page.locator("#profile-form")).to_be_visible()
+    expect(page.locator("#profile-profession")).to_have_value("Кладовщик")
+    expect(page.locator(".profile-optional")).not_to_have_attribute("open", "")
+    expect(page.locator("#profile-phone")).not_to_be_visible()
+    # The guide is reachable directly from the main profile fields:
+    # one click opens both optional sections and focuses the first question.
+    page.locator("#experience-start").click()
+    expect(page.locator(".profile-optional")).to_have_attribute("open", "")
+    expect(page.locator("#experience-helper")).to_have_attribute("open", "")
+    expect(page.locator("#experience-start")).to_have_attribute("aria-expanded", "true")
+    expect(page.locator("#experience-work")).to_be_focused()
+    expect(page.locator("#profile-phone")).to_be_visible()
+    expect(page.locator("#experience-build")).to_be_visible()
+    page.locator("#experience-build").click()
+    expect(page.locator("#experience-helper-message")).to_contain_text("хотя бы один ответ")
+    page.locator("#experience-work").fill("example@demo.example")
+    page.locator("#experience-build").click()
+    expect(page.locator("#experience-helper-message")).to_contain_text("телефон или email")
+    expect(page.locator("#experience-insert")).to_be_disabled()
+    page.locator("#experience-work").fill("Складской учёт")
+    page.locator("#experience-tasks").fill("Приёмка поставок и инвентаризация")
+    page.locator("#experience-strengths").fill("1С и ведение документов")
+    page.locator("#profile-about").fill("Ранее записанный опыт.")
+    page.locator("#experience-build").click()
+    expect(page.locator("#experience-preview")).to_contain_text("Складской учёт")
+    expect(page.locator("#profile-about")).to_have_value("Ранее записанный опыт.")
+    page.locator("#experience-insert").click()
+    assert page.locator("#profile-about").input_value().startswith("Ранее записанный опыт.\n\nНаправление работы:")
+    assert "1С и ведение документов" in page.locator("#profile-about").input_value()
+    expect(page.locator("#experience-insert")).to_be_disabled()
+    expect(page.locator("#experience-helper-message")).to_contain_text("Для сохранения профиля")
+    with page.expect_response(lambda response: (
+        response.url.endswith("/api/candidate/profile") and response.request.method == "PUT"
+    )) as save_profile:
+        page.locator("#profile-form button[type='submit']").click()
+    assert save_profile.value.status == 200, save_profile.value.text()
+    expect(page.locator("#toast")).to_contain_text("Профиль сохранён")
+    # Check the toast before reload; otherwise it disappears correctly.
+    toast = page.locator("#toast").bounding_box()
+    assert toast and toast["x"] >= 0 and toast["x"] + toast["width"] <= 1281
+    saved_profile = page.request.get(URL + "/api/me").json()["user"]["profile"]
+    assert saved_profile["about"].startswith("Ранее записанный опыт.\n\nНаправление работы:")
+    assert "1С и ведение документов" in saved_profile["about"]
+    # A full browser reload must retain what the candidate saved.
+    page.reload(wait_until="networkidle")
+    expect(page.locator("#profile-about")).to_have_value(saved_profile["about"])
+    expect(page.locator(".profile-optional")).not_to_have_attribute("open", "")
+    expect(page.locator("#experience-start")).to_contain_text("Помочь описать опыт")
+    # Open the editor again; the description must still be available.
+    page.locator("#experience-start").click()
+    expect(page.locator("#profile-about")).to_have_value(saved_profile["about"])
+    page.locator(".profile-next-actions [data-tab='offers']").click()
+    expect(page.locator("#dashboard-main")).to_contain_text("Подходящие вакансии")
+    page.locator("#public-jobs .job-card").filter(has_text="Кладовщик").locator("[data-v02-action='favorite']").click()
     expect(page.locator("#toast")).to_contain_text("сохранена")
-    page.locator("#account-content [data-tab='favorites']").click()
+    page.locator(".dashboard-tabs [data-tab='favorites']").click()
     expect(page.locator("#dashboard-main")).to_contain_text("Избранные вакансии")
     expect(page.locator("#dashboard-main")).to_contain_text("Кладовщик")
-    page.locator("#public-jobs [data-v02-action='apply']").click()
+    page.locator("#public-jobs .job-card").filter(has_text="Кладовщик").locator("[data-v02-action='apply']").click()
     expect(page.locator("#toast")).to_contain_text("Отклик отправлен")
-    page.locator("#account-content [data-tab='applications']").click()
+    page.locator(".dashboard-tabs [data-tab='applications']").click()
     expect(page.locator("#dashboard-main")).to_contain_text("История откликов")
     expect(page.locator("#dashboard-main")).to_contain_text("Отправлен")
     with page.expect_response(lambda response: (
@@ -81,7 +168,7 @@ def run_browser(page):
     assert retry_reply.value.json()["reapplied"] is True
     expect(page.locator("#dashboard-main")).to_contain_text("Отклик отправлен повторно")
     expect(page.locator("#dashboard-main")).to_contain_text("Отправлен")
-    page.locator("#account-content [data-tab='favorites']").click()
+    page.locator(".dashboard-tabs [data-tab='favorites']").click()
     with page.expect_response(lambda response: (
         "/api/candidate/favorites/" in response.url and
         response.request.method == "DELETE"
@@ -92,7 +179,7 @@ def run_browser(page):
     page.locator("#logout").click()
 
     login(page, "company@demo.example")
-    page.locator("#account-content [data-tab='applications']").click()
+    page.locator(".dashboard-tabs [data-tab='applications']").click()
     expect(page.locator("#dashboard-main")).to_contain_text("Отклики соискателей")
     expect(page.locator("#dashboard-main")).to_contain_text("Кладовщик")
     page.locator("#dashboard-main [data-v02-action='application-status'][data-status='reviewing']").click()
@@ -103,7 +190,7 @@ def run_browser(page):
     page.locator("#logout").click()
 
     login(page, "kladovshik@demo.example")
-    page.locator("#account-content [data-tab='applications']").click()
+    page.locator(".dashboard-tabs [data-tab='applications']").click()
     expect(page.locator("#dashboard-main")).to_contain_text("Работодатель заинтересован")
     expect(page.locator("#dashboard-main")).to_contain_text("Ожидается ваше решение")
     page.locator("#dashboard-main [data-v02-action='open-introductions']").click()
@@ -114,14 +201,14 @@ def run_browser(page):
     page.locator("#logout").click()
 
     login(page, "company@demo.example")
-    page.locator("#account-content [data-tab='invitations']").click()
+    page.locator(".dashboard-tabs [data-tab='invitations']").click()
     expect(page.locator("#dashboard-main")).to_contain_text("Согласие получено")
     page.once("dialog", lambda dialog: dialog.accept())
     page.locator("#dashboard-main [data-action='demo-pay']").click()
     expect(page.locator("#dashboard-main")).to_contain_text("Контакт открыт (демо)")
     expect(page.locator("#dashboard-main")).to_contain_text("Знакомство состоялось (демо)")
     expect(page.locator("#dashboard-main")).to_contain_text("История взаимодействия")
-    page.locator("#account-content [data-tab='applications']").click()
+    page.locator(".dashboard-tabs [data-tab='applications']").click()
     expect(page.locator("#dashboard-main")).to_contain_text("Знакомство состоялось (демо)")
     expect(page.locator("#dashboard-main")).to_contain_text("Приглашение отправлено")
     expect(page.locator("#dashboard-main")).to_contain_text("Согласие получено")
@@ -130,17 +217,17 @@ def run_browser(page):
     page.locator("#logout").click()
 
     login(page, "kladovshik@demo.example")
-    page.locator("#account-content [data-tab='applications']").click()
+    page.locator(".dashboard-tabs [data-tab='applications']").click()
     expect(page.locator("#dashboard-main")).to_contain_text("Знакомство состоялось (демо)")
     expect(page.locator("#dashboard-main [data-v02-action='withdraw']")).to_have_count(0)
-    page.locator("#account-content [data-tab='invitations']").click()
+    page.locator(".dashboard-tabs [data-tab='invitations']").click()
     expect(page.locator("#dashboard-main")).to_contain_text("Знакомство состоялось (демо)")
     page.locator("#logout").click()
 
     # Accountant must not receive an engineer recommendation merely
     # because both profiles mention Excel.
     login(page, "buhgalter@demo.example")
-    page.locator("#account-content [data-tab='offers']").click()
+    page.locator(".dashboard-tabs [data-tab='offers']").click()
     expect(page.locator("#dashboard-main")).to_contain_text("Бухгалтер")
     expect(page.locator("#dashboard-main")).not_to_contain_text("Инженер по эксплуатации")
     expect(page.locator("#dashboard-main [data-v02-action='apply']")).to_have_count(1)
@@ -150,8 +237,8 @@ def run_browser(page):
     # Reproduce the real screenshot: account has an existing application
     # before reloading the website and opening recommended jobs again.
     page.reload(wait_until="networkidle")
-    expect(page.locator(".release-ribbon")).to_contain_text("0.2.1.4")
-    page.locator("#account-content [data-tab='offers']").click()
+    expect(page.locator(".release-ribbon")).to_contain_text("0.3.0-dev")
+    page.locator(".dashboard-tabs [data-tab='offers']").click()
     expect(page.locator("#dashboard-main")).to_contain_text("Отклик: Отправлен")
     expect(page.locator("#dashboard-main [data-v02-action='apply']")).to_have_count(0)
     page.locator("#dashboard-main [data-v02-action='see-applications']").click()
@@ -171,10 +258,14 @@ def run_browser(page):
     expect(page.locator("#admin-v02-results")).to_contain_text("contact_opened")
     # The same linked journey must remain navigable on a narrow phone viewport.
     page.set_viewport_size({"width": 390, "height": 844})
+    expect(page.locator(".mobile-quick-nav")).to_be_visible()
     expect(page.locator("#admin-v02-results")).to_be_visible()
     page.locator("#logout").click()
     login(page, "kladovshik@demo.example")
-    page.locator("#account-content [data-tab='applications']").click()
+    expect(page.locator(".dashboard-tabs")).to_be_visible()
+    assert page.locator(".dashboard-tabs [data-tab='profile']").bounding_box()["height"] >= 44
+    expect(page.locator("#profile-form")).to_be_visible()
+    page.locator(".dashboard-tabs [data-tab='applications']").click()
     expect(page.locator("#dashboard-main")).to_contain_text("Знакомство состоялось (демо")
 
     if console_errors:
@@ -220,7 +311,7 @@ def main():
                 server.wait(timeout=5)
             except subprocess.TimeoutExpired:
                 server.kill()
-    print("Browser smoke: search, detail, favorite, linked interest, explicit consent, demo unlock and admin PASSED")
+    print("Browser smoke: 0.3 guest browsing, readable UX, forms, mobile navigation and 0.2 regression PASSED")
 
 
 if __name__ == "__main__":
