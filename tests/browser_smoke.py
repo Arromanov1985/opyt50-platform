@@ -373,7 +373,9 @@ def run_browser(page):
     )) as edited:
         page.locator("#vacancy-publish").click()
     assert edited.value.status == 200, edited.value.text()
-    jobs_after_edit = page.request.get(URL + "/api/employer/vacancies").json()["jobs"]
+    jobs_after_edit_response = page.request.get(URL + "/api/employer/vacancies")
+    assert jobs_after_edit_response.status == 200, f"After editing, vacancy listing returned HTTP {jobs_after_edit_response.status}: {jobs_after_edit_response.text()[:700]}"
+    jobs_after_edit = jobs_after_edit_response.json()["jobs"]
     assert len(jobs_after_edit) == len(job_list), "Editing must not create a second vacancy"
     same_job = next(job for job in jobs_after_edit if job["id"] == published_id)
     assert same_job["revision"] != old_revision
