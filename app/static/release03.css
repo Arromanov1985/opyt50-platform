@@ -106,3 +106,16 @@ body.comfortable-view .experience-helper-intro,body.comfortable-view .experience
 @media(max-width:570px){.experience-helper{padding:13px}.experience-helper-actions{flex-direction:column;align-items:stretch}.experience-helper-actions .btn{width:100%}}
 /* Make notifications readable without clipping at the browser's right edge. */
 .toast{right:16px;left:auto;bottom:20px;max-width:calc(100vw - 32px);width:max-content;line-height:1.55;overflow-wrap:anywhere}
+
+/* A clear entry point to the optional experience guide, visible before accordions. */
+.experience-entry-inner{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:18px 20px;border:1px solid #c9dfec;border-radius:14px;background:#f5fbfd}
+.experience-entry-inner strong{display:block;font-size:18px;line-height:1.35;color:#083664}
+.experience-entry-inner p{margin:6px 0 0;color:#47637d;font-size:15px;line-height:1.6}
+.experience-entry-inner .btn{min-height:48px;white-space:normal;text-align:center;flex-shrink:0}
+#experience-helper{scroll-margin-top:95px}
+body.comfortable-view .experience-entry-inner strong{font-size:21px}
+body.comfortable-view .experience-entry-inner p{font-size:17px}
+@media(max-width:700px){
+  .experience-entry-inner{flex-direction:column;align-items:stretch;padding:15px}
+  .experience-entry-inner .btn{width:100%}
+}
