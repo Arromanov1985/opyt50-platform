@@ -268,6 +268,80 @@ def run_browser(page):
     page.locator(".dashboard-tabs [data-tab='applications']").click()
     expect(page.locator("#dashboard-main")).to_contain_text("Знакомство состоялось (демо")
 
+    # New employer vacancy flow runs after all candidate/admin regressions.
+    # Only fictional job data is used and no external service is called.
+    page.locator("#logout").click()
+    page.set_viewport_size({"width": 1280, "height": 800})
+    login(page, "company@demo.example")
+    page.locator(".dashboard-tabs [data-tab='create']").click()
+    expect(page.locator("#vacancy-form")).to_be_visible()
+    expect(page.locator("#vacancy-publish")).to_be_disabled()
+    page.locator("#vacancy-show-preview").click()
+    expect(page.locator("#vacancy-form-message")).to_contain_text("Заполните обязательные поля")
+    expect(page.locator("#vacancy-publish")).to_be_disabled()
+
+    title = "Тестовый специалист по учёту"
+    page.locator("#vacancy-title").fill(title)
+    page.locator("#vacancy-city").fill("Тестоград")
+    page.locator("#vacancy-skills").fill("Excel, учёт")
+    page.locator("#vacancy-salary-min").fill("78000")
+    page.locator("#vacancy-salary-max").fill("65000")
+    page.locator("#vacancy-schedule").select_option(label="Гибкий")
+    page.locator("#vacancy-employment").select_option(label="Полная")
+    page.locator("#vacancy-responsibilities").fill("<b>Учёт товаров</b>, сверка накладных")
+    page.locator("#vacancy-requirements").fill("Знание Excel, внимательность к данным")
+    page.locator("#vacancy-conditions").fill("Гибкий график, тестовая компания, обучение на месте")
+    page.locator("#vacancy-show-preview").click()
+    expect(page.locator("#vacancy-form-message")).to_contain_text("верхняя граница")
+    expect(page.locator("#vacancy-publish")).to_be_disabled()
+
+    page.locator("#vacancy-salary-max").fill("92000")
+    page.locator("#vacancy-show-preview").click()
+    expect(page.locator("#vacancy-preview")).to_be_visible()
+    expect(page.locator("#vacancy-preview-title")).to_have_text(title)
+    expect(page.locator("#vacancy-preview-description")).to_contain_text("Обязанности:")
+    expect(page.locator("#vacancy-preview-description")).to_contain_text("Требования:")
+    expect(page.locator("#vacancy-preview-description")).to_contain_text("Условия работы:")
+    expect(page.locator("#vacancy-preview-description")).to_contain_text("<b>Учёт товаров</b>")
+    assert page.locator("#vacancy-preview-description b").count() == 0, "Unsafe HTML in preview"
+    expect(page.locator("#vacancy-publish")).to_be_enabled()
+    page.locator("#vacancy-conditions").fill("Гибкий график 5/2, вымышленная компания")
+    expect(page.locator("#vacancy-publish")).to_be_disabled()
+    expect(page.locator("#vacancy-preview")).to_be_hidden()
+    expect(page.locator("#vacancy-form-message")).to_contain_text("Повторно откройте предпросмотр")
+    page.locator("#vacancy-show-preview").click()
+    expect(page.locator("#vacancy-publish")).to_be_enabled()
+    expect(page.locator("#vacancy-preview-description")).to_contain_text("Гибкий график 5/2")
+
+    page.set_viewport_size({"width": 390, "height": 844})
+    expect(page.locator("#vacancy-publish")).to_be_visible()
+    assert page.evaluate("""() => {
+      const form = document.querySelector('#vacancy-form');
+      return form.scrollWidth <= form.clientWidth + 3;
+    }"""), "Vacancy composer overflows narrow viewport"
+
+    with page.expect_response(lambda response: (
+        response.url.endswith("/api/employer/vacancies") and response.request.method == "POST"
+    )) as new_vacancy:
+        page.locator("#vacancy-publish").click()
+    assert new_vacancy.value.status == 201, new_vacancy.value.text()
+    expect(page.locator("#dashboard-main")).to_contain_text("Мои вакансии")
+    expect(page.locator("#dashboard-main")).to_contain_text(title)
+    job_list = page.request.get(URL + "/api/employer/vacancies").json()["jobs"]
+    created = [job for job in job_list if job["title"] == title]
+    assert len(created) == 1, "The preview/publish workflow must create exactly one vacancy"
+    description = created[0]["description"]
+    assert "Обязанности:\n<b>Учёт товаров</b>" in description
+    assert "Требования:\nЗнание Excel" in description
+    assert "Условия работы:\nГибкий график 5/2" in description
+
+    page.locator("#public-jobs .job-card").filter(has_text=title).locator(
+        "[data-v02-action='details']").click()
+    expect(page.locator("#job-dialog")).to_be_visible()
+    expect(page.locator("#job-dialog-content")).to_contain_text("Гибкий график 5/2")
+    assert page.locator("#job-dialog-content b").count() == 0, "Unsafe HTML in public job"
+    page.locator("#job-dialog-close").click()
+
     if console_errors:
         raise AssertionError("Uncaught browser errors: " + " | ".join(console_errors))
 
@@ -311,7 +385,7 @@ def main():
                 server.wait(timeout=5)
             except subprocess.TimeoutExpired:
                 server.kill()
-    print("Browser smoke: 0.3 guest browsing, readable UX, forms, mobile navigation and 0.2 regression PASSED")
+    print("Browser smoke: 0.3 candidate+employer accessibility, guided vacancy preview and 0.2 regression PASSED")
 
 
 if __name__ == "__main__":

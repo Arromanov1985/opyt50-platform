@@ -20,6 +20,8 @@ jobs:
         run: |
           node --check app/static/app.js
           node --check app/static/release02.js
+          node --check app/static/release03.js
+          node --check app/static/vacancy-wizard.js
       - name: Browser dependencies
         run: |
           python -m pip install 'playwright>=1.55,<2'
