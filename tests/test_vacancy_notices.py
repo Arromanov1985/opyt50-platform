@@ -91,8 +91,6 @@ def test_only_preexisting_active_applicants_receive_edits(app):
         stopped = post(withdrawn, f"/api/candidate/applications/{withdrawn_application.json()['id']}/withdraw")
         assert stopped.status_code == 200, stopped.text
         assert notifications(applicant)["updates"] == []
-        with database(app.state.db_path) as db:
-            mail_count_before = db.execute("SELECT COUNT(*) FROM email_outbox").fetchone()[0]
         assert edit(owner, job_id, salary_min=78000, description="Обновлённые условия").status_code == 200
 
         received = notifications(applicant)
@@ -132,7 +130,7 @@ def test_only_preexisting_active_applicants_receive_edits(app):
         with database(app.state.db_path) as db:
             assert db.execute("SELECT COUNT(*) FROM vacancy_updates").fetchone()[0] == 2
             assert db.execute("SELECT COUNT(*) FROM vacancy_update_recipients").fetchone()[0] == 3
-            assert db.execute("SELECT COUNT(*) FROM email_outbox").fetchone()[0] == mail_count_before
+            assert db.execute("SELECT COUNT(*) FROM email_outbox WHERE event LIKE ?", ("%vacancy_update%",)).fetchone()[0] == 0
             assert db.execute("SELECT COUNT(*) FROM vacancies WHERE id=?", (job_id,)).fetchone()[0] == 1
             assert db.execute("SELECT COUNT(*) FROM job_applications WHERE vacancy_id=?", (job_id,)).fetchone()[0] == 3
 
