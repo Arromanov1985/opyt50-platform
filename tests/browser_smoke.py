@@ -436,6 +436,25 @@ def run_browser(page):
     page.locator("[data-action='cancel-job-edit']").click()
     expect(page.locator("#dashboard-main")).to_contain_text("Мои вакансии")
 
+    # A candidate who had already applied sees changes to the older vacancy.
+    page.locator("#logout").click()
+    login(page, "kladovshik@demo.example")
+    page.locator(".dashboard-tabs [data-tab='applications']").click()
+    expect(page.locator(".vacancy-update-banner")).to_be_visible()
+    page.locator(".dashboard-tabs [data-tab='changes']").click()
+    expect(page.locator(".vacancy-change-item")).to_have_count(2)
+    expect(page.locator(".vacancy-changes-list")).to_contain_text("Зарплата от")
+    assert page.evaluate("""() => {
+      const element = document.querySelector('#dashboard-main');
+      return element.scrollWidth <= element.clientWidth + 3;
+    }"""), "Changes list must fit mobile width"
+    notices = page.request.get(URL + "/api/candidate/vacancy-updates").json()
+    assert notices["unread_count"] == 2
+    page.locator("[data-v02-action='mark-vacancy-update-read']").first.click()
+    expect(page.locator(".vacancy-change-item")).to_have_count(2)
+    refreshed = page.request.get(URL + "/api/candidate/vacancy-updates").json()
+    assert refreshed["unread_count"] == 1
+
     if console_errors:
         raise AssertionError("Uncaught browser errors: " + " | ".join(console_errors))
 
