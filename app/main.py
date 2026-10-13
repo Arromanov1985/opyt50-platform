@@ -475,12 +475,88 @@ def create_app(db_path: str | None = None) -> FastAPI:
         )
         if cursor.rowcount != 1:
             raise HTTPException(409, "Вакансия изменилась во время редактирования. Обновите данные.")
+
+        # Create exactly one update event per substantive edit. Recipients are
+        # snapshotted at this moment: later applicants cannot see earlier edits.
+        # No external email or payment service is invoked.
+        changed = {
+            field: {"before": original[field], "after": values[field]}
+            for field in VACANCY_CONTENT_FIELDS
+            if original[field] != values[field]
+        }
+        if changed:
+            event = db.execute(
+                "INSERT INTO vacancy_updates(vacancy_id,employer_id,changes_json) VALUES(?,?,?)",
+                (job_id, user["id"], json.dumps(changed, ensure_ascii=False)),
+            )
+            db.execute(
+                """INSERT INTO vacancy_update_recipients(update_id,candidate_id)
+                   SELECT ?,recipient.candidate_id FROM (
+                       SELECT candidate_id FROM job_applications
+                       WHERE vacancy_id=? AND status <> 'withdrawn'
+                       UNION
+                       SELECT candidate_id FROM invitations
+                       WHERE vacancy_id=? AND status IN ('sent','accepted')
+                   ) AS recipient""",
+                (event.lastrowid, job_id, job_id),
+            )
         db.commit()
         updated = db.execute(
             "SELECT * FROM vacancies WHERE id=? AND employer_id=?",
             (job_id, user["id"]),
         ).fetchone()
         return {"ok": True, "job": {**dict(updated), "revision": vacancy_revision(updated)}}
+
+    @app.get("/api/candidate/vacancy-updates")
+    def candidate_vacancy_updates(
+        user: dict = Depends(active_user),
+        db: sqlite3.Connection = Depends(get_connection),
+    ):
+        """Private in-account notices about actual edits to relevant vacancies."""
+        allowed(user, "candidate")
+        rows = db.execute(
+            """SELECT u.id,u.vacancy_id,u.created_at,u.changes_json,
+                      v.title,v.status AS vacancy_status,e.company_name,
+                      r.read_at
+               FROM vacancy_update_recipients r
+               JOIN vacancy_updates u ON u.id=r.update_id
+               JOIN vacancies v ON v.id=u.vacancy_id
+               JOIN employer_profiles e ON e.user_id=u.employer_id
+               WHERE r.candidate_id=?
+               ORDER BY u.id DESC LIMIT 100""",
+            (user["id"],),
+        ).fetchall()
+        unread_count = db.execute(
+            """SELECT COUNT(*) FROM vacancy_update_recipients
+               WHERE candidate_id=? AND read_at IS NULL""", (user["id"],),
+        ).fetchone()[0]
+        return {
+            "unread_count": unread_count,
+            "updates": [
+                {**{field: row[field] for field in (
+                    "id", "vacancy_id", "created_at", "title",
+                    "vacancy_status", "company_name", "read_at"
+                )}, "changes": json.loads(row["changes_json"])}
+                for row in rows
+            ],
+        }
+
+    @app.post("/api/candidate/vacancy-updates/{update_id}/read")
+    def candidate_read_vacancy_update(
+        update_id: int,
+        user: dict = Depends(active_user),
+        db: sqlite3.Connection = Depends(get_connection),
+    ):
+        """Idempotent read receipt for the logged-in recipient only."""
+        allowed(user, "candidate")
+        cursor = db.execute(
+            """UPDATE vacancy_update_recipients SET read_at=COALESCE(read_at,datetime('now'))
+               WHERE update_id=? AND candidate_id=?""", (update_id, user["id"]),
+        )
+        if cursor.rowcount == 0:
+            raise HTTPException(404, "Уведомление не найдено")
+        db.commit()
+        return {"ok": True}
 
     @app.patch("/api/employer/vacancies/{job_id}/status")
     def set_vacancy_status(
