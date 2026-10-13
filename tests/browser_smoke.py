@@ -443,7 +443,7 @@ def run_browser(page):
     expect(page.locator(".vacancy-update-banner")).to_be_visible()
     page.locator(".dashboard-tabs [data-tab='changes']").click()
     expect(page.locator(".vacancy-change-item")).to_have_count(2)
-    expect(page.locator(".vacancy-changes-list")).to_contain_text("Зарплата от")
+    expect(page.locator(".vacancy-changes-list").first).to_contain_text("Зарплата от")
     assert page.evaluate("""() => {
       const element = document.querySelector('#dashboard-main');
       return element.scrollWidth <= element.clientWidth + 3;
