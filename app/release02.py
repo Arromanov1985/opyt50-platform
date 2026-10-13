@@ -67,6 +67,23 @@ CREATE TABLE IF NOT EXISTS admin_audit (
  target_id INTEGER NOT NULL,
  created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
+-- Vacancy changes and their intended recipients live only in the demo SQLite database.
+-- Recipients are determined at edit time; candidates joining later never receive old updates.
+CREATE TABLE IF NOT EXISTS vacancy_updates (
+ id INTEGER PRIMARY KEY AUTOINCREMENT,
+ vacancy_id INTEGER NOT NULL REFERENCES vacancies(id) ON DELETE CASCADE,
+ employer_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+ changes_json TEXT NOT NULL,
+ created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_vacancy_updates_vacancy ON vacancy_updates(vacancy_id,id);
+CREATE TABLE IF NOT EXISTS vacancy_update_recipients (
+ update_id INTEGER NOT NULL REFERENCES vacancy_updates(id) ON DELETE CASCADE,
+ candidate_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+ read_at TEXT,
+ PRIMARY KEY (update_id,candidate_id)
+);
+CREATE INDEX IF NOT EXISTS idx_vacancy_update_recipients_candidate ON vacancy_update_recipients(candidate_id,read_at,update_id);
 """
 
 

@@ -170,3 +170,21 @@ body.comfortable-view .vacancy-preview-description,body.comfortable-view .vacanc
 body.comfortable-view .vacancy-edit-warning{font-size:18px}
 body.comfortable-view .vacancy-cancel{font-size:17px}
 @media(max-width:570px){.vacancy-edit-warning{padding:12px}.vacancy-cancel{width:100%}}
+
+
+/* Changes to vacancies after a candidate has applied: readable at age 50+. */
+.vacancy-update-banner{border:1px solid #a6d9de;border-left:4px solid #00c7b8;background:#f0fcfb;color:#083664;padding:15px;margin:14px 0 19px;border-radius:11px;line-height:1.7;display:flex;align-items:center;gap:14px;flex-wrap:wrap}
+.vacancy-unread-count{background:#e9f8f6;color:#0b615c;padding:12px 15px;border-radius:10px;line-height:1.5;font-weight:700}
+.vacancy-change-item{border-left:4px solid #00c7b8}
+.vacancy-change-item.is-read{border-left-color:#d9e3e9}
+.vacancy-change-item .item-actions{margin-top:13px}
+.vacancy-change-context{color:#476178;line-height:1.7}
+.vacancy-changes-list{display:grid;gap:14px;margin:15px 0}
+.vacancy-change-detail{border:1px solid #dce8ed;padding:13px 15px;border-radius:11px}
+.vacancy-change-detail>strong{font-size:17px;color:#083664}
+.vacancy-change-pair{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:12px;margin-top:11px}
+.vacancy-change-pair>div{min-width:0;background:#f5f9fb;padding:11px;border-radius:8px}
+.vacancy-change-pair small{display:block;color:#57738b;font-weight:700;margin-bottom:4px}
+.vacancy-change-pair p{white-space:pre-wrap;overflow-wrap:anywhere;margin:0;line-height:1.65;color:#163d5d}
+body.comfortable-view .vacancy-change-context,body.comfortable-view .vacancy-change-pair p,body.comfortable-view .vacancy-update-banner{font-size:18px}
+@media(max-width:580px){.vacancy-change-pair{grid-template-columns:1fr}.vacancy-update-banner .btn{width:100%}}
