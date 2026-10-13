@@ -28,6 +28,14 @@ def register(client, role, name, email):
         d["company_name"] = "Тестовая компания"
     r = post(client, "/api/register", d)
     assert r.status_code == 201, r.text
+    if role == "candidate":
+        profile = client.put("/api/candidate/profile", json={
+            "profession": "Кладовщик", "city": "Подольск",
+            "skills": "1С", "salary_min": 65000,
+            "schedule": "Сменный", "employment": "Полная",
+            "phone": "", "about": "Тестовый опыт", "is_active": True,
+        }, headers=HDR)
+        assert profile.status_code == 200, profile.text
     return r.json()["user"]["id"]
 
 
