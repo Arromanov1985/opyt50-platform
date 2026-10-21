@@ -154,6 +154,8 @@ def run_browser(page):
     expect(page.locator("#profile-about")).to_have_value(saved_profile["about"])
     page.locator(".profile-next-actions [data-tab='offers']").click()
     expect(page.locator("#dashboard-main")).to_contain_text("Подходящие вакансии")
+    expect(page.locator("#dashboard-main")).to_contain_text("Другие вакансии, которые могут вас заинтересовать")
+    expect(page.locator("#dashboard-main")).to_contain_text("Что не совпадает:")
     expect(page.locator("#dashboard-main .match-explanation").first).to_be_visible()
     page.locator("#dashboard-main .match-explanation summary").first.click()
     expect(page.locator("#dashboard-main .match-explanation").first).to_contain_text("Подходят зарплатные ожидания")
