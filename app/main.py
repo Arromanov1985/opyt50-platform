@@ -413,6 +413,31 @@ def create_app(db_path: str | None = None) -> FastAPI:
                                 "introduction_stage": introduction_stage(row["invitation_status"], row["contact_shared"])})
         return {"jobs": sorted(matches, key=lambda x: (-x["score"], -x["id"]))[:50]}
 
+    @app.get("/api/candidate/alternative-jobs")
+    def alternative_jobs(user: dict = Depends(active_user), db: sqlite3.Connection = Depends(get_connection)):
+        """Other public vacancies with transparent differences, not personalized matches."""
+        allowed(user, "candidate")
+        profile = candidate_view(db, user["id"])
+        if not profile["profession"] or not profile["city"] or not profile["is_active"]:
+            return {"jobs": []}
+        from .matching import mismatch_reasons
+        rows = db.execute(
+            """SELECT v.id,v.title,v.city,v.salary_min,v.salary_max,v.schedule,
+                      v.employment,v.skills,v.description,v.status,e.company_name
+               FROM vacancies v JOIN employer_profiles e ON e.user_id=v.employer_id
+               WHERE v.status='open' ORDER BY v.id DESC LIMIT 500"""
+        ).fetchall()
+        alternatives = []
+        for row in rows:
+            vacancy = dict(row)
+            if match_candidate(vacancy, profile):
+                continue
+            reasons = mismatch_reasons(vacancy, profile)
+            if reasons:
+                alternatives.append({**vacancy, "mismatch_reasons": reasons})
+        alternatives.sort(key=lambda v: (len(v["mismatch_reasons"]), -v["id"]))
+        return {"jobs": alternatives[:10]}
+
     @app.post("/api/employer/vacancies", status_code=201)
     def create_vacancy(data: VacancyIn, user: dict = Depends(active_user), db: sqlite3.Connection = Depends(get_connection)):
         allowed(user, "employer")
