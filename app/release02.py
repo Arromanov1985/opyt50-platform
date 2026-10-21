@@ -335,7 +335,7 @@ def install_routes(app) -> None:
         return {"ok": True}
 
     @app.get("/api/employer/applications")
-    def employer_applications(vacancy_id: int | None = None, user: dict = Depends(active_user),
+    def employer_applications(vacancy_id: int | None = None, status: str | None = None, user: dict = Depends(active_user),
                               db: sqlite3.Connection = Depends(get_connection)):
         allowed(user, "employer")
         params = [user["id"]]
@@ -350,6 +350,12 @@ def install_routes(app) -> None:
         if vacancy_id is not None:
             sql += " AND a.vacancy_id=?"
             params.append(vacancy_id)
+        if status is not None:
+            valid_statuses = {"applied", "reviewing", "interview", "rejected", "withdrawn"}
+            if status not in valid_statuses:
+                raise HTTPException(status_code=422, detail="Неизвестный статус отклика")
+            sql += " AND a.status=?"
+            params.append(status)
         sql += " ORDER BY a.id DESC LIMIT 300"
         rows = db.execute(sql, params).fetchall()
         applications = []
