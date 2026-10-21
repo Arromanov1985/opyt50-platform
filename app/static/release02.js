@@ -42,6 +42,7 @@
         <h3>${esc(job.title)}</h3><div class="job-salary">${formatPay(job)}</div>
         <div class="job-meta"><span>⌖ ${esc(job.city)}</span><span>${esc(job.schedule)}</span><span>${esc(job.employment)}</span></div>
         <p>${esc(job.skills || 'Подробности в описании вакансии')}</p>
+        ${personalized ? `<details class="match-explanation"><summary>Почему мне подходит эта вакансия?</summary><ul>${(Array.isArray(job.reasons) ? job.reasons : []).map(reason => `<li>${esc(reason)}</li>`).join('') || '<li>Подходят основные условия вашего профиля</li>'}</ul><p class="muted">Процент совпадения — ориентир по данным анкеты, а не вероятность трудоустройства. Решение о приглашении принимает работодатель.</p></details>` : ''}
         <div class="job-actions"><button class="btn btn-outline btn-tiny" data-v02-action="details" data-id="${id}">Подробнее</button>
         ${open ? `${state.user?.role === 'candidate' ? jobApplicationAction(id, job) : `<button type="button" class="btn btn-primary btn-tiny" data-v02-action="apply" data-id="${id}">Откликнуться</button>`}<button class="btn btn-outline btn-tiny" data-v02-action="favorite" data-id="${id}" aria-label="Сохранить вакансию">♡</button>` : ''}</div></article>`;
     };
