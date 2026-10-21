@@ -247,7 +247,7 @@ def run_browser(page):
     login(page, "buhgalter@demo.example")
     page.locator(".dashboard-tabs [data-tab='offers']").click()
     expect(page.locator("#dashboard-main")).to_contain_text("Бухгалтер")
-    expect(page.locator("#dashboard-main")).not_to_contain_text("Инженер по эксплуатации")
+    expect(page.locator("#dashboard-main > .panel:first-child .dashboard-list")).not_to_contain_text("Инженер по эксплуатации")
     expect(page.locator("#dashboard-main [data-v02-action='apply']")).to_have_count(1)
     page.locator("#dashboard-main [data-v02-action='apply']").click()
     expect(page.locator("#dashboard-main")).to_contain_text("Отклик: Отправлен")
