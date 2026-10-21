@@ -115,11 +115,23 @@ def run_browser(page):
     page.locator("#experience-build").click()
     expect(page.locator("#experience-preview")).to_contain_text("Складской учёт")
     expect(page.locator("#profile-about")).to_have_value("Ранее записанный опыт.")
+    page.locator("#profile-about").fill(
+        "Направление работы: профессия «Складской учёт». Основные задачи: "
+        "«Приёмка поставок и инвентаризация». Сильные стороны и навыки: "
+        "«1С и ведение документов»."
+    )
+    previous = page.locator("#profile-about").input_value()
+    page.locator("#experience-insert").click()
+    expect(page.locator("#experience-helper-message")).to_contain_text("Похожее описание")
+    assert page.locator("#profile-about").input_value() == previous
+    expect(page.locator("#experience-insert")).to_be_disabled()
+    page.locator("#profile-about").fill("Ранее записанный опыт.")
+    page.locator("#experience-build").click()
     page.locator("#experience-insert").click()
     assert page.locator("#profile-about").input_value().startswith("Ранее записанный опыт.\n\nНаправление работы:")
     assert "1С и ведение документов" in page.locator("#profile-about").input_value()
     expect(page.locator("#experience-insert")).to_be_disabled()
-    expect(page.locator("#experience-helper-message")).to_contain_text("Для сохранения профиля")
+    expect(page.locator("#experience-helper-message")).to_contain_text("Сохранить профиль")
     with page.expect_response(lambda response: (
         response.url.endswith("/api/candidate/profile") and response.request.method == "PUT"
     )) as save_profile:
