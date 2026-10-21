@@ -119,3 +119,45 @@ body.comfortable-view .experience-entry-inner p{font-size:17px}
   .experience-entry-inner{flex-direction:column;align-items:stretch;padding:15px}
   .experience-entry-inner .btn{width:100%}
 }
+
+
+/* Employer vacancy composer: clear sections and mandatory review before publish. */
+.vacancy-compose>.muted{max-width:850px}
+.vacancy-demo-warning{margin:14px 0 22px;padding:12px 15px;border:1px solid #efddb9;background:#fffaf0;color:#7b5828;border-radius:11px;font-size:14px;line-height:1.65}
+.vacancy-step{min-width:0;border:1px solid #d9e8f2;border-radius:15px;padding:17px 20px 20px;margin:17px 0 24px}
+.vacancy-step legend{color:#083664;font-size:20px;font-weight:800;padding:0 10px;max-width:100%}
+.vacancy-step .field{margin-bottom:15px;min-width:0}
+.vacancy-step .field:last-child{margin-bottom:0}
+.vacancy-step .field>label{display:block;margin-bottom:8px;color:#083664;font-weight:750;font-size:15px}
+.vacancy-step .field input,.vacancy-step .field select,.vacancy-step .field textarea{font-size:16px;min-height:50px;line-height:1.5;width:100%}
+.vacancy-step .field textarea{resize:vertical;min-height:100px;padding:13px}
+.vacancy-step .form-grid{gap:10px 16px}
+.vacancy-preview-intro{padding:19px 20px;border-radius:14px;background:#eff9fb;border:1px solid #cae6eb;margin-top:8px}
+.vacancy-preview-intro strong{display:block;color:#083664;font-size:20px;line-height:1.35}
+.vacancy-preview-intro p{margin:9px 0 16px;color:#3f5f75;line-height:1.6;font-size:15px}
+.vacancy-preview-intro .btn{min-height:48px}
+.vacancy-form-message{margin:13px 0 0!important;font-size:15px;line-height:1.55;color:#15685d}
+.vacancy-form-message:empty{display:none}
+.vacancy-form-message.is-error{color:#b23f35}
+.vacancy-preview{padding:20px 22px;border:2px solid #00c7b8;background:#fff;border-radius:15px;margin-top:18px;scroll-margin-top:90px;box-shadow:0 12px 35px rgba(0,60,90,.07)}
+.vacancy-preview[hidden]{display:none}
+.vacancy-preview h4{color:#083664;font-size:27px;line-height:1.3;margin:12px 0}
+.vacancy-preview-company,.vacancy-preview-salary{color:#083664;font-weight:700;font-size:17px}
+.vacancy-preview-salary{font-size:23px}
+.vacancy-preview>p{line-height:1.6}
+.vacancy-preview-description{white-space:pre-wrap;overflow-wrap:anywhere;line-height:1.7;color:#284963}
+.vacancy-preview-note{padding:11px 13px;background:#f1f7fb;border-radius:10px;color:#476178;font-size:14px}
+.vacancy-publish-actions{display:flex;align-items:center;gap:15px;flex-wrap:wrap;padding-top:20px}
+.vacancy-publish-actions .btn{min-height:52px}
+.vacancy-publish-actions .btn:disabled{opacity:.45;cursor:not-allowed}
+.vacancy-publish-actions .field-help{max-width:360px}
+body.comfortable-view .vacancy-step .field>label,body.comfortable-view .vacancy-step .field input,body.comfortable-view .vacancy-step .field textarea,body.comfortable-view .vacancy-step .field select{font-size:18px}
+body.comfortable-view .vacancy-preview-description,body.comfortable-view .vacancy-preview-intro p{font-size:18px}
+@media(max-width:650px){
+ .vacancy-step{padding:13px 13px 17px}
+ .vacancy-step legend{font-size:18px}
+ .vacancy-preview-intro{padding:15px}
+ .vacancy-preview{padding:17px}
+ .vacancy-publish-actions{display:block}
+ .vacancy-publish-actions .btn{width:100%}
+}

@@ -230,16 +230,62 @@ async function renderEmployer() {
   } catch(e) { target.innerHTML = `<div class="panel">${esc(e.message)}</div>`; toast(e.message,true); }
 }
 function vacancyFormMarkup() {
-  return `<div class="panel"><h3>Разместить вакансию</h3><p class="muted">Публикация бесплатна. Контакты кандидатов передаются только после их согласия.</p><form id="vacancy-form"><div class="form-grid">
-    <div class="field wide"><label>Должность</label><input name="title" placeholder="Например, инженер по эксплуатации" minlength="3" maxlength="120" required></div>
-    <div class="field"><label>Город</label><input name="city" placeholder="Москва или Удалённо" minlength="2" maxlength="100" required></div>
-    <div class="field"><label>Обязательные навыки (через запятую)</label><input name="skills" placeholder="1С, Excel" maxlength="300"></div>
-    <div class="field"><label>Зарплата от, ₽</label><input name="salary_min" type="number" min="0" max="10000000" value="50000" required></div>
-    <div class="field"><label>Зарплата до, ₽</label><input name="salary_max" type="number" min="0" max="10000000" value="100000" required></div>
-    <div class="field"><label>График</label><select name="schedule">${optList(schedules,'Любой')}</select></div>
-    <div class="field"><label>Занятость</label><select name="employment">${optList(employment,'Любая')}</select></div>
-    <div class="field wide"><label>Описание и условия работы</label><textarea name="description" maxlength="1200" placeholder="Обязанности, требования, условия оплаты"></textarea></div>
-    </div><button class="btn btn-primary" type="submit">Опубликовать вакансию ↗</button></form></div>`;
+  return `<div class="panel vacancy-compose">
+    <span class="section-kicker">НОВАЯ ВАКАНСИЯ</span>
+    <h3>Разместить вакансию</h3>
+    <p class="muted">Заполните короткие разделы, проверьте объявление глазами соискателя и только затем опубликуйте. Размещение бесплатное; контакты кандидата защищены отдельным согласием.</p>
+    <p class="vacancy-demo-warning">Тестовый стенд: используйте только вымышленные сведения о компании, вакансии и контактах.</p>
+    <form id="vacancy-form">
+      <fieldset class="vacancy-step">
+        <legend>1. Основная информация</legend>
+        <div class="form-grid">
+          <div class="field wide"><label for="vacancy-title">Должность *</label><input id="vacancy-title" name="title" placeholder="Например, инженер по эксплуатации" minlength="3" maxlength="120" required></div>
+          <div class="field"><label for="vacancy-city">Город или формат работы *</label><input id="vacancy-city" name="city" placeholder="Например, Москва или Удалённо" minlength="2" maxlength="100" required></div>
+          <div class="field"><label for="vacancy-skills">Ключевые навыки (через запятую)</label><input id="vacancy-skills" name="skills" placeholder="Например, 1С, Excel" maxlength="300"></div>
+          <div class="field"><label for="vacancy-salary-min">Зарплата от, ₽ *</label><input id="vacancy-salary-min" name="salary_min" type="number" inputmode="numeric" min="0" max="10000000" value="50000" required></div>
+          <div class="field"><label for="vacancy-salary-max">Зарплата до, ₽ *</label><input id="vacancy-salary-max" name="salary_max" type="number" inputmode="numeric" min="0" max="10000000" value="100000" required></div>
+          <div class="field"><label for="vacancy-schedule">График</label><select id="vacancy-schedule" name="schedule">${optList(schedules,'Любой')}</select></div>
+          <div class="field"><label for="vacancy-employment">Занятость</label><select id="vacancy-employment" name="employment">${optList(employment,'Любая')}</select></div>
+        </div>
+      </fieldset>
+      <fieldset class="vacancy-step">
+        <legend>2. Расскажите о работе</legend>
+        <p class="muted">Три небольших блока помогут человеку сразу понять обязанности, требования и условия.</p>
+        <div class="field"><label for="vacancy-responsibilities">Что предстоит делать? *</label>
+          <textarea id="vacancy-responsibilities" name="responsibilities" maxlength="400" rows="3" required placeholder="Например: вести учёт товаров, принимать поставки, оформлять документы"></textarea>
+          <small class="field-help">Перечислите реальные обязанности, простыми словами. До 400 символов.</small>
+        </div>
+        <div class="field"><label for="vacancy-requirements">Что нужно уметь? *</label>
+          <textarea id="vacancy-requirements" name="requirements" maxlength="300" rows="3" required placeholder="Например: базовое знание 1С, внимательность. Если особых требований нет — так и напишите"></textarea>
+          <small class="field-help">Только необходимые навыки. Не указывайте возрастные ограничения. До 300 символов.</small>
+        </div>
+        <div class="field"><label for="vacancy-conditions">Что предлагает компания? *</label>
+          <textarea id="vacancy-conditions" name="conditions" maxlength="350" rows="3" required placeholder="Например: сменный график 2/2, официальное оформление, обучение на месте"></textarea>
+          <small class="field-help">График, оформление, место работы, особенности оплаты. До 350 символов.</small>
+        </div>
+      </fieldset>
+      <div class="vacancy-preview-intro">
+        <strong>3. Проверьте объявление перед публикацией</strong>
+        <p>Вы увидите должность, зарплату и описание так, как их увидит соискатель. До вашего подтверждения объявление не будет опубликовано.</p>
+        <button class="btn btn-outline btn-lg" type="button" id="vacancy-show-preview" aria-controls="vacancy-preview">Посмотреть вакансию →</button>
+        <p id="vacancy-form-message" class="vacancy-form-message" role="status" aria-live="polite"></p>
+      </div>
+      <section id="vacancy-preview" class="vacancy-preview" aria-label="Предварительный просмотр вакансии" hidden>
+        <span class="section-kicker">ПРЕДПРОСМОТР ДЛЯ СОИСКАТЕЛЯ</span>
+        <h4 id="vacancy-preview-title"></h4>
+        <p class="vacancy-preview-company"><span id="vacancy-preview-company"></span> · <span id="vacancy-preview-city"></span></p>
+        <p class="vacancy-preview-salary" id="vacancy-preview-salary"></p>
+        <p id="vacancy-preview-schedule"></p>
+        <p id="vacancy-preview-skills"></p>
+        <p id="vacancy-preview-description" class="vacancy-preview-description"></p>
+        <p class="vacancy-preview-note">Проверьте каждую строку. Чтобы исправить что-либо, измените поля выше и повторно откройте предпросмотр.</p>
+      </section>
+      <div class="vacancy-publish-actions">
+        <button type="submit" class="btn btn-primary btn-lg" id="vacancy-publish" disabled>Опубликовать вакансию ↗</button>
+        <p class="field-help">Кнопка станет доступна после предварительного просмотра. Публикация отправляет вакансию в тестовую базу.</p>
+      </div>
+    </form>
+  </div>`;
 }
 async function loadEmployerVacancies() {
   const {jobs} = await api('/api/employer/vacancies');
@@ -289,8 +335,24 @@ async function handleDashboardSubmit(event) {
   }
   if (form.id === 'vacancy-form') {
     event.preventDefault();
-    const body = {title:formValue(form,'title'),city:formValue(form,'city'),skills:formValue(form,'skills'),salary_min:parseNumber(form,'salary_min'),salary_max:parseNumber(form,'salary_max'),schedule:formValue(form,'schedule'),employment:formValue(form,'employment'),description:formValue(form,'description')};
-    try { await api('/api/employer/vacancies',{method:'POST',body:JSON.stringify(body)}); state.tab='vacancies'; await showDashboard(); await loadPublicJobs(); toast('Вакансия опубликована.'); } catch(e) { toast(e.message,true); }
+    const description = window.OpytnovacancyWizard?.getReviewedDescription(form);
+    if (!description) {
+      toast('Сначала проверьте вакансию в предпросмотре.', true);
+      return;
+    }
+    const body = {title:formValue(form,'title'),city:formValue(form,'city'),skills:formValue(form,'skills'),salary_min:parseNumber(form,'salary_min'),salary_max:parseNumber(form,'salary_max'),schedule:formValue(form,'schedule'),employment:formValue(form,'employment'),description};
+    const submit = form.querySelector('#vacancy-publish');
+    submit.disabled = true;
+    try {
+      await api('/api/employer/vacancies',{method:'POST',body:JSON.stringify(body)});
+      state.tab='vacancies';
+      await showDashboard();
+      await loadPublicJobs();
+      toast('Вакансия опубликована. Теперь она доступна в поиске.');
+    } catch(e) {
+      toast(e.message,true);
+      if (submit.isConnected) submit.disabled = false;
+    }
   }
 }
 async function handleDashboardClick(event) {
