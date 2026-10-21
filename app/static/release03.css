@@ -1,0 +1,121 @@
+/* Release 0.3: accessibility and first-time onboarding. Brandbook colors retained. */
+.reading-toggle{font-family:inherit;min-height:44px;min-width:44px;display:inline-flex;align-items:center;justify-content:center;gap:7px;border:1px solid #c6d9ed;border-radius:12px;background:#fff;color:#083664;font-size:15px;font-weight:800;cursor:pointer;white-space:nowrap;padding:8px 12px}
+.reading-toggle[aria-pressed="true"]{color:#083664;background:#d8f8f5;border-color:#00b6aa}
+.mobile-quick-nav{display:none}
+.hero-helper{margin:0 0 16px;color:#4b6782;font-size:15px;line-height:1.6}
+.auth-guidance{padding:12px 14px;background:#eff8fc;border:1px solid #d6eaf8;border-radius:11px;color:#385874;font-size:14px;line-height:1.55}
+.candidate-profile h3{font-size:clamp(23px,3vw,29px);margin:10px 0}
+.candidate-profile .form-grid{row-gap:12px}
+.candidate-profile .field{min-width:0}
+.candidate-profile .field label{font-size:15px;font-weight:750;color:#083664}
+.candidate-profile .field input,.candidate-profile .field select,.candidate-profile .field textarea{font-size:16px;min-height:48px}
+.candidate-profile .field textarea{min-height:110px}
+.profile-progress{display:flex;gap:14px;align-items:center;padding:15px 16px;margin:20px 0;background:#e9f7fb;border:1px solid #d4e7f1;border-radius:14px}
+.profile-progress-step{width:42px;height:42px;border-radius:50%;background:#007fce;color:#fff;display:grid;place-items:center;font-weight:850;font-size:19px;flex-shrink:0}
+.profile-progress strong,.profile-progress small{display:block;line-height:1.5}
+.profile-progress strong{color:#083664;font-size:17px}
+.profile-progress small{color:#536d86;font-size:13px}
+.field-help{display:block;margin-top:6px;color:#59738c;font-size:13px;line-height:1.5}
+.required-mark{color:#007fce}
+.profile-optional{border:1px solid #d3e4ef;border-radius:13px;padding:13px 17px;margin:6px 0}
+.profile-optional summary{cursor:pointer;min-height:38px;display:flex;align-items:center;color:#083664;font-size:16px;font-weight:750;list-style-position:inside}
+.profile-optional[open] summary{margin-bottom:10px}
+.profile-optional .muted{margin-bottom:12px}
+.form-note{color:#556f87;font-size:13px;line-height:1.6;margin:14px 0}
+.profile-next-actions{border-top:1px solid #dce7ef;margin-top:25px;padding-top:20px;display:flex;flex-wrap:wrap;gap:10px;align-items:center}
+.profile-next-actions strong{display:block;flex-basis:100%;color:#083664;font-size:16px}
+.profile-next-actions .btn,.empty-state .btn{min-height:46px}
+.btn:focus-visible,.dashboard-tabs button:focus-visible,.reading-toggle:focus-visible,.mobile-quick-nav a:focus-visible,a:focus-visible,input:focus-visible,textarea:focus-visible,select:focus-visible,summary:focus-visible{outline:3px solid #007fce!important;outline-offset:3px}
+body.comfortable-view{font-size:18px;line-height:1.65}
+body.comfortable-view .muted,body.comfortable-view .field-help,body.comfortable-view .item-card p,body.comfortable-view .job-card p,body.comfortable-view .form-note{font-size:16px}
+body.comfortable-view .btn,body.comfortable-view .dashboard-tabs button,body.comfortable-view .nav-links a{font-size:17px;line-height:1.35}
+body.comfortable-view .candidate-profile .field label,body.comfortable-view .candidate-profile .field input,body.comfortable-view .candidate-profile .field select{font-size:18px}
+body.comfortable-view .profile-progress small{font-size:15px}
+body.comfortable-view .job-card h3,body.comfortable-view .item-card h4{font-size:22px}
+body.comfortable-view .mini-badge,body.comfortable-view .job-meta span{font-size:14px}
+body.comfortable-view .profile-optional summary{font-size:18px}
+@media(max-width:830px){
+  .reading-toggle span{display:none}
+  .mobile-quick-nav{display:flex;justify-content:center;flex-wrap:wrap;gap:5px;padding:8px 12px;border-bottom:1px solid #e5edf5;background:#f6f9fc}
+  .mobile-quick-nav a{padding:9px 12px;min-height:44px;display:inline-flex;align-items:center;border-radius:9px;text-decoration:none;color:#083664;font-size:14px;font-weight:750}
+  .mobile-quick-nav a:active{background:#d8f8f5}
+  .dashboard-tabs{display:grid!important;grid-template-columns:repeat(2,minmax(0,1fr));overflow:visible!important;white-space:normal!important;gap:8px}
+  .dashboard-tabs button{width:100%!important;text-align:center!important;min-height:52px;padding:11px 8px;font-size:14px;line-height:1.35}
+  .side-panel{position:static}
+}
+@media(max-width:570px){
+  .reading-toggle{min-width:44px;padding:8px}
+  .nav-inner{gap:7px}
+  .nav-actions .btn{min-height:44px}
+  .hero-actions{display:flex;flex-wrap:wrap;gap:10px}
+  .hero-actions .btn{min-height:52px;text-align:center;white-space:normal}
+  .hero-helper{font-size:14px}
+  .candidate-profile .form-grid{grid-template-columns:1fr}
+  .candidate-profile .form-grid .wide{grid-column:1}
+  .profile-optional{padding:12px}
+  .profile-next-actions{display:grid;grid-template-columns:1fr}
+  .profile-next-actions .btn{width:100%;justify-content:center}
+  body.comfortable-view .dashboard-tabs{grid-template-columns:1fr}
+  .item-actions .btn,.job-actions .btn{min-height:44px}
+}
+@media(prefers-reduced-motion: reduce){
+  *,*::before,*::after{scroll-behavior:auto!important;transition-duration:.01ms!important;animation-duration:.01ms!important}
+}
+
+/* Navigation must stay legible when the candidate turns on large text.
+   Compact gaps before sacrificing font size; use a second nav row in tight widths. */
+.nav-inner{gap:clamp(8px,1.05vw,16px)}
+.nav-inner .brand,.nav-inner .reading-toggle,.nav-inner .nav-actions{flex-shrink:0}
+.nav-links{gap:clamp(11px,1.15vw,17px);flex-shrink:0}
+.nav-links a{white-space:nowrap}
+body.comfortable-view .nav-links a{white-space:nowrap}
+@media(max-width:1180px){
+  .site-header .nav-links{display:none}
+  .mobile-quick-nav{display:flex;justify-content:center;flex-wrap:wrap;gap:5px;padding:8px 12px;border-bottom:1px solid #e5edf5;background:#f6f9fc}
+  .mobile-quick-nav a{padding:9px 12px;min-height:44px;display:inline-flex;align-items:center;border-radius:9px;text-decoration:none;color:#083664;font-size:14px;font-weight:750}
+}
+
+/* Small labels must remain legible in the selected large-text mode. */
+body.comfortable-view .job-company{font-size:15px}
+body.comfortable-view .job-category{font-size:14px}
+body.comfortable-view .jobs-count{font-size:15px}
+body.comfortable-view .section-kicker{font-size:14px}
+body.comfortable-view .mobile-quick-nav a{font-size:16px}
+
+/* Local, optional assistance for describing experience in plain language. */
+.experience-helper{margin-top:16px;padding:16px 18px;border:1px solid #c9dfec;border-radius:14px;background:#f5fbfd}
+.experience-helper summary{font-weight:780;color:#083664;font-size:17px;line-height:1.45;min-height:44px;cursor:pointer}
+.experience-helper[open] summary{margin-bottom:12px}
+.experience-helper-intro{font-size:15px;color:#365873;line-height:1.65}
+.experience-helper-privacy{font-size:13px;color:#596e7b;line-height:1.65;padding:9px 11px;border-left:3px solid #00c7b8;background:white;border-radius:5px}
+.experience-helper-fields{display:grid;gap:9px}
+.experience-helper-fields label{font-weight:700;font-size:15px;color:#083664;margin-top:7px}
+.experience-helper-fields textarea{resize:vertical;min-height:80px;width:100%;border:1px solid #c9ddeb;border-radius:10px;padding:12px;font-size:16px;background:#fff;line-height:1.5}
+.experience-helper-actions{display:flex;align-items:center;flex-wrap:wrap;gap:10px;margin-top:17px}
+.experience-helper-actions .btn{min-height:47px}
+.experience-helper-actions .btn:disabled{opacity:.52}
+.experience-helper-preview{background:white;border:1px solid #cbdde8;border-radius:11px;padding:14px 15px;margin-top:16px}
+.experience-helper-preview[hidden]{display:none}
+.experience-helper-preview strong{color:#083664;font-size:16px}
+.experience-helper-preview p{white-space:pre-wrap;overflow-wrap:anywhere;margin:10px 0 0;color:#284963;font-size:15px;line-height:1.65}
+.experience-helper-message{font-size:14px;color:#1e695a;line-height:1.55;margin:12px 0 6px}
+.experience-helper-message:empty{display:none}
+.experience-helper-message.is-error{color:#a13a2c}
+body.comfortable-view .experience-helper summary,body.comfortable-view .experience-helper-fields label{font-size:18px}
+body.comfortable-view .experience-helper-intro,body.comfortable-view .experience-helper-fields textarea,body.comfortable-view .experience-helper-preview p,body.comfortable-view .experience-helper-message{font-size:18px}
+@media(max-width:570px){.experience-helper{padding:13px}.experience-helper-actions{flex-direction:column;align-items:stretch}.experience-helper-actions .btn{width:100%}}
+/* Make notifications readable without clipping at the browser's right edge. */
+.toast{right:16px;left:auto;bottom:20px;max-width:calc(100vw - 32px);width:max-content;line-height:1.55;overflow-wrap:anywhere}
+
+/* A clear entry point to the optional experience guide, visible before accordions. */
+.experience-entry-inner{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:18px 20px;border:1px solid #c9dfec;border-radius:14px;background:#f5fbfd}
+.experience-entry-inner strong{display:block;font-size:18px;line-height:1.35;color:#083664}
+.experience-entry-inner p{margin:6px 0 0;color:#47637d;font-size:15px;line-height:1.6}
+.experience-entry-inner .btn{min-height:48px;white-space:normal;text-align:center;flex-shrink:0}
+#experience-helper{scroll-margin-top:95px}
+body.comfortable-view .experience-entry-inner strong{font-size:21px}
+body.comfortable-view .experience-entry-inner p{font-size:17px}
+@media(max-width:700px){
+  .experience-entry-inner{flex-direction:column;align-items:stretch;padding:15px}
+  .experience-entry-inner .btn{width:100%}
+}

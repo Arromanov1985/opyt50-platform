@@ -69,7 +69,7 @@ function openAuth(mode = 'register', role = 'candidate') {
   state.mode = mode; state.role = role; updateAuth();
   $('#auth-form').reset();
   $('#auth-dialog').showModal();
-  $('#auth-email').focus();
+  (mode === 'register' ? $('#auth-name') : $('#auth-email')).focus();
 }
 function updateAuth() {
   const reg = state.mode === 'register';
@@ -79,7 +79,10 @@ function updateAuth() {
   $('#auth-company-row').classList.toggle('hidden', !(reg && state.role === 'employer'));
   $('#password-hint').classList.toggle('hidden', !reg);
   $('#auth-password').autocomplete = reg ? 'new-password' : 'current-password';
-  $('#auth-submit').textContent = reg ? 'Зарегистрироваться →' : 'Войти →';
+  $('#auth-submit').textContent = reg ? 'Создать аккаунт →' : 'Войти →';
+  $('#auth-guidance').textContent = reg
+    ? 'Для начала нужны только имя, email и пароль. Профессию и опыт добавите позже. В тестовой версии используйте только вымышленные данные.'
+    : 'Войдите в свой тестовый аккаунт. Реальные данные пока не используйте.';
   $$('.role-btn').forEach(b => b.classList.toggle('active', b.dataset.role === state.role));
   $('#auth-switch').innerHTML = reg ? 'Уже есть аккаунт? <button type="button" data-switch="login">Войти</button>' : 'Ещё нет аккаунта? <button type="button" data-switch="register">Создать профиль</button>';
 }
@@ -117,18 +120,84 @@ function tabsMarkup(items, heading, subtitle) {
   return `<aside class="panel side-panel"><span class="section-kicker">${esc(heading)}</span><h3 class="tab-heading">${esc(subtitle)}</h3><nav class="dashboard-tabs" aria-label="Разделы личного кабинета">${items.map(t => `<button type="button" data-tab="${esc(t.id)}" class="${state.tab === t.id ? 'active' : ''}">${esc(t.label)}</button>`).join('')}</nav></aside>`;
 }
 function profileMarkup(profile = {}, user = {}) {
-  return `<div class="panel"><h3>Мой профессиональный профиль</h3><p class="muted">Чем точнее условия, тем релевантнее приглашения. Данные не публикуются целиком до вашего согласия.</p>
-    <form id="profile-form"><div class="form-grid">
-    <div class="field"><label>Профессия</label><input name="profession" value="${esc(profile.profession)}" placeholder="Например, кладовщик" required minlength="2" maxlength="120"></div>
-    <div class="field"><label>Город</label><input name="city" value="${esc(profile.city)}" placeholder="Например, Подольск" required minlength="2" maxlength="100"></div>
-    <div class="field wide"><label>Ключевые навыки (через запятую)</label><input name="skills" value="${esc(profile.skills)}" placeholder="1С, инвентаризация, склад" maxlength="300"></div>
-    <div class="field"><label>Зарплата от, ₽</label><input name="salary_min" type="number" value="${profile.salary_min || 0}" min="0" max="10000000" required></div>
-    <div class="field"><label>Телефон для связи (виден после подтверждения и тестовой оплаты)</label><input name="phone" type="tel" value="${esc(user.phone)}" maxlength="30" placeholder="+7 ..."></div>
-    <div class="field"><label>График</label><select name="schedule">${optList(schedules,profile.schedule)}</select></div>
-    <div class="field"><label>Тип занятости</label><select name="employment">${optList(employment,profile.employment)}</select></div>
-    <div class="field wide"><label>О себе (не указывайте здесь контакты)</label><textarea name="about" maxlength="700" placeholder="Чем вы гордитесь и что умеете">${esc(profile.about)}</textarea></div>
-    <div class="field wide"><label class="checks"><input type="checkbox" name="is_active" ${profile.is_active !== 0 ? 'checked':''}> Мой профиль активен и может участвовать в подборе</label></div>
-    </div><button class="btn btn-primary" type="submit">Сохранить профиль ↗</button></form></div>`;
+  // Additional details stay optional; open them explicitly when the candidate is ready.
+  return `<div class="panel candidate-profile">
+    <span class="section-kicker">ВАШ ПРОФЕССИОНАЛЬНЫЙ ОПЫТ</span>
+    <h3>Расскажите, какую работу вы ищете</h3>
+    <p class="muted">Начните с нескольких пунктов. Большое резюме не требуется. Эти сведения используются для подбора вакансий.</p>
+    <div class="profile-progress" role="note"><span class="profile-progress-step">1</span><div><strong>Основные сведения</strong><small>Профессия, город, навыки, зарплата и график</small></div></div>
+    <form id="profile-form">
+      <div class="form-grid">
+        <div class="field"><label for="profile-profession">Ваша профессия <span class="required-mark">*</span></label>
+          <input id="profile-profession" name="profession" value="${esc(profile.profession)}" placeholder="Например, бухгалтер" required minlength="2" maxlength="120" autocomplete="organization-title">
+          <small class="field-help">Укажите привычное название профессии.</small></div>
+        <div class="field"><label for="profile-city">В каком городе ищете работу? <span class="required-mark">*</span></label>
+          <input id="profile-city" name="city" value="${esc(profile.city)}" placeholder="Например, Москва" required minlength="2" maxlength="100" autocomplete="address-level2"></div>
+        <div class="field wide"><label for="profile-skills">Что вы хорошо умеете? (необязательно)</label>
+          <input id="profile-skills" name="skills" value="${esc(profile.skills)}" placeholder="Например: 1С, учёт, Excel" maxlength="300" aria-describedby="profile-skills-help">
+          <small class="field-help" id="profile-skills-help">Напишите несколько навыков через запятую. Это поможет точнее подобрать работу.</small></div>
+        <div class="field"><label for="profile-salary">Желаемая зарплата от, ₽ <span class="required-mark">*</span></label>
+          <input id="profile-salary" name="salary_min" type="number" inputmode="numeric" value="${profile.salary_min || 0}" min="0" max="10000000" required></div>
+        <div class="field"><label for="profile-schedule">Удобный график</label>
+          <select id="profile-schedule" name="schedule">${optList(schedules,profile.schedule)}</select></div>
+        <div class="field wide experience-entry">
+          <div class="experience-entry-inner">
+            <div>
+              <strong>Хотите рассказать о своём опыте?</strong>
+              <p>${profile.about ? 'В вашем профиле уже есть описание. Его можно дополнить.' : 'Поможем подобрать слова по трём простым вопросам. Большое резюме не нужно.'}</p>
+            </div>
+            <button type="button" class="btn btn-outline" id="experience-start" aria-controls="experience-helper" aria-expanded="false">Помочь описать опыт →</button>
+          </div>
+        </div>
+        <div class="field wide">
+          <details class="profile-optional">
+            <summary>Дополнительные сведения (по желанию)</summary>
+            <p class="muted">Эти поля можно заполнить позже. Они не обязательны для начала поиска.</p>
+            <div class="form-grid">
+              <div class="field"><label for="profile-employment">Тип занятости</label>
+                <select id="profile-employment" name="employment">${optList(employment,profile.employment)}</select></div>
+              <div class="field"><label for="profile-phone">Телефон (необязательно)</label>
+                <input id="profile-phone" name="phone" type="tel" value="${esc(user.phone)}" maxlength="30" autocomplete="off" placeholder="Только вымышленный номер для теста">
+                <small class="field-help">В тестовой версии не вводите реальный номер. Контакт защищён отдельным согласием.</small></div>
+              <div class="field wide"><label for="profile-about">Немного о вашем опыте</label>
+                <textarea id="profile-about" name="about" maxlength="700" placeholder="Расскажите о своей работе и достижениях. Не указывайте здесь контакты.">${esc(profile.about)}</textarea>
+                <details class="experience-helper" id="experience-helper">
+                  <summary>Не знаете, что написать? Поможем описать ваш опыт</summary>
+                  <p class="experience-helper-intro">Ответьте на три простых вопроса. Мы составим текст только из ваших слов. Проверьте его и при желании добавьте в профиль.</p>
+                  <p class="experience-helper-privacy">Это локальный помощник без ИИ и внешних сервисов. Не указывайте настоящие имена, телефон, email или адреса.</p>
+                  <div class="experience-helper-fields">
+                    <label for="experience-work">1. Какой работой вы занимались?</label>
+                    <textarea id="experience-work" rows="2" maxlength="220" placeholder="Например: учёт товаров на складе"></textarea>
+                    <label for="experience-tasks">2. Что входило в ваши задачи?</label>
+                    <textarea id="experience-tasks" rows="2" maxlength="240" placeholder="Например: принимал поставки, оформлял документы"></textarea>
+                    <label for="experience-strengths">3. Что у вас получается особенно хорошо?</label>
+                    <textarea id="experience-strengths" rows="2" maxlength="240" placeholder="Например: работа с 1С, аккуратный учёт"></textarea>
+                  </div>
+                  <div class="experience-helper-actions">
+                    <button type="button" class="btn btn-outline" id="experience-build">Составить текст</button>
+                    <button type="button" class="btn btn-primary" id="experience-insert" disabled>Добавить в профиль</button>
+                  </div>
+                  <div class="experience-helper-preview" id="experience-preview-block" hidden>
+                    <strong>Предварительный вариант</strong>
+                    <p id="experience-preview"></p>
+                  </div>
+                  <p class="experience-helper-message" id="experience-helper-message" role="status" aria-live="polite"></p>
+                  <p class="field-help">При добавлении помощник сохранит существующее описание и дополнит его. Чтобы изменения остались в профиле, нажмите ниже «Сохранить профиль».</p>
+                </details></div>
+            </div>
+          </details>
+        </div>
+        <div class="field wide"><label class="checks"><input type="checkbox" name="is_active" ${profile.is_active !== 0 ? 'checked':''}> Мой профиль активен и может участвовать в подборе</label></div>
+      </div>
+      <p class="form-note">* Поля, необходимые для поиска вакансий. Ваши контакты не передаются работодателю автоматически.</p>
+      <button class="btn btn-primary btn-lg" type="submit">Сохранить профиль</button>
+    </form>
+    <div class="profile-next-actions" aria-label="Следующие шаги">
+      <strong>После сохранения:</strong>
+      <button type="button" class="btn btn-outline" data-tab="offers">Посмотреть подходящие вакансии →</button>
+      <button type="button" class="btn btn-outline" data-tab="applications">Проверить мои отклики</button>
+    </div>
+  </div>`;
 }
 async function renderCandidate() {
   const nav = [{id:'profile',label:'Мой профиль'},{id:'offers',label:'Подходящие вакансии'},{id:'invitations',label:'Приглашения'}];
@@ -138,7 +207,7 @@ async function renderCandidate() {
     if (state.tab === 'profile') target.innerHTML = profileMarkup(state.user.profile, state.user);
     else if (state.tab === 'offers') {
       const {jobs} = await api('/api/candidate/jobs');
-      target.innerHTML = `<div class="panel"><h3>Подходящие вакансии</h3><p class="muted">Алгоритм учитывает навыки, город, график и ожидания по зарплате. Совпадение — рекомендация, не решение о трудоустройстве.</p><div class="dashboard-list">${jobs.length ? jobs.map(x => jobMarkup(x,true)).join('') : '<div class="empty-state">Пока нет совпадений. Заполните профиль полностью или вернитесь позже.</div>'}</div></div>`;
+      target.innerHTML = `<div class="panel"><h3>Подходящие вакансии</h3><p class="muted">Алгоритм учитывает навыки, город, график и ожидания по зарплате. Совпадение — рекомендация, не решение о трудоустройстве.</p><div class="dashboard-list">${jobs.length ? jobs.map(x => jobMarkup(x,true)).join('') : '<div class="empty-state"><p>Подходящих вакансий пока нет. Можно изменить профессию, город или желаемую зарплату.</p><button type="button" class="btn btn-outline" data-tab="profile">Уточнить профиль</button> <a class="btn btn-primary" href="#jobs">Посмотреть все вакансии</a></div>'}</div></div>`;
     } else {
       const {invitations} = await api('/api/candidate/invitations');
       target.innerHTML = `<div class="panel"><h3>Приглашения от компаний</h3><p class="muted">Откройте контакт только тем компаниям, с которыми вы хотите познакомиться.</p><div class="dashboard-list">${invitations.length ? invitations.map(invitationCandidateMarkup).join('') : '<div class="empty-state">Приглашений пока нет. Заполните профиль, и работодатели смогут найти вас.</div>'}</div></div>`;
