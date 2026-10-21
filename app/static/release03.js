@@ -78,6 +78,21 @@ document.addEventListener('DOMContentLoaded', () => {
     insert.disabled = false;
     say('Проверьте текст. Он пока не добавлен в профиль и никуда не отправлен.', false);
   }
+  // Compare meaningful answers, ignoring punctuation and quotes. A candidate may
+  // have already described the same experience with slightly different formatting.
+  function normalized(value) {
+    return String(value || '').toLocaleLowerCase('ru-RU')
+      .replace(/ё/g, 'е').replace(/[^a-zа-я0-9]+/gi, ' ').replace(/\\s+/g, ' ').trim();
+  }
+  function experienceAlreadyDescribed(existing, composed) {
+    const oldText = normalized(existing);
+    const newText = normalized(composed);
+    if (!oldText || !newText) return false;
+    if (oldText.includes(newText)) return true;
+    const answers = parts.map(id => normalized(document.getElementById(id)?.value))
+      .filter(answer => answer.length >= 5);
+    return answers.length > 0 && answers.every(answer => oldText.includes(answer));
+  }
   function insertText() {
     const input = document.getElementById('profile-about');
     const preview = document.getElementById('experience-preview');
@@ -86,9 +101,9 @@ document.addEventListener('DOMContentLoaded', () => {
     const text = preview.textContent.trim();
     if (!text) return;
     const existing = input.value.trim();
-    if (existing.includes(text)) {
+    if (experienceAlreadyDescribed(existing, text)) {
       button.disabled = true;
-      say('Такой текст уже есть в поле «Немного о вашем опыте».', false);
+      say('Похожее описание уже есть в профиле. Проверьте поле «Немного о вашем опыте», чтобы не повторять сведения.', false);
       return;
     }
     const combined = existing ? existing + '\n\n' + text : text;
@@ -99,8 +114,9 @@ document.addEventListener('DOMContentLoaded', () => {
     input.value = combined;
     input.dispatchEvent(new Event('input', {bubbles:true}));
     button.disabled = true;
-    say('Описание добавлено. Его можно исправить вручную. Для сохранения профиля нажмите «Сохранить профиль».', false);
-    input.focus();
+    say('Текст перенесён в описание опыта, но ещё не сохранён. Проверьте его и нажмите «Сохранить профиль».', false);
+    input.scrollIntoView({block:'center', behavior:'smooth'});
+    input.focus({preventScroll:true});
   }
   document.addEventListener('click', event => {
     const openGuide = event.target.closest('#experience-start');

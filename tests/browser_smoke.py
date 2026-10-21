@@ -115,11 +115,23 @@ def run_browser(page):
     page.locator("#experience-build").click()
     expect(page.locator("#experience-preview")).to_contain_text("Складской учёт")
     expect(page.locator("#profile-about")).to_have_value("Ранее записанный опыт.")
+    page.locator("#profile-about").fill(
+        "Направление работы: профессия «Складской учёт». Основные задачи: "
+        "«Приёмка поставок и инвентаризация». Сильные стороны и навыки: "
+        "«1С и ведение документов»."
+    )
+    previous = page.locator("#profile-about").input_value()
+    page.locator("#experience-insert").click()
+    expect(page.locator("#experience-helper-message")).to_contain_text("Похожее описание")
+    assert page.locator("#profile-about").input_value() == previous
+    expect(page.locator("#experience-insert")).to_be_disabled()
+    page.locator("#profile-about").fill("Ранее записанный опыт.")
+    page.locator("#experience-build").click()
     page.locator("#experience-insert").click()
     assert page.locator("#profile-about").input_value().startswith("Ранее записанный опыт.\n\nНаправление работы:")
     assert "1С и ведение документов" in page.locator("#profile-about").input_value()
     expect(page.locator("#experience-insert")).to_be_disabled()
-    expect(page.locator("#experience-helper-message")).to_contain_text("Для сохранения профиля")
+    expect(page.locator("#experience-helper-message")).to_contain_text("Сохранить профиль")
     with page.expect_response(lambda response: (
         response.url.endswith("/api/candidate/profile") and response.request.method == "PUT"
     )) as save_profile:
@@ -450,8 +462,14 @@ def run_browser(page):
     }"""), "Changes list must fit mobile width"
     notices = page.request.get(URL + "/api/candidate/vacancy-updates").json()
     assert notices["unread_count"] == 2
-    page.locator("[data-v02-action='mark-vacancy-update-read']").first.click()
+    with page.expect_response(lambda response: (
+        "/api/candidate/vacancy-updates/" in response.url and
+        response.url.endswith("/read") and response.request.method == "POST"
+    )) as read_reply:
+        page.locator("[data-v02-action='mark-vacancy-update-read']").first.click()
+    assert read_reply.value.status == 200, read_reply.value.text()
     expect(page.locator(".vacancy-change-item")).to_have_count(2)
+    expect(page.locator(".vacancy-change-item").first).to_contain_text("Прочитано")
     refreshed = page.request.get(URL + "/api/candidate/vacancy-updates").json()
     assert refreshed["unread_count"] == 1
 
