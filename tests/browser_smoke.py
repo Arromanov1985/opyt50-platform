@@ -462,8 +462,14 @@ def run_browser(page):
     }"""), "Changes list must fit mobile width"
     notices = page.request.get(URL + "/api/candidate/vacancy-updates").json()
     assert notices["unread_count"] == 2
-    page.locator("[data-v02-action='mark-vacancy-update-read']").first.click()
+    with page.expect_response(lambda response: (
+        "/api/candidate/vacancy-updates/" in response.url and
+        response.url.endswith("/read") and response.request.method == "POST"
+    )) as read_reply:
+        page.locator("[data-v02-action='mark-vacancy-update-read']").first.click()
+    assert read_reply.value.status == 200, read_reply.value.text()
     expect(page.locator(".vacancy-change-item")).to_have_count(2)
+    expect(page.locator(".vacancy-change-item").first).to_contain_text("Прочитано")
     refreshed = page.request.get(URL + "/api/candidate/vacancy-updates").json()
     assert refreshed["unread_count"] == 1
 
