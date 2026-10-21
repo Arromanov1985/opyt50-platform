@@ -66,7 +66,34 @@
       oldUpdateAuth();
       if(state.mode==='login') $('#auth-switch').insertAdjacentHTML('beforeend',' · <button type="button" data-v02-action="recover">Забыли пароль?</button>');
     };
-    const candidateExtra = [{id:'favorites',label:'Избранное'},{id:'applications',label:'Мои отклики'},{id:'email',label:'Моя почта'}];
+    const candidateExtra = [{id:'favorites',label:'Избранное'},{id:'applications',label:'Мои отклики'},{id:'changes',label:'Изменения условий'},{id:'email',label:'Моя почта'}];
+    const changedFieldLabels = {
+      title:'Должность',city:'Город',salary_min:'Зарплата от',
+      salary_max:'Зарплата до',schedule:'График',employment:'Занятость',
+      skills:'Ключевые навыки',description:'Описание и условия работы'
+    };
+    function displayChangeValue(field,value) {
+      if(field==='salary_min'||field==='salary_max')return money(value);
+      return String(value ?? 'Не указано');
+    }
+    function vacancyChangesMarkup(changes) {
+      return Object.entries(changes || {}).filter(([key])=>Object.hasOwn(changedFieldLabels,key))
+        .map(([field,pair])=>`<div class="vacancy-change-detail">
+          <strong>${esc(changedFieldLabels[field])}</strong>
+          <div class="vacancy-change-pair"><div><small>Было</small><p>${esc(displayChangeValue(field,pair.before))}</p></div>
+          <div><small>Стало</small><p>${esc(displayChangeValue(field,pair.after))}</p></div></div></div>`).join('');
+    }
+    function vacancyUpdateMarkup(update) {
+      return `<article class="item-card vacancy-change-item ${update.read_at ? 'is-read' : 'is-new'}">
+        <header><div><h4>${esc(update.title)}</h4>
+          <p>${esc(update.company_name)} · ${esc(update.created_at)}</p></div>
+          <span class="mini-badge ${update.read_at ? 'gray' : ''}">${update.read_at ? 'Прочитано' : 'Новое изменение'}</span></header>
+        <p class="vacancy-change-context">Работодатель изменил условия этой вакансии после вашего отклика или приглашения.
+        Проверьте новые условия перед продолжением общения.</p>
+        <div class="vacancy-changes-list">${vacancyChangesMarkup(update.changes)}</div>
+        ${update.read_at ? '' : `<button class="btn btn-outline btn-tiny" data-v02-action="mark-vacancy-update-read" data-id="${Number(update.id)}">Отметить прочитанным</button>`}
+      </article>`;
+    }
     const employerExtra = [{id:'applications',label:'Отклики соискателей'}];
 
     renderCandidate = async function() {
@@ -93,7 +120,17 @@
         }
         if(state.tab==='applications'){
           const {applications}=await api('/api/candidate/applications');
-          $('#dashboard-main').innerHTML=`<div class="panel"><h3>История откликов</h3><p class="muted">Ваши контакты не раскрываются работодателю автоматически.</p><div class="dashboard-list">${applications.length ? applications.map(a=>`<article class="item-card"><header><div><h4>${esc(a.title)}</h4><p>${esc(a.company_name)} · ${esc(a.city)} · ${formatPay(a)}</p></div><span class="mini-badge">${esc(workflowStatus(a,status[a.status]||a.status))}</span></header><p>Дата отклика: ${esc(a.created_at)}</p>${activityTimelineMarkup(a)}${applicationIntroBadge(a)}${['applied','reviewing','interview'].includes(a.status) && !a.invitation_id?`<button class="btn btn-outline btn-tiny" data-v02-action="withdraw" data-id="${Number(a.id)}">Отозвать отклик</button>`:a.status==='withdrawn'?`<button class="btn btn-primary btn-tiny" data-v02-action="reapply" data-id="${Number(a.vacancy_id)}">Откликнуться повторно</button>`:''}</article>`).join(''):'<div class="empty-state">Откликов пока нет.</div>'}</div></div>`;
+          const updateSummary = await api('/api/candidate/vacancy-updates');
+          $('#dashboard-main').innerHTML=`<div class="panel"><h3>История откликов</h3><p class="muted">Ваши контакты не раскрываются работодателю автоматически.</p>${updateSummary.unread_count ? `<div class="vacancy-update-banner" role="status">По вакансиям, на которые вы откликались, есть изменения условий: ${Number(updateSummary.unread_count)}. <button type="button" class="btn btn-outline btn-tiny" data-tab="changes">Посмотреть изменения</button></div>` : ''}<div class="dashboard-list">${applications.length ? applications.map(a=>`<article class="item-card"><header><div><h4>${esc(a.title)}</h4><p>${esc(a.company_name)} · ${esc(a.city)} · ${formatPay(a)}</p></div><span class="mini-badge">${esc(workflowStatus(a,status[a.status]||a.status))}</span></header><p>Дата отклика: ${esc(a.created_at)}</p>${activityTimelineMarkup(a)}${applicationIntroBadge(a)}${['applied','reviewing','interview'].includes(a.status) && !a.invitation_id?`<button class="btn btn-outline btn-tiny" data-v02-action="withdraw" data-id="${Number(a.id)}">Отозвать отклик</button>`:a.status==='withdrawn'?`<button class="btn btn-primary btn-tiny" data-v02-action="reapply" data-id="${Number(a.vacancy_id)}">Откликнуться повторно</button>`:''}</article>`).join(''):'<div class="empty-state">Откликов пока нет.</div>'}</div></div>`;
+        }
+        if(state.tab==='changes'){
+          const result=await api('/api/candidate/vacancy-updates');
+          $('#dashboard-main').innerHTML=`<div class="panel vacancy-changes">
+            <h3>Изменения условий вакансий</h3>
+            <p class="muted">Здесь отображаются изменения вакансий, на которые вы откликнулись или получили приглашение. Реальные письма не отправляются.</p>
+            ${result.unread_count ? `<p class="vacancy-unread-count" role="status">Непрочитанных изменений: ${Number(result.unread_count)}</p>` : '<p class="muted">Новых изменений нет.</p>'}
+            <div class="dashboard-list">${result.updates.length ? result.updates.map(vacancyUpdateMarkup).join('') : '<div class="empty-state">Пока работодатели не изменяли ваши вакансии.</div>'}</div>
+          </div>`;
         }
         if(state.tab==='email'){
           const result=await api('/api/account/email/status');
@@ -171,6 +208,7 @@
         }else if(type==='remove-favorite'){await req('DELETE',`/api/candidate/favorites/${id}`);await showDashboard();toast('Вакансия удалена из избранного');}
         else if(type==='withdraw'){await req('POST',`/api/candidate/applications/${id}/withdraw`);await showDashboard();toast('Отклик отозван');}
         else if(type==='reapply'){const result=await req('POST','/api/candidate/applications',{vacancy_id:id});await refreshMyApplications();await showDashboard();toast(result.reapplied?'Отклик отправлен повторно':'Отклик отправлен');}
+        else if(type==='mark-vacancy-update-read'){await req('POST',`/api/candidate/vacancy-updates/${id}/read`);await showDashboard();toast('Изменение отмечено прочитанным.');}
         else if(type==='see-applications'){state.tab='applications';await showDashboard(true);}
         else if(type==='application-status'){await req('PATCH',`/api/employer/applications/${id}/status`,{status:btn.dataset.status});await showDashboard();toast('Статус обновлён');}
         else if(type==='express-interest'){const data=await req('POST',`/api/employer/applications/${id}/interest`);await showDashboard();toast(data.created?'Кандидату направлен запрос на знакомство (демо)':'Запрос уже существует — повторно не отправлен');}
