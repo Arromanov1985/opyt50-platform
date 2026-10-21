@@ -23,3 +23,16 @@
 .application-timeline{display:flex;flex-wrap:wrap;gap:7px 10px;align-items:center;margin:10px 0 13px;color:#5d7085;font-size:12px;line-height:1.5}
 .application-timeline strong{font-weight:700;color:#083664}
 .application-timeline span{border:1px solid #e9eef4;padding:5px 9px;border-radius:10px;background:#f5f7fa}
+
+/* Release 0.5: employer application overview */
+.application-metrics{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:10px;margin:20px 0}
+.application-metric{background:#f2faf9;border:1px solid #d9eeeb;border-radius:14px;padding:14px 12px;display:flex;flex-direction:column;gap:5px}
+.application-metric strong{font-size:26px;line-height:1.2;color:#083664;font-weight:800}
+.application-metric span{font-size:12px;color:#4e697b}
+.application-filter-bar{display:flex;align-items:end;gap:12px;flex-wrap:wrap;margin:18px 0}
+.application-filter-bar label{display:flex;flex-direction:column;gap:7px;color:#083664;font-size:13px;font-weight:700;flex:1 1 190px}
+.application-filter-bar select{width:100%;min-height:44px;border:1px solid #cbdde7;border-radius:11px;background:#fff;color:#083664;font:inherit;font-weight:500;padding:8px 12px}
+.application-filter-bar select:focus-visible,.application-filter-bar button:focus-visible{outline:3px solid #00c7b8;outline-offset:2px}
+.application-filter-bar button{min-height:44px}
+#employer-applications-list article[hidden]{display:none!important}
+@media(max-width:750px){.application-metrics{grid-template-columns:repeat(2,minmax(0,1fr))}.application-filter-bar{align-items:stretch}.application-filter-bar button{width:100%}}
