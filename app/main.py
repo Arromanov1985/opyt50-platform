@@ -7,6 +7,8 @@ from __future__ import annotations
 
 import base64
 import binascii
+import hashlib
+import json
 import os
 import secrets
 import re
@@ -97,6 +99,32 @@ class VacancyIn(BaseModel):
         if self.schedule not in SCHEDULES or self.employment not in EMPLOYMENTS:
             raise ValueError("Недопустимый график или формат занятости")
         return self
+
+
+class VacancyEdit(VacancyIn):
+    """Full replacement of vacancy content, never a new vacancy or a status change."""
+
+    expected_revision: str = Field(pattern=r"^[0-9a-f]{64}$")
+
+    @model_validator(mode="after")
+    def require_meaningful_text(self):
+        if len(self.title.strip()) < 3 or len(self.city.strip()) < 2:
+            raise ValueError("Укажите должность и город, не состоящие из пробелов")
+        return self
+
+
+VACANCY_CONTENT_FIELDS = (
+    "title", "city", "salary_min", "salary_max", "schedule",
+    "employment", "skills", "description",
+)
+VACANCY_REVISION_FIELDS = ("id", "employer_id", *VACANCY_CONTENT_FIELDS, "status")
+
+
+def vacancy_revision(row: sqlite3.Row | dict) -> str:
+    """Version token for optimistic edits; no migration or extra database column."""
+    current = {key: row[key] for key in VACANCY_REVISION_FIELDS}
+    data = json.dumps(current, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+    return hashlib.sha256(data.encode("utf-8")).hexdigest()
 
 
 class InvitationIn(BaseModel):
@@ -404,7 +432,55 @@ def create_app(db_path: str | None = None) -> FastAPI:
     def employer_jobs(user: dict = Depends(active_user), db: sqlite3.Connection = Depends(get_connection)):
         allowed(user, "employer")
         rows = db.execute("SELECT * FROM vacancies WHERE employer_id=? ORDER BY id DESC", (user["id"],)).fetchall()
-        return {"jobs": [dict(row) for row in rows]}
+        return {"jobs": [{**dict(row), "revision": vacancy_revision(row)} for row in rows]}
+
+    @app.patch("/api/employer/vacancies/{job_id}")
+    def edit_vacancy(
+        job_id: int,
+        data: VacancyEdit,
+        user: dict = Depends(active_user),
+        db: sqlite3.Connection = Depends(get_connection),
+    ):
+        """Edit content of an owned vacancy in place, preserving ID and relationships.
+
+        An optimistic version and a compare-and-swap UPDATE reject stale browser
+        tabs; application/invitation status, consent, history and the job status
+        are intentionally never touched.
+        """
+        allowed(user, "employer")
+        original = db.execute(
+            "SELECT * FROM vacancies WHERE id=? AND employer_id=?",
+            (job_id, user["id"]),
+        ).fetchone()
+        if original is None:
+            raise HTTPException(404, "Вакансия не найдена")
+        if vacancy_revision(original) != data.expected_revision:
+            raise HTTPException(409, "Вакансия уже изменена. Обновите список и проверьте условия ещё раз.")
+
+        values = {field: getattr(data, field) for field in VACANCY_CONTENT_FIELDS}
+        values["title"] = values["title"].strip()
+        values["city"] = values["city"].strip()
+        values["skills"] = values["skills"].strip()
+        values["description"] = values["description"].strip()
+
+        set_sql = ", ".join(f"{field}=?" for field in VACANCY_CONTENT_FIELDS)
+        current_sql = " AND ".join(f"{field}=?" for field in VACANCY_CONTENT_FIELDS)
+        cursor = db.execute(
+            f"""UPDATE vacancies SET {set_sql}
+                WHERE id=? AND employer_id=? AND {current_sql} AND status=?""",
+            tuple(values[field] for field in VACANCY_CONTENT_FIELDS)
+            + (job_id, user["id"])
+            + tuple(original[field] for field in VACANCY_CONTENT_FIELDS)
+            + (original["status"],),
+        )
+        if cursor.rowcount != 1:
+            raise HTTPException(409, "Вакансия изменилась во время редактирования. Обновите данные.")
+        db.commit()
+        updated = db.execute(
+            "SELECT * FROM vacancies WHERE id=? AND employer_id=?",
+            (job_id, user["id"]),
+        ).fetchone()
+        return {"ok": True, "job": {**dict(updated), "revision": vacancy_revision(updated)}}
 
     @app.patch("/api/employer/vacancies/{job_id}/status")
     def set_vacancy_status(

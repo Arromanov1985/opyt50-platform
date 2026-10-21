@@ -10,7 +10,26 @@
     const element = form.elements.namedItem(name);
     return element ? element.value.trim() : '';
   }
+  function splitDescription(description) {
+    // Only parse the precise format created by our guided composer.
+    // Legacy free-text vacancies are shown in their original field instead
+    // of splitting or truncating any existing text.
+    const match = /^Обязанности:\n([\s\S]*?)\n\nТребования:\n([\s\S]*?)\n\nУсловия работы:\n([\s\S]*)$/.exec(String(description || ''));
+    if (!match) return null;
+    const fields = {
+      responsibilities: match[1],
+      requirements: match[2],
+      conditions: match[3],
+    };
+    if (fields.responsibilities.length > 400 ||
+        fields.requirements.length > 300 ||
+        fields.conditions.length > 350) return null;
+    return fields;
+  }
   function describe(form) {
+    if (form.dataset.editMode === 'legacy') {
+      return getField(form, 'legacy_description');
+    }
     return [
       'Обязанности:',
       getField(form, 'responsibilities'),
@@ -50,7 +69,7 @@
       message(form, 'Заполните обязательные поля, чтобы посмотреть вакансию.', true);
       return;
     }
-    for (const field of ['responsibilities', 'requirements', 'conditions']) {
+    for (const field of (form.dataset.editMode === 'legacy' ? [] : ['responsibilities', 'requirements', 'conditions'])) {
       if (!getField(form, field)) {
         const control = form.elements.namedItem(field);
         message(form, 'Заполните обязанности, требования и условия работы — эти разделы необходимы.', true);
@@ -67,7 +86,7 @@
     }
     const description = describe(form);
     if (description.length > maxDescription) {
-      message(form, 'Описание превышает допустимую длину. Сократите один из разделов.', true);
+      message(form, 'Описание превышает допустимую длину 1200 символов. Сократите текст.', true);
       return;
     }
     // Plain text only. The employer cannot inject markup into the preview.
@@ -84,7 +103,9 @@
     const publish = form.querySelector('#vacancy-publish');
     publish.disabled = false;
     approved.set(form, {signature:signature(form),description});
-    message(form, 'Вакансия готова к публикации. Проверьте предпросмотр и нажмите «Опубликовать вакансию».');
+    message(form, form.dataset.editId
+      ? 'Изменения готовы к сохранению. Проверьте объявление и нажмите «Сохранить изменения».'
+      : 'Вакансия готова к публикации. Проверьте предпросмотр и нажмите «Опубликовать вакансию».');
     preview.scrollIntoView({behavior:'smooth',block:'nearest'});
   }
   function getReviewedDescription(form) {
@@ -110,5 +131,5 @@
       if (form && target.matches('[name]')) invalidate(form, true);
     });
   }
-  window.OpytnovacancyWizard = {getReviewedDescription};
+  window.OpytnovacancyWizard = {getReviewedDescription, splitDescription};
 })();

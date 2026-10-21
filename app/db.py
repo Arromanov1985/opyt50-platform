@@ -83,7 +83,9 @@ CREATE INDEX IF NOT EXISTS idx_invitations_candidate ON invitations(candidate_id
 @contextmanager
 def database(path: str) -> Iterator[sqlite3.Connection]:
     """Always close connections and roll back failed writes."""
-    connection = sqlite3.connect(path, timeout=10)
+    # FastAPI may execute a sync dependency and its cleanup in different worker threads.
+    # Connections are still created per request and never shared between requests.
+    connection = sqlite3.connect(path, timeout=10, check_same_thread=False)
     connection.row_factory = sqlite3.Row
     # SQLite lower()/LIKE only handle ASCII case folding by default; vacancies are in Russian.
     # A deterministic per-connection function provides correct Unicode casefold search.

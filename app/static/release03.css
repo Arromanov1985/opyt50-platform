@@ -161,3 +161,12 @@ body.comfortable-view .vacancy-preview-description,body.comfortable-view .vacanc
  .vacancy-publish-actions{display:block}
  .vacancy-publish-actions .btn{width:100%}
 }
+
+
+/* Editing an existing vacancy retains its ID and existing candidate relationships. */
+.vacancy-edit-warning{padding:14px 16px;margin:15px 0 19px;border-left:4px solid #007fce;background:#f0f8fb;border-radius:10px;color:#365674;font-size:15px;line-height:1.7}
+.vacancy-legacy textarea{min-height:180px;line-height:1.65}
+.vacancy-cancel{margin-top:17px;min-height:48px}
+body.comfortable-view .vacancy-edit-warning{font-size:18px}
+body.comfortable-view .vacancy-cancel{font-size:17px}
+@media(max-width:570px){.vacancy-edit-warning{padding:12px}.vacancy-cancel{width:100%}}

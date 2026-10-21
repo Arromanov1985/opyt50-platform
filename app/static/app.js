@@ -2,7 +2,7 @@
 'use strict';
 const $ = (selector, root = document) => root.querySelector(selector);
 const $$ = (selector, root = document) => [...root.querySelectorAll(selector)];
-const state = { user: null, mode: 'register', role: 'candidate', tab: 'profile', activeVacancy: null };
+const state = { user: null, mode: 'register', role: 'candidate', tab: 'profile', activeVacancy: null, editVacancy: null };
 const esc = value => String(value ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const money = value => Number(value || 0).toLocaleString('ru-RU') + ' ₽';
 const formatPay = job => job.salary_min === job.salary_max ? money(job.salary_min) : `${money(job.salary_min)} — ${money(job.salary_max)}`;
@@ -220,53 +220,64 @@ function invitationCandidateMarkup(x) {
 }
 async function renderEmployer() {
   const nav = [{id:'vacancies',label:'Мои вакансии'},{id:'create',label:'Новая вакансия'},{id:'invitations',label:'Приглашения и контакты'}];
+  if (state.tab === 'edit') nav.splice(1, 0, {id:'edit',label:'Редактирование'});
   if (!nav.some(t => t.id === state.tab)) state.tab = 'vacancies';
   $('#account-content').innerHTML = `<div class="dashboard-grid">${tabsMarkup(nav,'ДЛЯ КОМПАНИИ',state.user.company?.company_name || 'Работодатель')}<div id="dashboard-main"><div class="loading">Загрузка...</div></div></div>`;
   const target = $('#dashboard-main');
   try {
     if (state.tab === 'create') target.innerHTML = vacancyFormMarkup();
+    else if (state.tab === 'edit') await loadEmployerVacancyEdit();
     else if (state.tab === 'vacancies') await loadEmployerVacancies();
     else await loadEmployerInvitations();
   } catch(e) { target.innerHTML = `<div class="panel">${esc(e.message)}</div>`; toast(e.message,true); }
 }
-function vacancyFormMarkup() {
+function vacancyFormMarkup(job = null) {
+  const isEdit = Boolean(job);
+  const sections = isEdit ? window.OpytnovacancyWizard?.splitDescription(job.description) : null;
+  const legacy = isEdit && !sections;
+  const fields = legacy
+    ? `<div class="field vacancy-legacy"><label for="vacancy-legacy">Исходное описание (старый формат)</label>
+         <textarea id="vacancy-legacy" name="legacy_description" maxlength="1200" rows="6" placeholder="Описание вакансии">${esc(job.description || '')}</textarea>
+         <small class="field-help">Сохраняем прежний текст без автоматического разбиения. Здесь можно обновить требования и условия вручную.</small></div>`
+    : `<div class="field"><label for="vacancy-responsibilities">Что предстоит делать? *</label>
+         <textarea id="vacancy-responsibilities" name="responsibilities" maxlength="400" rows="3" required placeholder="Например: вести учёт товаров, принимать поставки, оформлять документы">${esc(sections?.responsibilities || '')}</textarea>
+         <small class="field-help">Перечислите реальные обязанности, простыми словами. До 400 символов.</small>
+       </div>
+       <div class="field"><label for="vacancy-requirements">Что нужно уметь? *</label>
+         <textarea id="vacancy-requirements" name="requirements" maxlength="300" rows="3" required placeholder="Например: базовое знание 1С, внимательность. Если особых требований нет — так и напишите">${esc(sections?.requirements || '')}</textarea>
+         <small class="field-help">Только необходимые навыки. Не указывайте возрастные ограничения. До 300 символов.</small>
+       </div>
+       <div class="field"><label for="vacancy-conditions">Что предлагает компания? *</label>
+         <textarea id="vacancy-conditions" name="conditions" maxlength="350" rows="3" required placeholder="Например: сменный график 2/2, официальное оформление, обучение на месте">${esc(sections?.conditions || '')}</textarea>
+         <small class="field-help">График, оформление, место работы, особенности оплаты. До 350 символов.</small>
+       </div>`;
   return `<div class="panel vacancy-compose">
-    <span class="section-kicker">НОВАЯ ВАКАНСИЯ</span>
-    <h3>Разместить вакансию</h3>
-    <p class="muted">Заполните короткие разделы, проверьте объявление глазами соискателя и только затем опубликуйте. Размещение бесплатное; контакты кандидата защищены отдельным согласием.</p>
+    <span class="section-kicker">${isEdit ? 'РЕДАКТИРОВАНИЕ ВАКАНСИИ' : 'НОВАЯ ВАКАНСИЯ'}</span>
+    <h3>${isEdit ? 'Изменить вакансию' : 'Разместить вакансию'}</h3>
+    <p class="muted">${isEdit ? 'Исправьте условия и проверьте объявление перед сохранением. ID вакансии и существующие отклики останутся прежними.' : 'Заполните короткие разделы, проверьте объявление глазами соискателя и только затем опубликуйте. Размещение бесплатное; контакты кандидата защищены отдельным согласием.'}</p>
     <p class="vacancy-demo-warning">Тестовый стенд: используйте только вымышленные сведения о компании, вакансии и контактах.</p>
-    <form id="vacancy-form">
+    ${isEdit ? `<p class="vacancy-edit-warning">Редактирование не удаляет отклики и приглашения, но ранее откликнувшиеся соискатели не получат автоматического уведомления об изменении условий. Статус вакансии остаётся прежним.</p>` : ``}
+    <form id="vacancy-form" data-edit-id="${isEdit ? job.id : ''}" data-revision="${isEdit ? esc(job.revision) : ''}" data-edit-mode="${legacy ? 'legacy' : 'structured'}">
       <fieldset class="vacancy-step">
         <legend>1. Основная информация</legend>
         <div class="form-grid">
-          <div class="field wide"><label for="vacancy-title">Должность *</label><input id="vacancy-title" name="title" placeholder="Например, инженер по эксплуатации" minlength="3" maxlength="120" required></div>
-          <div class="field"><label for="vacancy-city">Город или формат работы *</label><input id="vacancy-city" name="city" placeholder="Например, Москва или Удалённо" minlength="2" maxlength="100" required></div>
-          <div class="field"><label for="vacancy-skills">Ключевые навыки (через запятую)</label><input id="vacancy-skills" name="skills" placeholder="Например, 1С, Excel" maxlength="300"></div>
-          <div class="field"><label for="vacancy-salary-min">Зарплата от, ₽ *</label><input id="vacancy-salary-min" name="salary_min" type="number" inputmode="numeric" min="0" max="10000000" value="50000" required></div>
-          <div class="field"><label for="vacancy-salary-max">Зарплата до, ₽ *</label><input id="vacancy-salary-max" name="salary_max" type="number" inputmode="numeric" min="0" max="10000000" value="100000" required></div>
-          <div class="field"><label for="vacancy-schedule">График</label><select id="vacancy-schedule" name="schedule">${optList(schedules,'Любой')}</select></div>
-          <div class="field"><label for="vacancy-employment">Занятость</label><select id="vacancy-employment" name="employment">${optList(employment,'Любая')}</select></div>
+          <div class="field wide"><label for="vacancy-title">Должность *</label><input id="vacancy-title" name="title" value="${esc(job?.title || '')}" placeholder="Например, инженер по эксплуатации" minlength="3" maxlength="120" required></div>
+          <div class="field"><label for="vacancy-city">Город или формат работы *</label><input id="vacancy-city" name="city" value="${esc(job?.city || '')}" placeholder="Например, Москва или Удалённо" minlength="2" maxlength="100" required></div>
+          <div class="field"><label for="vacancy-skills">Ключевые навыки (через запятую)</label><input id="vacancy-skills" name="skills" value="${esc(job?.skills || '')}" placeholder="Например, 1С, Excel" maxlength="300"></div>
+          <div class="field"><label for="vacancy-salary-min">Зарплата от, ₽ *</label><input id="vacancy-salary-min" name="salary_min" type="number" inputmode="numeric" min="0" max="10000000" value="${isEdit ? Number(job.salary_min) : 50000}" required></div>
+          <div class="field"><label for="vacancy-salary-max">Зарплата до, ₽ *</label><input id="vacancy-salary-max" name="salary_max" type="number" inputmode="numeric" min="0" max="10000000" value="${isEdit ? Number(job.salary_max) : 100000}" required></div>
+          <div class="field"><label for="vacancy-schedule">График</label><select id="vacancy-schedule" name="schedule">${optList(schedules,job?.schedule || 'Любой')}</select></div>
+          <div class="field"><label for="vacancy-employment">Занятость</label><select id="vacancy-employment" name="employment">${optList(employment,job?.employment || 'Любая')}</select></div>
         </div>
       </fieldset>
       <fieldset class="vacancy-step">
         <legend>2. Расскажите о работе</legend>
-        <p class="muted">Три небольших блока помогут человеку сразу понять обязанности, требования и условия.</p>
-        <div class="field"><label for="vacancy-responsibilities">Что предстоит делать? *</label>
-          <textarea id="vacancy-responsibilities" name="responsibilities" maxlength="400" rows="3" required placeholder="Например: вести учёт товаров, принимать поставки, оформлять документы"></textarea>
-          <small class="field-help">Перечислите реальные обязанности, простыми словами. До 400 символов.</small>
-        </div>
-        <div class="field"><label for="vacancy-requirements">Что нужно уметь? *</label>
-          <textarea id="vacancy-requirements" name="requirements" maxlength="300" rows="3" required placeholder="Например: базовое знание 1С, внимательность. Если особых требований нет — так и напишите"></textarea>
-          <small class="field-help">Только необходимые навыки. Не указывайте возрастные ограничения. До 300 символов.</small>
-        </div>
-        <div class="field"><label for="vacancy-conditions">Что предлагает компания? *</label>
-          <textarea id="vacancy-conditions" name="conditions" maxlength="350" rows="3" required placeholder="Например: сменный график 2/2, официальное оформление, обучение на месте"></textarea>
-          <small class="field-help">График, оформление, место работы, особенности оплаты. До 350 символов.</small>
-        </div>
+        <p class="muted">${legacy ? 'Это старая вакансия: исходное описание сохранено в одном поле без потерь.' : 'Три небольших блока помогут человеку сразу понять обязанности, требования и условия.'}</p>
+        ${fields}
       </fieldset>
       <div class="vacancy-preview-intro">
-        <strong>3. Проверьте объявление перед публикацией</strong>
-        <p>Вы увидите должность, зарплату и описание так, как их увидит соискатель. До вашего подтверждения объявление не будет опубликовано.</p>
+        <strong>3. ${isEdit ? 'Проверьте изменения перед сохранением' : 'Проверьте объявление перед публикацией'}</strong>
+        <p>Вы увидите должность, зарплату и описание так, как их увидит соискатель. ${isEdit ? 'До подтверждения изменения не попадут в опубликованную вакансию.' : 'До вашего подтверждения объявление не будет опубликовано.'}</p>
         <button class="btn btn-outline btn-lg" type="button" id="vacancy-show-preview" aria-controls="vacancy-preview">Посмотреть вакансию →</button>
         <p id="vacancy-form-message" class="vacancy-form-message" role="status" aria-live="polite"></p>
       </div>
@@ -281,11 +292,24 @@ function vacancyFormMarkup() {
         <p class="vacancy-preview-note">Проверьте каждую строку. Чтобы исправить что-либо, измените поля выше и повторно откройте предпросмотр.</p>
       </section>
       <div class="vacancy-publish-actions">
-        <button type="submit" class="btn btn-primary btn-lg" id="vacancy-publish" disabled>Опубликовать вакансию ↗</button>
-        <p class="field-help">Кнопка станет доступна после предварительного просмотра. Публикация отправляет вакансию в тестовую базу.</p>
+        <button type="submit" class="btn btn-primary btn-lg" id="vacancy-publish" disabled>${isEdit ? 'Сохранить изменения ↗' : 'Опубликовать вакансию ↗'}</button>
+        <p class="field-help">${isEdit ? 'Кнопка станет доступна после предпросмотра. Изменения сохранятся в той же вакансии, не удаляя отклики.' : 'Кнопка станет доступна после предварительного просмотра. Публикация отправляет вакансию в тестовую базу.'}</p>
       </div>
+      ${isEdit ? '<button type="button" class="btn btn-outline vacancy-cancel" data-action="cancel-job-edit">Отменить редактирование</button>' : ''}
     </form>
   </div>`;
+}
+async function loadEmployerVacancyEdit() {
+  const {jobs} = await api('/api/employer/vacancies');
+  const job = jobs.find(item => item.id === state.editVacancy);
+  if (!job) {
+    state.tab = 'vacancies';
+    state.editVacancy = null;
+    await loadEmployerVacancies();
+    toast('Вакансия для редактирования не найдена.', true);
+    return;
+  }
+  $('#dashboard-main').innerHTML = vacancyFormMarkup(job);
 }
 async function loadEmployerVacancies() {
   const {jobs} = await api('/api/employer/vacancies');
@@ -294,7 +318,7 @@ async function loadEmployerVacancies() {
   if (state.activeVacancy && jobs.some(j=>j.id===state.activeVacancy)) await loadMatches(state.activeVacancy);
 }
 function jobEmployerMarkup(x) {
-  return `<article class="item-card"><header><div><h4>${esc(x.title)}</h4><p>${esc(x.city)} · ${formatPay(x)} · ${esc(x.schedule)}</p></div><span class="mini-badge ${x.status === 'open' ? '' : 'gray'}">${x.status === 'open' ? 'Открыта' : 'Закрыта'}</span></header><div class="item-actions"><button class="btn btn-dark btn-tiny" data-action="matches" data-id="${x.id}" ${x.status === 'closed' ? 'disabled':''}>Подобрать кандидатов →</button><button class="btn btn-outline btn-tiny" data-action="job-status" data-id="${x.id}" data-status="${x.status === 'open' ? 'closed' : 'open'}">${x.status === 'open' ? 'Закрыть' : 'Открыть'}</button></div></article>`;
+  return `<article class="item-card"><header><div><h4>${esc(x.title)}</h4><p>${esc(x.city)} · ${formatPay(x)} · ${esc(x.schedule)}</p></div><span class="mini-badge ${x.status === 'open' ? '' : 'gray'}">${x.status === 'open' ? 'Открыта' : 'Закрыта'}</span></header><div class="item-actions"><button class="btn btn-dark btn-tiny" data-action="matches" data-id="${x.id}" ${x.status === 'closed' ? 'disabled':''}>Подобрать кандидатов →</button><button class="btn btn-outline btn-tiny" data-action="edit-job" data-id="${x.id}">Редактировать</button><button class="btn btn-outline btn-tiny" data-action="job-status" data-id="${x.id}" data-status="${x.status === 'open' ? 'closed' : 'open'}">${x.status === 'open' ? 'Закрыть' : 'Открыть'}</button></div></article>`;
 }
 async function loadMatches(jobId) {
   const target = $('#employer-matches');
@@ -336,22 +360,31 @@ async function handleDashboardSubmit(event) {
   if (form.id === 'vacancy-form') {
     event.preventDefault();
     const description = window.OpytnovacancyWizard?.getReviewedDescription(form);
-    if (!description) {
+    if (description === null || description === undefined) {
       toast('Сначала проверьте вакансию в предпросмотре.', true);
       return;
     }
+    const editing = Boolean(form.dataset.editId);
     const body = {title:formValue(form,'title'),city:formValue(form,'city'),skills:formValue(form,'skills'),salary_min:parseNumber(form,'salary_min'),salary_max:parseNumber(form,'salary_max'),schedule:formValue(form,'schedule'),employment:formValue(form,'employment'),description};
+    if (editing) body.expected_revision = form.dataset.revision;
     const submit = form.querySelector('#vacancy-publish');
     submit.disabled = true;
     try {
-      await api('/api/employer/vacancies',{method:'POST',body:JSON.stringify(body)});
+      const endpoint = editing ? `/api/employer/vacancies/${form.dataset.editId}` : '/api/employer/vacancies';
+      await api(endpoint,{method:editing ? 'PATCH' : 'POST',body:JSON.stringify(body)});
+      state.editVacancy = null;
+      state.activeVacancy = null;
       state.tab='vacancies';
       await showDashboard();
       await loadPublicJobs();
-      toast('Вакансия опубликована. Теперь она доступна в поиске.');
+      toast(editing ? 'Изменения сохранены в прежней вакансии, отклики остались на месте.' : 'Вакансия опубликована. Теперь она доступна в поиске.');
     } catch(e) {
       toast(e.message,true);
-      if (submit.isConnected) submit.disabled = false;
+      // A stale edit must never silently overwrite another browser tab's changes.
+      if (editing && /изменилась|уже изменена/.test(e.message)) {
+        const line = form.querySelector('#vacancy-form-message');
+        if (line) line.textContent = 'Вакансия изменена в другой вкладке. Отмените редактирование и откройте её заново.';
+      } else if (submit.isConnected) submit.disabled = false;
     }
   }
 }
@@ -363,7 +396,9 @@ async function handleDashboardClick(event) {
   if (btn.disabled) return;
   btn.disabled = true;
   try {
-    if (action === 'new-job') { state.tab='create'; await showDashboard(); }
+    if (action === 'new-job') { state.editVacancy=null; state.tab='create'; await showDashboard(); }
+    if (action === 'edit-job') { state.editVacancy=id; state.activeVacancy=null; state.tab='edit'; await showDashboard(); }
+    if (action === 'cancel-job-edit') { state.editVacancy=null; state.tab='vacancies'; await showDashboard(); }
     if (action === 'matches') { await loadMatches(id); }
     if (action === 'job-status') { await api(`/api/employer/vacancies/${id}/status`,{method:'PATCH',body:JSON.stringify({status:btn.dataset.status})}); await showDashboard(); toast('Статус вакансии обновлён.'); }
     if (action === 'invite') { await api('/api/employer/invitations',{method:'POST',body:JSON.stringify({vacancy_id:Number(btn.dataset.job),candidate_id:id})}); toast('Приглашение отправлено.'); state.tab='invitations'; await showDashboard(); }
