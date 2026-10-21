@@ -52,6 +52,31 @@ def match_candidate(vacancy: Mapping, candidate: Mapping) -> dict | None:
     return {"score": score, "reasons": notes}
 
 
+
+def mismatch_reasons(vacancy: Mapping, candidate: Mapping) -> list[str]:
+    """Explain why an open vacancy is outside strict matching; never uses age."""
+    if not candidate["profession"] or not candidate["city"] or not candidate["is_active"]:
+        return []
+    reasons = []
+    vc = vacancy["city"].strip().casefold()
+    cc = candidate["city"].strip().casefold()
+    if vc != cc and vc not in ("удалённо", "любой город"):
+        reasons.append("Другой город: " + vacancy["city"])
+    if int(vacancy["salary_max"]) < int(candidate["salary_min"]):
+        reasons.append("Зарплата ниже ваших ожиданий")
+    for field, any_value, title in (
+        ("schedule", "Любой", "Другой график"),
+        ("employment", "Любая", "Другой тип занятости"),
+    ):
+        if vacancy[field] != any_value and candidate[field] != any_value and vacancy[field] != candidate[field]:
+            reasons.append(title + ": " + vacancy[field])
+    if not (words(vacancy["title"]) & words(candidate["profession"])):
+        reasons.append("Другая профессия: " + vacancy["title"])
+    requested = skill_set(vacancy["skills"])
+    if requested and not (requested & skill_set(candidate["skills"])):
+        reasons.append("Не совпадают указанные навыки")
+    return reasons
+
 def lead_price(title: str) -> int:
     """Demo price by vacancy category; never uses age or applicant details."""
     senior = ("директор", "руководител", "начальник", "управляющ", "главный инженер")

@@ -108,6 +108,31 @@
           }
         }
         await oldCandidate();
+        if (state.tab === 'offers') {
+          const target = document.getElementById('dashboard-main');
+          if (target) {
+            try {
+              const {jobs} = await api('/api/candidate/alternative-jobs');
+              if (state.tab === 'offers' && jobs.length) {
+                const markup = jobs.map(job => `<article class="item-card">
+                  <h4>${esc(job.title)}</h4>
+                  <p>${esc(job.company_name)} · ${esc(job.city)} · ${formatPay(job)}</p>
+                  <p><strong>Что не совпадает:</strong></p>
+                  <ul>${job.mismatch_reasons.map(reason => `<li>${esc(reason)}</li>`).join('')}</ul>
+                  <p class="muted">Это не персональная рекомендация. Вы самостоятельно решаете, рассматривать ли вакансию.</p>
+                  <button type="button" class="btn btn-outline btn-tiny" data-v02-action="details" data-id="${Number(job.id)}">Подробнее</button>
+                </article>`).join('');
+                target.insertAdjacentHTML('beforeend',
+                  `<section class="panel" aria-label="Другие вакансии"><h3>Другие вакансии, которые могут вас заинтересовать</h3>
+                  <p class="muted">Они не прошли строгий подбор. Посмотрите различия перед откликом.</p>
+                  <div class="dashboard-list">${markup}</div></section>`);
+              }
+            } catch (error) {
+              // Optional alternatives must never hide or break strict recommendations.
+              console.warn('Alternative vacancies unavailable', error);
+            }
+          }
+        }
         const nav=$('.dashboard-tabs');
         if (nav) nav.insertAdjacentHTML('beforeend',candidateExtra.map(t=>`<button type="button" data-tab="${t.id}">${t.label}</button>`).join(''));
         return;
