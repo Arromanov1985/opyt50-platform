@@ -314,7 +314,9 @@ async function loadEmployerVacancyEdit() {
 async function loadEmployerVacancies() {
   const {jobs} = await api('/api/employer/vacancies');
   const view = $('#dashboard-main');
-  view.innerHTML = `<div class="panel"><div class="split-header"><div><h3>Мои вакансии</h3><p class="muted">После размещения получите список обезличенных профилей.</p></div><button class="btn btn-primary btn-tiny" data-action="new-job">+ Добавить</button></div><div class="dashboard-list">${jobs.length ? jobs.map(jobEmployerMarkup).join('') : '<div class="empty-state">Вакансий пока нет. Опубликуйте первую, чтобы начать подбор.</div>'}</div></div><div id="employer-matches" class="hidden"></div>`;
+  const openCount = jobs.filter(job => job.status === 'open').length;
+  const closedCount = jobs.length - openCount;
+  view.innerHTML = `<div class="panel"><div class="split-header"><div><h3>Мои вакансии</h3><p class="muted">После размещения получите список обезличенных профилей.</p></div><button class="btn btn-primary btn-tiny" data-action="new-job">+ Добавить</button></div><div class="stat-grid" aria-label="Статистика вакансий"><div class="stat-tile"><strong>${jobs.length}</strong><span>Всего вакансий</span></div><div class="stat-tile"><strong>${openCount}</strong><span>Открыты</span></div><div class="stat-tile"><strong>${closedCount}</strong><span>Закрыты</span></div></div><div class="dashboard-list">${jobs.length ? jobs.map(jobEmployerMarkup).join('') : '<div class="empty-state">Вакансий пока нет. Опубликуйте первую, чтобы начать подбор.</div>'}</div></div><div id="employer-matches" class="hidden"></div>`;
   if (state.activeVacancy && jobs.some(j=>j.id===state.activeVacancy)) await loadMatches(state.activeVacancy);
 }
 function jobEmployerMarkup(x) {
