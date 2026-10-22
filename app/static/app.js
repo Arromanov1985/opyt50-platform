@@ -2,7 +2,7 @@
 'use strict';
 const $ = (selector, root = document) => root.querySelector(selector);
 const $$ = (selector, root = document) => [...root.querySelectorAll(selector)];
-const state = { user: null, mode: 'register', role: 'candidate', tab: 'profile', activeVacancy: null, editVacancy: null };
+const state = { user: null, mode: 'register', role: 'candidate', tab: 'profile', activeVacancy: null, editVacancy: null, employerVacancyFilter: 'all' };
 const esc = value => String(value ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const money = value => Number(value || 0).toLocaleString('ru-RU') + ' ₽';
 const formatPay = job => job.salary_min === job.salary_max ? money(job.salary_min) : `${money(job.salary_min)} — ${money(job.salary_max)}`;
@@ -316,7 +316,9 @@ async function loadEmployerVacancies() {
   const view = $('#dashboard-main');
   const openCount = jobs.filter(job => job.status === 'open').length;
   const closedCount = jobs.length - openCount;
-  view.innerHTML = `<div class="panel"><div class="split-header"><div><h3>Мои вакансии</h3><p class="muted">После размещения получите список обезличенных профилей.</p></div><button class="btn btn-primary btn-tiny" data-action="new-job">+ Добавить</button></div><div class="stat-grid" aria-label="Статистика вакансий"><div class="stat-tile"><strong>${jobs.length}</strong><span>Всего вакансий</span></div><div class="stat-tile"><strong>${openCount}</strong><span>Открыты</span></div><div class="stat-tile"><strong>${closedCount}</strong><span>Закрыты</span></div></div><div class="dashboard-list">${jobs.length ? jobs.map(jobEmployerMarkup).join('') : '<div class="empty-state">Вакансий пока нет. Опубликуйте первую, чтобы начать подбор.</div>'}</div></div><div id="employer-matches" class="hidden"></div>`;
+  const filter = ['all', 'open', 'closed'].includes(state.employerVacancyFilter) ? state.employerVacancyFilter : 'all';
+  const visibleJobs = filter === 'all' ? jobs : jobs.filter(job => job.status === filter);
+  view.innerHTML = `<div class="panel"><div class="split-header"><div><h3>Мои вакансии</h3><p class="muted">После размещения получите список обезличенных профилей.</p></div><button class="btn btn-primary btn-tiny" data-action="new-job">+ Добавить</button></div><div class="stat-grid" aria-label="Статистика вакансий"><div class="stat-tile"><strong>${jobs.length}</strong><span>Всего вакансий</span></div><div class="stat-tile"><strong>${openCount}</strong><span>Открыты</span></div><div class="stat-tile"><strong>${closedCount}</strong><span>Закрыты</span></div></div><div class="item-actions" role="group" aria-label="Фильтр вакансий"><button type="button" class="btn btn-tiny ${filter === 'all' ? 'btn-dark' : 'btn-outline'}" data-action="filter-employer-jobs" data-filter="all" aria-pressed="${filter === 'all'}">Все (${jobs.length})</button><button type="button" class="btn btn-tiny ${filter === 'open' ? 'btn-dark' : 'btn-outline'}" data-action="filter-employer-jobs" data-filter="open" aria-pressed="${filter === 'open'}">Открытые (${openCount})</button><button type="button" class="btn btn-tiny ${filter === 'closed' ? 'btn-dark' : 'btn-outline'}" data-action="filter-employer-jobs" data-filter="closed" aria-pressed="${filter === 'closed'}">Закрытые (${closedCount})</button></div><div class="dashboard-list">${visibleJobs.length ? visibleJobs.map(jobEmployerMarkup).join('') : '<div class="empty-state">В выбранной категории вакансий нет.</div>'}</div></div><div id="employer-matches" class="hidden"></div>`;
   if (state.activeVacancy && jobs.some(j=>j.id===state.activeVacancy)) await loadMatches(state.activeVacancy);
 }
 function jobEmployerMarkup(x) {
@@ -398,6 +400,13 @@ async function handleDashboardClick(event) {
   if (btn.disabled) return;
   btn.disabled = true;
   try {
+    if (action === 'filter-employer-jobs') {
+      if (!['all', 'open', 'closed'].includes(btn.dataset.filter)) return;
+      state.employerVacancyFilter = btn.dataset.filter;
+      state.activeVacancy = null;
+      await loadEmployerVacancies();
+      return;
+    }
     if (action === 'new-job') { state.editVacancy=null; state.tab='create'; await showDashboard(); }
     if (action === 'edit-job') { state.editVacancy=id; state.activeVacancy=null; state.tab='edit'; await showDashboard(); }
     if (action === 'cancel-job-edit') { state.editVacancy=null; state.tab='vacancies'; await showDashboard(); }
