@@ -176,7 +176,12 @@
       $('#account-content').innerHTML=`<div class="dashboard-grid">${tabsMarkup(nav,'ДЛЯ КОМПАНИИ',state.user.company?.company_name||'Работодатель')}<div id="dashboard-main"></div></div>`;
       try {
         const {applications}=await api('/api/employer/applications');
-        $('#dashboard-main').innerHTML=`<div class="panel"><h3>Отклики соискателей</h3><p class="muted">Профили обезличены. Контакты — только через отдельное согласие кандидата и действующий процесс знакомства.</p><div class="dashboard-list">${applications.length?applications.map(a=>`<article class="item-card"><header><div><h4>${esc(a.profession)}</h4><p>${esc(a.title)} · ${esc(a.city)} · зарплатные ожидания от ${money(a.expected_salary)}</p></div><span class="mini-badge">${esc(workflowStatus(a,status[a.status]||a.status))}</span></header><p>${esc(a.skills||'Навыки не указаны')}</p>${activityTimelineMarkup(a)}${employerIntroBadge(a)}${['applied','reviewing','interview'].includes(a.status) && !a.invitation_id?`<div class="item-actions"><button class="btn btn-outline btn-tiny" data-v02-action="application-status" data-id="${Number(a.id)}" data-status="reviewing">Рассмотреть</button>${!a.invitation_id ? `<button class="btn btn-primary btn-tiny" data-v02-action="express-interest" data-id="${Number(a.id)}">Заинтересован · запросить согласие</button>` : ''}<button class="btn btn-outline btn-tiny" data-v02-action="application-status" data-id="${Number(a.id)}" data-status="rejected">Отказать</button></div>`:''}</article>`).join(''):'<div class="empty-state">Откликов пока нет.</div>'}</div></div>`;
+        const {jobs}=await api('/api/employer/vacancies');
+        const selected = state.employerApplicationsVacancyFilter || 'all';
+        const shown = selected === 'all' ? applications : applications.filter(a => String(a.vacancy_id) === selected);
+        const options = jobs.map(j => `<option value="${Number(j.id)}" ${String(j.id) === selected ? 'selected' : ''}>${esc(j.title)}</option>`).join('');
+        const selector = `<div class="field"><label for="employer-applications-vacancy">Вакансия</label><select id="employer-applications-vacancy"><option value="all">Все вакансии</option>${options}</select></div>`;
+        $('#dashboard-main').innerHTML=`<div class="panel"><h3>Отклики соискателей</h3><p class="muted">Профили обезличены. Контакты — только через отдельное согласие кандидата и действующий процесс знакомства.</p><div class="form-grid">${selector}</div><p class="muted" role="status">Найдено откликов: ${shown.length}</p><div class="dashboard-list">${shown.length?shown.map(a=>`<article class="item-card"><header><div><h4>${esc(a.profession)}</h4><p>${esc(a.title)} · ${esc(a.city)} · зарплатные ожидания от ${money(a.expected_salary)}</p></div><span class="mini-badge">${esc(workflowStatus(a,status[a.status]||a.status))}</span></header><p>${esc(a.skills||'Навыки не указаны')}</p>${activityTimelineMarkup(a)}${employerIntroBadge(a)}${['applied','reviewing','interview'].includes(a.status) && !a.invitation_id?`<div class="item-actions"><button class="btn btn-outline btn-tiny" data-v02-action="application-status" data-id="${Number(a.id)}" data-status="reviewing">Рассмотреть</button>${!a.invitation_id ? `<button class="btn btn-primary btn-tiny" data-v02-action="express-interest" data-id="${Number(a.id)}">Заинтересован · запросить согласие</button>` : ''}<button class="btn btn-outline btn-tiny" data-v02-action="application-status" data-id="${Number(a.id)}" data-status="rejected">Отказать</button></div>`:''}</article>`).join(''):'<div class="empty-state">Откликов пока нет.</div>'}</div></div>`;
       } catch(e) { $('#dashboard-main').textContent=e.message;toast(e.message,true); }
     };
 
@@ -199,6 +204,12 @@
         root.innerHTML='<h3>Тестовая очередь</h3><p class="muted">Сообщения НЕ отправляются. Секретные ссылки здесь скрыты.</p>'+messages.map(m=>`<p>${esc(m.created_at)} · ${esc(m.event)} · ${esc(m.subject)}</p>`).join('');
       }
     }
+
+    document.addEventListener('change', event => {
+      if (event.target?.id !== 'employer-applications-vacancy') return;
+      state.employerApplicationsVacancyFilter = event.target.value;
+      if (state.user?.role === 'employer' && state.tab === 'applications') renderEmployer().catch(error => toast(error.message,true));
+    });
 
     document.addEventListener('click',async(event)=>{
       const btn=event.target.closest('[data-v02-action]');
