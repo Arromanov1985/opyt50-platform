@@ -200,6 +200,10 @@ def run_browser(page):
     # Release 0.6: vacancy overview and direct navigation to its applications.
     expect(page.locator("#dashboard-main")).to_contain_text("Заинтересованные")
     expect(page.locator("#dashboard-main")).to_contain_text("Знакомства (демо)")
+    # The two KPI grids must be siblings, not incorrectly nested inside each other.
+    expect(page.locator("#dashboard-main .stat-grid")).to_have_count(2)
+    expect(page.locator("#dashboard-main .stat-grid[aria-label='Статистика вакансий'] > .stat-tile")).to_have_count(3)
+    expect(page.locator("#dashboard-main .stat-grid[aria-label='Воронка подбора'] > .stat-tile")).to_have_count(3)
     page.locator("#dashboard-main [data-action='filter-employer-jobs'][data-filter='closed']").click()
     expect(page.locator("#dashboard-main [data-action='filter-employer-jobs'][data-filter='closed']")).to_have_attribute("aria-pressed", "true")
     page.locator("#dashboard-main [data-action='filter-employer-jobs'][data-filter='all']").click()
