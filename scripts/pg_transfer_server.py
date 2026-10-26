@@ -40,6 +40,7 @@ async def security_headers(request: Request, call_next):
     return response
 
 
+@app.api_route("/", methods=["GET", "HEAD"])
 @app.api_route("/api/health", methods=["GET", "HEAD"])
 @app.api_route("/health", methods=["GET", "HEAD"])
 def health():
