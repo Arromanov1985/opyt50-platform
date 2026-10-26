@@ -1,0 +1,10 @@
+FROM python:3.13-slim
+WORKDIR /srv
+COPY requirements.txt requirements-postgres.txt ./
+RUN pip install --no-cache-dir -r requirements-postgres.txt
+COPY app ./app
+COPY scripts ./scripts
+RUN useradd -r -u 10001 opyt
+USER opyt
+EXPOSE 8000
+CMD ["python","-m","uvicorn","scripts.pg_transfer_server:app","--host","0.0.0.0","--port","8000","--workers","1","--no-access-log"]
