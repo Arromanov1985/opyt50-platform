@@ -1,6 +1,6 @@
 # Release 0.6 — pre-deploy acceptance gate
 
-**Status:** DO NOT deploy to `opytno-preview` until durable storage has been demonstrated.
+**Status:** Durable PostgreSQL storage is verified on the isolated test app. DO NOT deploy to `opytno-preview` until a fresh off-container SQLite snapshot is verified and explicit production approval is given.
 
 ## Why this gate exists
 
@@ -35,7 +35,7 @@ Stop further writes and use only a separately verified backup on an isolated vol
 - [x] Applications metrics and per-vacancy link added
 - [x] Existing employer applications page reused, filtering by vacancy
 - [x] GitHub Actions succeeded on release 0.6 browser smoke (check latest commit before approval)
-- [ ] Manual visual acceptance on isolated preview
-- [ ] Durable database storage independently verified
+- [x] Manual visual acceptance on isolated preview
+- [x] Durable database storage independently verified
 - [ ] Fresh off-container backup created immediately before deployment
 - [ ] Explicit deployment/merge approval
