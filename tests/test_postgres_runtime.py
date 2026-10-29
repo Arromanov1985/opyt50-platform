@@ -90,8 +90,8 @@ def test_full_introduction_timeline_persists_and_has_stable_timestamps(runtime_d
             (invitation_id,),
         )
         db.execute(
-            "INSERT INTO demo_transactions(invitation_id,employer_id,amount_rub) VALUES(?,?,?)",
-            (invitation_id, 2, 1490),
+            "INSERT INTO demo_transactions(invitation_id,amount_rub) VALUES(?,?)",
+            (invitation_id, 1490),
         )
         db.execute(
             "UPDATE invitations SET contact_shared=1 WHERE id=?",
