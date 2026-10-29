@@ -1,4 +1,4 @@
-"""Release 0.2 routes. Demo-only mail outbox: no external delivery or personal-data rollout."""
+"""Release 0.2 routes with durable notification outbox and optional SMTP delivery."""
 from __future__ import annotations
 
 import secrets
@@ -93,11 +93,12 @@ def init_release02(path: str) -> None:
 
 
 def enqueue_notice(db: sqlite3.Connection, user_id: int, event: str, subject: str, message: str) -> None:
-    """Write ONLY to local demo outbox; SMTP/API transport is deliberately absent."""
+    """Persist every notice and optionally deliver it through configured SMTP."""
     user = db.execute("SELECT email FROM users WHERE id=?", (user_id,)).fetchone()
     if user is not None:
         db.execute("INSERT INTO email_outbox(to_email,event,subject,body) VALUES(?,?,?,?)",
                    (user["email"], event, subject, message))
+        send_email(user["email"], subject, message)
 
 
 class ApplicationIn(BaseModel):
@@ -134,10 +135,18 @@ def issue_email_token(db: sqlite3.Connection, user_id: int, purpose: str) -> Non
     db.execute("DELETE FROM email_tokens WHERE user_id=? AND purpose=?", (user_id, purpose))
     db.execute("INSERT INTO email_tokens(token_hash,user_id,purpose,expires_at) VALUES(?,?,?,?)",
                (token_hash(token), user_id, purpose, expires))
-    # No network requests, no token in HTTP response or application logs.
+    # Token is never returned by the API or written to application logs.
     route = "reset" if purpose == "reset" else "verify"
-    enqueue_notice(db, user_id, f"account_{purpose}", "ОПЫТНО.РФ — подтверждение",
-                   f"ДЕМО. Ссылка для проверки: /?account_action={route}&token={token} (30 мин для сброса, 24 ч для подтверждения)")
+    public_url = __import__("os").getenv("OPYT50_PUBLIC_URL", "").strip().rstrip("/")
+    path = f"/?account_action={route}&token={token}"
+    link = public_url + path if public_url else path
+    ttl = "30 минут" if purpose == "reset" else "24 часа"
+    action = "восстановления пароля" if purpose == "reset" else "подтверждения email"
+    enqueue_notice(
+        db, user_id, f"account_{purpose}", "ОПЫТНО.РФ — подтверждение",
+        f"Ссылка для {action}: {link}\n\nСрок действия ссылки: {ttl}. "
+        "Если вы не запрашивали это действие, просто проигнорируйте письмо.",
+    )
 
 
 def redeem_token(db: sqlite3.Connection, raw: str, purpose: str) -> sqlite3.Row:
@@ -503,7 +512,7 @@ def install_routes(app) -> None:
     def email_status(user: dict = Depends(active_user), db: sqlite3.Connection = Depends(get_connection)):
         row = db.execute("SELECT email_verified FROM account_controls WHERE user_id=?",
                          (user["id"],)).fetchone()
-        return {"email_verified": bool(row and row["email_verified"]), "delivery": "demo_outbox_only"}
+        return {"email_verified": bool(row and row["email_verified"]), "delivery": delivery_mode()}
 
     @app.post("/api/account/email/request")
     def request_verification(user: dict = Depends(active_user),
@@ -511,7 +520,7 @@ def install_routes(app) -> None:
         issue_email_token(db, user["id"], "verify")
         # Commit before the HTTP response: a new dashboard request may arrive immediately.
         db.commit()
-        return {"ok": True, "delivery": "demo_outbox_only"}
+        return {"ok": True, "delivery": delivery_mode()}
 
     @app.post("/api/account/email/confirm")
     def confirm_email(data: EmailTokenIn, db: sqlite3.Connection = Depends(get_connection)):
@@ -598,4 +607,4 @@ def install_routes(app) -> None:
         # Never return reset/verification secrets to the public demo admin.
         rows = db.execute("""SELECT id,event,subject,created_at FROM email_outbox
                              ORDER BY id DESC LIMIT 50""").fetchall()
-        return {"delivery": "demo_outbox_only", "messages": [dict(r) for r in rows]}
+        return {"delivery": delivery_mode(), "messages": [dict(r) for r in rows]}
