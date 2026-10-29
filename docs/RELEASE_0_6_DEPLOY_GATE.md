@@ -1,41 +1,53 @@
-# Release 0.6 — pre-deploy acceptance gate
+# Release 0.6 — production status
 
-**Status:** Durable PostgreSQL storage is verified on the isolated test app. DO NOT deploy to `opytno-preview` until a fresh off-container SQLite snapshot is verified and explicit production approval is given.
+**Status:** Release 0.6 functionality is present on the PostgreSQL runtime used by production. The old SQLite/App Platform persistence gate is superseded by the completed PostgreSQL cutover.
 
-## Why this gate exists
+## Production state
 
-The preview's SQLite database is at `/srv/data/opyt50.db`. On the inspected Timeweb deployment, `/srv/data` belongs to the container's `overlay` filesystem. It has **not** been verified as persistent across container replacement. An application redeploy may replace the writable layer and lose accounts, job applications and invitations.
+- Production application: `opytno-production`.
+- Durable database: managed PostgreSQL.
+- PostgreSQL runtime branch lineage includes the release 0.6 employer UI.
+- Production data was migrated from the verified final SQLite snapshot.
+- PostgreSQL backups are enabled.
+- The retired SQLite production app was removed after cutover verification.
+- `main` has not been merged with the PostgreSQL/release branch yet.
 
-A tested, encrypted off-container backup is necessary but **not sufficient** to provide continuous persistence: any changes since that backup can still be lost.
+## Release 0.6 scope
 
-## Completed
+Release 0.6 adds the employer vacancy overview and application analytics:
 
-- The employer UI release 0.6 is isolated in `feature/release-0.6-development`.
-- Backend and browser CI must be green for the current head commit.
-- An encrypted SQLite backup was made outside this repository and the restore integrity was checked with `PRAGMA integrity_check`.
-- No real user accounts or personal data should be onboarded in the preview.
+- vacancy filters: all / open / closed;
+- vacancy counts;
+- application metrics;
+- interested-candidate and introduction metrics;
+- per-vacancy navigation to applications;
+- reuse of the employer applications page with vacancy filtering.
 
-## Required before changing Timeweb settings or branch
+## Acceptance status
 
-1. Obtain Timeweb confirmation of a supported **persistent storage mount** for App Platform, or agree on a durable database migration path. Do **not** assume that a network disk is mountable or SQLite-safe.
-2. Perform an isolated rehearsal that creates a record, replaces the container, and verifies it survives; never use real user data for this rehearsal.
-3. Immediately before any approved deployment, take a new *consistent* SQLite backup, verify integrity and record counts, export it **outside the container**, and keep the password separately. The older backup is only a historical snapshot.
-4. Record deployed branch and commit, environment variable **names** (not secrets), expected DB path, backup SHA-256 and a rollback procedure.
-5. Confirm that preview demo seeding cannot overwrite an existing database and that no production personal data are present.
-6. Obtain explicit approval for the Timeweb branch change, any infrastructure charges, and merging PR #17. Do not conflate CI success with permission to deploy.
-7. After an approved deploy, verify the health endpoint and a fresh test of employer vacancy metrics, filters, and application-to-introduction flow.
-
-## Rollback
-
-Stop further writes and use only a separately verified backup on an isolated volume. Do not overwrite a live SQLite database or discard WAL sidecars. If persistence cannot be demonstrated, leave the current preview running and keep the release in GitHub.
-
-## Release 0.6 acceptance matrix
-
-- [x] Vacancy overview: all/open/closed, counts and filter controls added
-- [x] Applications metrics and per-vacancy link added
+- [x] Vacancy overview: all/open/closed, counts and filter controls
+- [x] Applications metrics and per-vacancy link
 - [x] Existing employer applications page reused, filtering by vacancy
-- [x] GitHub Actions succeeded on release 0.6 browser smoke (check latest commit before approval)
-- [x] Manual visual acceptance on isolated preview
-- [x] Durable database storage independently verified
-- [ ] Fresh off-container backup created immediately before deployment
-- [ ] Explicit deployment/merge approval
+- [x] Browser smoke coverage for release 0.6
+- [x] Manual visual acceptance performed before the database migration
+- [x] Durable PostgreSQL storage verified
+- [x] SQLite-to-PostgreSQL migration completed and record counts verified
+- [x] Production cutover completed
+- [x] Production homepage, vacancy list, employer login and employer cabinet verified after cutover
+- [x] PostgreSQL backups enabled
+- [ ] Repository housekeeping: reconcile the release/PostgreSQL branch with the one newer commit on `main`
+- [ ] Merge to `main` only after explicit approval
+
+## Safety rule
+
+Do not re-run the SQLite migration, clean the PostgreSQL schema, change the production domain, remove the private network, or merge to `main` without a separate reason and explicit approval where required.
+
+## Current release branch
+
+Active continuation branch:
+
+`feature/release-0.6-postgres`
+
+It was created from the verified PostgreSQL runtime commit:
+
+`ef1a1e9bb6d582cc77c101d44ae7a8501897720e`
