@@ -433,3 +433,17 @@ def test_account_email_endpoints_are_rate_limited(app):
             response = post(c, "/api/account/password/request", {"email": f"missing{i}@demo.example"})
             assert response.status_code == 200
         assert post(c, "/api/account/password/request", {"email": "missing-last@demo.example"}).status_code == 429
+
+
+def test_account_email_links_use_public_origin(app, monkeypatch):
+    monkeypatch.setenv("OPYT50_PUBLIC_URL", "https://example.invalid")
+    with TestClient(app) as c:
+        register(c, "public-link@demo.example")
+        response = post(c, "/api/account/email/request")
+        assert response.status_code == 200
+        assert "token" not in response.text.lower()
+        with database(app.state.db_path) as db:
+            body = db.execute(
+                "SELECT body FROM email_outbox WHERE event='account_verify' ORDER BY id DESC"
+            ).fetchone()["body"]
+        assert body.startswith("Ссылка для подтверждения email: https://example.invalid/?account_action=verify&token=")
