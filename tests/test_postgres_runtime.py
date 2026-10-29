@@ -81,8 +81,8 @@ def test_full_introduction_timeline_persists_and_has_stable_timestamps(runtime_d
             (app_id, "applied"),
         )
         invitation = db.execute(
-            "INSERT INTO invitations(vacancy_id,candidate_id,employer_id,status) VALUES(?,?,?,'sent')",
-            (3, 1, 2),
+            "INSERT INTO invitations(vacancy_id,candidate_id,employer_id,status,price_rub) VALUES(?,?,?,'sent',?)",
+            (3, 1, 2, 1490),
         )
         invitation_id = invitation.lastrowid
         db.execute(
