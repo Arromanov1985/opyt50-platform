@@ -6,6 +6,7 @@ import pytest
 
 from app.db import SCHEMA
 from app.release02 import MIGRATION
+pytest.importorskip("psycopg")
 from app.pg_compat import postgres_database
 from scripts.migrate_sqlite_to_postgres import migrate
 
