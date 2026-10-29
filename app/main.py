@@ -255,15 +255,26 @@ def create_app(db_path: str | None = None) -> FastAPI:
         if request.url.path.startswith("/api/") and request.method in {"POST", "PUT", "PATCH", "DELETE"}:
             if request.headers.get("x-requested-with") != "OPYT50":
                 return Response(status_code=403, content="Request header is required")
-        if request.url.path in {"/api/register", "/api/login"} and request.method == "POST":
-            key = (request.client.host if request.client else "unknown", request.url.path)
-            queue = request.app.state.auth_attempts[key]
-            now = time.monotonic()
-            while queue and queue[0] < now - 600:
-                queue.popleft()
-            if len(queue) >= 30:
-                return Response(status_code=429, content="Слишком много попыток. Повторите позже")
-            queue.append(now)
+        if request.method == "POST":
+            rate_limits = {
+                "/api/register": (30, 600),
+                "/api/login": (30, 600),
+                "/api/account/password/request": (10, 600),
+                "/api/account/password/reset": (20, 600),
+                "/api/account/email/request": (10, 600),
+                "/api/account/email/confirm": (20, 600),
+            }
+            limit = rate_limits.get(request.url.path)
+            if limit:
+                max_attempts, window_seconds = limit
+                key = (request.client.host if request.client else "unknown", request.url.path)
+                queue = request.app.state.auth_attempts[key]
+                now = time.monotonic()
+                while queue and queue[0] < now - window_seconds:
+                    queue.popleft()
+                if len(queue) >= max_attempts:
+                    return Response(status_code=429, content="Слишком много попыток. Повторите позже")
+                queue.append(now)
         response = await call_next(request)
         response.headers["X-Content-Type-Options"] = "nosniff"
         response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
