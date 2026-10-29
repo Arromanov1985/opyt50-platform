@@ -418,3 +418,18 @@ def test_proactive_invitation_has_unified_history_without_application(app):
         assert employer_item["timeline"] == candidate_item["timeline"]
         assert [e["event"] for e in employer_item["timeline"]] == ["invitation_sent"]
         assert "contact" not in employer_item
+
+
+def test_account_email_endpoints_are_rate_limited(app):
+    with TestClient(app) as c:
+        register(c, "ratelimit@demo.example")
+        for _ in range(10):
+            assert post(c, "/api/account/email/request").status_code == 200
+        assert post(c, "/api/account/email/request").status_code == 429
+
+    # A separate client/app path verifies anonymous password reset throttling.
+    with TestClient(app) as c:
+        for i in range(10):
+            response = post(c, "/api/account/password/request", {"email": f"missing{i}@demo.example"})
+            assert response.status_code == 200
+        assert post(c, "/api/account/password/request", {"email": "missing-last@demo.example"}).status_code == 429
