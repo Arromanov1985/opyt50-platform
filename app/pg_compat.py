@@ -6,6 +6,7 @@ only the SQL patterns used by the current routes; it is not a general SQL transl
 from __future__ import annotations
 
 import re
+import sqlite3
 from contextlib import contextmanager
 from typing import Iterator
 
@@ -95,7 +96,13 @@ class PostgresCompatConnection:
 
         translated, table = _translate(sql)
         cursor = self._connection.cursor()
-        cursor.execute(translated, tuple(params))
+        try:
+            cursor.execute(translated, tuple(params))
+        except psycopg.IntegrityError as exc:
+            # sqlite routes already translate integrity failures into HTTP 409.
+            # Clear PostgreSQL's aborted transaction before preserving that contract.
+            self._connection.rollback()
+            raise sqlite3.IntegrityError(str(exc)) from exc
         lastrowid = None
         if table in IDENTITY_TABLES:
             row = cursor.fetchone()
