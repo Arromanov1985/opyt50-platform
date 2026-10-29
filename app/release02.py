@@ -10,6 +10,7 @@ from fastapi import Depends, HTTPException
 from pydantic import BaseModel, Field
 
 from .db import database
+from .email_delivery import delivery_mode, send_email
 from .security import make_password_hash, token_hash
 
 
