@@ -32,8 +32,10 @@ class HybridRow(dict):
 
 
 def hybrid_row(cursor):
-    names = [col.name for col in cursor.description]
+    # psycopg calls the row factory when creating a cursor, before execute()
+    # has populated cursor.description. Resolve column names when a row arrives.
     def make_row(values):
+        names = [col.name for col in cursor.description]
         return HybridRow(names, values)
     return make_row
 
