@@ -82,7 +82,6 @@ CREATE INDEX IF NOT EXISTS idx_invitations_candidate ON invitations(candidate_id
 
 
 @contextmanager
-@contextmanager
 def database(path: str):
     """Open PostgreSQL when DATABASE_URL is configured; otherwise preserve SQLite."""
     dsn = os.getenv("DATABASE_URL", "").strip()
