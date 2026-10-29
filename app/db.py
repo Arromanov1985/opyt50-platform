@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import sqlite3
 from contextlib import contextmanager
 from pathlib import Path
@@ -81,8 +82,18 @@ CREATE INDEX IF NOT EXISTS idx_invitations_candidate ON invitations(candidate_id
 
 
 @contextmanager
-def database(path: str) -> Iterator[sqlite3.Connection]:
-    """Always close connections and roll back failed writes."""
+def database(path: str):
+    """Open PostgreSQL when DATABASE_URL is configured; otherwise preserve SQLite."""
+    dsn = os.getenv("DATABASE_URL", "").strip()
+    if dsn:
+        from .pg_compat import postgres_database
+        return postgres_database(dsn)
+    return _sqlite_database(path)
+
+
+@contextmanager
+def _sqlite_database(path: str) -> Iterator[sqlite3.Connection]:
+    """Always close SQLite connections and roll back failed writes."""
     # FastAPI may execute a sync dependency and its cleanup in different worker threads.
     # Connections are still created per request and never shared between requests.
     connection = sqlite3.connect(path, timeout=10, check_same_thread=False)
@@ -102,6 +113,8 @@ def database(path: str) -> Iterator[sqlite3.Connection]:
 
 
 def init_db(path: str) -> None:
+    if os.getenv("DATABASE_URL", "").strip():
+        return
     Path(path).parent.mkdir(parents=True, exist_ok=True)
     with database(path) as connection:
         connection.executescript(SCHEMA)
