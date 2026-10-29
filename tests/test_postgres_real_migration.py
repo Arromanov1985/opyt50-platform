@@ -7,6 +7,7 @@ import pytest
 from app.db import SCHEMA
 from app.release02 import MIGRATION
 from scripts.migrate_sqlite_to_postgres import migrate
+from scripts.production_cutover_preflight import inspect_target
 
 
 @pytest.fixture
@@ -73,3 +74,13 @@ def test_nonempty_target_is_rejected(target, sample):
         migrate(str(sample), target)
     with psycopg.connect(target) as conn:
         assert conn.execute("SELECT COUNT(*) FROM users").fetchone()[0] == 2
+
+
+def test_production_cutover_preflight_is_read_only_and_detects_nonempty_target(target, sample):
+    empty = inspect_target(target)
+    assert empty["target_empty"] is True
+    assert empty["target_table_count"] == 0
+    migrate(str(sample), target)
+    populated = inspect_target(target)
+    assert populated["target_empty"] is False
+    assert populated["target_table_count"] > 0
