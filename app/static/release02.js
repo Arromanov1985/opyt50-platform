@@ -160,7 +160,7 @@
         }
         if(state.tab==='email'){
           const result=await api('/api/account/email/status');
-          $('#dashboard-main').innerHTML=`<div class="panel"><h3>Подтверждение электронной почты</h3><p>${result.email_verified?'✓ Email подтверждён':'Email пока не подтверждён'}</p><p class="muted">Сейчас действует тестовая очередь: реальные письма не отправляются. Не вводите личные данные.</p><button class="btn btn-primary" data-v02-action="verify-email">Запросить подтверждение (демо)</button></div>`;
+          $('#dashboard-main').innerHTML=`<div class="panel"><h3>Подтверждение электронной почты</h3><p>${result.email_verified?'✓ Email подтверждён':'Email пока не подтверждён'}</p><p class="muted">Ссылка подтверждения будет отправлена на ваш email.</p><button class="btn btn-primary" data-v02-action="verify-email">Отправить письмо подтверждения</button></div>`;
         }
       } catch(e) { $('#dashboard-main').textContent=e.message;toast(e.message,true); }
     };
@@ -250,7 +250,7 @@
         else if(type==='application-status'){await req('PATCH',`/api/employer/applications/${id}/status`,{status:btn.dataset.status});await showDashboard();toast('Статус обновлён');}
         else if(type==='express-interest'){const data=await req('POST',`/api/employer/applications/${id}/interest`);await showDashboard();toast(data.created?'Кандидату направлен запрос на знакомство (демо)':'Запрос уже существует — повторно не отправлен');}
         else if(type==='open-introductions'){state.tab='invitations';await showDashboard();}
-        else if(type==='verify-email'){await req('POST','/api/account/email/request');toast('Запрос сохранён в тестовой очереди; реальное письмо не отправлено');}
+        else if(type==='verify-email'){await req('POST','/api/account/email/request');toast('Письмо подтверждения отправлено, если почтовая доставка настроена');}
         else if(type==='recover'){$('#auth-dialog').close();$('#reset-dialog').showModal();}
         else if(type==='admin-users')await adminView('users');
         else if(type==='admin-jobs')await adminView('jobs');
@@ -266,7 +266,7 @@
       event.preventDefault();
       try{
         await req('POST','/api/account/password/request',{email:$('#reset-email').value.trim()});
-        $('#reset-dialog').close();toast('Запрос сохранён в тестовой очереди; письмо не отправлено');
+        $('#reset-dialog').close();toast('Если такой аккаунт существует, ссылка для сброса отправлена на email');
       }catch(e){toast(e.message,true);}
     });
     $('#reset-complete-form').addEventListener('submit',async event=>{
