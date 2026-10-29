@@ -12,7 +12,7 @@ import sys
 
 def check_connection(dsn: str = "", *, require_tls: bool = False) -> dict[str, object]:
     if not dsn and not all(os.getenv(k) for k in ("PGHOST", "PGDATABASE", "PGUSER", "PGPASSWORD")):
-        raise ValueError("PostgreSQL connection is not configured")
+        raise ValueError("DATABASE_URL or PostgreSQL PG* connection variables are required")
     try:
         import psycopg
     except ImportError as exc:
