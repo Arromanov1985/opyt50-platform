@@ -156,6 +156,23 @@ def introduction_stage(status: str | None, contact_shared: int | bool | None) ->
     return {"sent": "awaiting_consent", "accepted": "consented", "declined": "declined"}.get(status)
 
 
+def normalize_event_time(value) -> str:
+    """Stable second-resolution UTC-like text for SQLite and PostgreSQL timelines."""
+    if value is None:
+        return ""
+    if isinstance(value, datetime):
+        value = value.astimezone(timezone.utc).replace(tzinfo=None).isoformat(sep=" ", timespec="seconds")
+    else:
+        value = str(value).strip().replace("T", " ")
+        if value.endswith("Z"):
+            value = value[:-1]
+        if "+" in value:
+            value = value.split("+", 1)[0]
+        if "." in value:
+            value = value.split(".", 1)[0]
+    return value[:19]
+
+
 def interaction_timeline(
     db: sqlite3.Connection, application_id: int | None, invitation_id: int | None
 ) -> list[dict[str, str]]:
@@ -167,8 +184,8 @@ def interaction_timeline(
                WHERE application_id=? ORDER BY id ASC""", (application_id,)
         ).fetchall()
         for row in rows:
-            entries.append((row["created_at"], row["id"], {
-                "event": row["event"], "created_at": row["created_at"]
+            entries.append((normalize_event_time(row["created_at"]), row["id"], {
+                "event": row["event"], "created_at": normalize_event_time(row["created_at"])
             }))
     if invitation_id is not None:
         invitation = db.execute(
@@ -176,13 +193,13 @@ def interaction_timeline(
                FROM invitations WHERE id=?""", (invitation_id,)
         ).fetchone()
         if invitation:
-            entries.append((invitation["created_at"], 1000000, {
-                "event": "invitation_sent", "created_at": invitation["created_at"]
+            entries.append((normalize_event_time(invitation["created_at"]), 1000000, {
+                "event": "invitation_sent", "created_at": normalize_event_time(invitation["created_at"])
             }))
-            if invitation["responded_at"] and invitation["status"] in ("accepted", "declined"):
-                entries.append((invitation["responded_at"], 2000000, {
+            if normalize_event_time(invitation["responded_at"]) and invitation["status"] in ("accepted", "declined"):
+                entries.append((normalize_event_time(invitation["responded_at"]), 2000000, {
                     "event": "invitation_accepted" if invitation["status"] == "accepted" else "invitation_declined",
-                    "created_at": invitation["responded_at"]
+                    "created_at": normalize_event_time(invitation["responded_at"])
                 }))
             if invitation["contact_shared"]:
                 txn = db.execute(
@@ -190,8 +207,8 @@ def interaction_timeline(
                     (invitation_id,),
                 ).fetchone()
                 if txn:
-                    entries.append((txn["created_at"], 3000000, {
-                        "event": "contact_opened", "created_at": txn["created_at"]
+                    entries.append((normalize_event_time(txn["created_at"]), 3000000, {
+                        "event": "contact_opened", "created_at": normalize_event_time(txn["created_at"])
                     }))
     # SQLite timestamps are second-resolution; an explicit sequence makes
     # events from one request deterministic, without relying on client clocks.
