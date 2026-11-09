@@ -99,6 +99,8 @@ def run_browser(page):
 
     login(page, "kladovshik@demo.example")
     expect(page.locator("#profile-form")).to_be_visible()
+    expect(page.locator(".profile-health")).to_be_visible()
+    expect(page.locator(".profile-health")).to_contain_text("%")
     expect(page.locator("#profile-profession")).to_have_value("Кладовщик")
     expect(page.locator(".profile-optional")).not_to_have_attribute("open", "")
     expect(page.locator("#profile-phone")).not_to_be_visible()
@@ -206,6 +208,7 @@ def run_browser(page):
     page.locator("#logout").click()
 
     login(page, "company@demo.example")
+    expect(page.locator(".employer-next")).to_be_visible()
     # Release 0.6: vacancy overview and direct navigation to its applications.
     expect(page.locator("#dashboard-main")).to_contain_text("Заинтересованные")
     expect(page.locator("#dashboard-main")).to_contain_text("Знакомства (демо)")
@@ -279,7 +282,7 @@ def run_browser(page):
     # Reproduce the real screenshot: account has an existing application
     # before reloading the website and opening recommended jobs again.
     page.reload(wait_until="networkidle")
-    expect(page.locator(".release-ribbon")).to_contain_text("0.3.0-dev")
+    expect(page.locator(".product-strip")).to_contain_text("СТАЖНО")
     page.locator(".dashboard-tabs [data-tab='offers']").click()
     expect(page.locator("#dashboard-main")).to_contain_text("Отклик: Отправлен")
     expect(page.locator("#dashboard-main [data-v02-action='apply']")).to_have_count(0)
