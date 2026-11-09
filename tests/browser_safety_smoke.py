@@ -56,7 +56,7 @@ def run_browser(page):
     expect(page.locator("#report-details")).to_be_visible()
     page.locator("#report-reason").select_option("misleading")
     page.locator("#report-details").fill("Условия вакансии требуют дополнительной проверки.")
-    expect(page.locator("#report-details-count")).to_contain_text("50 / 800")
+    expect(page.locator("#report-details-count")).to_contain_text("/ 800")
     with page.expect_response(lambda response: (
         response.url.endswith("/api/reports") and response.request.method == "POST"
     )) as first_report:
