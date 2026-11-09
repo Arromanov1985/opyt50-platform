@@ -190,14 +190,23 @@ async function submitAuth(event) {
   } finally { btn.disabled = false; }
 }
 function syncResponsiveMemberActions() {
-  const desktop = $('#member-actions');
-  const mobile = $('#mobile-member-slot');
+  const useMobile = window.matchMedia('(max-width: 700px)').matches;
+  const memberDesktop = $('#member-actions');
+  const memberMobile = $('#mobile-member-slot');
   const account = $('#account-open');
   const logout = $('#logout');
-  if (!desktop || !mobile || !account || !logout) return;
-  const useMobile = window.matchMedia('(max-width: 700px)').matches;
-  const target = useMobile ? mobile : desktop;
-  if (account.parentElement !== target) target.append(account, logout);
+  if (memberDesktop && memberMobile && account && logout) {
+    const memberTarget = useMobile ? memberMobile : memberDesktop;
+    if (account.parentElement !== memberTarget) memberTarget.append(account, logout);
+  }
+  const guestDesktop = $('#guest-actions');
+  const guestMobile = $('#mobile-guest-slot');
+  const login = $('#login-open');
+  const register = $('#register-open');
+  if (guestDesktop && guestMobile && login && register) {
+    const guestTarget = useMobile ? guestMobile : guestDesktop;
+    if (login.parentElement !== guestTarget) guestTarget.append(login, register);
+  }
 }
 async function reloadUser() {
   syncResponsiveMemberActions();
@@ -827,7 +836,6 @@ async function handleDashboardClick(event) {
 async function start() {
   $('#login-open').addEventListener('click',()=>openAuth('login'));
   $('#register-open').addEventListener('click',()=>openAuth('register'));
-  $('#mobile-login-open')?.addEventListener('click',()=>openAuth('login'));
   window.addEventListener('resize', syncResponsiveMemberActions);
   syncResponsiveMemberActions();
   $('#modal-close').addEventListener('click',()=>$('#auth-dialog').close());
