@@ -9,7 +9,7 @@
   <link rel="stylesheet" href="/static/styles.css">
   <link rel="stylesheet" href="/static/brand-overrides.css?v=stazhno1">
   <link rel="stylesheet" href="/static/release02.css?v=0300">
-  <link rel="stylesheet" href="/static/release03.css?v=0306">
+  <link rel="stylesheet" href="/static/release03.css?v=0306">\n  <link rel="stylesheet" href="/static/release08.css?v=0800">
   <title>СТАЖНО — работа, где опыт имеет значение</title>
   <script src="/static/release02.js?v=0402" defer></script>
   <script src="/static/app.js?v=0305" defer></script>
@@ -20,7 +20,7 @@
   <header class="site-header">
     <div class="container nav-inner">
       <a class="brand" href="/" aria-label="СТАЖНО, на главную"><img class="brand-icon" src="/static/brand-symbol.svg?v=stazhno1" alt=""><span class="brand-word">стажно<span class="brand-plus">.ru</span></span></a>
-      <nav class="nav-links" aria-label="Главное меню"><a href="#jobs">Соискателям</a><a href="#how">Работодателям</a><a href="#values">О сервисе</a></nav>
+      <nav class="nav-links" aria-label="Главное меню"><a href="#candidate-path">Соискателям</a><a href="#employer-path">Работодателям</a><a href="#jobs">Вакансии</a><a href="#how">Как работает</a></nav>
       <button class="reading-toggle" id="reading-mode-toggle" type="button" aria-label="Включить крупный текст" aria-pressed="false" title="Крупный текст">Аа <span>Крупный текст</span></button>
       <div class="nav-actions" id="guest-actions"><button class="btn btn-text" id="login-open">Войти</button><button class="btn btn-primary btn-sm" id="register-open">Зарегистрироваться <span aria-hidden="true">→</span></button></div>
       <div class="nav-actions hidden" id="member-actions"><button class="btn btn-text" id="account-open">Мой кабинет</button><button class="btn btn-outline btn-sm" id="logout">Выйти</button></div>
@@ -29,14 +29,34 @@
   <nav class="mobile-quick-nav" aria-label="Быстрые разделы"><a href="#jobs">Вакансии</a><a href="#how">Как это работает</a><a href="#values">О сервисе</a></nav>
   <div class="release-ribbon" role="status"><span class="release-ribbon-dot"></span> Тестовый релиз <strong>0.3.0-dev</strong><span class="release-ribbon-note">Простой поиск · Удобный профиль · Крупный текст · Помощник опыта</span></div>
   <main>
-    <section class="hero" id="home"><div class="container hero-grid">
-      <div class="hero-content"><span class="eyebrow"><span class="eyebrow-point"></span> РАБОТА, ГДЕ ОПЫТ ИМЕЕТ ЗНАЧЕНИЕ</span>
-        <h1>Ваш опыт<br>работает<br><em>на вас</em></h1>
-        <p class="hero-copy">Помогаем людям с профессиональным опытом находить достойную работу, интересные проекты и новые возможности — от рабочих профессий до руководящих должностей.</p>
-        <div class="hero-actions"><a class="btn btn-primary btn-lg" href="#jobs">Посмотреть вакансии <span aria-hidden="true">→</span></a><button class="btn btn-outline btn-lg" data-register="candidate">Создать профиль</button></div><p class="hero-helper">Сначала посмотрите вакансии. Регистрироваться для просмотра не нужно.</p>
-        <div class="hero-foot"><span class="hero-tick">✓</span> Бесплатно для соискателей <span class="foot-divider"></span><span class="hero-tick">✓</span> Без возрастных барьеров</div>
+    <section class="hero hero-v08" id="home"><div class="container hero-grid">
+      <div class="hero-content"><span class="eyebrow"><span class="eyebrow-point"></span> СТАЖНО · РАБОТА, ГДЕ ОПЫТ ИМЕЕТ ЗНАЧЕНИЕ</span>
+        <h1>Опыт ценят.<br><em>Работа находится.</em></h1>
+        <p class="hero-copy">СТАЖНО помогает специалистам находить работу по навыкам и опыту, а работодателям — быстрее выходить на подходящих кандидатов без лишнего обмена контактами.</p>
+        <div class="hero-actions">
+          <a class="btn btn-primary btn-lg" href="#jobs">Найти работу <span aria-hidden="true">→</span></a>
+          <button class="btn btn-outline btn-lg" data-register="employer">Найти сотрудника</button>
+        </div>
+        <p class="hero-helper">Для просмотра вакансий регистрация не нужна. Профиль можно заполнить позже.</p>
+        <div class="hero-foot"><span class="hero-tick">✓</span> Бесплатный профиль соискателя <span class="foot-divider"></span><span class="hero-tick">✓</span> Приватность контактов</div>
       </div>
-      <div class="hero-visual"><img class="hero-person" src="/static/experience-hero.svg" alt="Иллюстрация опытного специалиста с ноутбуком"><div class="hero-floating"><span>↗</span>Опыт открывает<br>новые горизонты</div></div>
+      <div class="hero-visual"><img class="hero-person" src="/static/experience-hero.svg" alt="Иллюстрация опытного специалиста с ноутбуком"><div class="hero-floating hero-floating-v08"><span>↗</span><div><strong>Опыт — это преимущество</strong><small>Покажите навыки, а не возраст</small></div></div></div>
+    </div></section>
+    <section class="role-paths" aria-label="Выберите свой сценарий"><div class="container role-path-grid">
+      <article class="role-path-card candidate-path" id="candidate-path">
+        <span class="role-path-label">ИЩУ РАБОТУ</span>
+        <h2>Покажите, что вы умеете</h2>
+        <p>Не нужно начинать с большого резюме. Укажите профессию, город, навыки и условия — этого достаточно, чтобы начать.</p>
+        <ul><li>Смотрите вакансии без регистрации</li><li>Откликайтесь и получайте приглашения</li><li>Контакты передаются только после вашего согласия</li></ul>
+        <div class="role-path-actions"><a class="btn btn-dark" href="#jobs">Смотреть вакансии</a><button class="btn btn-outline" data-register="candidate">Создать профиль</button></div>
+      </article>
+      <article class="role-path-card employer-path" id="employer-path">
+        <span class="role-path-label">ИЩУ СОТРУДНИКОВ</span>
+        <h2>Смотрите опыт, а не возраст</h2>
+        <p>Разместите вакансию, работайте с откликами и приглашайте подходящих специалистов в одном кабинете.</p>
+        <ul><li>Вакансии и отклики в едином списке</li><li>Подбор кандидатов по навыкам и условиям</li><li>Контакт открывается после согласия кандидата</li></ul>
+        <div class="role-path-actions"><button class="btn btn-primary" data-register="employer">Создать аккаунт работодателя</button><a class="btn btn-outline" href="#how">Как это работает</a></div>
+      </article>
     </div></section>
     <section class="value-band" id="values"><div class="container value-grid">
       <div><span class="feature-icon">♙</span><span><strong>Проверенный опыт</strong><small>Профессиональные навыки и реальные возможности</small></span></div>
@@ -64,13 +84,21 @@
       <div id="public-jobs" class="job-grid"><div class="empty-state">Загружаем вакансии...</div></div>
       <p class="notice small">Это развивающаяся версия сервиса. Платежи пока работают только в демонстрационном режиме.</p>
     </div></section>
-    <section class="section how-section" id="how"><div class="container"><div class="section-heading"><div><span class="section-kicker">ВСЁ ПРОСТО</span><h2>Как это <em>работает</em></h2></div><p>У каждой стороны — свой понятный сценарий. Подбор и уведомления работают автоматически.</p></div>
-      <div class="step-grid"><article class="step-card"><span class="step-number">01</span><div class="step-symbol">✍</div><h3>Расскажите о себе</h3><p>Укажите профессию, город, навыки и желаемый график. Без загрузки большого резюме.</p></article><article class="step-card"><span class="step-number">02</span><div class="step-symbol">◎</div><h3>Получите приглашение</h3><p>Работодатель видит подходящий обезличенный профиль и может предложить вам вакансию.</p></article><article class="step-card"><span class="step-number">03</span><div class="step-symbol">↗</div><h3>Решите, общаться ли</h3><p>Ваши контакты раскрываются конкретной компании только после вашего согласия.</p></article></div>
+    <section class="section how-section how-v08" id="how"><div class="container"><div class="section-heading"><div><span class="section-kicker">ДВА ПОНЯТНЫХ СЦЕНАРИЯ</span><h2>Как работает <em>СТАЖНО</em></h2></div><p>Соискатель контролирует свои контакты. Работодатель видит профессиональную информацию и следующий понятный шаг.</p></div>
+      <div class="journey-grid">
+        <article class="journey-panel"><div class="journey-head"><span>Для соискателя</span><strong>От профиля до знакомства</strong></div>
+          <ol><li><b>1</b><div><strong>Создайте короткий профиль</strong><small>Профессия, город, навыки, зарплата и график.</small></div></li><li><b>2</b><div><strong>Откликайтесь или получайте приглашения</strong><small>История и статусы сохраняются в кабинете.</small></div></li><li><b>3</b><div><strong>Решите, открывать ли контакт</strong><small>Передача контактов — только после отдельного согласия.</small></div></li></ol>
+        </article>
+        <article class="journey-panel journey-employer"><div class="journey-head"><span>Для работодателя</span><strong>От вакансии до кандидата</strong></div>
+          <ol><li><b>1</b><div><strong>Опубликуйте вакансию</strong><small>Укажите условия, требования и формат работы.</small></div></li><li><b>2</b><div><strong>Обработайте отклики и подбор</strong><small>Статусы, интерес и приглашения — в одном процессе.</small></div></li><li><b>3</b><div><strong>Получите контакт после согласия</strong><small>Без скрытого раскрытия персональных данных.</small></div></li></ol>
+        </article>
+      </div>
+      <div class="privacy-panel"><div class="privacy-icon">◇</div><div><span class="section-kicker">ПРИВАТНОСТЬ ПО УМОЛЧАНИЮ</span><h3>Контактные данные не являются частью публичного профиля</h3><p>Работодатель сначала оценивает профессиональную информацию. Телефон и email становятся доступны только в предусмотренном сценарием знакомства и после согласия кандидата.</p></div></div>
     </div></section>
-    <section class="cta-section"><div class="container cta-inner"><div><span class="section-kicker">НОВАЯ ГЛАВА</span><h2>Ваш опыт — <em>ваша сила.</em></h2><p>Начните с небольшой анкеты. Все базовые возможности для соискателя бесплатны.</p></div><button class="btn btn-white btn-lg" data-register="candidate">Создать профиль ↗</button></div></section>
-    <section class="section account-section hidden" id="dashboard"><div class="container"><div class="account-heading"><div><span class="section-kicker">ЛИЧНЫЙ КАБИНЕТ</span><h2 id="welcome">Добро пожаловать</h2><p id="account-subtitle" class="muted"></p></div><span class="demo-badge">ДЕМО · Платежи отключены</span></div><div id="account-content"></div></div></section>
+    <section class="cta-section cta-v08"><div class="container cta-inner"><div><span class="section-kicker">НАЧАТЬ ПРОСТО</span><h2>Выберите следующий <em>шаг.</em></h2><p>Соискатель может начать с просмотра вакансий. Работодатель — с создания аккаунта и первой вакансии.</p></div><div class="cta-actions"><a class="btn btn-dark btn-lg" href="#jobs">Найти работу</a><button class="btn btn-white btn-lg" data-register="employer">Найти сотрудника ↗</button></div></div></section>
+    <section class="section account-section hidden" id="dashboard"><div class="container"><div class="account-heading"><div><span class="section-kicker">ЛИЧНЫЙ КАБИНЕТ</span><h2 id="welcome">Добро пожаловать</h2><p id="account-subtitle" class="muted"></p></div><span class="demo-badge">Платежи пока в демо-режиме</span></div><div id="account-content"></div></div></section>
   </main>
-  <footer class="footer"><div class="container footer-inner"><div><div class="brand footer-brand"><img class="brand-icon" src="/static/brand-symbol.svg?v=stazhno1" alt=""><span class="brand-word">стажно<span class="brand-plus">.ru</span></span></div><small>Ваш опыт работает на вас.</small></div><div class="footer-right"><span>© 2026 stazhno.ru · Тестовая версия</span><span>Демонстрационный запуск — без реальных платежей</span></div></div></footer>
+  <footer class="footer"><div class="container footer-inner"><div><div class="brand footer-brand"><img class="brand-icon" src="/static/brand-symbol.svg?v=stazhno1" alt=""><span class="brand-word">стажно<span class="brand-plus">.ru</span></span></div><small>Ваш опыт работает на вас.</small></div><div class="footer-right"><span>© 2026 stazhno.ru</span><span>Демонстрационный запуск — без реальных платежей</span></div></div></footer>
   <dialog id="job-dialog" class="auth-dialog job-dialog" aria-labelledby="job-dialog-title"><div class="modal-top"><div><span class="section-kicker">ПОДРОБНОСТИ ВАКАНСИИ</span><h2 id="job-dialog-title"></h2></div><button type="button" class="icon-button" id="job-dialog-close" aria-label="Закрыть">×</button></div><div id="job-dialog-content"></div></dialog>
   <dialog id="reset-dialog" class="auth-dialog" aria-labelledby="reset-title"><div class="modal-top"><div><span class="section-kicker">ВОССТАНОВЛЕНИЕ ДОСТУПА</span><h2 id="reset-title">Сброс пароля</h2></div><button type="button" class="icon-button" id="reset-dialog-close" aria-label="Закрыть">×</button></div><p class="muted">Укажите email аккаунта. Если он зарегистрирован, мы отправим ссылку для смены пароля.</p><form id="reset-request-form"><div class="field"><label for="reset-email">Email</label><input id="reset-email" type="email" required placeholder="name@example.ru"></div><button class="btn btn-primary" type="submit">Запросить ссылку</button></form><hr class="account-rule"><form id="reset-complete-form"><div class="field"><label for="reset-token">Ссылка или код восстановления</label><input id="reset-token" required minlength="20" maxlength="256" autocomplete="off" placeholder="Код восстановления"></div><div class="field"><label for="reset-new-password">Новый пароль (от 10 символов)</label><input id="reset-new-password" type="password" required minlength="10" maxlength="128" autocomplete="new-password"></div><button class="btn btn-outline" type="submit">Установить новый пароль</button></form></dialog>
   <dialog id="auth-dialog" class="auth-dialog" aria-labelledby="auth-title"><form id="auth-form" novalidate><div class="modal-top"><div><span class="section-kicker">ДОБРО ПОЖАЛОВАТЬ</span><h2 id="auth-title">Создать аккаунт</h2></div><button class="icon-button" type="button" id="modal-close" aria-label="Закрыть">×</button></div><div id="signup-role" class="role-selector"><button type="button" class="role-btn active" data-role="candidate">Ищу работу</button><button type="button" class="role-btn" data-role="employer">Ищу сотрудников</button></div><div class="field hidden" id="auth-name-row"><label for="auth-name">Имя и фамилия</label><input id="auth-name" name="name" autocomplete="name" minlength="2" maxlength="100"></div><div class="field hidden" id="auth-company-row"><label for="auth-company">Компания</label><input id="auth-company" name="company_name" maxlength="120"></div><div class="field"><label for="auth-email">Email</label><input id="auth-email" name="email" type="email" autocomplete="email" required></div><div class="field"><label for="auth-password">Пароль</label><input id="auth-password" name="password" type="password" autocomplete="current-password" required></div><p class="form-hint hidden" id="password-hint">Не менее 10 символов.</p><p class="auth-guidance" id="auth-guidance" aria-live="polite">Профессию и опыт сможете указать после регистрации.</p><button type="submit" class="btn btn-primary btn-lg btn-full" id="auth-submit">Продолжить →</button><p class="auth-switch" id="auth-switch"></p></form></dialog>
