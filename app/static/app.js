@@ -185,6 +185,10 @@ function profileMarkup(profile = {}, user = {}) {
       <div class="profile-health-track"><span style="width:${health.percent}%"></span></div>
       <small>${esc(health.next)}</small>
     </div>
+    <div class="profile-visibility">
+      <div><span class="profile-visibility-dot ${profile.is_active !== 0 ? 'is-active' : ''}"></span><div><strong>${profile.is_active !== 0 ? 'Профиль участвует в подборе' : 'Профиль скрыт из подбора'}</strong><small>${profile.is_active !== 0 ? 'Работодатели могут увидеть профессиональную часть профиля без ваших контактов.' : 'Работодатели не увидят профиль в подборе, пока вы его не включите.'}</small></div></div>
+      <label class="switch-control"><input type="checkbox" name="is_active" form="profile-form" ${profile.is_active !== 0 ? 'checked':''}><span aria-hidden="true"></span><b>${profile.is_active !== 0 ? 'Включён' : 'Выключен'}</b></label>
+    </div>
     <div class="profile-progress" role="note"><span class="profile-progress-step">1</span><div><strong>Основные сведения</strong><small>Профессия, город, навыки, зарплата и график</small></div></div>
     <form id="profile-form">
       <div class="form-grid">
@@ -247,11 +251,17 @@ function profileMarkup(profile = {}, user = {}) {
             </div>
           </details>
         </div>
-        <div class="field wide"><label class="checks"><input type="checkbox" name="is_active" ${profile.is_active !== 0 ? 'checked':''}> Мой профиль активен и может участвовать в подборе</label></div>
       </div>
       <p class="form-note">* Поля, необходимые для поиска вакансий. Ваши контакты не передаются работодателю автоматически.</p>
       <button class="btn btn-primary btn-lg" type="submit">Сохранить профиль</button>
     </form>
+    <section class="profile-public-preview" aria-label="Предпросмотр профиля для работодателя">
+      <div class="split-header"><div><span class="section-kicker">ЧТО УВИДИТ РАБОТОДАТЕЛЬ</span><h4>${esc(profile.profession || 'Профессия пока не указана')}</h4></div><span class="privacy-chip">Контакты скрыты</span></div>
+      <div class="profile-preview-meta"><span>⌖ ${esc(profile.city || 'Город не указан')}</span><span>от ${money(profile.salary_min || 0)}</span><span>${esc(profile.schedule || 'График не указан')}</span></div>
+      <div class="job-skill-tags">${String(profile.skills || '').split(',').map(x=>x.trim()).filter(Boolean).slice(0,6).map(x=>`<span>${esc(x)}</span>`).join('') || '<span>Добавьте навыки</span>'}</div>
+      ${profile.about ? `<p>${esc(profile.about.slice(0,260))}${profile.about.length>260?'…':''}</p>` : '<p class="muted">Добавьте короткое описание опыта — оно поможет работодателю понять вашу специализацию.</p>'}
+      <div class="profile-preview-hidden"><span>🔒</span><div><strong>Имя, телефон и email не показываются</strong><small>Они открываются только после вашего отдельного согласия на знакомство.</small></div></div>
+    </section>
     <div class="profile-next-actions" aria-label="Следующие шаги">
       <strong>После сохранения:</strong>
       <button type="button" class="btn btn-outline" data-tab="offers">Посмотреть подходящие вакансии →</button>
