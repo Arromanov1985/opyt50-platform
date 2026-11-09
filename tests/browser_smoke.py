@@ -165,8 +165,10 @@ def run_browser(page):
     saved_profile = page.request.get(URL + "/api/me").json()["user"]["profile"]
     assert saved_profile["about"].startswith("Ранее записанный опыт.\n\nНаправление работы:")
     assert "1С и ведение документов" in saved_profile["about"]
-    # A full browser reload must retain what the candidate saved.
+    # A full browser reload returns to the overview; profile data must remain intact.
     page.reload(wait_until="networkidle")
+    expect(page.locator("#dashboard-main")).to_contain_text("ВАШ СЛЕДУЮЩИЙ ШАГ")
+    page.locator(".dashboard-tabs [data-tab='profile']").click()
     expect(page.locator("#profile-about")).to_have_value(saved_profile["about"])
     expect(page.locator(".profile-optional")).not_to_have_attribute("open", "")
     expect(page.locator("#experience-start")).to_contain_text("Помочь описать опыт")
