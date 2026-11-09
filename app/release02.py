@@ -7,7 +7,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Literal
 
 from fastapi import Depends, HTTPException
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 from .db import database
 from .email_delivery import delivery_mode, send_email
@@ -114,6 +114,23 @@ class AccountStatusIn(BaseModel):
     status: Literal["active", "disabled"]
 
 
+class EmployerCompanyIn(BaseModel):
+    company_name: str = Field(min_length=2, max_length=120)
+    inn: str = Field(default="", max_length=12)
+
+    @field_validator("inn")
+    @classmethod
+    def clean_inn(cls, value: str) -> str:
+        value = value.strip()
+        if value and (not value.isdigit() or len(value) not in (10, 12)):
+            raise ValueError("ИНН должен содержать 10 или 12 цифр")
+        return value
+
+
+class EmployerVerificationIn(BaseModel):
+    verified: bool
+
+
 class VacancyAdminStatusIn(BaseModel):
     status: Literal["open", "closed"]
 
@@ -157,6 +174,28 @@ def redeem_token(db: sqlite3.Connection, raw: str, purpose: str) -> sqlite3.Row:
         raise HTTPException(400, "Ссылка недействительна или срок истёк")
     db.execute("UPDATE email_tokens SET used_at=datetime('now') WHERE token_hash=?", (row["token_hash"],))
     return row
+
+
+def employer_trust(db: sqlite3.Connection, employer_id: int) -> dict | None:
+    """Non-sensitive employer trust signals used by public vacancy UI."""
+    row = db.execute(
+        """SELECT e.company_name,e.inn,e.verified,u.created_at,
+                  COALESCE(c.email_verified,0) AS email_verified
+           FROM employer_profiles e
+           JOIN users u ON u.id=e.user_id
+           LEFT JOIN account_controls c ON c.user_id=e.user_id
+           WHERE e.user_id=?""",
+        (employer_id,),
+    ).fetchone()
+    if row is None:
+        return None
+    return {
+        "company_name": row["company_name"],
+        "verified": bool(row["verified"]),
+        "email_verified": bool(row["email_verified"]),
+        "inn_provided": bool(str(row["inn"] or "").strip()),
+        "created_at": normalize_event_time(row["created_at"]),
+    }
 
 
 def introduction_stage(status: str | None, contact_shared: int | bool | None) -> str | None:
@@ -230,10 +269,91 @@ def install_routes(app) -> None:
     # Imported here to avoid a circular module initialization.
     from .main import active_user, allowed, candidate_view, get_connection
 
+    @app.get("/api/employer/company")
+    def employer_company(user: dict = Depends(active_user), db: sqlite3.Connection = Depends(get_connection)):
+        allowed(user, "employer")
+        profile = db.execute(
+            "SELECT company_name,inn,verified FROM employer_profiles WHERE user_id=?",
+            (user["id"],),
+        ).fetchone()
+        if profile is None:
+            raise HTTPException(404, "Профиль компании не найден")
+        trust = employer_trust(db, user["id"])
+        return {
+            "company": {
+                "company_name": profile["company_name"],
+                "inn": profile["inn"],
+                "verified": bool(profile["verified"]),
+            },
+            "trust": trust,
+        }
+
+    @app.put("/api/employer/company")
+    def update_employer_company(
+        data: EmployerCompanyIn,
+        user: dict = Depends(active_user),
+        db: sqlite3.Connection = Depends(get_connection),
+    ):
+        allowed(user, "employer")
+        current = db.execute(
+            "SELECT company_name,inn,verified FROM employer_profiles WHERE user_id=?",
+            (user["id"],),
+        ).fetchone()
+        if current is None:
+            raise HTTPException(404, "Профиль компании не найден")
+        changed_identity = (
+            current["company_name"] != data.company_name.strip()
+            or str(current["inn"] or "") != data.inn
+        )
+        verified = 0 if changed_identity else int(bool(current["verified"]))
+        db.execute(
+            "UPDATE employer_profiles SET company_name=?,inn=?,verified=? WHERE user_id=?",
+            (data.company_name.strip(), data.inn, verified, user["id"]),
+        )
+        db.commit()
+        return {"ok": True, "trust": employer_trust(db, user["id"])}
+
+    @app.patch("/api/admin/employers/{user_id}/verification")
+    def admin_employer_verification(
+        user_id: int,
+        data: EmployerVerificationIn,
+        user: dict = Depends(active_user),
+        db: sqlite3.Connection = Depends(get_connection),
+    ):
+        allowed(user, "admin")
+        target = db.execute(
+            """SELECT u.role,e.inn,COALESCE(c.email_verified,0) AS email_verified
+               FROM users u
+               LEFT JOIN employer_profiles e ON e.user_id=u.id
+               LEFT JOIN account_controls c ON c.user_id=u.id
+               WHERE u.id=?""",
+            (user_id,),
+        ).fetchone()
+        if target is None or target["role"] != "employer" or target["inn"] is None:
+            raise HTTPException(404, "Работодатель не найден")
+        if data.verified and (not str(target["inn"]).strip() or not target["email_verified"]):
+            raise HTTPException(422, "Для проверки компании нужны заполненный ИНН и подтверждённый email")
+        db.execute(
+            "UPDATE employer_profiles SET verified=? WHERE user_id=?",
+            (int(data.verified), user_id),
+        )
+        db.execute(
+            "INSERT INTO admin_audit(admin_id,action,target_id) VALUES(?,?,?)",
+            (user["id"], "employer_verified" if data.verified else "employer_unverified", user_id),
+        )
+        db.commit()
+        return {"ok": True, "trust": employer_trust(db, user_id)}
+
     @app.get("/api/jobs/{job_id}")
     def job_detail(job_id: int, db: sqlite3.Connection = Depends(get_connection)):
-        row = db.execute("""SELECT v.*,e.company_name FROM vacancies v
+        row = db.execute("""SELECT v.*,e.company_name,e.verified AS employer_verified,
+                                   CASE WHEN length(e.inn)>0 THEN 1 ELSE 0 END AS employer_inn_provided,
+                                   COALESCE(c.email_verified,0) AS employer_email_verified,
+                                   u.created_at AS employer_created_at
+                            FROM vacancies v
                             JOIN employer_profiles e ON e.user_id=v.employer_id
+                            JOIN users u ON u.id=e.user_id
+                            LEFT JOIN account_controls c ON c.user_id=e.user_id
                             WHERE v.id=? AND v.status='open'""", (job_id,)).fetchone()
         if row is None:
             raise HTTPException(404, "Вакансия не найдена или закрыта")
@@ -242,9 +362,15 @@ def install_routes(app) -> None:
     @app.get("/api/candidate/favorites")
     def favorites(user: dict = Depends(active_user), db: sqlite3.Connection = Depends(get_connection)):
         allowed(user, "candidate")
-        rows = db.execute("""SELECT v.*, e.company_name FROM candidate_favorites f
+        rows = db.execute("""SELECT v.*,e.company_name,e.verified AS employer_verified,
+                                    CASE WHEN length(e.inn)>0 THEN 1 ELSE 0 END AS employer_inn_provided,
+                                    COALESCE(c.email_verified,0) AS employer_email_verified,
+                                    u.created_at AS employer_created_at
+                             FROM candidate_favorites f
                              JOIN vacancies v ON v.id=f.vacancy_id
                              JOIN employer_profiles e ON e.user_id=v.employer_id
+                             JOIN users u ON u.id=e.user_id
+                             LEFT JOIN account_controls c ON c.user_id=e.user_id
                              WHERE f.candidate_id=? ORDER BY f.created_at DESC,v.id DESC""", (user["id"],)).fetchall()
         return {"jobs": [dict(r) for r in rows]}
 
@@ -556,8 +682,11 @@ def install_routes(app) -> None:
         allowed(user, "admin")
         rows = db.execute("""SELECT u.id,u.name,u.email,u.role,u.created_at,
                              COALESCE(c.status,'active') AS status,
-                             COALESCE(c.email_verified,0) AS email_verified
-                             FROM users u LEFT JOIN account_controls c ON c.user_id=u.id
+                             COALESCE(c.email_verified,0) AS email_verified,
+                             e.company_name,e.inn,COALESCE(e.verified,0) AS employer_verified
+                             FROM users u
+                             LEFT JOIN account_controls c ON c.user_id=u.id
+                             LEFT JOIN employer_profiles e ON e.user_id=u.id
                              ORDER BY u.id DESC LIMIT 300""").fetchall()
         return {"users": [dict(r) for r in rows]}
 
