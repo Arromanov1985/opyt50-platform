@@ -65,3 +65,135 @@
   .application-flow-legend b{display:none}
   .application-flow-legend{gap:6px}
 }
+
+
+/* STAZHNO brand system v2 — account areas */
+.dashboard-grid{gap:18px}
+.side-panel{
+  background:#F8FCF9;
+  border-color:#DDEAE3;
+  border-radius:22px;
+}
+.dashboard-tabs{gap:7px}
+.dashboard-tabs button{
+  color:#355148;
+  border-radius:13px;
+  min-height:46px;
+  font-weight:760;
+}
+.dashboard-tabs button:hover{background:#EAF8F0;color:#0B2D26}
+.dashboard-tabs button.active{
+  background:#DDF7E7;
+  color:#0B2D26;
+  box-shadow:inset 3px 0 0 #00C853;
+}
+.dashboard-overview-hero,.employer-overview-hero{
+  background:linear-gradient(135deg,#F3FAF6,#EAF8F0);
+  border-color:#D4E9DC;
+  border-radius:22px;
+}
+.overview-priority h3{color:#0B2D26}
+.overview-health{border-color:#D8E8DF}
+.overview-health>span{color:#526A60}
+.overview-health>strong{color:#0B2D26}
+.profile-health-track{background:#D9E9E0}
+.profile-health-track span{background:linear-gradient(90deg,#00A844,#00C853)}
+.overview-stat-card{
+  border-color:#DDEAE3;
+  border-radius:18px;
+  color:#0B2D26;
+  box-shadow:0 8px 26px #0B2D2605;
+}
+.overview-stat-card:hover{
+  border-color:#B8DEC6;
+  box-shadow:0 16px 34px #0B2D260d;
+}
+.overview-stat-card:focus-visible{outline-color:#00C853}
+.overview-stat-card small{color:#6B7C75}
+.overview-funnel-steps>div{
+  background:#F3FAF6;
+  border-color:#DDEAE3;
+  border-radius:16px;
+}
+.overview-funnel-steps strong{color:#0B2D26}
+.overview-funnel-steps span{color:#61756C}
+.overview-funnel-steps>b{color:#95B3A3}
+
+.profile-health{
+  background:#F3FAF6;
+  border-color:#D5E8DC;
+}
+.profile-health-copy span{color:#526A60}
+.profile-health-copy strong{color:#0B2D26}
+.profile-progress-step{
+  background:#0B2D26;
+  color:#fff;
+}
+.profile-next-actions,
+.experience-entry-inner{
+  border-color:#DDEAE3;
+  background:#F8FCF9;
+}
+.candidate-profile h3,.vacancy-compose h3,.item-card h4{color:#0B2D26}
+
+.item-card{
+  border-color:#DDEAE3;
+  border-radius:18px;
+  box-shadow:0 7px 24px #0B2D2605;
+}
+.item-card:hover{border-color:#C2DEC9}
+.mini-badge{background:#E8F8EE;color:#08793A}
+.mini-badge.gray{background:#F0F4F1;color:#61756C}
+.info-box{
+  background:#F3FAF6;
+  border-color:#CFE6D8;
+  color:#25483B;
+}
+.application-timeline{border-color:#DDEAE3}
+.interaction-note{background:#F3FAF6;border-color:#D6EADD;color:#355148}
+
+.employer-next{
+  background:linear-gradient(105deg,#F3FAF6,#EAF8F0);
+  border-color:#D5E8DC;
+}
+.employer-next span{color:#08793A}
+.employer-next small{color:#60746B}
+.employer-next-ok{background:#F3FAF6;border-color:#D6E9DE}
+.employer-next-ok span{color:#08793A}
+
+.application-profile-strip span,.job-detail-facts span{
+  border-color:#DDEAE3;
+  background:#fff;
+}
+.application-profile-strip small,.job-detail-facts small{color:#667970}
+.application-next-action{
+  background:#F3FAF6;
+  border-left-color:#00C853;
+  color:#0B2D26;
+}
+.application-next-action span{color:#61756C}
+.application-flow-legend span{background:#F3FAF6;color:#385148}
+.job-detail-pay{color:#0B2D26}
+.job-detail-description{background:#F3FAF6;color:#29483D}
+.job-detail-privacy{
+  background:#EAF8F0;
+  border-color:#CDE8D7;
+  color:#355148;
+}
+
+body.comfortable-view .dashboard-tabs button{min-height:52px;font-size:1rem}
+body.comfortable-view .overview-stat-card span,
+body.comfortable-view .item-card,
+body.comfortable-view .field label{font-size:1rem}
+body.comfortable-view .overview-stat-card small,
+body.comfortable-view .field-help{font-size:.9rem}
+
+@media(max-width:720px){
+  .dashboard-grid{gap:12px}
+  .side-panel{border-radius:18px}
+  .dashboard-tabs{display:grid;grid-template-columns:repeat(2,minmax(0,1fr))}
+  .dashboard-tabs button{text-align:left}
+}
+@media(max-width:460px){
+  .dashboard-tabs{grid-template-columns:1fr}
+}
