@@ -334,7 +334,10 @@ def interaction_timeline(
 
 def install_routes(app) -> None:
     # Imported here to avoid a circular module initialization.
-    from .main import active_user, allowed, candidate_view, get_connection
+    from .main import (
+        CONTACT_EMAIL_PATTERN, CONTACT_PHONE_PATTERN,
+        active_user, allowed, candidate_view, get_connection,
+    )
 
     @app.get("/api/employer/company")
     def employer_company(user: dict = Depends(active_user), db: sqlite3.Connection = Depends(get_connection)):
@@ -366,6 +369,8 @@ def install_routes(app) -> None:
         db: sqlite3.Connection = Depends(get_connection),
     ):
         allowed(user, "employer")
+        if CONTACT_EMAIL_PATTERN.search(data.about) or CONTACT_PHONE_PATTERN.search(data.about):
+            raise HTTPException(422, "Не указывайте телефон или email в публичном описании компании")
         current = db.execute(
             "SELECT company_name,inn,verified FROM employer_profiles WHERE user_id=?",
             (user["id"],),
@@ -722,8 +727,11 @@ def install_routes(app) -> None:
         allowed(user, "employer")
         item = db.execute(
             """SELECT a.id,a.vacancy_id,a.candidate_id,a.status,
-                      v.title,v.status AS vacancy_status
-               FROM job_applications a JOIN vacancies v ON v.id=a.vacancy_id
+                      v.title,v.status AS vacancy_status,
+                      COALESCE(vm.status,'approved') AS moderation_status
+               FROM job_applications a
+               JOIN vacancies v ON v.id=a.vacancy_id
+               LEFT JOIN vacancy_moderation vm ON vm.vacancy_id=v.id
                WHERE a.id=? AND v.employer_id=?""",
             (application_id, user["id"]),
         ).fetchone()
@@ -731,6 +739,8 @@ def install_routes(app) -> None:
             raise HTTPException(404, "Отклик не найден")
         if item["vacancy_status"] != "open":
             raise HTTPException(409, "Вакансия закрыта")
+        if item["moderation_status"] != "approved":
+            raise HTTPException(409, "Вакансия ожидает проверки. Новые знакомства временно недоступны")
         if item["status"] in {"withdrawn", "rejected", "hired"}:
             raise HTTPException(409, "Обработка этого отклика завершена")
         # Never generate a contact-sharing flow for a disabled candidate.
