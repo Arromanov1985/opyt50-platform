@@ -22,12 +22,14 @@
   <link rel="stylesheet" href="/static/release08-dashboard.css?v=brand2">
   <link rel="stylesheet" href="/static/release09-home.css?v=0901">
   <link rel="stylesheet" href="/static/release09-dashboard.css?v=0902">
+  <link rel="stylesheet" href="/static/release09-forms.css?v=0900">
   <title>стажно.ру — работа и новые возможности после 50 лет</title>
   <script src="/static/release02.js?v=0812" defer></script>
   <script src="/static/app.js?v=0813" defer></script>
   <script src="/static/release03.js?v=0810" defer></script>
   <script src="/static/vacancy-wizard.js?v=0810" defer></script>
   <script src="/static/release09-home.js?v=0900" defer></script>
+  <script src="/static/release09-forms.js?v=0900" defer></script>
 </head>
 <body>
   <header class="site-header">
@@ -136,7 +138,26 @@
   </div></footer>
   <dialog id="job-dialog" class="auth-dialog job-dialog" aria-labelledby="job-dialog-title"><div class="modal-top"><div><span class="section-kicker">ПОДРОБНОСТИ ВАКАНСИИ</span><h2 id="job-dialog-title"></h2></div><button type="button" class="icon-button" id="job-dialog-close" aria-label="Закрыть">×</button></div><div id="job-dialog-content"></div></dialog>
   <dialog id="reset-dialog" class="auth-dialog" aria-labelledby="reset-title"><div class="modal-top"><div><span class="section-kicker">ВОССТАНОВЛЕНИЕ ДОСТУПА</span><h2 id="reset-title">Сброс пароля</h2></div><button type="button" class="icon-button" id="reset-dialog-close" aria-label="Закрыть">×</button></div><p class="muted">Укажите email аккаунта. Если он зарегистрирован, мы отправим ссылку для смены пароля.</p><form id="reset-request-form"><div class="field"><label for="reset-email">Email</label><input id="reset-email" type="email" required placeholder="name@example.ru"></div><button class="btn btn-primary" type="submit">Запросить ссылку</button></form><hr class="account-rule"><form id="reset-complete-form"><div class="field"><label for="reset-token">Ссылка или код восстановления</label><input id="reset-token" required minlength="20" maxlength="256" autocomplete="off" placeholder="Код восстановления"></div><div class="field"><label for="reset-new-password">Новый пароль (от 10 символов)</label><input id="reset-new-password" type="password" required minlength="10" maxlength="128" autocomplete="new-password"></div><button class="btn btn-outline" type="submit">Установить новый пароль</button></form></dialog>
-  <dialog id="auth-dialog" class="auth-dialog" aria-labelledby="auth-title"><form id="auth-form" novalidate><div class="modal-top"><div><span class="section-kicker">ДОБРО ПОЖАЛОВАТЬ</span><h2 id="auth-title">Создать аккаунт</h2></div><button class="icon-button" type="button" id="modal-close" aria-label="Закрыть">×</button></div><div id="signup-role" class="role-selector"><button type="button" class="role-btn active" data-role="candidate">Ищу работу</button><button type="button" class="role-btn" data-role="employer">Ищу сотрудников</button></div><div class="field hidden" id="auth-name-row"><label for="auth-name">Имя и фамилия</label><input id="auth-name" name="name" autocomplete="name" minlength="2" maxlength="100"></div><div class="field hidden" id="auth-company-row"><label for="auth-company">Компания</label><input id="auth-company" name="company_name" maxlength="120"></div><div class="field"><label for="auth-email">Email</label><input id="auth-email" name="email" type="email" autocomplete="email" required></div><div class="field"><label for="auth-password">Пароль</label><input id="auth-password" name="password" type="password" autocomplete="current-password" required></div><p class="form-hint hidden" id="password-hint">Не менее 10 символов.</p><p class="auth-guidance" id="auth-guidance" aria-live="polite">Профессию и опыт сможете указать после регистрации.</p><button type="submit" class="btn btn-primary btn-lg btn-full" id="auth-submit">Продолжить →</button><p class="auth-switch" id="auth-switch"></p></form></dialog>
+  <dialog id="auth-dialog" class="auth-dialog auth-dialog-v09" aria-labelledby="auth-title"><form id="auth-form" novalidate>
+    <div class="modal-top"><div><span class="section-kicker" id="auth-kicker">ДОБРО ПОЖАЛОВАТЬ</span><h2 id="auth-title">Создать аккаунт</h2><p class="auth-intro" id="auth-intro">Начните с простого аккаунта. Профиль и настройки можно заполнить позже.</p></div><button class="icon-button" type="button" id="modal-close" aria-label="Закрыть">×</button></div>
+    <div id="signup-role" class="role-selector role-selector-v09" aria-label="Выберите роль">
+      <button type="button" class="role-btn active" data-role="candidate"><span class="role-choice-icon" aria-hidden="true">Я</span><span class="role-choice-copy"><strong>Ищу работу</strong><small>Вакансии, отклики и приглашения</small></span></button>
+      <button type="button" class="role-btn" data-role="employer"><span class="role-choice-icon" aria-hidden="true">＋</span><span class="role-choice-copy"><strong>Ищу сотрудников</strong><small>Вакансии, отклики и подбор кандидатов</small></span></button>
+    </div>
+    <div class="auth-fields">
+      <div class="field hidden" id="auth-name-row"><label for="auth-name">Имя и фамилия</label><input id="auth-name" name="name" autocomplete="name" minlength="2" maxlength="100" placeholder="Например, Анна Петрова"></div>
+      <div class="field hidden" id="auth-company-row"><label for="auth-company">Компания</label><input id="auth-company" name="company_name" maxlength="120" placeholder="Название компании"></div>
+      <div class="field"><label for="auth-email">Email</label><input id="auth-email" name="email" type="email" autocomplete="email" required placeholder="name@example.ru"></div>
+      <div class="field"><label for="auth-password">Пароль</label><div class="password-field-wrap"><input id="auth-password" name="password" type="password" autocomplete="current-password" required><button type="button" class="password-toggle" id="password-toggle" aria-pressed="false">Показать</button></div></div>
+      <p class="form-hint hidden" id="password-hint">Не менее 10 символов.</p>
+    </div>
+    <div class="auth-route" id="auth-route"><strong id="auth-route-title">После регистрации</strong><div class="auth-route-steps" id="auth-route-steps"><span><i>1</i>Аккаунт</span><span><i>2</i>Короткий профиль</span><span><i>3</i>Отклик</span></div></div>
+    <p class="auth-guidance" id="auth-guidance" aria-live="polite">Профессию и опыт сможете указать после регистрации.</p>
+    <button type="submit" class="btn btn-primary btn-lg btn-full" id="auth-submit">Продолжить →</button>
+    <p class="auth-message" id="auth-message" role="alert" aria-live="polite"></p>
+    <div class="auth-trust"><span>Без публикации контактов</span><span>Профиль можно заполнить позже</span></div>
+    <p class="auth-switch" id="auth-switch"></p>
+  </form></dialog>
   <div class="toast hidden" id="toast" role="status" aria-live="polite"></div>
 </body>
 </html>
