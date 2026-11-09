@@ -130,7 +130,7 @@ function updateAuth() {
       : '<span><i>1</i>Аккаунт</span><span><i>2</i>Короткий профиль</span><span><i>3</i>Отклик</span>';
   }
   const message = $('#auth-message'); if (message) message.textContent = '';
-  $('.role-btn').forEach(b => { const active = b.dataset.role === state.role; b.classList.toggle('active', active); b.setAttribute('aria-pressed', String(active)); });
+  document.querySelectorAll('.role-btn').forEach(b => { const active = b.dataset.role === state.role; b.classList.toggle('active', active); b.setAttribute('aria-pressed', String(active)); });
   $('#auth-switch').innerHTML = reg ? 'Уже есть аккаунт? <button type="button" data-switch="login">Войти</button>' : 'Ещё нет аккаунта? <button type="button" data-switch="register">Зарегистрироваться</button>';
 }
 async function submitAuth(event) {
