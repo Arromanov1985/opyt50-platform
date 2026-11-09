@@ -287,7 +287,14 @@
     max-height:calc(100dvh - 12px)!important;
     margin:auto;
     border-radius:20px!important;
+    overflow-y:auto!important;
+    overscroll-behavior:contain;
   }
+  .job-dialog #job-dialog-content{padding-bottom:8px}
+  .job-detail-v08{gap:14px}
+  .job-detail-pay{font-size:24px}
+  .job-detail-facts{grid-template-columns:1fr!important}
+  .job-detail-action .btn{width:100%;min-height:48px}
   .auth-dialog-v09 #auth-form{
     max-height:calc(100dvh - 12px);
     overflow-y:auto;
