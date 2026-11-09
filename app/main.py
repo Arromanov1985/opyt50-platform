@@ -624,15 +624,26 @@ def create_app(db_path: str | None = None) -> FastAPI:
         if vacancy is None:
             raise HTTPException(404, "Вакансия не найдена")
         rows = db.execute(
-            """SELECT c.*,u.id AS candidate_id FROM candidate_profiles c
-               JOIN users u ON u.id=c.user_id WHERE c.is_active=1 AND u.role='candidate'"""
+            """SELECT c.*,u.id AS candidate_id,
+                      i.id AS invitation_id,i.status AS invitation_status,
+                      i.contact_shared AS contact_shared
+               FROM candidate_profiles c
+               JOIN users u ON u.id=c.user_id
+               LEFT JOIN invitations i ON i.candidate_id=u.id AND i.vacancy_id=?
+               WHERE c.is_active=1 AND u.role='candidate'""",
+            (job_id,),
         ).fetchall()
         matches = []
         for row in rows:
             score = match_candidate(dict(vacancy), dict(row))
             if score:
-                # Privacy: no name, phone, email or freeform about before candidate consent + demo payment.
-                matches.append({k: row[k] for k in ("candidate_id", "profession", "city", "skills", "salary_min", "schedule", "employment")} | score)
+                # Privacy: no name, phone, email or freeform about before candidate consent + contact opening.
+                public = {k: row[k] for k in (
+                    "candidate_id", "profession", "city", "skills",
+                    "salary_min", "schedule", "employment",
+                    "invitation_id", "invitation_status", "contact_shared",
+                )}
+                matches.append(public | score)
         return {"matches": sorted(matches, key=lambda x: (-x["score"], x["candidate_id"]))[:50]}
 
     @app.post("/api/employer/invitations", status_code=201)
