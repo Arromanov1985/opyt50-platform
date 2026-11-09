@@ -510,9 +510,14 @@ def create_app(db_path: str | None = None) -> FastAPI:
                 data.schedule, data.employment, data.skills.strip(), data.description.strip(),
             ),
         )
+        from .release02 import utc_now_text
+        db.execute(
+            "INSERT INTO vacancy_moderation(vacancy_id,status,reason,updated_at) VALUES(?,?,?,?)",
+            (cursor.lastrowid, "approved", "", utc_now_text()),
+        )
         # Commit before the HTTP response: a new dashboard request may arrive immediately.
         db.commit()
-        return {"id": cursor.lastrowid, "ok": True}
+        return {"id": cursor.lastrowid, "ok": True, "moderation_status": "approved"}
 
     @app.get("/api/employer/vacancies")
     def employer_jobs(user: dict = Depends(active_user), db: sqlite3.Connection = Depends(get_connection)):
