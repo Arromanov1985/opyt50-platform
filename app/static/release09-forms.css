@@ -1,0 +1,385 @@
+/* Release 0.9 — auth and vacancy creation UX */
+
+/* Auth modal */
+.auth-dialog.auth-dialog-v09{
+  width:min(560px,calc(100% - 24px));
+  padding:0;
+  overflow:hidden;
+  border-radius:26px;
+}
+.auth-dialog-v09 #auth-form{padding:28px 30px 30px}
+.auth-dialog-v09 .modal-top h2{margin-bottom:8px}
+.auth-intro{
+  margin:0 0 20px;
+  color:#64776E;
+  font-size:13px;
+  line-height:1.55;
+}
+.role-selector-v09{
+  grid-template-columns:1fr 1fr;
+  gap:10px;
+  margin:0 0 20px;
+}
+.role-selector-v09 .role-btn{
+  min-height:92px;
+  display:flex;
+  align-items:flex-start;
+  gap:11px;
+  text-align:left;
+  padding:14px;
+  border-radius:16px;
+  background:#FBFDFC;
+  border:1px solid #DDEAE3;
+}
+.role-selector-v09 .role-btn:hover{
+  border-color:#B9DEC7;
+  background:#F7FBF8;
+}
+.role-selector-v09 .role-btn.active{
+  background:#EAF8F0;
+  border-color:#9DDBB4;
+  color:#0B2D26;
+  box-shadow:inset 0 0 0 1px #9DDBB4;
+}
+.role-choice-icon{
+  width:36px;height:36px;min-width:36px;
+  display:grid;place-items:center;
+  border-radius:11px;
+  background:#F0F5F2;
+  color:#4A655B;
+  font-size:16px;
+  font-weight:900;
+}
+.role-btn.active .role-choice-icon{
+  background:#00C853;
+  color:#0B2D26;
+}
+.role-choice-copy{display:grid;gap:4px}
+.role-choice-copy strong{
+  color:#0B2D26;
+  font-size:13px;
+  line-height:1.25;
+}
+.role-choice-copy small{
+  color:#6A7D74;
+  font-size:10px;
+  line-height:1.4;
+  font-weight:600;
+}
+.auth-fields{
+  padding-top:2px;
+}
+.auth-dialog-v09 .field{
+  margin-bottom:14px;
+}
+.auth-dialog-v09 .field label{
+  color:#354F45;
+  font-size:12px;
+}
+.auth-dialog-v09 .field input{
+  min-height:50px;
+  border-radius:13px;
+  border-color:#D2E2D9;
+  font-size:15px;
+}
+.auth-dialog-v09 .field input:focus{
+  border-color:#00C853;
+  box-shadow:0 0 0 3px #00C8531a;
+}
+.password-field-wrap{
+  position:relative;
+}
+.password-field-wrap input{
+  padding-right:86px!important;
+}
+.password-toggle{
+  position:absolute;
+  right:8px;top:50%;
+  transform:translateY(-50%);
+  min-height:34px;
+  padding:0 9px;
+  border:0;
+  border-radius:9px;
+  background:#F2F7F4;
+  color:#526A60;
+  font-size:10px;
+  font-weight:800;
+  cursor:pointer;
+}
+.password-toggle:hover{background:#E5F4EB;color:#0B2D26}
+
+.auth-route{
+  margin:5px 0 16px;
+  padding:13px 14px;
+  border-radius:14px;
+  background:#F3FAF6;
+  border:1px solid #DDEAE3;
+}
+.auth-route>strong{
+  display:block;
+  margin-bottom:9px;
+  color:#0B2D26;
+  font-size:11px;
+}
+.auth-route-steps{
+  display:grid;
+  grid-template-columns:repeat(3,minmax(0,1fr));
+  gap:6px;
+}
+.auth-route-steps span{
+  display:flex;
+  align-items:center;
+  gap:6px;
+  min-width:0;
+  color:#5C7167;
+  font-size:9px;
+  font-weight:750;
+  line-height:1.3;
+}
+.auth-route-steps i{
+  width:21px;height:21px;min-width:21px;
+  display:grid;place-items:center;
+  border-radius:50%;
+  background:#DDF7E7;
+  color:#08793A;
+  font-style:normal;
+  font-size:9px;
+  font-weight:900;
+}
+.auth-guidance{
+  margin:0 0 13px;
+  color:#62766D;
+  font-size:11px;
+  line-height:1.5;
+}
+.auth-message{
+  margin:10px 0 0;
+  padding:10px 12px;
+  border-radius:11px;
+  background:#FFF2F0;
+  border:1px solid #F0C9C3;
+  color:#8C3E34;
+  font-size:11px;
+  line-height:1.45;
+}
+.auth-message:empty{display:none}
+.auth-trust{
+  display:flex;
+  justify-content:center;
+  gap:14px;
+  flex-wrap:wrap;
+  margin-top:14px;
+  color:#73857D;
+  font-size:9px;
+}
+.auth-trust span:before{
+  content:"✓";
+  margin-right:5px;
+  color:#00A844;
+  font-weight:900;
+}
+
+/* Vacancy composer */
+.vacancy-compose{
+  position:relative;
+}
+.vacancy-compose-header{
+  display:flex;
+  align-items:flex-start;
+  justify-content:space-between;
+  gap:18px;
+}
+.vacancy-compose-header h3{margin:4px 0 6px}
+.vacancy-compose-badge{
+  padding:7px 10px;
+  border-radius:999px;
+  background:#EAF8F0;
+  color:#08793A;
+  font-size:10px;
+  font-weight:900;
+  white-space:nowrap;
+}
+.vacancy-progress{
+  position:sticky;
+  top:92px;
+  z-index:5;
+  display:grid;
+  grid-template-columns:repeat(4,minmax(0,1fr));
+  gap:6px;
+  margin:18px 0 20px;
+  padding:8px;
+  border:1px solid #DDEAE3;
+  border-radius:16px;
+  background:rgba(255,255,255,.94);
+  box-shadow:0 8px 24px #0B2D2608;
+  backdrop-filter:blur(12px);
+}
+.vacancy-progress-step{
+  display:flex;
+  align-items:center;
+  gap:8px;
+  min-width:0;
+  padding:8px 9px;
+  border-radius:11px;
+  color:#7A8D84;
+}
+.vacancy-progress-step i{
+  width:26px;height:26px;min-width:26px;
+  display:grid;place-items:center;
+  border-radius:50%;
+  background:#F0F4F2;
+  color:#71847B;
+  font-style:normal;
+  font-size:10px;
+  font-weight:900;
+}
+.vacancy-progress-step b{
+  overflow:hidden;
+  text-overflow:ellipsis;
+  white-space:nowrap;
+  font-size:10px;
+}
+.vacancy-progress-step.is-done{
+  color:#3F5B50;
+  background:#F7FBF8;
+}
+.vacancy-progress-step.is-done i{
+  background:#DDF7E7;
+  color:#08793A;
+}
+.vacancy-progress-step.is-current{
+  color:#0B2D26;
+  background:#EAF8F0;
+}
+.vacancy-progress-step.is-current i{
+  background:#00C853;
+  color:#0B2D26;
+}
+.vacancy-progress-meta{
+  grid-column:1/-1;
+  display:flex;
+  align-items:center;
+  gap:10px;
+  padding:0 5px 3px;
+}
+.vacancy-progress-track{
+  height:5px;
+  flex:1;
+  overflow:hidden;
+  border-radius:999px;
+  background:#E8F0EB;
+}
+.vacancy-progress-track span{
+  display:block;
+  width:0;
+  height:100%;
+  background:#00C853;
+  border-radius:inherit;
+  transition:width .2s ease;
+}
+.vacancy-progress-meta small{
+  color:#667970;
+  font-size:9px;
+  white-space:nowrap;
+}
+.vacancy-step{
+  border-color:#DDEAE3!important;
+  border-radius:18px!important;
+  background:#fff;
+}
+.vacancy-step legend{
+  color:#0B2D26!important;
+}
+.vacancy-step-hint{
+  display:flex;
+  align-items:flex-start;
+  gap:8px;
+  margin:-3px 0 16px;
+  color:#60746B;
+  font-size:11px;
+  line-height:1.5;
+}
+.vacancy-step-hint:before{
+  content:"i";
+  width:19px;height:19px;min-width:19px;
+  display:grid;place-items:center;
+  border-radius:50%;
+  background:#EAF8F0;
+  color:#08793A;
+  font-weight:900;
+  font-family:serif;
+}
+.vacancy-field-counter{
+  float:right;
+  color:#87988F;
+  font-size:9px;
+  font-weight:700;
+}
+.vacancy-preview-intro{
+  background:#F3FAF6!important;
+  border-color:#D5E8DC!important;
+  border-radius:18px!important;
+}
+.vacancy-preview{
+  border:1px solid #B9DEC7!important;
+  box-shadow:0 14px 38px #0B2D260b!important;
+  border-radius:18px!important;
+}
+.vacancy-preview-note{
+  background:#F3FAF6!important;
+}
+.vacancy-publish-actions{
+  position:sticky;
+  bottom:10px;
+  z-index:4;
+  margin-top:18px;
+  padding:12px!important;
+  border:1px solid #DDEAE3;
+  border-radius:16px;
+  background:rgba(255,255,255,.96);
+  box-shadow:0 10px 30px #0B2D2610;
+  backdrop-filter:blur(12px);
+}
+.vacancy-publish-actions .btn:disabled{
+  opacity:.5;
+}
+.vacancy-publish-actions.is-ready{
+  border-color:#A9E4BD;
+  box-shadow:0 10px 30px #00C85312;
+}
+
+body.comfortable-view .role-choice-copy strong,
+body.comfortable-view .auth-dialog-v09 .field label,
+body.comfortable-view .auth-guidance,
+body.comfortable-view .vacancy-step-hint,
+body.comfortable-view .vacancy-progress-step b{font-size:1rem}
+
+@media(max-width:650px){
+  .auth-dialog.auth-dialog-v09{
+    width:calc(100% - 12px);
+    max-height:calc(100vh - 12px);
+    border-radius:22px;
+  }
+  .auth-dialog-v09 #auth-form{padding:22px 18px}
+  .role-selector-v09{grid-template-columns:1fr}
+  .role-selector-v09 .role-btn{min-height:78px}
+  .auth-route-steps{grid-template-columns:1fr}
+  .auth-route-steps span{font-size:10px}
+  .vacancy-compose-header{display:block}
+  .vacancy-compose-badge{display:inline-flex;margin-top:8px}
+  .vacancy-progress{
+    top:72px;
+    grid-template-columns:repeat(4,1fr);
+    padding:6px;
+  }
+  .vacancy-progress-step{
+    justify-content:center;
+    padding:7px 4px;
+  }
+  .vacancy-progress-step b{display:none}
+  .vacancy-progress-meta small{font-size:9px}
+  .vacancy-publish-actions{
+    bottom:6px;
+    display:grid!important;
+  }
+}
