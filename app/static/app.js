@@ -501,8 +501,8 @@ async function start() {
   $('#city-filter').addEventListener('keydown',e=>{if(e.key==='Enter')loadPublicJobs();});
   $('#account-content').addEventListener('click',handleDashboardClick);
   $('#account-content').addEventListener('submit',handleDashboardSubmit);
-  await loadPublicJobs();
   await reloadUser();
+  await loadPublicJobs();
   if (state.user) { state.tab = state.user.role==='employer'?'vacancies':'profile'; await showDashboard(); }
 }
 document.addEventListener('DOMContentLoaded',start);
