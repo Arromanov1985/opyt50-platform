@@ -244,9 +244,27 @@
       } catch(e) { $('#dashboard-main').textContent=e.message;toast(e.message,true); }
     };
 
+    let adminSafetyFilter = 'new';
+    const reportReasonLabels = {
+      misleading:'Недостоверная информация',
+      discrimination:'Дискриминационные требования',
+      fraud:'Подозрение на мошенничество',
+      contacts:'Обход безопасного знакомства',
+      other:'Другая проблема'
+    };
+    const reportStatusLabels = {
+      new:'Новая',
+      reviewed:'В работе',
+      dismissed:'Отклонена',
+      actioned:'Меры приняты'
+    };
+    function moderationLabel(status){
+      return status==='pending'?'На проверке':status==='rejected'?'Отклонена':'Одобрена';
+    }
+
     renderAdmin = async function(){
       await oldAdmin();
-      $('#account-content').insertAdjacentHTML('beforeend','<div class="panel admin-v02"><div class="item-actions"><button class="btn btn-outline" data-v02-action="admin-users">Пользователи</button><button class="btn btn-outline" data-v02-action="admin-jobs">Вакансии</button><button class="btn btn-outline" data-v02-action="admin-reports">Жалобы</button><button class="btn btn-outline" data-v02-action="admin-mail">Почтовые события</button></div><div id="admin-v02-results"></div></div>');
+      $('#account-content').insertAdjacentHTML('beforeend','<div class="panel admin-v02"><div class="item-actions"><button class="btn btn-outline" data-v02-action="admin-users">Пользователи</button><button class="btn btn-outline" data-v02-action="admin-jobs">Вакансии</button><button class="btn btn-outline" data-v02-action="admin-reports">Центр безопасности</button><button class="btn btn-outline" data-v02-action="admin-mail">Почтовые события</button></div><div id="admin-v02-results"></div></div>');
     };
 
     async function adminView(kind){
@@ -257,10 +275,30 @@
         root.innerHTML='<h3>Пользователи и работодатели</h3><div class="dashboard-list">'+users.map(u=>`<article class="item-card admin-user-card"><header><div><h4>${esc(u.role==='employer' && u.company_name ? u.company_name : u.name)}</h4><p>${esc(u.email)} · ${esc(u.role)}</p></div><span class="mini-badge ${u.status==='active'?'':'gray'}">${u.status==='active'?'Активен':'Заблокирован'}</span></header>${u.role==='employer'?`<div class="admin-trust-row"><span class="${u.email_verified?'is-ok':'is-pending'}">${u.email_verified?'✓ Email':'Email не подтверждён'}</span><span class="${u.inn?'is-ok':'is-pending'}">${u.inn?'ИНН '+esc(u.inn):'ИНН не указан'}</span><span class="${u.employer_verified?'is-ok':'is-pending'}">${u.employer_verified?'✓ Компания проверена':'Не проверена'}</span></div><div class="item-actions"><button class="btn ${u.employer_verified?'btn-outline':'btn-primary'} btn-tiny" data-v02-action="admin-employer-verification" data-id="${Number(u.id)}" data-verified="${u.employer_verified?'false':'true'}" ${!u.employer_verified&&(!u.email_verified||!u.inn)?'disabled title="Нужны подтверждённый email и ИНН"':''}>${u.employer_verified?'Снять проверку':'Проверить компанию'}</button></div>`:''}${u.role==='admin'?'':`<div class="item-actions"><button class="btn btn-outline btn-tiny" data-v02-action="admin-user-status" data-id="${Number(u.id)}" data-status="${u.status==='active'?'disabled':'active'}">${u.status==='active'?'Заблокировать':'Разблокировать'}</button></div>`}</article>`).join('')+'</div>';
       } else if(kind==='jobs'){
         const {jobs}=await api('/api/admin/vacancies');
-        root.innerHTML='<h3>Вакансии</h3><div class="dashboard-list">'+jobs.map(j=>`<article class="item-card"><header><div><h4>${esc(j.title)}</h4><p>${esc(j.company_name)} · ${esc(j.city)}</p><p><strong>Модерация:</strong> ${j.moderation_status==='pending'?'На проверке':j.moderation_status==='rejected'?'Отклонена':'Одобрена'}${j.active_reports?' · Жалоб: '+j.active_reports:''}</p>${j.moderation_reason?`<p class="muted">${esc(j.moderation_reason)}</p>`:''}</div><span class="mini-badge">${j.status==='open'?'Открыта':'Закрыта'}</span></header><div class="item-actions"><button class="btn btn-outline btn-tiny" data-v02-action="admin-job-status" data-id="${Number(j.id)}" data-status="${j.status==='open'?'closed':'open'}">${j.status==='open'?'Закрыть':'Открыть'}</button><button class="btn btn-primary btn-tiny" data-v02-action="admin-moderation" data-id="${Number(j.id)}" data-status="approved">Одобрить</button><button class="btn btn-outline btn-tiny" data-v02-action="admin-moderation" data-id="${Number(j.id)}" data-status="pending">На проверку</button><button class="btn btn-danger btn-tiny" data-v02-action="admin-moderation" data-id="${Number(j.id)}" data-status="rejected">Отклонить</button></div></article>`).join('')+'</div>';
+        root.innerHTML='<div class="split-header"><div><span class="section-kicker">ВАКАНСИИ</span><h3>Все вакансии</h3><p class="muted">Публикация и операционный статус. Проверку жалоб проводите в Центре безопасности.</p></div><button class="btn btn-primary btn-tiny" data-v02-action="admin-reports">Центр безопасности →</button></div><div class="dashboard-list">'+jobs.map(j=>`<article class="item-card"><header><div><h4>${esc(j.title)}</h4><p>${esc(j.company_name)} · ${esc(j.city)}</p><div class="admin-moderation-inline ${esc(j.moderation_status)}"><strong>${moderationLabel(j.moderation_status)}</strong>${j.active_reports?'<span>Активных жалоб: '+Number(j.active_reports)+'</span>':''}</div></div><span class="mini-badge">${j.status==='open'?'Открыта':'Закрыта'}</span></header><div class="item-actions"><button class="btn btn-outline btn-tiny" data-v02-action="admin-job-status" data-id="${Number(j.id)}" data-status="${j.status==='open'?'closed':'open'}">${j.status==='open'?'Закрыть':'Открыть'}</button>${j.moderation_status!=='approved'?'<button class="btn btn-outline btn-tiny" data-v02-action="admin-reports">Проверить →</button>':''}</div></article>`).join('')+'</div>';
       } else if(kind==='reports'){
-        const {reports}=await api('/api/admin/reports');
-        root.innerHTML='<h3>Жалобы</h3><div class="dashboard-list">'+(reports.length?reports.map(r=>`<article class="item-card"><header><div><h4>${esc(r.title)}</h4><p>${esc(r.company_name)} · ${r.target_type==='employer'?'На работодателя':'На вакансию'} · ${esc(r.reason)}</p></div><span class="mini-badge">${esc(r.status)}</span></header>${r.details?`<p>${esc(r.details)}</p>`:''}<div class="item-actions"><button class="btn btn-outline btn-tiny" data-v02-action="admin-report-status" data-key="${esc(r.report_key)}" data-status="reviewed">В работу</button><button class="btn btn-outline btn-tiny" data-v02-action="admin-report-status" data-key="${esc(r.report_key)}" data-status="dismissed">Отклонить жалобу</button><button class="btn btn-primary btn-tiny" data-v02-action="admin-report-status" data-key="${esc(r.report_key)}" data-status="actioned">Меры приняты</button></div></article>`).join(''):'<div class="empty-state">Новых жалоб нет.</div>')+'</div>';
+        const [{reports},{jobs}] = await Promise.all([api('/api/admin/reports'),api('/api/admin/vacancies')]);
+        const newReports=reports.filter(r=>r.status==='new');
+        const reviewReports=reports.filter(r=>r.status==='reviewed');
+        const resolvedReports=reports.filter(r=>['dismissed','actioned'].includes(r.status));
+        const pendingJobs=jobs.filter(j=>j.moderation_status==='pending');
+        const rejectedJobs=jobs.filter(j=>j.moderation_status==='rejected');
+        const filter=adminSafetyFilter;
+        const filterButtons=[
+          ['new','Новые',newReports.length],
+          ['pending','На проверке',pendingJobs.length],
+          ['reviewed','В работе',reviewReports.length],
+          ['resolved','Обработано',resolvedReports.length],
+          ['all','Все',reports.length]
+        ];
+        const visibleReports=filter==='new'?newReports:filter==='reviewed'?reviewReports:filter==='resolved'?resolvedReports:filter==='all'?reports:[];
+        let content='';
+        if(filter==='pending'){
+          content=pendingJobs.length?pendingJobs.map(j=>`<article class="item-card safety-vacancy-card"><header><div><span class="card-eyebrow">ТРЕБУЕТ РЕШЕНИЯ</span><h4>${esc(j.title)}</h4><p>${esc(j.company_name)} · ${esc(j.city)} · жалоб: ${Number(j.active_reports||0)}</p></div><span class="mini-badge warning">На проверке</span></header>${j.moderation_reason?`<div class="safety-reason-note">${esc(j.moderation_reason)}</div>`:''}<div class="field"><label for="moderation-reason-${Number(j.id)}">Причина отклонения, если решите снять вакансию</label><textarea id="moderation-reason-${Number(j.id)}" data-moderation-reason="${Number(j.id)}" rows="3" maxlength="500" placeholder="Например: условия не соответствуют тексту объявления"></textarea></div><div class="item-actions"><button class="btn btn-primary btn-tiny" data-v02-action="admin-moderation" data-id="${Number(j.id)}" data-status="approved">Одобрить и вернуть в поиск</button><button class="btn btn-danger btn-tiny" data-v02-action="admin-moderation" data-id="${Number(j.id)}" data-status="rejected">Отклонить вакансию</button></div></article>`).join(''):'<div class="empty-state"><strong>Нет вакансий, ожидающих проверки.</strong><p>Здесь появятся вакансии, временно скрытые после сигналов пользователей или решения модератора.</p></div>';
+        }else{
+          content=visibleReports.length?visibleReports.map(r=>`<article class="item-card safety-report-card"><header><div><span class="card-eyebrow">${r.target_type==='employer'?'РАБОТОДАТЕЛЬ':'ВАКАНСИЯ'}</span><h4>${esc(r.title)}</h4><p>${esc(r.company_name)} · ${esc(reportReasonLabels[r.reason]||r.reason)}</p></div><span class="mini-badge ${r.status==='new'?'warning':r.status==='actioned'?'':'gray'}">${esc(reportStatusLabels[r.status]||r.status)}</span></header>${r.details?`<div class="safety-report-text">${esc(r.details)}</div>`:''}<div class="safety-report-meta">Получено: ${esc(r.created_at||'—')}</div>${['new','reviewed'].includes(r.status)?`<div class="item-actions">${r.status==='new'?'<button class="btn btn-outline btn-tiny" data-v02-action="admin-report-status" data-key="'+esc(r.report_key)+'" data-status="reviewed">Взять в работу</button>':''}<button class="btn btn-outline btn-tiny" data-v02-action="admin-report-status" data-key="${esc(r.report_key)}" data-status="dismissed">Не подтверждено</button><button class="btn btn-primary btn-tiny" data-v02-action="admin-report-status" data-key="${esc(r.report_key)}" data-status="actioned">Меры приняты</button></div>`:''}</article>`).join(''):'<div class="empty-state"><strong>В этой очереди пока пусто.</strong><p>Переключите фильтр выше, чтобы посмотреть другие обращения.</p></div>';
+        }
+        root.innerHTML=`<div class="safety-center"><div class="split-header"><div><span class="section-kicker">ЦЕНТР БЕЗОПАСНОСТИ</span><h3>Модерация и жалобы</h3><p class="muted">Разбирайте сигналы пользователей и возвращайте в поиск только проверенные вакансии.</p></div></div><div class="safety-summary"><button data-v02-action="admin-safety-filter" data-filter="new"><strong>${newReports.length}</strong><span>Новые жалобы</span></button><button data-v02-action="admin-safety-filter" data-filter="pending"><strong>${pendingJobs.length}</strong><span>Вакансии на проверке</span></button><button data-v02-action="admin-safety-filter" data-filter="reviewed"><strong>${reviewReports.length}</strong><span>В работе</span></button><div><strong>${resolvedReports.length}</strong><span>Обработано</span></div></div><div class="safety-filter-row">${filterButtons.map(([value,label,count])=>`<button class="btn btn-tiny ${filter===value?'btn-dark':'btn-outline'}" data-v02-action="admin-safety-filter" data-filter="${value}">${label} · ${count}</button>`).join('')}</div><div class="dashboard-list safety-list">${content}</div>${rejectedJobs.length?`<div class="safety-footnote">Отклонённых вакансий вне активной очереди: <strong>${rejectedJobs.length}</strong></div>`:''}</div>`;
       } else {
         const {messages}=await api('/api/admin/mail-preview');
         root.innerHTML='<h3>Тестовая очередь</h3><p class="muted">Сообщения НЕ отправляются. Секретные ссылки здесь скрыты.</p>'+messages.map(m=>`<p>${esc(m.created_at)} · ${esc(m.event)} · ${esc(m.subject)}</p>`).join('');
@@ -280,6 +318,7 @@
       btn.disabled=true;
       try{
         if(type==='details'){
+          if($('#company-dialog').open) $('#company-dialog').close();
           const {job}=await api(`/api/jobs/${id}`);
           $('#job-dialog-title').textContent=job.title;
           const skills=String(job.skills||'').split(',').map(x=>x.trim()).filter(Boolean);
@@ -295,16 +334,21 @@
   if($('#job-dialog').open) $('#job-dialog').close();
   $('#company-dialog').showModal();
 }else if(type==='report'){
-  if(state.user?.role!=='candidate'){if($('#job-dialog').open)$('#job-dialog').close();openAuth('login','candidate');toast('Войдите как соискатель, чтобы отправить жалобу.');return;}
-  const target=(prompt('На что жалоба: вакансия или компания?','вакансия')||'').trim().toLowerCase();
-  if(target!=='вакансия'&&target!=='компания') throw Error('Укажите «вакансия» или «компания»');
-  const reason=(prompt('Причина: misleading, discrimination, fraud, contacts или other','other')||'').trim();
-  if(!['misleading','discrimination','fraud','contacts','other'].includes(reason)) throw Error('Неизвестная причина жалобы');
-  const details=(prompt('Коротко опишите проблему','')||'').trim().slice(0,800);
-  const result=await req('POST','/api/reports',{vacancy_id:id,target_type:target==='компания'?'employer':'vacancy',reason,details});
-  if($('#job-dialog').open) $('#job-dialog').close();
-  await loadPublicJobs();
-  toast(result.vacancy_pending_review?'Жалоба принята. Вакансия временно скрыта до проверки.':'Жалоба отправлена модератору.');
+          if(state.user?.role!=='candidate'){
+            if($('#job-dialog').open)$('#job-dialog').close();
+            openAuth('login','candidate');
+            toast('Войдите как соискатель, чтобы отправить жалобу.');
+            return;
+          }
+          const form=$('#report-form');
+          form.reset();
+          form.dataset.vacancyId=String(id);
+          $('#report-details-count').textContent='0 / 800';
+          $('#report-message').textContent='';
+          $('#report-success').classList.add('hidden');
+          form.classList.remove('hidden');
+          if($('#job-dialog').open)$('#job-dialog').close();
+          $('#report-dialog').showModal();
 }else if(['apply','favorite'].includes(type)){
           if(state.user?.role!=='candidate'){ if($('#job-dialog').open) $('#job-dialog').close(); if(state.user)throw Error('Действие доступно только соискателю');openAuth('login','candidate');return; }
           if(type==='apply'){
@@ -352,18 +396,54 @@
         else if(type==='recover'){$('#auth-dialog').close();$('#reset-dialog').showModal();}
         else if(type==='admin-users')await adminView('users');
         else if(type==='admin-jobs')await adminView('jobs');
-        else if(type==='admin-reports')await adminView('reports');
+        else if(type==='admin-reports'){adminSafetyFilter='new';await adminView('reports');}
         else if(type==='admin-mail')await adminView('mail');
         else if(type==='admin-employer-verification'){await req('PATCH',`/api/admin/employers/${id}/verification`,{verified:btn.dataset.verified==='true'});await adminView('users');await loadPublicJobs();toast(btn.dataset.verified==='true'?'Компания отмечена как проверенная':'Статус проверки снят');}
                 else if(type==='admin-user-status'){await req('PATCH',`/api/admin/users/${id}/status`,{status:btn.dataset.status});await adminView('users');toast('Статус пользователя изменён');}
         else if(type==='admin-job-status'){await req('PATCH',`/api/admin/vacancies/${id}/status`,{status:btn.dataset.status});await adminView('jobs');await loadPublicJobs();toast('Вакансия обновлена');}
-        else if(type==='admin-moderation'){const status=btn.dataset.status;const reason=status==='rejected'?(prompt('Причина отклонения вакансии:')||''):'';if(status==='rejected'&&!reason)throw Error('Укажите причину отклонения');await req('PATCH',`/api/admin/vacancies/${id}/moderation`,{status,reason});await adminView('jobs');await loadPublicJobs();toast('Статус модерации обновлён');}
+        else if(type==='admin-safety-filter'){adminSafetyFilter=btn.dataset.filter||'new';await adminView('reports');}
+        else if(type==='admin-moderation'){const status=btn.dataset.status;const field=document.querySelector(`[data-moderation-reason="${id}"]`);const reason=status==='rejected'?(field?.value.trim()||''):'';if(status==='rejected'&&!reason)throw Error('Укажите причину отклонения в поле выше');await req('PATCH',`/api/admin/vacancies/${id}/moderation`,{status,reason});await adminView('reports');await loadPublicJobs();toast(status==='approved'?'Вакансия одобрена и возвращена в поиск':'Вакансия отклонена');}
         else if(type==='admin-report-status'){await req('PATCH',`/api/admin/reports/${btn.dataset.key}/status`,{status:btn.dataset.status});await adminView('reports');toast('Жалоба обработана');}
       }catch(e){toast(e.message,true);}
       finally{if(btn.isConnected)btn.disabled=false;}
     });
     $('#job-dialog-close').addEventListener('click',()=>$('#job-dialog').close());
     $('#company-dialog-close').addEventListener('click',()=>$('#company-dialog').close());
+    $('#report-dialog-close').addEventListener('click',()=>$('#report-dialog').close());
+    $('#report-cancel').addEventListener('click',()=>$('#report-dialog').close());
+    $('#report-success-close').addEventListener('click',()=>$('#report-dialog').close());
+    $('#report-details').addEventListener('input',event=>{
+      $('#report-details-count').textContent=event.target.value.length+' / 800';
+    });
+    $('#report-form').addEventListener('submit',async event=>{
+      event.preventDefault();
+      const form=event.currentTarget;
+      const submit=$('#report-submit');
+      const reason=form.elements.namedItem('reason').value;
+      if(!reason){$('#report-message').textContent='Выберите причину жалобы.';return;}
+      submit.disabled=true;
+      $('#report-message').textContent='';
+      try{
+        const result=await req('POST','/api/reports',{
+          vacancy_id:Number(form.dataset.vacancyId),
+          target_type:form.elements.namedItem('target_type').value,
+          reason,
+          details:form.elements.namedItem('details').value.trim()
+        });
+        form.classList.add('hidden');
+        const success=$('#report-success');
+        success.classList.remove('hidden');
+        const text=success.querySelector('p');
+        if(text) text.textContent=result.vacancy_pending_review
+          ? 'Жалоба принята. Вакансия временно скрыта из поиска до проверки модератором.'
+          : 'Спасибо. Жалоба передана модератору СТАЖНО.';
+        await loadPublicJobs();
+      }catch(e){
+        $('#report-message').textContent=e.message;
+      }finally{
+        submit.disabled=false;
+      }
+    });
     $('#reset-dialog-close').addEventListener('click',()=>$('#reset-dialog').close());
     $('#reset-request-form').addEventListener('submit',async event=>{
       event.preventDefault();
