@@ -46,21 +46,29 @@
       const id = Number(job.id), open = job.status !== 'closed';
       const saved = favoriteVacancyIds.has(id);
       const skills = String(job.skills || '').split(',').map(s=>s.trim()).filter(Boolean).slice(0,4);
+      const preview = String(job.description || '').replace(/\s+/g,' ').trim().slice(0,180);
       const score = Number(job.score || 0);
       const scoreClass = score >= 80 ? 'high' : 'medium';
       const reasons = Array.isArray(job.reasons) ? job.reasons : [];
       const scoreBadge = personalized
         ? `<span class="job-category match-score ${scoreClass}"><span class="match-score-dot"></span>${score}% совпадение</span>`
-        : `<span class="job-category">${open ? 'Вакансия' : 'Закрыта'}</span>`;
+        : `<span class="job-category">${open ? 'Открыта' : 'Закрыта'}</span>`;
+      let roleActions = '';
+      if (open && state.user?.role === 'candidate') {
+        roleActions = `${jobApplicationAction(id, job)}<button class="btn btn-outline btn-tiny favorite-toggle" data-v02-action="${saved ? 'favorite-remove-inline' : 'favorite'}" data-id="${id}" aria-label="${saved ? 'Убрать вакансию из избранного' : 'Сохранить вакансию'}" aria-pressed="${saved ? 'true' : 'false'}">${saved ? '♥' : '♡'}</button>`;
+      } else if (open && !state.user) {
+        roleActions = `<button type="button" class="btn btn-primary btn-tiny" data-v02-action="apply" data-id="${id}">Откликнуться</button>`;
+      }
       return `<article class="job-card job-card-v08" data-job-id="${id}"><div class="job-top"><span class="job-company">${esc(job.company_name || 'Работодатель')}</span>${scoreBadge}</div>
         <h3>${esc(job.title)}</h3><div class="job-salary">${formatPay(job)}</div>
         <div class="job-meta"><span>⌖ ${esc(job.city)}</span><span>${esc(job.schedule)}</span><span>${esc(job.employment)}</span></div>
+        ${preview ? `<p class="job-preview">${esc(preview)}${String(job.description || '').replace(/\s+/g,' ').trim().length > 180 ? '…' : ''}</p>` : ''}
         ${skills.length ? `<div class="job-skill-tags">${skills.map(skill=>`<span>${esc(skill)}</span>`).join('')}</div>` : ''}
         ${personalized && reasons.length ? `<div class="match-reasons-preview">${reasons.slice(0,2).map(reason=>`<span>✓ ${esc(reason)}</span>`).join('')}</div>` : ''}
         ${personalized ? `<details class="match-explanation"><summary>Почему эта вакансия в рекомендациях?</summary><ul>${reasons.map(reason => `<li>${esc(reason)}</li>`).join('') || '<li>Подходят основные условия вашего профиля</li>'}</ul><p class="muted">Совпадение рассчитывается по данным профиля и помогает сортировать варианты. Оно не гарантирует приглашение.</p></details>` : ''}
-        <div class="job-actions"><button class="btn btn-outline btn-tiny" data-v02-action="details" data-id="${id}">Подробнее</button>
-        ${open ? `${state.user?.role === 'candidate' ? jobApplicationAction(id, job) : `<button type="button" class="btn btn-primary btn-tiny" data-v02-action="apply" data-id="${id}">Откликнуться</button>`}<button class="btn btn-outline btn-tiny favorite-toggle" data-v02-action="${saved ? 'favorite-remove-inline' : 'favorite'}" data-id="${id}" aria-label="${saved ? 'Убрать вакансию из избранного' : 'Сохранить вакансию'}" aria-pressed="${saved ? 'true' : 'false'}">${saved ? '♥' : '♡'}</button>` : ''}</div></article>`;
+        <div class="job-actions"><button class="btn btn-outline btn-tiny" data-v02-action="details" data-id="${id}">Подробнее</button>${roleActions}</div></article>`;
     };
+
     loadPublicJobs = async function() {
       try {
         await Promise.all([refreshMyApplications(), refreshFavorites()]);
@@ -258,7 +266,7 @@
           const {job}=await api(`/api/jobs/${id}`);
           $('#job-dialog-title').textContent=job.title;
           const skills=String(job.skills||'').split(',').map(x=>x.trim()).filter(Boolean);
-          $('#job-dialog-content').innerHTML=`<div class="job-detail-v08"><div class="job-detail-company"><span class="section-kicker">ВАКАНСИЯ</span><strong>${esc(job.company_name)}</strong><span>⌖ ${esc(job.city)}</span></div><div class="job-detail-pay">${formatPay(job)}</div><div class="job-detail-facts"><span><small>График</small><strong>${esc(job.schedule)}</strong></span><span><small>Занятость</small><strong>${esc(job.employment)}</strong></span></div>${skills.length?`<div class="job-skill-tags">${skills.slice(0,8).map(skill=>`<span>${esc(skill)}</span>`).join('')}</div>`:''}<div class="job-detail-description">${esc(job.description||'Подробности у работодателя').replace(/\n/g,'<br>')}</div><div class="job-detail-privacy">Ваши контакты не передаются работодателю автоматически. Сначала отправляется отклик, а знакомство проходит только через отдельное согласие.</div><div class="job-detail-action">${state.user?.role==='candidate' ? jobApplicationAction(Number(job.id), job) : `<button class="btn btn-primary" data-v02-action="apply" data-id="${Number(job.id)}">Откликнуться на вакансию →</button>`}</div></div>`;
+          $('#job-dialog-content').innerHTML=`<div class="job-detail-v08"><div class="job-detail-company"><span class="section-kicker">ВАКАНСИЯ</span><strong>${esc(job.company_name)}</strong><span>⌖ ${esc(job.city)}</span></div><div class="job-detail-pay">${formatPay(job)}</div><div class="job-detail-facts"><span><small>График</small><strong>${esc(job.schedule)}</strong></span><span><small>Занятость</small><strong>${esc(job.employment)}</strong></span></div>${skills.length?`<div class="job-skill-tags">${skills.slice(0,8).map(skill=>`<span>${esc(skill)}</span>`).join('')}</div>`:''}<div class="job-detail-description">${esc(job.description||'Подробности у работодателя').replace(/\n/g,'<br>')}</div><div class="job-detail-privacy">Ваши контакты не передаются работодателю автоматически. Сначала отправляется отклик, а знакомство проходит только через отдельное согласие.</div><div class="job-detail-action">${state.user?.role==='candidate' ? jobApplicationAction(Number(job.id), job) : !state.user ? `<button class="btn btn-primary" data-v02-action="apply" data-id="${Number(job.id)}">Откликнуться на вакансию →</button>` : `<span class="job-role-note">Вы вошли как ${state.user.role==='employer'?'работодатель':'администратор'}. Отклики доступны только соискателям.</span>`}</div></div>`;
           $('#job-dialog').showModal();
         }else if(['apply','favorite'].includes(type)){
           if(state.user?.role!=='candidate'){ if($('#job-dialog').open) $('#job-dialog').close(); if(state.user)throw Error('Действие доступно только соискателю');openAuth('login','candidate');return; }
