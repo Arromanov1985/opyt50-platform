@@ -850,3 +850,56 @@ body.comfortable-view .company-form-actions small{font-size:.95rem}
   .company-form-actions .btn{width:100%}
   .company-static-field{align-items:flex-start;flex-direction:column}
 }
+
+
+/* Vacancy quality score */
+.vacancy-quality{
+  margin:0 0 12px;
+  padding:12px 13px;
+  border:1px solid #E1EAE5;
+  border-radius:13px;
+  background:#FAFCFB;
+}
+.vacancy-quality-head{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:12px;
+  margin-bottom:7px;
+}
+.vacancy-quality-head span{
+  color:#60746B;
+  font-size:10px;
+  font-weight:800;
+}
+.vacancy-quality-head strong{
+  color:#0B2D26;
+  font-size:13px;
+}
+.vacancy-quality-track{
+  height:6px;
+  overflow:hidden;
+  border-radius:999px;
+  background:#E8EFEB;
+}
+.vacancy-quality-track span{
+  display:block;
+  height:100%;
+  border-radius:inherit;
+  background:#C5A84F;
+}
+.vacancy-quality.high .vacancy-quality-track span{background:#00C853}
+.vacancy-quality.low .vacancy-quality-track span{background:#C66B58}
+.vacancy-quality p{
+  margin:7px 0 0;
+  color:#718179;
+  font-size:9px;
+  line-height:1.45;
+}
+.vacancy-quality.high p{color:#4E6B5D}
+body.comfortable-view .vacancy-quality-head span,
+body.comfortable-view .vacancy-quality p{font-size:.9rem}
+
+@media(max-width:700px){
+  .vacancy-quality{padding:10px 11px}
+}
