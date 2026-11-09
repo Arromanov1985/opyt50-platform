@@ -625,3 +625,40 @@ body.comfortable-view .application-timeline span{font-size:.9rem}
   .switch-control{align-self:stretch;justify-content:space-between}
   .profile-public-preview .split-header{align-items:flex-start;flex-direction:column}
 }
+
+
+/* Helpful empty states */
+.empty-state-action{
+  display:grid;
+  justify-items:start;
+  gap:8px;
+  padding:22px!important;
+  border:1px dashed #CFE1D7!important;
+  border-radius:17px!important;
+  background:#FBFDFC!important;
+}
+.empty-state-action .empty-state-icon{
+  width:42px;height:42px;
+  display:grid;place-items:center;
+  border-radius:13px;
+  background:#EAF8F0;
+  color:#08793A;
+  font-size:19px;
+  font-weight:900;
+}
+.empty-state-action strong{
+  color:#0B2D26;
+  font-size:17px;
+}
+.empty-state-action p{
+  max-width:560px;
+  margin:0 0 3px!important;
+  color:#60746B!important;
+  line-height:1.55;
+}
+.empty-state-action .btn{margin-top:4px!important}
+
+@media(max-width:700px){
+  .empty-state-action{padding:17px!important}
+  .empty-state-action .btn{width:100%}
+}
