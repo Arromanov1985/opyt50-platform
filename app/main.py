@@ -1,4 +1,4 @@
-"""OПЫТ 50+ MVP: self-service hiring with confirmed candidate introductions.
+"""СТАЖНО: self-service hiring with confirmed candidate introductions.
 
 No paid services, real payments, or automated age-based screening in this release.
 """
@@ -219,7 +219,7 @@ def create_app(db_path: str | None = None) -> FastAPI:
         init_release02(app.state.db_path)
         yield
 
-    app = FastAPI(title="ОПЫТ 50+", version="0.3.0-dev", lifespan=lifespan, docs_url="/api/docs")
+    app = FastAPI(title="СТАЖНО", version="0.3.0-dev", lifespan=lifespan, docs_url="/api/docs")
     app.state.db_path = db_location
     app.state.auth_attempts = defaultdict(deque)
     app.mount("/static", StaticFiles(directory=str(BASE / "static")), name="static")
@@ -249,7 +249,7 @@ def create_app(db_path: str | None = None) -> FastAPI:
                 return Response(
                     content="Тестовый стенд защищён паролем",
                     status_code=401,
-                    headers={"WWW-Authenticate": 'Basic realm="OPYTNO Preview"', "Cache-Control": "no-store"},
+                    headers={"WWW-Authenticate": 'Basic realm="STAZHNO Preview"', "Cache-Control": "no-store"},
                 )
         # A custom header forces cross-origin browser requests to preflight; no CORS enabled.
         if request.url.path.startswith("/api/") and request.method in {"POST", "PUT", "PATCH", "DELETE"}:
@@ -314,7 +314,7 @@ def create_app(db_path: str | None = None) -> FastAPI:
                 )
             add_session(db, response, user_id)
             from .release02 import enqueue_notice
-            enqueue_notice(db, user_id, "welcome", "Добро пожаловать в ОПЫТНО.РФ", "Ваш аккаунт создан. Письмо записано в тестовую очередь и НЕ отправлено.")
+            enqueue_notice(db, user_id, "welcome", "Добро пожаловать в СТАЖНО", "Ваш аккаунт создан. Добро пожаловать в СТАЖНО.")
         except sqlite3.IntegrityError:
             raise HTTPException(409, "Этот email уже зарегистрирован") from None
         return {"user": user_response(dict(db.execute("SELECT id,email,role,name,phone FROM users WHERE id=?", (user_id,)).fetchone()), db)}
@@ -646,7 +646,7 @@ def create_app(db_path: str | None = None) -> FastAPI:
         except sqlite3.IntegrityError:
             raise HTTPException(409, "Этому кандидату уже направлено приглашение") from None
         from .release02 import enqueue_notice
-        enqueue_notice(db, data.candidate_id, "invitation", "Приглашение от компании — ОПЫТНО.РФ",
+        enqueue_notice(db, data.candidate_id, "invitation", "Приглашение от компании — СТАЖНО",
                        f"Вы получили приглашение на вакансию «{vacancy['title']}». Откройте личный кабинет.")
         # Commit before the HTTP response: a new dashboard request may arrive immediately.
         db.commit()
@@ -696,7 +696,7 @@ def create_app(db_path: str | None = None) -> FastAPI:
         )
         from .release02 import enqueue_notice
         employer = db.execute("SELECT employer_id FROM invitations WHERE id=?", (invitation_id,)).fetchone()
-        enqueue_notice(db, employer["employer_id"], "invitation_response", "Ответ кандидата — ОПЫТНО.РФ",
+        enqueue_notice(db, employer["employer_id"], "invitation_response", "Ответ кандидата — СТАЖНО",
                        f"Кандидат ответил на приглашение: {data.decision}. Откройте кабинет.")
         # Commit before the HTTP response: a new dashboard request may arrive immediately.
         db.commit()
@@ -754,7 +754,7 @@ def create_app(db_path: str | None = None) -> FastAPI:
         if first_unlock:
             from .release02 import enqueue_notice
             enqueue_notice(db, row["candidate_id"], "contact_opened",
-                           "Знакомство состоялось — ОПЫТНО.РФ",
+                           "Знакомство состоялось — СТАЖНО",
                            "Работодатель завершил демонстрационное знакомство. Контакт открыт в тестовом режиме.")
         contact = db.execute("SELECT name,email,phone FROM users WHERE id=?", (row["candidate_id"],)).fetchone()
         # Commit before the HTTP response: a new dashboard request may arrive immediately.
