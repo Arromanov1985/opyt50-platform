@@ -231,7 +231,7 @@
         if(nav) nav.insertAdjacentHTML('beforeend','<button type="button" data-tab="applications"><span class="dashboard-tab-icon" aria-hidden="true">✓</span><span>Отклики</span></button>');
         return;
       }
-      const nav=[{id:'overview',label:'Обзор'},{id:'vacancies',label:'Мои вакансии'},{id:'create',label:'Новая вакансия'},{id:'invitations',label:'Приглашения и контакты'},...employerExtra];
+      const nav=[{id:'overview',label:'Обзор'},{id:'company',label:'Компания'},{id:'vacancies',label:'Мои вакансии'},{id:'create',label:'Новая вакансия'},{id:'invitations',label:'Приглашения и контакты'},...employerExtra];
       $('#account-content').innerHTML=`<div class="dashboard-grid">${tabsMarkup(nav,'ДЛЯ КОМПАНИИ',state.user.company?.company_name||'Работодатель')}<div id="dashboard-main"></div></div>`;
       try {
         const {applications}=await api('/api/employer/applications');
