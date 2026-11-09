@@ -120,8 +120,8 @@ function updateAuth() {
   $('#auth-submit').textContent = reg ? (employer ? 'Создать аккаунт компании →' : 'Создать профиль →') : 'Войти →';
   $('#auth-guidance').textContent = reg
     ? (employer
-      ? 'Нужны только имя, компания, email и пароль. Контактные данные кандидатов не открываются автоматически.'
-      : 'Нужны только имя, email и пароль. Ваш телефон не требуется для создания профиля.')
+      ? 'Нужны только имя, компания, email и пароль. Первую вакансию сможете создать сразу после регистрации.'
+      : 'Нужны только имя, email и пароль. Профессию, навыки и условия поиска добавите следующим шагом.')
     : 'Если не помните пароль, воспользуйтесь восстановлением доступа.';
   if (reg) {
     $('#auth-route-title').textContent = employer ? 'Как начнётся работа' : 'Как начнётся поиск';
@@ -712,7 +712,7 @@ function invitationEmployerMarkup(x) {
   return `<article class="item-card invitation-card employer-invitation-card"><header><div><span class="card-eyebrow">ЗНАКОМСТВО</span><h4>${esc(x.candidate_profession)}</h4><p>${esc(x.vacancy_title)} · кандидат #${x.candidate_id}</p></div><span class="mini-badge ${statusBadge[x.status]}">${esc(workflowStatus(x,statusTitle[x.status]))}</span></header>
   ${interactionStageMarkup(x,'invitation')}
   ${activityTimelineMarkup(x)}
-  ${x.contact ? `<div class="contact-card"><span>КОНТАКТ ОТКРЫТ</span><strong>${esc(x.contact.name)}</strong><div><a href="mailto:${esc(x.contact.email)}">${esc(x.contact.email)}</a><b>·</b><span>${esc(x.contact.phone || 'Телефон не указан')}</span></div></div>` : (x.status === 'accepted' ? `<div class="application-next-action"><span>Следующее действие</span><strong>Кандидат согласился на знакомство</strong><small>Демо-стоимость: ${money(x.price_rub)}</small></div><button class="btn btn-primary" data-action="demo-pay" data-id="${x.id}">Открыть контакт (демо) →</button>` : '<p class="muted invitation-waiting">Ожидаем решение кандидата. Контакты пока скрыты.</p>')}</article>`;
+  ${x.contact ? `<div class="contact-card"><span>Контакт открыт (демо)</span><strong>${esc(x.contact.name)}</strong><div><a href="mailto:${esc(x.contact.email)}">${esc(x.contact.email)}</a><b>·</b><span>${esc(x.contact.phone || 'Телефон не указан')}</span></div></div>` : (x.status === 'accepted' ? `<div class="application-next-action"><span>Следующее действие</span><strong>Кандидат согласился на знакомство</strong><small>Демо-стоимость: ${money(x.price_rub)}</small></div><button class="btn btn-primary" data-action="demo-pay" data-id="${x.id}">Открыть контакт (демо) →</button>` : '<p class="muted invitation-waiting">Ожидаем решение кандидата. Контакты пока скрыты.</p>')}</article>`;
 }
 async function renderAdmin() {
   $('#account-content').innerHTML = '<div class="panel"><h3>Панель управления</h3><p class="muted">Статистика работы MVP, без раскрытия персональных данных.</p><div class="stat-grid" id="admin-stats"><div class="loading">Загрузка...</div></div></div>';
