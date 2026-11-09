@@ -394,3 +394,104 @@ body.comfortable-view .application-timeline span{font-size:.9rem}
   .interaction-stage i{width:26px;height:26px}
   .interaction-stage:before{top:12px}
 }
+
+
+/* Employer vacancy workflow */
+.employer-vacancy-card{
+  position:relative;
+  overflow:hidden;
+  padding:20px;
+}
+.employer-vacancy-card.needs-attention{
+  border-color:#A9E4BD;
+  box-shadow:0 12px 32px #00C8530d;
+}
+.employer-vacancy-card.needs-attention:before{
+  content:"";
+  position:absolute;
+  left:0;top:0;bottom:0;
+  width:4px;
+  background:#00C853;
+}
+.vacancy-pipeline-mini{
+  display:grid;
+  grid-template-columns:repeat(3,minmax(0,1fr));
+  gap:8px;
+  margin:14px 0;
+}
+.vacancy-pipeline-mini>span{
+  display:grid;
+  gap:2px;
+  padding:11px 12px;
+  border-radius:12px;
+  background:#F7FBF8;
+  border:1px solid #E1ECE6;
+}
+.vacancy-pipeline-mini strong{color:#0B2D26;font-size:18px}
+.vacancy-pipeline-mini small{color:#687B72;font-size:10px}
+.employer-vacancy-primary{
+  margin:4px 0 10px;
+}
+.employer-vacancy-primary .btn{
+  min-width:210px;
+}
+.employer-vacancy-secondary{
+  padding-top:10px;
+  border-top:1px solid #EDF3EF;
+}
+.matches-panel{margin-top:16px}
+.matches-guide{
+  display:flex;
+  flex-wrap:wrap;
+  gap:8px;
+  margin:14px 0 18px;
+}
+.matches-guide span{
+  display:inline-flex;
+  align-items:center;
+  gap:7px;
+  padding:8px 10px;
+  border-radius:999px;
+  background:#F3FAF6;
+  border:1px solid #DDEAE3;
+  color:#526A60;
+  font-size:11px;
+  font-weight:750;
+}
+.matches-guide b{
+  width:20px;height:20px;
+  display:grid;place-items:center;
+  border-radius:50%;
+  background:#DDF7E7;
+  color:#08793A;
+  font-size:10px;
+}
+.candidate-match-card{
+  border-left-width:0;
+  position:relative;
+}
+.candidate-match-card:before{
+  content:"";
+  position:absolute;
+  left:0;top:0;bottom:0;
+  width:4px;
+  border-radius:18px 0 0 18px;
+  background:#E5A93D;
+}
+.candidate-match-card.high:before{background:#00C853}
+.candidate-match-score{
+  padding:8px 10px;
+  border-radius:12px;
+  background:#F3FAF6;
+}
+.candidate-match-score strong{color:#0B2D26}
+
+@media(max-width:620px){
+  .vacancy-pipeline-mini{grid-template-columns:repeat(3,minmax(0,1fr));gap:5px}
+  .vacancy-pipeline-mini>span{padding:9px}
+  .vacancy-pipeline-mini strong{font-size:16px}
+  .employer-vacancy-primary .btn{width:100%;min-width:0}
+  .employer-vacancy-secondary .btn{flex:1}
+  .matches-guide{display:grid;grid-template-columns:1fr}
+  .matches-guide span{border-radius:12px}
+}
