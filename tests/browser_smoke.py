@@ -38,9 +38,11 @@ def run_browser(page):
     expect(page.locator(".brand-word").first).to_contain_text("стажно")
     assert "СТАЖНО" in page.title()
     assert "опытно.рф" not in page.locator("body").inner_text().casefold()
-    expect(page.locator(".release-ribbon")).to_contain_text("0.3.0-dev")
+    expect(page.locator(".product-strip")).to_contain_text("Без возрастных барьеров")
+    expect(page.locator("#candidate-path")).to_be_visible()
+    expect(page.locator("#employer-path")).to_be_visible()
     # Search first; registration is not required to inspect a vacancy.
-    page.get_by_role("link", name="Посмотреть вакансии").first.click()
+    page.get_by_role("link", name="Найти работу").first.click()
     assert page.evaluate("location.hash") == "#jobs"
     expect(page.locator("#guest-actions")).to_be_visible()
 
@@ -71,7 +73,11 @@ def run_browser(page):
 
     page.locator("#register-open").click()
     expect(page.locator("#auth-name")).to_be_focused()
-    expect(page.locator("#auth-guidance")).to_contain_text("вымышленные данные")
+    expect(page.locator("#auth-guidance")).to_contain_text("Профессию, навыки")
+    page.locator(".role-btn[data-role='employer']").click()
+    expect(page.locator("#auth-company-row")).to_be_visible()
+    expect(page.locator("#auth-guidance")).to_contain_text("Первую вакансию")
+    page.locator(".role-btn[data-role='candidate']").click()
     page.locator("#modal-close").click()
     expect(page.locator("#profession-filter")).to_be_visible()
     expect(page.locator("#schedule-filter")).to_be_visible()
