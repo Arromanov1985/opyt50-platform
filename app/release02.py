@@ -523,7 +523,10 @@ def install_routes(app) -> None:
                             JOIN employer_profiles e ON e.user_id=v.employer_id
                             JOIN users u ON u.id=e.user_id
                             LEFT JOIN account_controls c ON c.user_id=e.user_id
-                            WHERE v.id=? AND v.status='open'""", (job_id,)).fetchone()
+                            LEFT JOIN vacancy_moderation vm ON vm.vacancy_id=v.id
+                            WHERE v.id=? AND v.status='open'
+                              AND COALESCE(c.status,'active')='active'
+                              AND COALESCE(vm.status,'approved')='approved'""", (job_id,)).fetchone()
         if row is None:
             raise HTTPException(404, "Вакансия не найдена или закрыта")
         return {"job": dict(row)}
@@ -540,13 +543,27 @@ def install_routes(app) -> None:
                              JOIN employer_profiles e ON e.user_id=v.employer_id
                              JOIN users u ON u.id=e.user_id
                              LEFT JOIN account_controls c ON c.user_id=e.user_id
-                             WHERE f.candidate_id=? ORDER BY f.created_at DESC,v.id DESC""", (user["id"],)).fetchall()
+                             LEFT JOIN vacancy_moderation vm ON vm.vacancy_id=v.id
+                             WHERE f.candidate_id=?
+                               AND v.status='open'
+                               AND COALESCE(c.status,'active')='active'
+                               AND COALESCE(vm.status,'approved')='approved'
+                             ORDER BY f.created_at DESC,v.id DESC""", (user["id"],)).fetchall()
         return {"jobs": [dict(r) for r in rows]}
 
     @app.post("/api/candidate/favorites/{job_id}", status_code=201)
     def save_favorite(job_id: int, user: dict = Depends(active_user), db: sqlite3.Connection = Depends(get_connection)):
         allowed(user, "candidate")
-        if db.execute("SELECT 1 FROM vacancies WHERE id=? AND status='open'", (job_id,)).fetchone() is None:
+        if db.execute(
+            """SELECT 1 FROM vacancies v
+               JOIN employer_profiles e ON e.user_id=v.employer_id
+               LEFT JOIN account_controls c ON c.user_id=e.user_id
+               LEFT JOIN vacancy_moderation vm ON vm.vacancy_id=v.id
+               WHERE v.id=? AND v.status='open'
+                 AND COALESCE(c.status,'active')='active'
+                 AND COALESCE(vm.status,'approved')='approved'""",
+            (job_id,),
+        ).fetchone() is None:
             raise HTTPException(404, "Вакансия не найдена")
         db.execute("INSERT OR IGNORE INTO candidate_favorites(candidate_id,vacancy_id) VALUES(?,?)",
                    (user["id"], job_id))
@@ -570,10 +587,19 @@ def install_routes(app) -> None:
         profile = candidate_view(db, user["id"])
         if profile is None or not profile["profession"] or not profile["city"]:
             raise HTTPException(422, "Сначала заполните профессию и город в профиле")
-        job = db.execute("SELECT id,employer_id,title,status FROM vacancies WHERE id=?",
-                         (data.vacancy_id,)).fetchone()
-        if job is None or job["status"] != "open":
-            raise HTTPException(404, "Вакансия закрыта или не найдена")
+        job = db.execute(
+            """SELECT v.id,v.employer_id,v.title,v.status,
+                      COALESCE(vm.status,'approved') AS moderation_status,
+                      COALESCE(c.status,'active') AS employer_status
+               FROM vacancies v
+               LEFT JOIN vacancy_moderation vm ON vm.vacancy_id=v.id
+               LEFT JOIN account_controls c ON c.user_id=v.employer_id
+               WHERE v.id=?""",
+            (data.vacancy_id,),
+        ).fetchone()
+        if (job is None or job["status"] != "open" or
+                job["moderation_status"] != "approved" or job["employer_status"] != "active"):
+            raise HTTPException(404, "Вакансия закрыта, скрыта или не найдена")
         previous = db.execute(
             "SELECT id,status FROM job_applications WHERE vacancy_id=? AND candidate_id=?",
             (data.vacancy_id, user["id"]),
