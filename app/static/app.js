@@ -510,7 +510,14 @@ async function loadEmployerVacancies() {
   if (state.activeVacancy && jobs.some(j=>j.id===state.activeVacancy)) await loadMatches(state.activeVacancy);
 }
 function jobEmployerMarkup(x, stats = {total: 0, interested: 0}) {
-  return `<article class="item-card"><header><div><h4>${esc(x.title)}</h4><p>${esc(x.city)} · ${formatPay(x)} · ${esc(x.schedule)}</p></div><span class="mini-badge ${x.status === 'open' ? '' : 'gray'}">${x.status === 'open' ? 'Открыта' : 'Закрыта'}</span></header><p class="muted">Откликов: ${stats.total} · Заинтересованных: ${stats.interested}</p><div class="item-actions"><button type="button" class="btn btn-outline btn-tiny" data-action="vacancy-applications" data-id="${x.id}">Посмотреть отклики →</button><button class="btn btn-dark btn-tiny" data-action="matches" data-id="${x.id}" ${x.status === 'closed' ? 'disabled':''}>Подобрать кандидатов →</button><button class="btn btn-outline btn-tiny" data-action="edit-job" data-id="${x.id}">Редактировать</button><button class="btn btn-outline btn-tiny" data-action="job-status" data-id="${x.id}" data-status="${x.status === 'open' ? 'closed' : 'open'}">${x.status === 'open' ? 'Закрыть' : 'Открыть'}</button></div></article>`;
+  const needsAttention = x.status === 'open' && stats.total > 0;
+  const nextLabel = needsAttention ? 'Есть новые отклики' : (x.status === 'open' ? 'Ищем кандидатов' : 'Вакансия закрыта');
+  return `<article class="item-card employer-vacancy-card ${needsAttention ? 'needs-attention' : ''}">
+    <header><div><span class="card-eyebrow">${esc(nextLabel)}</span><h4>${esc(x.title)}</h4><p>${esc(x.city)} · ${formatPay(x)} · ${esc(x.schedule)}</p></div><span class="mini-badge ${x.status === 'open' ? '' : 'gray'}">${x.status === 'open' ? 'Открыта' : 'Закрыта'}</span></header>
+    <div class="vacancy-pipeline-mini"><span><strong>${stats.total}</strong><small>Отклики</small></span><span><strong>${stats.interested}</strong><small>Заинтересованы</small></span><span><strong>${Math.max(0,stats.total-stats.interested)}</strong><small>На рассмотрении</small></span></div>
+    <div class="employer-vacancy-primary">${needsAttention ? `<button type="button" class="btn btn-primary" data-action="vacancy-applications" data-id="${x.id}">Разобрать отклики →</button>` : `<button class="btn btn-dark" data-action="matches" data-id="${x.id}" ${x.status === 'closed' ? 'disabled':''}>Подобрать кандидатов →</button>`}</div>
+    <div class="item-actions employer-vacancy-secondary"><button type="button" class="btn btn-outline btn-tiny" data-action="vacancy-applications" data-id="${x.id}">Отклики</button><button class="btn btn-outline btn-tiny" data-action="matches" data-id="${x.id}" ${x.status === 'closed' ? 'disabled':''}>Подбор</button><button class="btn btn-outline btn-tiny" data-action="edit-job" data-id="${x.id}">Редактировать</button><button class="btn btn-outline btn-tiny" data-action="job-status" data-id="${x.id}" data-status="${x.status === 'open' ? 'closed' : 'open'}">${x.status === 'open' ? 'Закрыть' : 'Открыть'}</button></div>
+  </article>`;
 }
 async function loadMatches(jobId) {
   const target = $('#employer-matches');
@@ -519,7 +526,7 @@ async function loadMatches(jobId) {
   state.activeVacancy = jobId;
   try {
     const {matches} = await api(`/api/employer/vacancies/${jobId}/matches`);
-    target.innerHTML = `<div class="panel"><div class="split-header"><div><h3>Подходящие кандидаты</h3><p class="muted">Сначала оценивайте профессиональные параметры. Имя, телефон и email остаются скрытыми до согласия кандидата и предусмотренного этапа знакомства.</p></div><span class="mini-badge blue">${matches.length} совпадений</span></div><div class="dashboard-list">${matches.length ? matches.map(m => {
+    target.innerHTML = `<div class="panel matches-panel"><div class="split-header"><div><span class="section-kicker">ПОДБОР</span><h3>Подходящие кандидаты</h3><p class="muted">Сравнивайте профессию, навыки, условия и процент совпадения. Личные данные остаются скрытыми до согласия кандидата.</p></div><span class="mini-badge">${matches.length} совпадений</span></div><div class="matches-guide"><span><b>1</b>Оцените опыт</span><span><b>2</b>Отправьте приглашение</span><span><b>3</b>Дождитесь согласия</span></div><div class="dashboard-list">${matches.length ? matches.map(m => {
       const scoreClass = Number(m.score) >= 80 ? 'high' : 'medium';
       const reasons = Array.isArray(m.reasons) ? m.reasons : [];
       let action = `<button class="btn btn-primary btn-tiny" data-action="invite" data-job="${jobId}" data-id="${m.candidate_id}">Пригласить кандидата →</button>`;
