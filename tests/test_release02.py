@@ -150,6 +150,97 @@ def test_admin_controls_and_existing_invitation_events(app):
             assert db.execute("SELECT COUNT(*) FROM admin_audit").fetchone()[0]==3
 
 
+def test_employer_trust_profile_verification_and_contact_guard(app):
+    with TestClient(app) as employer, TestClient(app) as admin, TestClient(app) as visitor:
+        eid = register(employer, "employer@demo.example", "employer")
+
+        initial = employer.get("/api/employer/company").json()
+        assert initial["trust"]["email_verified"] is False
+        assert initial["trust"]["inn_provided"] is False
+        assert initial["trust"]["verified"] is False
+
+        saved = employer.put(
+            "/api/employer/company",
+            headers=HEADERS,
+            json={"company_name": "Компания Демо", "inn": "7707083893"},
+        )
+        assert saved.status_code == 200, saved.text
+        assert saved.json()["trust"]["inn_provided"] is True
+        assert saved.json()["trust"]["verified"] is False
+
+        with database(app.state.db_path) as db:
+            db.execute(
+                "INSERT INTO users(role,email,name,password_hash) VALUES(?,?,?,?)",
+                ("admin", "admin@demo.example", "Администратор", make_password_hash("StrongPass2026!")),
+            )
+        assert post(admin, "/api/login", {
+            "email": "admin@demo.example", "password": "StrongPass2026!"
+        }).status_code == 200
+
+        # Verification is meaningful only after both requisites and email confirmation.
+        blocked = admin.patch(
+            f"/api/admin/employers/{eid}/verification",
+            headers=HEADERS,
+            json={"verified": True},
+        )
+        assert blocked.status_code == 422
+
+        with database(app.state.db_path) as db:
+            db.execute(
+                """INSERT INTO account_controls(user_id,email_verified) VALUES(?,1)
+                   ON CONFLICT(user_id) DO UPDATE SET email_verified=1""",
+                (eid,),
+            )
+
+        verified = admin.patch(
+            f"/api/admin/employers/{eid}/verification",
+            headers=HEADERS,
+            json={"verified": True},
+        )
+        assert verified.status_code == 200, verified.text
+        assert verified.json()["trust"]["verified"] is True
+
+        jid = vacancy(employer)
+        public_job = visitor.get(f"/api/jobs/{jid}").json()["job"]
+        assert public_job["employer_verified"] == 1
+        assert public_job["employer_email_verified"] == 1
+        assert public_job["employer_inn_provided"] == 1
+        assert "inn" not in public_job
+
+        # Changing legal identity data must invalidate the previous verification.
+        changed = employer.put(
+            "/api/employer/company",
+            headers=HEADERS,
+            json={"company_name": "Компания Демо Новая", "inn": "7707083893"},
+        )
+        assert changed.status_code == 200
+        assert changed.json()["trust"]["verified"] is False
+
+        email_in_job = post(employer, "/api/employer/vacancies", {
+            "title": "Менеджер",
+            "city": "Москва",
+            "salary_min": 70000,
+            "salary_max": 90000,
+            "schedule": "Полный день",
+            "employment": "Полная",
+            "skills": "продажи",
+            "description": "Пишите напрямую на hr@example.ru",
+        })
+        assert email_in_job.status_code == 422
+
+        phone_in_job = post(employer, "/api/employer/vacancies", {
+            "title": "Менеджер",
+            "city": "Москва",
+            "salary_min": 70000,
+            "salary_max": 90000,
+            "schedule": "Полный день",
+            "employment": "Полная",
+            "skills": "продажи",
+            "description": "Звоните по номеру +7 (999) 123-45-67",
+        })
+        assert phone_in_job.status_code == 422
+
+
 def test_one_click_introduction_reuses_record_and_requires_consent(app):
     """Self-initiated job application -> employer interest -> explicit consent -> demo unlock."""
     with TestClient(app) as candidate, TestClient(app) as employer, TestClient(app) as other:
