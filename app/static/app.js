@@ -121,12 +121,36 @@ async function showDashboard(scroll = false) {
 function tabsMarkup(items, heading, subtitle) {
   return `<aside class="panel side-panel"><span class="section-kicker">${esc(heading)}</span><h3 class="tab-heading">${esc(subtitle)}</h3><nav class="dashboard-tabs" aria-label="Разделы личного кабинета">${items.map(t => `<button type="button" data-tab="${esc(t.id)}" class="${state.tab === t.id ? 'active' : ''}">${esc(t.label)}</button>`).join('')}</nav></aside>`;
 }
+function candidateProfileHealth(profile = {}) {
+  const checks = [
+    Boolean((profile.profession || '').trim()),
+    Boolean((profile.city || '').trim()),
+    Number(profile.salary_min || 0) > 0,
+    Boolean((profile.skills || '').trim()),
+    Boolean((profile.about || '').trim())
+  ];
+  const completed = checks.filter(Boolean).length;
+  const percent = completed * 20;
+  const next = !checks[0] ? 'Укажите профессию'
+    : !checks[1] ? 'Укажите город'
+    : !checks[2] ? 'Добавьте зарплатные ожидания'
+    : !checks[3] ? 'Добавьте несколько навыков'
+    : !checks[4] ? 'Коротко опишите опыт'
+    : 'Профиль готов к подбору';
+  return {percent, next};
+}
 function profileMarkup(profile = {}, user = {}) {
+  const health = candidateProfileHealth(profile);
   // Additional details stay optional; open them explicitly when the candidate is ready.
   return `<div class="panel candidate-profile">
     <span class="section-kicker">ВАШ ПРОФЕССИОНАЛЬНЫЙ ОПЫТ</span>
     <h3>Расскажите, какую работу вы ищете</h3>
     <p class="muted">Начните с нескольких пунктов. Большое резюме не требуется. Эти сведения используются для подбора вакансий.</p>
+    <div class="profile-health" role="status" aria-label="Готовность профиля">
+      <div class="profile-health-copy"><span>Готовность профиля</span><strong>${health.percent}%</strong></div>
+      <div class="profile-health-track"><span style="width:${health.percent}%"></span></div>
+      <small>${esc(health.next)}</small>
+    </div>
     <div class="profile-progress" role="note"><span class="profile-progress-step">1</span><div><strong>Основные сведения</strong><small>Профессия, город, навыки, зарплата и график</small></div></div>
     <form id="profile-form">
       <div class="form-grid">
@@ -159,14 +183,14 @@ function profileMarkup(profile = {}, user = {}) {
               <div class="field"><label for="profile-employment">Тип занятости</label>
                 <select id="profile-employment" name="employment">${optList(employment,profile.employment)}</select></div>
               <div class="field"><label for="profile-phone">Телефон (необязательно)</label>
-                <input id="profile-phone" name="phone" type="tel" value="${esc(user.phone)}" maxlength="30" autocomplete="off" placeholder="Только вымышленный номер для теста">
-                <small class="field-help">В тестовой версии не вводите реальный номер. Контакт защищён отдельным согласием.</small></div>
+                <input id="profile-phone" name="phone" type="tel" value="${esc(user.phone)}" maxlength="30" autocomplete="off" placeholder="Например, +7 900 000-00-00">
+                <small class="field-help">Телефон не показывается работодателю автоматически и открывается только в предусмотренном сценарии знакомства.</small></div>
               <div class="field wide"><label for="profile-about">Немного о вашем опыте</label>
                 <textarea id="profile-about" name="about" maxlength="700" placeholder="Расскажите о своей работе и достижениях. Не указывайте здесь контакты.">${esc(profile.about)}</textarea>
                 <details class="experience-helper" id="experience-helper">
                   <summary>Не знаете, что написать? Поможем описать ваш опыт</summary>
                   <p class="experience-helper-intro">Ответьте на три простых вопроса. Мы составим текст только из ваших слов. Проверьте его и при желании добавьте в профиль.</p>
-                  <p class="experience-helper-privacy">Это локальный помощник без ИИ и внешних сервисов. Не указывайте настоящие имена, телефон, email или адреса.</p>
+                  <p class="experience-helper-privacy">Помощник работает локально и не отправляет ответы во внешние сервисы. Не добавляйте телефон, email или адрес в описание опыта.</p>
                   <div class="experience-helper-fields">
                     <label for="experience-work">1. Какой работой вы занимались?</label>
                     <textarea id="experience-work" rows="2" maxlength="220" placeholder="Например: учёт товаров на складе"></textarea>
@@ -257,7 +281,7 @@ function vacancyFormMarkup(job = null) {
     <span class="section-kicker">${isEdit ? 'РЕДАКТИРОВАНИЕ ВАКАНСИИ' : 'НОВАЯ ВАКАНСИЯ'}</span>
     <h3>${isEdit ? 'Изменить вакансию' : 'Разместить вакансию'}</h3>
     <p class="muted">${isEdit ? 'Исправьте условия и проверьте объявление перед сохранением. ID вакансии и существующие отклики останутся прежними.' : 'Заполните короткие разделы, проверьте объявление глазами соискателя и только затем опубликуйте. Размещение бесплатное; контакты кандидата защищены отдельным согласием.'}</p>
-    <p class="vacancy-demo-warning">Тестовый стенд: используйте только вымышленные сведения о компании, вакансии и контактах.</p>
+    <p class="vacancy-demo-warning">Не указывайте личные контакты в тексте вакансии: для связи с кандидатом используется защищённый сценарий знакомства.</p>
     ${isEdit ? `<p class="vacancy-edit-warning">Редактирование не удаляет отклики и приглашения, но ранее откликнувшиеся соискатели не получат автоматического уведомления об изменении условий. Статус вакансии остаётся прежним.</p>` : ``}
     <form id="vacancy-form" data-edit-id="${isEdit ? job.id : ''}" data-revision="${isEdit ? esc(job.revision) : ''}" data-edit-mode="${legacy ? 'legacy' : 'structured'}">
       <fieldset class="vacancy-step">
@@ -335,7 +359,19 @@ async function loadEmployerVacancies() {
   const visibleJobs = filter === 'all' ? jobs : jobs.filter(job => job.status === filter);
   const interestedCount = applications.filter(a => a.status === 'interview' || a.invitation_id).length;
   const introducedCount = applications.filter(a => a.contact_shared).length;
-  view.innerHTML = `<div class="panel"><div class="split-header"><div><h3>Мои вакансии</h3><p class="muted">После размещения получите список обезличенных профилей.</p></div><button class="btn btn-primary btn-tiny" data-action="new-job">+ Добавить</button></div><div class="stat-grid" aria-label="Статистика вакансий"><div class="stat-tile"><strong>${jobs.length}</strong><span>Всего вакансий</span></div><div class="stat-tile"><strong>${openCount}</strong><span>Открыты</span></div><div class="stat-tile"><strong>${closedCount}</strong><span>Закрыты</span></div></div><div class="stat-grid" aria-label="Воронка подбора"><div class="stat-tile"><strong>${applications.length}</strong><span>Отклики</span></div><div class="stat-tile"><strong>${interestedCount}</strong><span>Заинтересованные</span></div><div class="stat-tile"><strong>${introducedCount}</strong><span>Знакомства (демо)</span></div></div><div class="item-actions" role="group" aria-label="Фильтр вакансий"><button type="button" class="btn btn-tiny ${filter === 'all' ? 'btn-dark' : 'btn-outline'}" data-action="filter-employer-jobs" data-filter="all" aria-pressed="${filter === 'all'}">Все (${jobs.length})</button><button type="button" class="btn btn-tiny ${filter === 'open' ? 'btn-dark' : 'btn-outline'}" data-action="filter-employer-jobs" data-filter="open" aria-pressed="${filter === 'open'}">Открытые (${openCount})</button><button type="button" class="btn btn-tiny ${filter === 'closed' ? 'btn-dark' : 'btn-outline'}" data-action="filter-employer-jobs" data-filter="closed" aria-pressed="${filter === 'closed'}">Закрытые (${closedCount})</button></div><div class="dashboard-list">${visibleJobs.length ? visibleJobs.map(job => jobEmployerMarkup(job, applicationsByJob.get(Number(job.id)))).join('') : '<div class="empty-state">В выбранной категории вакансий нет.</div>'}</div></div><div id="employer-matches" class="hidden"></div>`;
+  const firstOpenJob = jobs.find(job => job.status === 'open');
+  const firstApplication = applications[0];
+  let nextAction = '<div class="employer-next"><div><span>Следующий шаг</span><strong>Создайте первую вакансию</strong><small>После публикации можно получать отклики и запускать подбор.</small></div><button class="btn btn-primary btn-tiny" data-action="new-job">Создать вакансию →</button></div>';
+  if (jobs.length && applications.length === 0 && firstOpenJob) {
+    nextAction = `<div class="employer-next"><div><span>Следующий шаг</span><strong>Запустите подбор кандидатов</strong><small>Открытая вакансия уже есть — посмотрите подходящие профили.</small></div><button class="btn btn-dark btn-tiny" data-action="matches" data-id="${Number(firstOpenJob.id)}">Подобрать кандидатов →</button></div>`;
+  } else if (applications.length && interestedCount === 0 && firstApplication) {
+    nextAction = `<div class="employer-next"><div><span>Требует внимания</span><strong>Разберите новые отклики</strong><small>Сейчас в воронке ${applications.length} откликов.</small></div><button class="btn btn-primary btn-tiny" data-action="vacancy-applications" data-id="${Number(firstApplication.vacancy_id)}">Открыть отклики →</button></div>`;
+  } else if (interestedCount > introducedCount) {
+    nextAction = `<div class="employer-next"><div><span>Следующий шаг</span><strong>Продолжите знакомства</strong><small>Есть кандидаты, по которым процесс ещё не завершён.</small></div><button class="btn btn-primary btn-tiny" data-tab="invitations">Открыть приглашения →</button></div>`;
+  } else if (jobs.length) {
+    nextAction = '<div class="employer-next employer-next-ok"><div><span>Воронка под контролем</span><strong>Продолжайте работу с вакансиями</strong><small>Статусы и следующие действия собраны в одном кабинете.</small></div></div>';
+  }
+  view.innerHTML = `<div class="panel">${nextAction}<div class="split-header"><div><h3>Мои вакансии</h3><p class="muted">После размещения получите список обезличенных профилей.</p></div><button class="btn btn-primary btn-tiny" data-action="new-job">+ Добавить</button></div><div class="stat-grid" aria-label="Статистика вакансий"><div class="stat-tile"><strong>${jobs.length}</strong><span>Всего вакансий</span></div><div class="stat-tile"><strong>${openCount}</strong><span>Открыты</span></div><div class="stat-tile"><strong>${closedCount}</strong><span>Закрыты</span></div></div><div class="stat-grid" aria-label="Воронка подбора"><div class="stat-tile"><strong>${applications.length}</strong><span>Отклики</span></div><div class="stat-tile"><strong>${interestedCount}</strong><span>Заинтересованные</span></div><div class="stat-tile"><strong>${introducedCount}</strong><span>Знакомства (демо)</span></div></div><div class="item-actions" role="group" aria-label="Фильтр вакансий"><button type="button" class="btn btn-tiny ${filter === 'all' ? 'btn-dark' : 'btn-outline'}" data-action="filter-employer-jobs" data-filter="all" aria-pressed="${filter === 'all'}">Все (${jobs.length})</button><button type="button" class="btn btn-tiny ${filter === 'open' ? 'btn-dark' : 'btn-outline'}" data-action="filter-employer-jobs" data-filter="open" aria-pressed="${filter === 'open'}">Открытые (${openCount})</button><button type="button" class="btn btn-tiny ${filter === 'closed' ? 'btn-dark' : 'btn-outline'}" data-action="filter-employer-jobs" data-filter="closed" aria-pressed="${filter === 'closed'}">Закрытые (${closedCount})</button></div><div class="dashboard-list">${visibleJobs.length ? visibleJobs.map(job => jobEmployerMarkup(job, applicationsByJob.get(Number(job.id)))).join('') : '<div class="empty-state">В выбранной категории вакансий нет.</div>'}</div></div><div id="employer-matches" class="hidden"></div>`;
   if (state.activeVacancy && jobs.some(j=>j.id===state.activeVacancy)) await loadMatches(state.activeVacancy);
 }
 function jobEmployerMarkup(x, stats = {total: 0, interested: 0}) {
