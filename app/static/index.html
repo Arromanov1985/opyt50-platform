@@ -13,11 +13,13 @@
   <link rel="stylesheet" href="/static/release08.css?v=brand3">
   <link rel="stylesheet" href="/static/release08-search.css?v=brand2">
   <link rel="stylesheet" href="/static/release08-dashboard.css?v=brand2">
+  <link rel="stylesheet" href="/static/release09-home.css?v=0900">
   <title>стажно.ру — работа и новые возможности</title>
   <script src="/static/release02.js?v=0810" defer></script>
   <script src="/static/app.js?v=0810" defer></script>
   <script src="/static/release03.js?v=0810" defer></script>
   <script src="/static/vacancy-wizard.js?v=0810" defer></script>
+  <script src="/static/release09-home.js?v=0900" defer></script>
 </head>
 <body>
   <header class="site-header">
@@ -36,25 +38,29 @@
       <div class="hero-content"><span class="eyebrow"><span class="eyebrow-point"></span> РАБОТА И НОВЫЕ ВОЗМОЖНОСТИ</span>
         <h1>Работа и новые возможности<br><em>после 50 лет</em></h1>
         <p class="hero-copy">Помогаем людям с опытом находить подходящую работу, проекты и новые возможности для развития — спокойно, понятно и без возрастных стереотипов.</p>
-        <div class="hero-actions">
-          <a class="btn btn-primary btn-lg" href="#jobs">Найти работу <span aria-hidden="true">→</span></a>
-          <button class="btn btn-outline btn-lg" data-register="employer">Найти сотрудника</button>
+        <div class="hero-job-search" role="search" aria-label="Быстрый поиск вакансий">
+          <input id="hero-job-query" type="search" maxlength="120" autocomplete="off" placeholder="Кем хотите работать? Например, бухгалтер или кладовщик" aria-label="Профессия или навык">
+          <button class="btn btn-primary" id="hero-job-search" type="button">Найти →</button>
         </div>
-        <p class="hero-helper">Для просмотра вакансий регистрация не нужна. Профиль можно заполнить позже.</p>
+        <div class="hero-actions">
+          <a class="btn btn-outline btn-lg" href="#jobs">Все вакансии</a>
+          <button class="btn btn-dark btn-lg" data-register="employer">Я работодатель</button>
+        </div>
+        <p class="hero-helper">Вакансии можно смотреть без регистрации. Профиль понадобится, когда захотите откликнуться.</p>
         <div class="hero-foot"><span class="hero-tick">✓</span> Бесплатный профиль соискателя <span class="foot-divider"></span><span class="hero-tick">✓</span> Приватность контактов</div>
       </div>
       <div class="hero-visual hero-photo-wrap"><img class="hero-person hero-photo" src="/static/experience-hero-v2.webp?v=2" alt="Опытные специалисты — женщина и мужчина старше 50 лет"></div>
     </div></section>
     <section class="role-paths" aria-label="Выберите свой сценарий"><div class="container role-path-grid">
       <article class="role-path-card candidate-path" id="candidate-path">
-        <span class="role-path-label">ИЩУ РАБОТУ</span>
+        <div class="role-path-top"><span class="role-path-label">ИЩУ РАБОТУ</span><span class="role-path-number">01</span></div>
         <h2>Покажите, что вы умеете</h2>
         <p>Не нужно начинать с большого резюме. Укажите профессию, город, навыки и условия — этого достаточно, чтобы начать.</p>
         <ul><li>Смотрите вакансии без регистрации</li><li>Откликайтесь и получайте приглашения</li><li>Контакты передаются только после вашего согласия</li></ul>
         <div class="role-path-actions"><a class="btn btn-dark" href="#jobs">Смотреть вакансии</a><button class="btn btn-outline" data-register="candidate">Создать профиль</button></div>
       </article>
       <article class="role-path-card employer-path" id="employer-path">
-        <span class="role-path-label">ИЩУ СОТРУДНИКОВ</span>
+        <div class="role-path-top"><span class="role-path-label">ИЩУ СОТРУДНИКОВ</span><span class="role-path-number">02</span></div>
         <h2>Смотрите опыт, а не возраст</h2>
         <p>Разместите вакансию, работайте с откликами и приглашайте подходящих специалистов в одном кабинете.</p>
         <ul><li>Вакансии и отклики в едином списке</li><li>Подбор кандидатов по навыкам и условиям</li><li>Контакт открывается после согласия кандидата</li></ul>
@@ -62,30 +68,37 @@
       </article>
     </div></section>
     <section class="value-band" id="values"><div class="container value-grid">
-      <div><span class="feature-icon">♙</span><span><strong>Надёжные работодатели</strong><small>Понятные условия и прозрачный процесс</small></span></div>
-      <div><span class="feature-icon">▥</span><span><strong>Проверенные вакансии</strong><small>Работа, подработка и проекты</small></span></div>
-      <div><span class="feature-icon">◇</span><span><strong>Поддержка на каждом этапе</strong><small>Понятные шаги от поиска до знакомства</small></span></div>
+      <div><span class="feature-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="8" r="3.5"/><path d="M5 20c.6-4 3-6 7-6s6.4 2 7 6"/></svg></span><span><strong>Надёжные работодатели</strong><small>Понятные условия и прозрачный процесс</small></span></div>
+      <div><span class="feature-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="7" width="18" height="13" rx="2"/><path d="M8 7V5.5A1.5 1.5 0 0 1 9.5 4h5A1.5 1.5 0 0 1 16 5.5V7M3 12h18M10 12v2h4v-2"/></svg></span><span><strong>Проверенные вакансии</strong><small>Работа, подработка и проекты</small></span></div>
+      <div><span class="feature-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l7 3v5c0 4.5-2.8 7.8-7 10-4.2-2.2-7-5.5-7-10V6l7-3z"/><path d="M9 12l2 2 4-4"/></svg></span><span><strong>Поддержка на каждом этапе</strong><small>Понятные шаги от поиска до знакомства</small></span></div>
     </div></section>
     <section class="section directions" id="directions"><div class="container"><div class="section-heading"><div><span class="section-kicker">ДЛЯ КАЖДОГО ОПЫТА</span><h2>Популярные направления</h2></div><p>От рабочих профессий до руководителей. Каждый опыт имеет значение.</p></div>
       <div class="direction-grid">
-       <a href="#jobs" class="direction-card"><span>⚙</span><strong>Производство</strong><small>Рабочие профессии, мастера</small></a>
-       <a href="#jobs" class="direction-card"><span>▣</span><strong>Логистика</strong><small>Склад, транспорт, снабжение</small></a>
-       <a href="#jobs" class="direction-card"><span>♧</span><strong>Продажи</strong><small>Торговля и работа с клиентами</small></a>
-       <a href="#jobs" class="direction-card"><span>▤</span><strong>Бухгалтерия</strong><small>Финансы и документооборот</small></a>
-       <a href="#jobs" class="direction-card"><span>⌘</span><strong>Инженерия</strong><small>Технологии и эксплуатация</small></a>
-       <a href="#jobs" class="direction-card"><span>▥</span><strong>Управление</strong><small>Руководители и эксперты</small></a>
+       <a href="#jobs" class="direction-card" data-job-query="производство"><span class="direction-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 6l4 4M4 20l7-7M15 3l6 6-4 4-6-6 4-4z"/><path d="M8 16l-2-2-3 3 4 4 3-3-2-2z"/></svg></span><strong>Производство</strong><small>Рабочие профессии, мастера</small></a>
+       <a href="#jobs" class="direction-card" data-job-query="логистика"><span class="direction-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 6h11v10H3zM14 10h4l3 3v3h-7z"/><circle cx="7" cy="18" r="2"/><circle cx="18" cy="18" r="2"/></svg></span><strong>Логистика</strong><small>Склад, транспорт, снабжение</small></a>
+       <a href="#jobs" class="direction-card" data-job-query="продажи"><span class="direction-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 18V9M10 18V5M16 18v-7M3 18h18"/><path d="M4 7l6-4 6 5 4-4"/></svg></span><strong>Продажи</strong><small>Торговля и работа с клиентами</small></a>
+       <a href="#jobs" class="direction-card" data-job-query="бухгалтер"><span class="direction-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="3" width="16" height="18" rx="2"/><path d="M8 7h8M8 11h2M14 11h2M8 15h2M14 15h2"/></svg></span><strong>Бухгалтерия</strong><small>Финансы и документооборот</small></a>
+       <a href="#jobs" class="direction-card" data-job-query="инженер"><span class="direction-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M5 5l2 2M17 17l2 2M19 5l-2 2M7 17l-2 2"/></svg></span><strong>Инженерия</strong><small>Технологии и эксплуатация</small></a>
+       <a href="#jobs" class="direction-card" data-job-query="руководитель"><span class="direction-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="8" cy="8" r="3"/><circle cx="17" cy="9" r="2.5"/><path d="M2.5 20c.5-4 2.4-6 5.5-6s5 2 5.5 6M14 15c3.3 0 5.3 1.6 5.8 5"/></svg></span><strong>Управление</strong><small>Руководители и эксперты</small></a>
       </div>
     </div></section>
     <section class="section jobs-section" id="jobs"><div class="container"><div class="section-heading"><div><span class="section-kicker">ВАКАНСИИ</span><h2>Актуальные <em>возможности</em></h2></div><p>Вакансии подбираются по навыкам, городу и условиям работы. Ниже сейчас показаны только демонстрационные объявления.</p></div>
-      <div class="jobs-toolbar jobs-toolbar-v02 jobs-toolbar-v08">
-        <label class="search-field" for="profession-filter">Профессия или навык<input id="profession-filter" placeholder="Например, кладовщик или 1С" maxlength="120"></label>
-        <label class="search-field" for="city-filter">Город<input id="city-filter" placeholder="Москва" maxlength="100"></label>
-        <label class="search-field salary-field" for="salary-filter">Зарплата от, ₽<input id="salary-filter" type="number" min="0" max="10000000" placeholder="60 000"></label>
-        <button class="btn btn-dark" id="jobs-filter">Найти вакансии</button>
-        <label class="search-field" for="schedule-filter">График<select id="schedule-filter"><option value="">Любой график</option><option>Полный день</option><option>Сменный</option><option>Гибкий</option><option>Удалённо</option></select></label>
-        <label class="search-field" for="employment-filter">Занятость<select id="employment-filter"><option value="">Любая занятость</option><option>Полная</option><option>Частичная</option><option>Проектная</option></select></label>
-        <label class="search-field" for="sort-filter">Сортировка<select id="sort-filter"><option value="recent">Сначала новые</option><option value="salary_desc">Сначала выше зарплата</option><option value="salary_asc">Сначала ниже зарплата</option></select></label>
-        <button class="btn btn-outline jobs-reset" id="jobs-reset" type="button">Сбросить</button>
+      <div class="jobs-toolbar jobs-toolbar-v02 jobs-toolbar-v08 jobs-toolbar-v09">
+        <div class="jobs-search-primary">
+          <label class="search-field" for="profession-filter">Профессия или навык<input id="profession-filter" placeholder="Например, кладовщик или 1С" maxlength="120"></label>
+          <label class="search-field" for="city-filter">Город<input id="city-filter" placeholder="Москва" maxlength="100"></label>
+          <button class="btn btn-dark" id="jobs-filter">Найти вакансии</button>
+        </div>
+        <details class="jobs-advanced" id="jobs-advanced">
+          <summary>Дополнительные фильтры <span class="advanced-filter-count" id="advanced-filter-count">0</span></summary>
+          <div class="jobs-advanced-grid">
+            <label class="search-field salary-field" for="salary-filter">Зарплата от, ₽<input id="salary-filter" type="number" min="0" max="10000000" placeholder="60 000"></label>
+            <label class="search-field" for="schedule-filter">График<select id="schedule-filter"><option value="">Любой график</option><option>Полный день</option><option>Сменный</option><option>Гибкий</option><option>Удалённо</option></select></label>
+            <label class="search-field" for="employment-filter">Занятость<select id="employment-filter"><option value="">Любая занятость</option><option>Полная</option><option>Частичная</option><option>Проектная</option></select></label>
+            <label class="search-field" for="sort-filter">Сортировка<select id="sort-filter"><option value="recent">Сначала новые</option><option value="salary_desc">Сначала выше зарплата</option><option value="salary_asc">Сначала ниже зарплата</option></select></label>
+            <button class="btn btn-outline jobs-reset" id="jobs-reset" type="button">Сбросить фильтры</button>
+          </div>
+        </details>
         <div class="jobs-result-meta"><span class="jobs-count" id="jobs-count" aria-live="polite"></span><div class="job-filter-summary" id="job-filter-summary" aria-live="polite"></div></div>
       </div>
       <div id="public-jobs" class="job-grid"><div class="empty-state">Загружаем вакансии...</div></div>
@@ -105,7 +118,14 @@
     <section class="cta-section cta-v08"><div class="container cta-inner"><div><span class="section-kicker">НАЧАТЬ ПРОСТО</span><h2>Выберите следующий <em>шаг.</em></h2><p>Соискатель может начать с просмотра вакансий. Работодатель — с создания аккаунта и первой вакансии.</p></div><div class="cta-actions"><a class="btn btn-dark btn-lg" href="#jobs">Найти работу</a><button class="btn btn-white btn-lg" data-register="employer">Найти сотрудника ↗</button></div></div></section>
     <section class="section account-section hidden" id="dashboard"><div class="container"><div class="account-heading"><div><span class="section-kicker">ЛИЧНЫЙ КАБИНЕТ</span><h2 id="welcome">Добро пожаловать</h2><p id="account-subtitle" class="muted"></p></div><span class="demo-badge">Платежи пока в демо-режиме</span></div><div id="account-content"></div></div></section>
   </main>
-  <footer class="footer"><div class="container footer-inner"><div><div class="brand footer-brand"><img class="brand-icon" src="/static/brand-symbol.svg?v=stazhno2" alt=""><span class="brand-word">стажно<span class="brand-dot">.</span>ру</span></div><small>Работа и новые возможности.</small></div><div class="footer-right"><span>© 2026 stazhno.ru</span><span>Демонстрационный запуск — без реальных платежей</span></div></div></footer>
+  <footer class="footer footer-v09"><div class="container">
+    <div class="footer-grid">
+      <div class="footer-intro"><div class="brand footer-brand"><img class="brand-icon" src="/static/brand-symbol.svg?v=stazhno2" alt=""><span class="brand-word">стажно<span class="brand-dot">.</span>ру</span></div><p>Работа и новые возможности для людей с опытом. Понятный поиск, приватность контактов и поддержка на каждом этапе.</p></div>
+      <nav class="footer-column" aria-label="Соискателям"><strong>Соискателям</strong><a href="#jobs">Вакансии</a><a href="#candidate-path">Как начать</a><a href="#how">Как работает сервис</a></nav>
+      <nav class="footer-column" aria-label="Работодателям"><strong>Работодателям</strong><a href="#employer-path">Найти сотрудника</a><a href="#how">Как проходит знакомство</a><button class="btn btn-text" type="button" data-register="employer">Создать аккаунт</button></nav>
+    </div>
+    <div class="footer-meta"><span>© 2026 stazhno.ru</span><div class="footer-meta-right"><span>Контакты только с согласия кандидата</span><span>Платежи пока в демо-режиме</span></div></div>
+  </div></footer>
   <dialog id="job-dialog" class="auth-dialog job-dialog" aria-labelledby="job-dialog-title"><div class="modal-top"><div><span class="section-kicker">ПОДРОБНОСТИ ВАКАНСИИ</span><h2 id="job-dialog-title"></h2></div><button type="button" class="icon-button" id="job-dialog-close" aria-label="Закрыть">×</button></div><div id="job-dialog-content"></div></dialog>
   <dialog id="reset-dialog" class="auth-dialog" aria-labelledby="reset-title"><div class="modal-top"><div><span class="section-kicker">ВОССТАНОВЛЕНИЕ ДОСТУПА</span><h2 id="reset-title">Сброс пароля</h2></div><button type="button" class="icon-button" id="reset-dialog-close" aria-label="Закрыть">×</button></div><p class="muted">Укажите email аккаунта. Если он зарегистрирован, мы отправим ссылку для смены пароля.</p><form id="reset-request-form"><div class="field"><label for="reset-email">Email</label><input id="reset-email" type="email" required placeholder="name@example.ru"></div><button class="btn btn-primary" type="submit">Запросить ссылку</button></form><hr class="account-rule"><form id="reset-complete-form"><div class="field"><label for="reset-token">Ссылка или код восстановления</label><input id="reset-token" required minlength="20" maxlength="256" autocomplete="off" placeholder="Код восстановления"></div><div class="field"><label for="reset-new-password">Новый пароль (от 10 символов)</label><input id="reset-new-password" type="password" required minlength="10" maxlength="128" autocomplete="new-password"></div><button class="btn btn-outline" type="submit">Установить новый пароль</button></form></dialog>
   <dialog id="auth-dialog" class="auth-dialog" aria-labelledby="auth-title"><form id="auth-form" novalidate><div class="modal-top"><div><span class="section-kicker">ДОБРО ПОЖАЛОВАТЬ</span><h2 id="auth-title">Создать аккаунт</h2></div><button class="icon-button" type="button" id="modal-close" aria-label="Закрыть">×</button></div><div id="signup-role" class="role-selector"><button type="button" class="role-btn active" data-role="candidate">Ищу работу</button><button type="button" class="role-btn" data-role="employer">Ищу сотрудников</button></div><div class="field hidden" id="auth-name-row"><label for="auth-name">Имя и фамилия</label><input id="auth-name" name="name" autocomplete="name" minlength="2" maxlength="100"></div><div class="field hidden" id="auth-company-row"><label for="auth-company">Компания</label><input id="auth-company" name="company_name" maxlength="120"></div><div class="field"><label for="auth-email">Email</label><input id="auth-email" name="email" type="email" autocomplete="email" required></div><div class="field"><label for="auth-password">Пароль</label><input id="auth-password" name="password" type="password" autocomplete="current-password" required></div><p class="form-hint hidden" id="password-hint">Не менее 10 символов.</p><p class="auth-guidance" id="auth-guidance" aria-live="polite">Профессию и опыт сможете указать после регистрации.</p><button type="submit" class="btn btn-primary btn-lg btn-full" id="auth-submit">Продолжить →</button><p class="auth-switch" id="auth-switch"></p></form></dialog>
