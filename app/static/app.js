@@ -397,11 +397,20 @@ async function renderCandidate() {
   } catch(e) { target.innerHTML = `<div class="panel">${esc(e.message)}</div>`; toast(e.message,true); }
 }
 function invitationCandidateMarkup(x) {
-  return `<article class="item-card invitation-card"><header><div><span class="card-eyebrow">ПРИГЛАШЕНИЕ</span><h4>${esc(x.title)}</h4><p>${esc(x.company_name)} · ${esc(x.city)} · ${formatPay(x)}</p></div><span class="mini-badge ${statusBadge[x.status]}">${esc(workflowStatus(x,statusTitle[x.status]))}</span></header>
+  return `<article class="item-card invitation-card"><header><div><span class="card-eyebrow">ПРИГЛАШЕНИЕ</span><h4>${esc(x.title)}</h4><p>${esc(x.company_name)} · ${esc(x.city)} · ${formatPay(x)}</p>${employerPublicTrustMarkup(x)}</div><span class="mini-badge ${statusBadge[x.status]}">${esc(workflowStatus(x,statusTitle[x.status]))}</span></header>
    ${interactionStageMarkup(x,'invitation')}
    <p class="invitation-description">${esc(x.description || 'Подробности на собеседовании.')}</p>
    ${activityTimelineMarkup(x)}
    ${x.status === 'sent' ? `<div class="consent-box"><strong>Хотите познакомиться с компанией?</strong><p>Имя и контакты не будут переданы, пока вы явно не согласитесь.</p><label class="checks"><input type="checkbox" id="consent-${x.id}"> Да, я разрешаю открыть мои имя и контакты этой компании после подтверждения знакомства</label></div><div class="item-actions invitation-actions"><button class="btn btn-primary" data-action="accept" data-id="${x.id}">Да, интересно →</button><button class="btn btn-outline" data-action="decline" data-id="${x.id}">Нет, спасибо</button></div>` : (x.contact_shared ? '<div class="info-box contact-opened-note"><strong>✓ Знакомство состоялось</strong><span>Контакты открыты работодателю в демонстрационном режиме.</span></div>' : '')}</article>`;
+}
+function employerPublicTrustMarkup(item = {}) {
+  const badges = [];
+  if (item.employer_verified) badges.push('<span class="employer-trust-badge verified">✓ Компания проверена</span>');
+  else {
+    if (item.employer_email_verified) badges.push('<span class="employer-trust-badge">✓ Email подтверждён</span>');
+    if (item.employer_inn_provided) badges.push('<span class="employer-trust-badge">Реквизиты указаны</span>');
+  }
+  return badges.length ? `<div class="employer-trust-badges">${badges.join('')}</div>` : '<div class="employer-trust-badges"><span class="employer-trust-badge neutral">Статус компании не подтверждён</span></div>';
 }
 function trustSignalState(value, yes, no) {
   return `<span class="trust-signal ${value ? 'is-ok' : 'is-pending'}"><i aria-hidden="true">${value ? '✓' : '·'}</i><b>${esc(value ? yes : no)}</b></span>`;
