@@ -1,0 +1,77 @@
+/* Release 0.8 — role-first product UX */
+.product-strip{background:#072f58;color:#d8e9f7;border-top:1px solid #164a76;border-bottom:1px solid #164a76}
+.product-strip-inner{min-height:40px;display:flex;align-items:center;justify-content:space-between;gap:20px;font-size:12px}
+.product-strip strong{color:#fff}
+.product-strip-points{display:flex;align-items:center;gap:12px;color:#c7d9e8}
+.product-strip-points b{color:#00c7b8}
+
+.hero-v08 .hero-grid{min-height:620px}
+.hero-v08 .hero-copy{max-width:610px}
+.hero-v08 .hero-actions{gap:12px}
+.hero-floating-v08{align-items:flex-start;max-width:270px}
+.hero-floating-v08 div{display:flex;flex-direction:column;gap:5px}
+.hero-floating-v08 strong{font-size:14px}
+.hero-floating-v08 small{color:#60778e;font-size:11px;line-height:1.45}
+
+.role-paths{background:#f5f8fb;padding:34px 0 72px;border-bottom:1px solid #e6edf4}
+.role-path-grid{display:grid;grid-template-columns:1fr 1fr;gap:18px}
+.role-path-card{background:#fff;border:1px solid #e1eaf2;border-radius:22px;padding:30px;box-shadow:0 14px 40px #0836640a;position:relative;overflow:hidden}
+.role-path-card:before{content:"";position:absolute;left:0;top:0;bottom:0;width:5px;background:#007fce}
+.role-path-card.employer-path:before{background:#00c7b8}
+.role-path-label{display:inline-flex;font-size:11px;font-weight:850;letter-spacing:.14em;color:#007fce;background:#edf6fd;border-radius:999px;padding:7px 10px;margin-bottom:15px}
+.employer-path .role-path-label{color:#008f85;background:#e9f9f7}
+.role-path-card h2{font-size:30px;line-height:1.1;margin:0 0 12px;letter-spacing:-.035em}
+.role-path-card p{color:#64748b;line-height:1.65;font-size:14px;max-width:590px}
+.role-path-card ul{margin:19px 0 24px;padding:0;list-style:none;display:grid;gap:10px}
+.role-path-card li{position:relative;padding-left:24px;color:#30485f;font-size:13px;line-height:1.5}
+.role-path-card li:before{content:"✓";position:absolute;left:0;top:0;color:#00a99d;font-weight:900}
+.role-path-actions{display:flex;gap:10px;flex-wrap:wrap}
+
+.how-v08{background:#f7fafc}
+.journey-grid{display:grid;grid-template-columns:1fr 1fr;gap:18px}
+.journey-panel{background:#fff;border:1px solid #e1eaf2;border-radius:20px;padding:26px}
+.journey-head{display:flex;flex-direction:column;gap:7px;padding-bottom:18px;border-bottom:1px solid #edf2f6}
+.journey-head span{font-size:11px;font-weight:850;letter-spacing:.14em;color:#007fce;text-transform:uppercase}
+.journey-head strong{font-size:22px;letter-spacing:-.03em}
+.journey-employer .journey-head span{color:#00988d}
+.journey-panel ol{padding:0;margin:22px 0 0;list-style:none;display:grid;gap:18px}
+.journey-panel li{display:grid;grid-template-columns:36px 1fr;gap:12px;align-items:start}
+.journey-panel li>b{width:34px;height:34px;border-radius:50%;display:grid;place-items:center;background:#eaf4fc;color:#007fce;font-size:13px}
+.journey-employer li>b{background:#e6f8f6;color:#008e83}
+.journey-panel li div{display:flex;flex-direction:column;gap:5px}
+.journey-panel li strong{font-size:14px}
+.journey-panel li small{color:#6d8093;line-height:1.5;font-size:12px}
+
+.privacy-panel{margin-top:18px;background:#083664;color:#fff;border-radius:20px;padding:26px 28px;display:grid;grid-template-columns:58px 1fr;gap:20px;align-items:start}
+.privacy-icon{width:54px;height:54px;border-radius:50%;display:grid;place-items:center;background:#0d4d81;color:#5fe3d8;font-size:30px}
+.privacy-panel .section-kicker{color:#75dcd5}
+.privacy-panel h3{font-size:23px;margin:8px 0 8px;letter-spacing:-.03em}
+.privacy-panel p{color:#c7d9e8;line-height:1.65;margin:0;font-size:13px;max-width:850px}
+
+.cta-v08 .cta-inner{align-items:center}
+.cta-actions{display:flex;gap:10px;flex-wrap:wrap;justify-content:flex-end}
+.cta-v08 .btn-white{background:#fff;color:#083664;border:1px solid #dce9ef}
+
+@media(max-width:900px){
+  .product-strip-inner{align-items:flex-start;flex-direction:column;gap:5px;padding-top:9px;padding-bottom:9px}
+  .product-strip-points{flex-wrap:wrap}
+  .role-path-grid,.journey-grid{grid-template-columns:1fr}
+  .role-path-card{padding:24px}
+  .role-path-card h2{font-size:27px}
+  .cta-actions{justify-content:flex-start}
+}
+@media(max-width:570px){
+  .product-strip{display:none}
+  .hero-v08 .hero-grid{min-height:auto}
+  .hero-v08 .hero-actions{display:grid;grid-template-columns:1fr}
+  .hero-v08 .hero-actions .btn{width:100%}
+  .role-paths{padding:22px 0 50px}
+  .role-path-card{padding:21px}
+  .role-path-card h2{font-size:25px}
+  .role-path-actions{display:grid;grid-template-columns:1fr}
+  .journey-panel{padding:21px}
+  .privacy-panel{grid-template-columns:1fr;padding:22px}
+  .privacy-icon{width:46px;height:46px}
+  .cta-actions{display:grid;width:100%;grid-template-columns:1fr}
+  .cta-actions .btn{width:100%}
+}
