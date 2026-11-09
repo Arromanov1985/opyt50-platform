@@ -58,6 +58,7 @@
 .direction-card:hover:after{transform:translateX(3px);color:#00A844}
 
 .jobs-toolbar-v09{
+  display:block;
   padding:18px;
   border:1px solid #DDEAE3;
   background:#fff;
@@ -94,7 +95,7 @@
 .advanced-filter-count.is-visible{display:inline-flex}
 .jobs-advanced-grid{
   display:grid;
-  grid-template-columns:repeat(3,minmax(0,1fr)) auto;
+  grid-template-columns:repeat(4,minmax(0,1fr)) auto;
   gap:12px;
   align-items:end;
   padding-top:10px;
@@ -149,4 +150,71 @@ body.comfortable-view .footer-column a{font-size:1rem}
   .footer-grid{grid-template-columns:1fr;gap:24px}
   .footer-intro{grid-column:auto}
   .footer-meta{align-items:flex-start;flex-direction:column}
+}
+
+
+/* Vacancy cards: clearer hierarchy and role-safe actions */
+.job-grid{gap:18px}
+.job-card-v08{
+  display:flex;
+  flex-direction:column;
+  min-height:100%;
+  padding:22px;
+  border-radius:22px;
+  background:#fff;
+}
+.job-card-v08 h3{
+  margin:2px 0 0;
+  font-size:21px;
+  line-height:1.2;
+  letter-spacing:-.025em;
+  color:#0B2D26;
+}
+.job-card-v08 .job-salary{
+  font-size:20px;
+  font-weight:900;
+  letter-spacing:-.02em;
+}
+.job-card-v08 .job-meta{display:flex;gap:7px;flex-wrap:wrap}
+.job-card-v08 .job-meta span{
+  background:#F7FBF8;
+  border:1px solid #E0ECE5;
+  border-radius:999px;
+  padding:6px 9px;
+  color:#53685E;
+}
+.job-preview{
+  margin:1px 0 0;
+  color:#5C6F67;
+  line-height:1.55;
+  font-size:13px;
+}
+.job-skill-tags{margin-top:1px}
+.job-skill-tags span{
+  background:#EAF8F0;
+  color:#35604C;
+  font-size:11px;
+  border:1px solid #D5EBDD;
+}
+.job-actions{
+  margin-top:auto;
+  padding-top:12px;
+  border-top:1px solid #EDF3EF;
+  display:flex;
+  gap:8px;
+  flex-wrap:wrap;
+}
+.job-role-note{
+  display:block;
+  padding:11px 13px;
+  border-radius:12px;
+  background:#F3FAF6;
+  color:#52685E;
+  font-size:12px;
+  line-height:1.45;
+}
+@media(max-width:620px){
+  .job-card-v08{padding:18px}
+  .job-card-v08 h3{font-size:19px}
+  .job-actions .btn:not(.favorite-toggle){flex:1}
 }
