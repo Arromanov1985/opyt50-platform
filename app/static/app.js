@@ -209,7 +209,7 @@ async function showDashboard(scroll = false) {
 function tabsMarkup(items, heading, subtitle) {
   const icons = {
     overview:'⌂',profile:'●',offers:'↗',invitations:'✉',favorites:'♡',
-    applications:'✓',changes:'↻',email:'@',vacancies:'▤',create:'＋',edit:'✎'
+    applications:'✓',changes:'↻',email:'@',vacancies:'▤',create:'＋',edit:'✎',company:'◆'
   };
   const roleLabel = state.user?.role === 'employer' ? 'Работодатель' : state.user?.role === 'candidate' ? 'Соискатель' : 'Администратор';
   return `<aside class="panel side-panel">
@@ -403,22 +403,61 @@ function invitationCandidateMarkup(x) {
    ${activityTimelineMarkup(x)}
    ${x.status === 'sent' ? `<div class="consent-box"><strong>Хотите познакомиться с компанией?</strong><p>Имя и контакты не будут переданы, пока вы явно не согласитесь.</p><label class="checks"><input type="checkbox" id="consent-${x.id}"> Да, я разрешаю открыть мои имя и контакты этой компании после подтверждения знакомства</label></div><div class="item-actions invitation-actions"><button class="btn btn-primary" data-action="accept" data-id="${x.id}">Да, интересно →</button><button class="btn btn-outline" data-action="decline" data-id="${x.id}">Нет, спасибо</button></div>` : (x.contact_shared ? '<div class="info-box contact-opened-note"><strong>✓ Знакомство состоялось</strong><span>Контакты открыты работодателю в демонстрационном режиме.</span></div>' : '')}</article>`;
 }
+function trustSignalState(value, yes, no) {
+  return `<span class="trust-signal ${value ? 'is-ok' : 'is-pending'}"><i aria-hidden="true">${value ? '✓' : '·'}</i><b>${esc(value ? yes : no)}</b></span>`;
+}
+function companyTrustMarkup(trust = {}) {
+  const completed = [trust.email_verified,trust.inn_provided,trust.verified].filter(Boolean).length;
+  return `<div class="company-trust-summary">
+    <div class="company-trust-score"><strong>${completed}/3</strong><span>уровня доверия</span></div>
+    <div class="company-trust-signals">
+      ${trustSignalState(trust.email_verified,'Email подтверждён','Email не подтверждён')}
+      ${trustSignalState(trust.inn_provided,'ИНН указан','ИНН не указан')}
+      ${trustSignalState(trust.verified,'Компания проверена','Компания ещё не проверена')}
+    </div>
+  </div>`;
+}
+function employerCompanyMarkup(result) {
+  const company = result.company || {};
+  const trust = result.trust || {};
+  const verificationText = trust.verified
+    ? 'Компания проверена администратором СТАЖНО. Если изменить название или ИНН, проверка будет снята автоматически.'
+    : (trust.email_verified && trust.inn_provided
+      ? 'Email и реквизиты заполнены. Компания готова к проверке администратором.'
+      : 'Для проверки компании подтвердите email и укажите ИНН.');
+  return `<div class="panel company-profile-panel">
+    <div class="split-header"><div><span class="section-kicker">КОМПАНИЯ</span><h3>Профиль работодателя</h3><p class="muted">Эти данные помогают соискателю понимать, кто разместил вакансию. ИНН публично не показывается.</p></div>${trust.verified?'<span class="verified-company-badge">✓ Компания проверена</span>':''}</div>
+    ${companyTrustMarkup(trust)}
+    <div class="company-verification-note ${trust.verified?'is-verified':''}"><strong>${trust.verified?'Проверка пройдена':'Статус проверки'}</strong><p>${esc(verificationText)}</p></div>
+    <form id="company-form" class="company-form">
+      <div class="form-grid">
+        <div class="field wide"><label for="company-name">Название компании *</label><input id="company-name" name="company_name" value="${esc(company.company_name||'')}" minlength="2" maxlength="120" required><small class="field-help">Так название отображается в вакансиях и приглашениях.</small></div>
+        <div class="field"><label for="company-inn">ИНН компании</label><input id="company-inn" name="inn" value="${esc(company.inn||'')}" inputmode="numeric" maxlength="12" placeholder="10 или 12 цифр"><small class="field-help">Нужен для проверки компании. Соискателям полный ИНН не показывается.</small></div>
+        <div class="field company-email-status"><label>Email аккаунта</label><div class="company-static-field"><strong>${esc(state.user?.email||'')}</strong><span class="${trust.email_verified?'is-ok':'is-pending'}">${trust.email_verified?'✓ Подтверждён':'Не подтверждён'}</span></div>${trust.email_verified?'':'<button type="button" class="btn btn-outline btn-tiny" data-v02-action="verify-email">Подтвердить email</button>'}</div>
+      </div>
+      <div class="company-form-actions"><button class="btn btn-primary" type="submit">Сохранить данные компании</button><small>Изменение названия или ИНН снимает статус проверки до повторной проверки администратором.</small></div>
+    </form>
+  </div>`;
+}
+
 async function renderEmployer() {
-  const nav = [{id:'overview',label:'Обзор'},{id:'vacancies',label:'Мои вакансии'},{id:'create',label:'Новая вакансия'},{id:'invitations',label:'Приглашения и контакты'}];
+  const nav = [{id:'overview',label:'Обзор'},{id:'company',label:'Компания'},{id:'vacancies',label:'Мои вакансии'},{id:'create',label:'Новая вакансия'},{id:'invitations',label:'Приглашения и контакты'}];
   if (state.tab === 'edit') nav.splice(2, 0, {id:'edit',label:'Редактирование'});
   if (!nav.some(t => t.id === state.tab)) state.tab = 'overview';
   $('#account-content').innerHTML = `<div class="dashboard-grid">${tabsMarkup(nav,'ДЛЯ КОМПАНИИ',state.user.company?.company_name || 'Работодатель')}<div id="dashboard-main"><div class="loading">Загрузка...</div></div></div>`;
   const target = $('#dashboard-main');
   try {
     if (state.tab === 'overview') {
-      const [jobsResult, applicationsResult, invitationsResult] = await Promise.all([
+      const [jobsResult, applicationsResult, invitationsResult, companyResult] = await Promise.all([
         api('/api/employer/vacancies'),
         api('/api/employer/applications'),
-        api('/api/employer/invitations')
+        api('/api/employer/invitations'),
+        api('/api/employer/company')
       ]);
       const jobs = jobsResult.jobs || [];
       const applications = applicationsResult.applications || [];
       const invitations = invitationsResult.invitations || [];
+      const companyTrust = companyResult.trust || {};
       const openJobs = jobs.filter(job => job.status === 'open');
       const waitingApplications = applications.filter(item => ['applied','reviewing'].includes(item.status));
       const acceptedInvitations = invitations.filter(item => item.status === 'accepted' && !item.contact_shared);
@@ -444,6 +483,10 @@ async function renderEmployer() {
           <span class="section-kicker">ПРИОРИТЕТ СЕЙЧАС</span>
           <div class="overview-priority"><div><h3>${esc(nextTitle)}</h3><p class="muted">${esc(nextText)}</p></div>${nextAction}</div>
         </section>
+        <section class="panel employer-trust-overview">
+          <div class="split-header"><div><span class="section-kicker">ДОВЕРИЕ К КОМПАНИИ</span><h3>${esc(companyResult.company?.company_name || 'Компания')}</h3></div><button class="btn btn-outline btn-tiny" data-tab="company">Настроить компанию →</button></div>
+          ${companyTrustMarkup(companyTrust)}
+        </section>
         <section class="overview-stat-grid employer-overview-stats" aria-label="Сводка работодателя">
           <button type="button" class="overview-stat-card" data-tab="vacancies"><strong>${openJobs.length}</strong><span>Открытые вакансии</span><small>Сейчас в работе</small></button>
           <button type="button" class="overview-stat-card" data-tab="applications"><strong>${waitingApplications.length}</strong><span>Отклики требуют внимания</span><small>Новые и на рассмотрении</small></button>
@@ -460,6 +503,9 @@ async function renderEmployer() {
           </div>
         </section>
       </div>`;
+    } else if (state.tab === 'company') {
+      const result = await api('/api/employer/company');
+      target.innerHTML = employerCompanyMarkup(result);
     } else if (state.tab === 'create') target.innerHTML = vacancyFormMarkup();
     else if (state.tab === 'edit') await loadEmployerVacancyEdit();
     else if (state.tab === 'vacancies') await loadEmployerVacancies();
@@ -656,7 +702,19 @@ async function handleDashboardSubmit(event) {
     const body = {profession:formValue(form,'profession'),city:formValue(form,'city'),skills:formValue(form,'skills'),salary_min:parseNumber(form,'salary_min'),phone:formValue(form,'phone'),schedule:formValue(form,'schedule'),employment:formValue(form,'employment'),about:formValue(form,'about'),is_active:form.elements.namedItem('is_active').checked};
     try { await api('/api/candidate/profile',{method:'PUT',body:JSON.stringify(body)}); await reloadUser(); toast('Профиль сохранён. Теперь он участвует в подборе.'); } catch(e) { toast(e.message,true); }
   }
-  if (form.id === 'vacancy-form') {
+  if (form.id === 'company-form') {
+    event.preventDefault();
+    const body = {company_name:formValue(form,'company_name'),inn:formValue(form,'inn')};
+    try {
+      await api('/api/employer/company',{method:'PUT',body:JSON.stringify(body)});
+      await reloadUser();
+      const result = await api('/api/employer/company');
+      $('#dashboard-main').innerHTML = employerCompanyMarkup(result);
+      toast('Данные компании сохранены.');
+    } catch(e) { toast(e.message,true); }
+    return;
+  }
+    if (form.id === 'vacancy-form') {
     event.preventDefault();
     const description = window.OpytnovacancyWizard?.getReviewedDescription(form);
     if (description === null || description === undefined) {
