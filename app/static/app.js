@@ -226,11 +226,59 @@ function profileMarkup(profile = {}, user = {}) {
   </div>`;
 }
 async function renderCandidate() {
-  const nav = [{id:'profile',label:'Мой профиль'},{id:'offers',label:'Подходящие вакансии'},{id:'invitations',label:'Приглашения'}];
+  const nav = [{id:'overview',label:'Обзор'},{id:'profile',label:'Мой профиль'},{id:'offers',label:'Подходящие вакансии'},{id:'invitations',label:'Приглашения'}];
+  if (!nav.some(t => t.id === state.tab)) state.tab = 'overview';
   $('#account-content').innerHTML = `<div class="dashboard-grid">${tabsMarkup(nav,'ДЛЯ СОИСКАТЕЛЯ','Ваша карьера')}<div id="dashboard-main"><div class="loading">Загрузка...</div></div></div>`;
   const target = $('#dashboard-main');
   try {
-    if (state.tab === 'profile') target.innerHTML = profileMarkup(state.user.profile, state.user);
+    if (state.tab === 'overview') {
+      const [jobsResult, applicationsResult, invitationsResult, favoritesResult, updatesResult] = await Promise.all([
+        api('/api/candidate/jobs'),
+        api('/api/candidate/applications'),
+        api('/api/candidate/invitations'),
+        api('/api/candidate/favorites'),
+        api('/api/candidate/vacancy-updates')
+      ]);
+      const health = candidateProfileHealth(state.user.profile || {});
+      const jobs = jobsResult.jobs || [];
+      const applications = applicationsResult.applications || [];
+      const invitations = invitationsResult.invitations || [];
+      const favorites = favoritesResult.jobs || [];
+      const pendingInvitations = invitations.filter(item => item.status === 'sent').length;
+      const activeApplications = applications.filter(item => !['withdrawn','rejected'].includes(item.status)).length;
+      const unreadChanges = Number(updatesResult.unread_count || 0);
+      let nextTitle = 'Посмотрите подходящие вакансии';
+      let nextText = 'Профиль уже может участвовать в подборе. Проверьте новые рекомендации.';
+      let nextAction = '<button class="btn btn-primary" data-tab="offers">Открыть рекомендации →</button>';
+      if (health.percent < 60) {
+        nextTitle = health.next;
+        nextText = 'Чем полнее основные данные, тем точнее подбор вакансий.';
+        nextAction = '<button class="btn btn-primary" data-tab="profile">Продолжить профиль →</button>';
+      } else if (pendingInvitations > 0) {
+        nextTitle = 'Ответьте на приглашение работодателя';
+        nextText = `Ожидают решения: ${pendingInvitations}. Контакты не откроются без вашего согласия.`;
+        nextAction = '<button class="btn btn-primary" data-tab="invitations">Открыть приглашения →</button>';
+      } else if (!jobs.length) {
+        nextTitle = 'Расширьте поиск';
+        nextText = 'Строгих совпадений пока нет — можно посмотреть все открытые вакансии.';
+        nextAction = '<a class="btn btn-primary" href="#jobs">Все вакансии →</a>';
+      }
+      target.innerHTML = `<div class="overview-stack">
+        <section class="panel dashboard-overview-hero">
+          <span class="section-kicker">ВАШ СЛЕДУЮЩИЙ ШАГ</span>
+          <div class="overview-priority"><div><h3>${esc(nextTitle)}</h3><p class="muted">${esc(nextText)}</p></div>${nextAction}</div>
+          <div class="overview-health"><span>Готовность профиля</span><div class="profile-health-track"><span style="width:${health.percent}%"></span></div><strong>${health.percent}%</strong></div>
+        </section>
+        ${unreadChanges ? `<section class="overview-alert" role="status"><div><strong>Изменились условия вакансий</strong><span>Непрочитанных изменений: ${unreadChanges}</span></div><button class="btn btn-outline btn-tiny" data-tab="changes">Проверить изменения</button></section>` : ''}
+        <section class="overview-stat-grid" aria-label="Сводка соискателя">
+          <button type="button" class="overview-stat-card" data-tab="offers"><strong>${jobs.length}</strong><span>Подходящие вакансии</span><small>По вашему профилю</small></button>
+          <button type="button" class="overview-stat-card" data-tab="applications"><strong>${activeApplications}</strong><span>Активные отклики</span><small>В процессе</small></button>
+          <button type="button" class="overview-stat-card" data-tab="invitations"><strong>${pendingInvitations}</strong><span>Новые приглашения</span><small>Ждут решения</small></button>
+          <button type="button" class="overview-stat-card" data-tab="favorites"><strong>${favorites.length}</strong><span>Избранное</span><small>Сохранённые вакансии</small></button>
+        </section>
+        ${jobs.length ? `<section class="panel overview-recommendation"><div class="split-header"><div><span class="section-kicker">ЛУЧШЕЕ СОВПАДЕНИЕ</span><h3>Начните с этой вакансии</h3></div><button class="btn btn-outline btn-tiny" data-tab="offers">Все рекомендации</button></div><div class="dashboard-list">${jobMarkup(jobs[0],true)}</div></section>` : ''}
+      </div>`;
+    } else if (state.tab === 'profile') target.innerHTML = profileMarkup(state.user.profile, state.user);
     else if (state.tab === 'offers') {
       const {jobs} = await api('/api/candidate/jobs');
       target.innerHTML = `<div class="panel"><h3>Подходящие вакансии</h3><p class="muted">Алгоритм учитывает навыки, город, график и ожидания по зарплате. Совпадение — рекомендация, не решение о трудоустройстве.</p><div class="dashboard-list">${jobs.length ? jobs.map(x => jobMarkup(x,true)).join('') : '<div class="empty-state"><p>Подходящих вакансий пока нет. Можно изменить профессию, город или желаемую зарплату.</p><button type="button" class="btn btn-outline" data-tab="profile">Уточнить профиль</button> <a class="btn btn-primary" href="#jobs">Посмотреть все вакансии</a></div>'}</div></div>`;
