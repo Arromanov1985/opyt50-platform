@@ -384,7 +384,21 @@ async function loadMatches(jobId) {
   state.activeVacancy = jobId;
   try {
     const {matches} = await api(`/api/employer/vacancies/${jobId}/matches`);
-    target.innerHTML = `<div class="panel"><div class="split-header"><h3>Подходящие кандидаты</h3><span class="mini-badge blue">${matches.length} совпадений</span></div><p class="muted">Контакты скрыты. Пригласите кандидата, дождитесь его согласия и используйте демонстрационную оплату.</p><div class="dashboard-list">${matches.length ? matches.map(m => `<article class="item-card"><header><div><h4>${esc(m.profession)}</h4><p>Город: ${esc(m.city)} · Ожидания от ${money(m.salary_min)}</p></div><span class="mini-badge">${m.score}% совпадение</span></header><p class="candidate-skills">${esc(m.skills || 'Навыки не указаны')}</p><p>${m.reasons.map(esc).join(' · ')}</p><button class="btn btn-primary btn-tiny" data-action="invite" data-job="${jobId}" data-id="${m.candidate_id}">Пригласить кандидата →</button></article>`).join('') : '<div class="empty-state">Пока нет совпадений. Попробуйте расширить условия поиска.</div>'}</div></div>`;
+    target.innerHTML = `<div class="panel"><div class="split-header"><div><h3>Подходящие кандидаты</h3><p class="muted">Сначала оценивайте профессиональные параметры. Имя, телефон и email остаются скрытыми до согласия кандидата и предусмотренного этапа знакомства.</p></div><span class="mini-badge blue">${matches.length} совпадений</span></div><div class="dashboard-list">${matches.length ? matches.map(m => {
+      const scoreClass = Number(m.score) >= 80 ? 'high' : 'medium';
+      const reasons = Array.isArray(m.reasons) ? m.reasons : [];
+      let action = `<button class="btn btn-primary btn-tiny" data-action="invite" data-job="${jobId}" data-id="${m.candidate_id}">Пригласить кандидата →</button>`;
+      if (m.contact_shared) action = '<button class="btn btn-outline btn-tiny" data-tab="invitations">Контакт уже открыт →</button>';
+      else if (m.invitation_status === 'accepted') action = '<button class="btn btn-primary btn-tiny" data-tab="invitations">Согласие получено · продолжить →</button>';
+      else if (m.invitation_status === 'sent') action = '<button class="btn btn-outline btn-tiny" data-tab="invitations">Приглашение отправлено · ожидаем ответ</button>';
+      else if (m.invitation_status === 'declined') action = '<button class="btn btn-outline btn-tiny" type="button" disabled>Кандидат отказался</button>';
+      return `<article class="item-card candidate-match-card ${scoreClass}">
+        <header><div><h4>${esc(m.profession)}</h4><div class="candidate-match-meta"><span>⌖ ${esc(m.city)}</span><span>от ${money(m.salary_min)}</span><span>${esc(m.schedule)}</span><span>${esc(m.employment)}</span></div></div><div class="candidate-match-score"><span class="match-score-dot"></span><strong>${Number(m.score)}%</strong></div></header>
+        <div class="job-skill-tags">${String(m.skills || '').split(',').map(s=>s.trim()).filter(Boolean).slice(0,5).map(skill=>`<span>${esc(skill)}</span>`).join('') || '<span>Навыки не указаны</span>'}</div>
+        <div class="candidate-match-reasons">${reasons.slice(0,3).map(reason=>`<span>✓ ${esc(reason)}</span>`).join('')}</div>
+        <div class="item-actions">${action}</div>
+      </article>`;
+    }).join('') : '<div class="empty-state"><strong>Точных совпадений пока нет.</strong><p>Попробуйте расширить график, город или зарплатный диапазон вакансии.</p></div>'}</div></div>`;
   } catch(e) { target.innerHTML = `<div class="panel">${esc(e.message)}</div>`; toast(e.message,true); }
 }
 async function loadEmployerInvitations() {
