@@ -32,6 +32,10 @@ from .security import COOKIE_NAME, SESSION_SECONDS, issue_session, make_password
 BASE = Path(__file__).resolve().parent
 DEFAULT_DB = os.getenv("OPYT50_DB_PATH", str(BASE.parent / "data" / "opyt50.db"))
 EMAIL_PATTERN = re.compile(r"^[^\s@]+@[^\s@]+\.[^\s@]+$")
+CONTACT_EMAIL_PATTERN = re.compile(r"[^\s@]+@[^\s@]+\.[^\s@]+", re.IGNORECASE)
+CONTACT_PHONE_PATTERN = re.compile(
+    r"(?<!\d)(?:\+7|8)[\s\-]*(?:\(?\d{3}\)?)[\s\-]*\d{3}[\s\-]*\d{2}[\s\-]*\d{2}(?!\d)"
+)
 SCHEDULES = {"Любой", "Полный день", "Сменный", "Гибкий", "Удалённо"}
 EMPLOYMENTS = {"Любая", "Полная", "Частичная", "Проектная"}
 
@@ -98,6 +102,11 @@ class VacancyIn(BaseModel):
             raise ValueError("Максимальная зарплата должна быть не меньше минимальной")
         if self.schedule not in SCHEDULES or self.employment not in EMPLOYMENTS:
             raise ValueError("Недопустимый график или формат занятости")
+        public_text = "\n".join((self.skills, self.description))
+        if CONTACT_EMAIL_PATTERN.search(public_text) or CONTACT_PHONE_PATTERN.search(public_text):
+            raise ValueError(
+                "Не указывайте телефон или email в вакансии. Контакты открываются только через защищённое знакомство"
+            )
         return self
 
 
