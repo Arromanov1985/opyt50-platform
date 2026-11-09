@@ -30,6 +30,7 @@ document.addEventListener('DOMContentLoaded', () => {
   });
 
   const advanced=byId('jobs-advanced');
+  if (advanced && window.matchMedia('(max-width: 620px)').matches) advanced.open=false;
   const counter=byId('advanced-filter-count');
   const advancedIds=['salary-filter','schedule-filter','employment-filter','sort-filter'];
   function updateAdvancedCount(){
