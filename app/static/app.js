@@ -193,6 +193,8 @@ async function reloadUser() {
   try { const data = await api('/api/me'); state.user = data.user; } catch { state.user = null; }
   $('#guest-actions').classList.toggle('hidden', !!state.user);
   $('#member-actions').classList.toggle('hidden', !state.user);
+  $('#mobile-guest-actions')?.classList.toggle('hidden', !!state.user);
+  $('#mobile-member-actions')?.classList.toggle('hidden', !state.user);
   $('#dashboard').classList.toggle('hidden', !state.user);
 }
 async function showDashboard(scroll = false) {
@@ -727,6 +729,9 @@ async function handleDashboardClick(event) {
 async function start() {
   $('#login-open').addEventListener('click',()=>openAuth('login'));
   $('#register-open').addEventListener('click',()=>openAuth('register'));
+  $('#mobile-login-open')?.addEventListener('click',()=>openAuth('login'));
+  $('#mobile-account-open')?.addEventListener('click',()=>showDashboard(true));
+  $('#mobile-logout')?.addEventListener('click',()=>$('#logout').click());
   $('#modal-close').addEventListener('click',()=>$('#auth-dialog').close());
   $('#auth-dialog').addEventListener('click',e=>{ if(e.target === $('#auth-dialog')) $('#auth-dialog').close(); });
   $('#auth-form').addEventListener('submit',submitAuth);
