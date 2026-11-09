@@ -37,6 +37,13 @@ def send_email(to_email: str, subject: str, body: str) -> bool:
 
     username = os.getenv("OPYT50_SMTP_USER", "").strip()
     password = os.getenv("OPYT50_SMTP_PASSWORD", "")
+    try:
+        smtp_sender = _ascii_email(sender)
+        smtp_username = _ascii_email(username) if username else ""
+        smtp_recipient = _ascii_email(to_email)
+    except (UnicodeError, ValueError):
+        logger.exception("Email delivery configuration error: unsupported email address")
+        return False
     use_ssl = os.getenv("OPYT50_SMTP_SSL", "0") == "1"
     use_starttls = os.getenv("OPYT50_SMTP_STARTTLS", "1") == "1"
 
@@ -50,7 +57,7 @@ def send_email(to_email: str, subject: str, body: str) -> bool:
         if use_ssl:
             with smtplib.SMTP_SSL(host, port, timeout=10, context=ssl.create_default_context()) as smtp:
                 if username:
-                    smtp.login(username, password)
+                    smtp.login(smtp_username, password)
                 smtp.send_message(message)
         else:
             with smtplib.SMTP(host, port, timeout=10) as smtp:
@@ -60,6 +67,6 @@ def send_email(to_email: str, subject: str, body: str) -> bool:
                     smtp.login(username, password)
                 smtp.send_message(message)
         return True
-    except (OSError, smtplib.SMTPException):
+    except (OSError, smtplib.SMTPException, UnicodeError):
         logger.exception("Email delivery failed for event recipient")
         return False
