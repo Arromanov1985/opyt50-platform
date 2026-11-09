@@ -903,3 +903,32 @@ body.comfortable-view .vacancy-quality p{font-size:.9rem}
 @media(max-width:700px){
   .vacancy-quality{padding:10px 11px}
 }
+
+
+/* Vacancy moderation state for employers */
+.vacancy-moderation-state{
+  display:inline-flex;
+  flex-wrap:wrap;
+  align-items:center;
+  gap:6px 9px;
+  margin-top:7px;
+  padding:6px 9px;
+  border-radius:10px;
+  background:#EEF8F2;
+  color:#316249;
+  font-size:9px;
+}
+.vacancy-moderation-state small{
+  flex-basis:100%;
+  color:#6A7B73;
+  line-height:1.4;
+}
+.vacancy-moderation-state.pending{
+  background:#FFF7E6;
+  color:#87651C;
+}
+.vacancy-moderation-state.rejected{
+  background:#FFF0EC;
+  color:#9B4738;
+}
+body.comfortable-view .vacancy-moderation-state{font-size:.9rem}
