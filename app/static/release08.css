@@ -1,9 +1,9 @@
 /* Release 0.8 — role-first product UX */
-.product-strip{background:#072f58;color:#d8e9f7;border-top:1px solid #164a76;border-bottom:1px solid #164a76}
+.product-strip{background:#0B2D26;color:#D9EEE2;border-top:1px solid #17483B;border-bottom:1px solid #17483B}
 .product-strip-inner{min-height:40px;display:flex;align-items:center;justify-content:space-between;gap:20px;font-size:12px}
 .product-strip strong{color:#fff}
-.product-strip-points{display:flex;align-items:center;gap:12px;color:#c7d9e8}
-.product-strip-points b{color:#00c7b8}
+.product-strip-points{display:flex;align-items:center;gap:12px;color:#C8DDD1}
+.product-strip-points b{color:#00C853}
 
 .hero-v08 .hero-grid{min-height:620px}
 .hero-v08 .hero-copy{max-width:610px}
@@ -11,46 +11,46 @@
 .hero-floating-v08{align-items:flex-start;max-width:270px}
 .hero-floating-v08 div{display:flex;flex-direction:column;gap:5px}
 .hero-floating-v08 strong{font-size:14px}
-.hero-floating-v08 small{color:#60778e;font-size:11px;line-height:1.45}
+.hero-floating-v08 small{color:#60746B;font-size:11px;line-height:1.45}
 
-.role-paths{background:#f5f8fb;padding:34px 0 72px;border-bottom:1px solid #e6edf4}
+.role-paths{background:#F3FAF6;padding:34px 0 72px;border-bottom:1px solid #DDEAE3}
 .role-path-grid{display:grid;grid-template-columns:1fr 1fr;gap:18px}
-.role-path-card{background:#fff;border:1px solid #e1eaf2;border-radius:22px;padding:30px;box-shadow:0 14px 40px #0836640a;position:relative;overflow:hidden}
-.role-path-card:before{content:"";position:absolute;left:0;top:0;bottom:0;width:5px;background:#007fce}
-.role-path-card.employer-path:before{background:#00c7b8}
-.role-path-label{display:inline-flex;font-size:11px;font-weight:850;letter-spacing:.14em;color:#007fce;background:#edf6fd;border-radius:999px;padding:7px 10px;margin-bottom:15px}
-.employer-path .role-path-label{color:#008f85;background:#e9f9f7}
+.role-path-card{background:#fff;border:1px solid #DDEAE3;border-radius:22px;padding:30px;box-shadow:0 14px 40px #0B2D260a;position:relative;overflow:hidden}
+.role-path-card:before{content:"";position:absolute;left:0;top:0;bottom:0;width:5px;background:#00C853}
+.role-path-card.employer-path:before{background:#00C853}
+.role-path-label{display:inline-flex;font-size:11px;font-weight:850;letter-spacing:.14em;color:#00C853;background:#ECF8F1;border-radius:999px;padding:7px 10px;margin-bottom:15px}
+.employer-path .role-path-label{color:#0A7A3A;background:#EAF8F0}
 .role-path-card h2{font-size:30px;line-height:1.1;margin:0 0 12px;letter-spacing:-.035em}
-.role-path-card p{color:#64748b;line-height:1.65;font-size:14px;max-width:590px}
+.role-path-card p{color:#5C6F67;line-height:1.65;font-size:14px;max-width:590px}
 .role-path-card ul{margin:19px 0 24px;padding:0;list-style:none;display:grid;gap:10px}
-.role-path-card li{position:relative;padding-left:24px;color:#30485f;font-size:13px;line-height:1.5}
-.role-path-card li:before{content:"✓";position:absolute;left:0;top:0;color:#00a99d;font-weight:900}
+.role-path-card li{position:relative;padding-left:24px;color:#385148;font-size:13px;line-height:1.5}
+.role-path-card li:before{content:"✓";position:absolute;left:0;top:0;color:#00A844;font-weight:900}
 .role-path-actions{display:flex;gap:10px;flex-wrap:wrap}
 
-.how-v08{background:#f7fafc}
+.how-v08{background:#F6FBF8}
 .journey-grid{display:grid;grid-template-columns:1fr 1fr;gap:18px}
-.journey-panel{background:#fff;border:1px solid #e1eaf2;border-radius:20px;padding:26px}
-.journey-head{display:flex;flex-direction:column;gap:7px;padding-bottom:18px;border-bottom:1px solid #edf2f6}
-.journey-head span{font-size:11px;font-weight:850;letter-spacing:.14em;color:#007fce;text-transform:uppercase}
+.journey-panel{background:#fff;border:1px solid #DDEAE3;border-radius:20px;padding:26px}
+.journey-head{display:flex;flex-direction:column;gap:7px;padding-bottom:18px;border-bottom:1px solid #EFF6F2}
+.journey-head span{font-size:11px;font-weight:850;letter-spacing:.14em;color:#00C853;text-transform:uppercase}
 .journey-head strong{font-size:22px;letter-spacing:-.03em}
-.journey-employer .journey-head span{color:#00988d}
+.journey-employer .journey-head span{color:#0A7A3A}
 .journey-panel ol{padding:0;margin:22px 0 0;list-style:none;display:grid;gap:18px}
 .journey-panel li{display:grid;grid-template-columns:36px 1fr;gap:12px;align-items:start}
-.journey-panel li>b{width:34px;height:34px;border-radius:50%;display:grid;place-items:center;background:#eaf4fc;color:#007fce;font-size:13px}
-.journey-employer li>b{background:#e6f8f6;color:#008e83}
+.journey-panel li>b{width:34px;height:34px;border-radius:50%;display:grid;place-items:center;background:#EAF8F0;color:#00C853;font-size:13px}
+.journey-employer li>b{background:#E7F7ED;color:#0A7A3A}
 .journey-panel li div{display:flex;flex-direction:column;gap:5px}
 .journey-panel li strong{font-size:14px}
-.journey-panel li small{color:#6d8093;line-height:1.5;font-size:12px}
+.journey-panel li small{color:#667970;line-height:1.5;font-size:12px}
 
-.privacy-panel{margin-top:18px;background:#083664;color:#fff;border-radius:20px;padding:26px 28px;display:grid;grid-template-columns:58px 1fr;gap:20px;align-items:start}
-.privacy-icon{width:54px;height:54px;border-radius:50%;display:grid;place-items:center;background:#0d4d81;color:#5fe3d8;font-size:30px}
-.privacy-panel .section-kicker{color:#75dcd5}
+.privacy-panel{margin-top:18px;background:#0B2D26;color:#fff;border-radius:20px;padding:26px 28px;display:grid;grid-template-columns:58px 1fr;gap:20px;align-items:start}
+.privacy-icon{width:54px;height:54px;border-radius:50%;display:grid;place-items:center;background:#17483B;color:#65DF8C;font-size:30px}
+.privacy-panel .section-kicker{color:#72D991}
 .privacy-panel h3{font-size:23px;margin:8px 0 8px;letter-spacing:-.03em}
-.privacy-panel p{color:#c7d9e8;line-height:1.65;margin:0;font-size:13px;max-width:850px}
+.privacy-panel p{color:#C8DDD1;line-height:1.65;margin:0;font-size:13px;max-width:850px}
 
 .cta-v08 .cta-inner{align-items:center}
 .cta-actions{display:flex;gap:10px;flex-wrap:wrap;justify-content:flex-end}
-.cta-v08 .btn-white{background:#fff;color:#083664;border:1px solid #dce9ef}
+.cta-v08 .btn-white{background:#fff;color:#0B2D26;border:1px solid #dce9ef}
 
 @media(max-width:900px){
   .product-strip-inner{align-items:flex-start;flex-direction:column;gap:5px;padding-top:9px;padding-bottom:9px}
@@ -76,21 +76,21 @@
   .cta-actions .btn{width:100%}
 }
 
-.profile-health{margin:18px 0 16px;padding:16px 18px;background:#f3f8fc;border:1px solid #dce9f3;border-radius:14px}
+.profile-health{margin:18px 0 16px;padding:16px 18px;background:#f3f8fc;border:1px solid #D5E5DC;border-radius:14px}
 .profile-health-copy{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:9px}
-.profile-health-copy span{font-size:12px;font-weight:750;color:#526d84}
-.profile-health-copy strong{font-size:20px;color:#083664}
-.profile-health-track{height:8px;border-radius:999px;background:#dfeaf2;overflow:hidden}
-.profile-health-track span{display:block;height:100%;border-radius:999px;background:linear-gradient(90deg,#007fce,#00c7b8)}
-.profile-health>small{display:block;margin-top:8px;color:#6d8192;font-size:11px}
+.profile-health-copy span{font-size:12px;font-weight:750;color:#4F665D}
+.profile-health-copy strong{font-size:20px;color:#0B2D26}
+.profile-health-track{height:8px;border-radius:999px;background:#D5E5DC;overflow:hidden}
+.profile-health-track span{display:block;height:100%;border-radius:999px;background:linear-gradient(90deg,#00C853,#00C853)}
+.profile-health>small{display:block;margin-top:8px;color:#667970;font-size:11px}
 
 .employer-next{margin-bottom:20px;border:1px solid #d9e8f3;background:linear-gradient(105deg,#edf7fd,#f4fbfa);border-radius:14px;padding:16px 18px;display:flex;align-items:center;justify-content:space-between;gap:18px}
 .employer-next>div{display:flex;flex-direction:column;gap:4px}
-.employer-next span{font-size:10px;font-weight:850;letter-spacing:.12em;color:#007fce;text-transform:uppercase}
+.employer-next span{font-size:10px;font-weight:850;letter-spacing:.12em;color:#00C853;text-transform:uppercase}
 .employer-next strong{font-size:16px}
 .employer-next small{font-size:11px;color:#647b8f;line-height:1.45}
 .employer-next-ok{background:#f4faf7;border-color:#dceee5}
-.employer-next-ok span{color:#008e83}
+.employer-next-ok span{color:#0A7A3A}
 
 @media(max-width:570px){
   .employer-next{align-items:flex-start;flex-direction:column}
@@ -100,5 +100,5 @@
 /* In large-text mode keep navigation readable instead of squeezing four links
    into the desktop header. The quick navigation becomes the second row. */
 body.comfortable-view .site-header .nav-links{display:none}
-body.comfortable-view .mobile-quick-nav{display:flex;justify-content:center;flex-wrap:wrap;gap:5px;padding:8px 12px;border-bottom:1px solid #e5edf5;background:#f6f9fc}
-body.comfortable-view .mobile-quick-nav a{padding:9px 12px;min-height:44px;display:inline-flex;align-items:center;border-radius:9px;text-decoration:none;color:#083664;font-size:16px;font-weight:750}
+body.comfortable-view .mobile-quick-nav{display:flex;justify-content:center;flex-wrap:wrap;gap:5px;padding:8px 12px;border-bottom:1px solid #DDEAE3;background:#F3FAF6}
+body.comfortable-view .mobile-quick-nav a{padding:9px 12px;min-height:44px;display:inline-flex;align-items:center;border-radius:9px;text-decoration:none;color:#0B2D26;font-size:16px;font-weight:750}
