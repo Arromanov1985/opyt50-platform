@@ -191,6 +191,28 @@
   </div></footer>
   <dialog id="job-dialog" class="auth-dialog job-dialog" aria-labelledby="job-dialog-title"><div class="modal-top"><div><span class="section-kicker">ПОДРОБНОСТИ ВАКАНСИИ</span><h2 id="job-dialog-title"></h2></div><button type="button" class="icon-button" id="job-dialog-close" aria-label="Закрыть">×</button></div><div id="job-dialog-content"></div></dialog>
   <dialog id="company-dialog" class="auth-dialog job-dialog company-dialog" aria-labelledby="company-dialog-title"><div class="modal-top"><div><span class="section-kicker">РАБОТОДАТЕЛЬ</span><h2 id="company-dialog-title">Компания</h2></div><button type="button" class="icon-button" id="company-dialog-close" aria-label="Закрыть">×</button></div><div id="company-dialog-content"></div></dialog>
+  <dialog id="report-dialog" class="auth-dialog report-dialog" aria-labelledby="report-dialog-title">
+    <div class="modal-top"><div><span class="section-kicker">БЕЗОПАСНОСТЬ</span><h2 id="report-dialog-title">Сообщить о проблеме</h2><p class="muted">Жалоба попадёт модератору СТАЖНО. Работодатель не увидит, кто её отправил.</p></div><button type="button" class="icon-button" id="report-dialog-close" aria-label="Закрыть">×</button></div>
+    <form id="report-form">
+      <fieldset class="report-targets"><legend>На что вы жалуетесь?</legend>
+        <label class="report-choice"><input type="radio" name="target_type" value="vacancy" checked><span><strong>На вакансию</strong><small>Условия, текст объявления или требования</small></span></label>
+        <label class="report-choice"><input type="radio" name="target_type" value="employer"><span><strong>На работодателя</strong><small>Поведение компании или подозрительная активность</small></span></label>
+      </fieldset>
+      <div class="field"><label for="report-reason">Причина *</label><select id="report-reason" name="reason" required>
+        <option value="">Выберите причину</option>
+        <option value="misleading">Недостоверная или вводящая в заблуждение информация</option>
+        <option value="discrimination">Дискриминационные требования</option>
+        <option value="fraud">Подозрение на мошенничество</option>
+        <option value="contacts">Контакты или попытка обойти безопасное знакомство</option>
+        <option value="other">Другая проблема</option>
+      </select></div>
+      <div class="field"><label for="report-details">Что произошло?</label><textarea id="report-details" name="details" maxlength="800" rows="5" placeholder="Коротко опишите, что именно вызвало сомнение."></textarea><div class="field-meta"><small>Не указывайте лишние персональные данные.</small><small id="report-details-count">0 / 800</small></div></div>
+      <div class="report-safety-note"><strong>Что произойдёт после отправки</strong><span>Модератор проверит жалобу. При нескольких независимых жалобах вакансия может быть временно скрыта до проверки.</span></div>
+      <p id="report-message" class="auth-message" role="alert" aria-live="polite"></p>
+      <div class="report-actions"><button type="button" class="btn btn-outline" id="report-cancel">Отмена</button><button type="submit" class="btn btn-primary" id="report-submit">Отправить жалобу</button></div>
+    </form>
+    <div id="report-success" class="report-success hidden" role="status"><span class="report-success-icon">✓</span><h3>Жалоба отправлена</h3><p>Спасибо. Мы передали её модератору. Если понадобится, вакансия будет временно скрыта на время проверки.</p><button type="button" class="btn btn-primary" id="report-success-close">Закрыть</button></div>
+  </dialog>
   <dialog id="reset-dialog" class="auth-dialog" aria-labelledby="reset-title"><div class="modal-top"><div><span class="section-kicker">ВОССТАНОВЛЕНИЕ ДОСТУПА</span><h2 id="reset-title">Сброс пароля</h2></div><button type="button" class="icon-button" id="reset-dialog-close" aria-label="Закрыть">×</button></div><p class="muted">Укажите email аккаунта. Если он зарегистрирован, мы отправим ссылку для смены пароля.</p><form id="reset-request-form"><div class="field"><label for="reset-email">Email</label><input id="reset-email" type="email" required placeholder="name@example.ru"></div><button class="btn btn-primary" type="submit">Запросить ссылку</button></form><hr class="account-rule"><form id="reset-complete-form"><div class="field"><label for="reset-token">Ссылка или код восстановления</label><input id="reset-token" required minlength="20" maxlength="256" autocomplete="off" placeholder="Код восстановления"></div><div class="field"><label for="reset-new-password">Новый пароль (от 10 символов)</label><input id="reset-new-password" type="password" required minlength="10" maxlength="128" autocomplete="new-password"></div><button class="btn btn-outline" type="submit">Установить новый пароль</button></form></dialog>
   <dialog id="auth-dialog" class="auth-dialog auth-dialog-v09" aria-labelledby="auth-title"><form id="auth-form" novalidate>
     <div class="modal-top"><div><span class="section-kicker" id="auth-kicker">ДОБРО ПОЖАЛОВАТЬ</span><h2 id="auth-title">Создать аккаунт</h2><p class="auth-intro" id="auth-intro">Начните с простого аккаунта. Профиль и настройки можно заполнить позже.</p></div><button class="icon-button" type="button" id="modal-close" aria-label="Закрыть">×</button></div>
