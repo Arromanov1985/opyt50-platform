@@ -644,12 +644,32 @@ async function loadEmployerVacancies() {
   view.innerHTML = `<div class="panel">${nextAction}<div class="split-header"><div><h3>Мои вакансии</h3><p class="muted">После размещения получите список обезличенных профилей.</p></div><button class="btn btn-primary btn-tiny" data-action="new-job">+ Добавить</button></div><div class="stat-grid" aria-label="Статистика вакансий"><div class="stat-tile"><strong>${jobs.length}</strong><span>Всего вакансий</span></div><div class="stat-tile"><strong>${openCount}</strong><span>Открыты</span></div><div class="stat-tile"><strong>${closedCount}</strong><span>Закрыты</span></div></div><div class="stat-grid" aria-label="Воронка подбора"><div class="stat-tile"><strong>${applications.length}</strong><span>Отклики</span></div><div class="stat-tile"><strong>${interestedCount}</strong><span>Заинтересованные</span></div><div class="stat-tile"><strong>${introducedCount}</strong><span>Знакомства (демо)</span></div></div><div class="item-actions" role="group" aria-label="Фильтр вакансий"><button type="button" class="btn btn-tiny ${filter === 'all' ? 'btn-dark' : 'btn-outline'}" data-action="filter-employer-jobs" data-filter="all" aria-pressed="${filter === 'all'}">Все (${jobs.length})</button><button type="button" class="btn btn-tiny ${filter === 'open' ? 'btn-dark' : 'btn-outline'}" data-action="filter-employer-jobs" data-filter="open" aria-pressed="${filter === 'open'}">Открытые (${openCount})</button><button type="button" class="btn btn-tiny ${filter === 'closed' ? 'btn-dark' : 'btn-outline'}" data-action="filter-employer-jobs" data-filter="closed" aria-pressed="${filter === 'closed'}">Закрытые (${closedCount})</button></div><div class="dashboard-list">${visibleJobs.length ? visibleJobs.map(job => jobEmployerMarkup(job, applicationsByJob.get(Number(job.id)))).join('') : '<div class="empty-state">В выбранной категории вакансий нет.</div>'}</div></div><div id="employer-matches" class="hidden"></div>`;
   if (state.activeVacancy && jobs.some(j=>j.id===state.activeVacancy)) await loadMatches(state.activeVacancy);
 }
+function vacancyQuality(job = {}) {
+  const description = String(job.description || '').trim();
+  const skills = String(job.skills || '').split(',').map(x=>x.trim()).filter(Boolean);
+  const checks = [
+    [String(job.title || '').trim().length >= 5, 'Уточните название должности'],
+    [String(job.city || '').trim().length >= 2, 'Укажите город или удалённый формат'],
+    [Number(job.salary_max || 0) >= Number(job.salary_min || 0) && Number(job.salary_max || 0) > 0, 'Укажите зарплатный диапазон'],
+    [job.schedule && job.schedule !== 'Любой', 'Укажите конкретный график'],
+    [job.employment && job.employment !== 'Любая', 'Укажите формат занятости'],
+    [skills.length >= 2, 'Добавьте 2–5 ключевых навыков'],
+    [description.length >= 120, 'Добавьте больше конкретики в описание'],
+    [/Обязанности:\n[\s\S]+Требования:\n[\s\S]+Условия работы:\n[\s\S]+/.test(description), 'Разделите обязанности, требования и условия']
+  ];
+  const passed = checks.filter(([ok])=>ok).length;
+  const percent = Math.round(passed / checks.length * 100);
+  return {percent,suggestions:checks.filter(([ok])=>!ok).map(([,text])=>text)};
+}
 function jobEmployerMarkup(x, stats = {total: 0, interested: 0}) {
   const needsAttention = x.status === 'open' && stats.total > 0;
   const nextLabel = needsAttention ? 'Есть новые отклики' : (x.status === 'open' ? 'Ищем кандидатов' : 'Вакансия закрыта');
+  const quality = vacancyQuality(x);
+  const qualityClass = quality.percent >= 88 ? 'high' : quality.percent >= 63 ? 'medium' : 'low';
   return `<article class="item-card employer-vacancy-card ${needsAttention ? 'needs-attention' : ''}">
     <header><div><span class="card-eyebrow">${esc(nextLabel)}</span><h4>${esc(x.title)}</h4><p>${esc(x.city)} · ${formatPay(x)} · ${esc(x.schedule)}</p></div><span class="mini-badge ${x.status === 'open' ? '' : 'gray'}">${x.status === 'open' ? 'Открыта' : 'Закрыта'}</span></header>
     <div class="vacancy-pipeline-mini"><span><strong>${stats.total}</strong><small>Отклики</small></span><span><strong>${stats.interested}</strong><small>Заинтересованы</small></span><span><strong>${Math.max(0,stats.total-stats.interested)}</strong><small>На рассмотрении</small></span></div>
+    <div class="vacancy-quality ${qualityClass}"><div class="vacancy-quality-head"><span>Качество объявления</span><strong>${quality.percent}%</strong></div><div class="vacancy-quality-track"><span style="width:${quality.percent}%"></span></div>${quality.suggestions.length?`<p>${esc(quality.suggestions.slice(0,2).join(' · '))}</p>`:'<p>Основные условия заполнены хорошо.</p>'}</div>
     <div class="employer-vacancy-primary">${needsAttention ? `<button type="button" class="btn btn-primary" data-action="vacancy-applications" data-id="${x.id}">Разобрать отклики →</button>` : `<button class="btn btn-dark" data-action="matches" data-id="${x.id}" ${x.status === 'closed' ? 'disabled':''}>Подобрать кандидатов →</button>`}</div>
     <div class="item-actions employer-vacancy-secondary"><button type="button" class="btn btn-outline btn-tiny" data-action="vacancy-applications" data-id="${x.id}">Отклики</button><button class="btn btn-outline btn-tiny" data-action="matches" data-id="${x.id}" ${x.status === 'closed' ? 'disabled':''}>Подбор</button><button class="btn btn-outline btn-tiny" data-action="edit-job" data-id="${x.id}">Редактировать</button><button class="btn btn-outline btn-tiny" data-action="job-status" data-id="${x.id}" data-status="${x.status === 'open' ? 'closed' : 'open'}">${x.status === 'open' ? 'Закрыть' : 'Открыть'}</button></div>
   </article>`;
