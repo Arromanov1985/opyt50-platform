@@ -363,22 +363,27 @@ def create_app(db_path: str | None = None) -> FastAPI:
 
     @app.get("/api/jobs")
     def jobs(q: str = "", city: str = "", salary_min: int = 0, schedule: str = "",
-             employment: str = "", db: sqlite3.Connection = Depends(get_connection)):
-        """Public job search: profession/title, location, minimum acceptable salary, schedule."""
+             employment: str = "", sort: str = "recent",
+             db: sqlite3.Connection = Depends(get_connection)):
+        """Public job search with transparent filters and deterministic sorting."""
         if salary_min < 0 or salary_min > 10_000_000 or len(q) > 120 or len(city) > 100:
             raise HTTPException(422, "Проверьте параметры поиска")
         if schedule and schedule not in SCHEDULES:
             raise HTTPException(422, "Недопустимый график")
         if employment and employment not in EMPLOYMENTS:
             raise HTTPException(422, "Недопустимая занятость")
+        if sort not in {"recent", "salary_desc", "salary_asc"}:
+            raise HTTPException(422, "Недопустимая сортировка")
         sql = """SELECT v.*,e.company_name FROM vacancies v JOIN employer_profiles e
                  ON e.user_id=v.employer_id WHERE v.status='open'"""
         params: list = []
         if q.strip():
             # instr on Unicode-casefolded text ensures correct Cyrillic search.
-            sql += " AND (instr(unicode_fold(v.title), ?) > 0 OR instr(unicode_fold(v.skills), ?) > 0)"
+            sql += """ AND (instr(unicode_fold(v.title), ?) > 0
+                         OR instr(unicode_fold(v.skills), ?) > 0
+                         OR instr(unicode_fold(v.description), ?) > 0)"""
             needle = q.strip().casefold()
-            params.extend([needle, needle])
+            params.extend([needle, needle, needle])
         if city.strip():
             sql += " AND (unicode_fold(v.city)=? OR unicode_fold(v.city)='удалённо' OR unicode_fold(v.city)='любой город')"
             params.append(city.strip().casefold())
@@ -391,7 +396,13 @@ def create_app(db_path: str | None = None) -> FastAPI:
         if employment and employment != "Любая":
             sql += " AND (v.employment=? OR v.employment='Любая')"
             params.append(employment)
-        sql += " ORDER BY v.id DESC LIMIT 100"
+        if sort == "salary_desc":
+            sql += " ORDER BY v.salary_max DESC, v.salary_min DESC, v.id DESC"
+        elif sort == "salary_asc":
+            sql += " ORDER BY v.salary_min ASC, v.salary_max ASC, v.id DESC"
+        else:
+            sql += " ORDER BY v.id DESC"
+        sql += " LIMIT 100"
         return {"jobs": [dict(row) for row in db.execute(sql, params).fetchall()]}
 
     @app.get("/api/candidate/jobs")
