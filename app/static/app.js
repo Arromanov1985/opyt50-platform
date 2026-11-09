@@ -189,7 +189,18 @@ async function submitAuth(event) {
     showError(e.message || 'Не удалось выполнить вход. Проверьте данные и попробуйте ещё раз.');
   } finally { btn.disabled = false; }
 }
+function syncResponsiveMemberActions() {
+  const desktop = $('#member-actions');
+  const mobile = $('#mobile-member-slot');
+  const account = $('#account-open');
+  const logout = $('#logout');
+  if (!desktop || !mobile || !account || !logout) return;
+  const useMobile = window.matchMedia('(max-width: 700px)').matches;
+  const target = useMobile ? mobile : desktop;
+  if (account.parentElement !== target) target.append(account, logout);
+}
 async function reloadUser() {
+  syncResponsiveMemberActions();
   try { const data = await api('/api/me'); state.user = data.user; } catch { state.user = null; }
   $('#guest-actions').classList.toggle('hidden', !!state.user);
   $('#member-actions').classList.toggle('hidden', !state.user);
@@ -817,8 +828,8 @@ async function start() {
   $('#login-open').addEventListener('click',()=>openAuth('login'));
   $('#register-open').addEventListener('click',()=>openAuth('register'));
   $('#mobile-login-open')?.addEventListener('click',()=>openAuth('login'));
-  $('#mobile-account-open')?.addEventListener('click',()=>showDashboard(true));
-  $('#mobile-logout')?.addEventListener('click',()=>$('#logout').click());
+  window.addEventListener('resize', syncResponsiveMemberActions);
+  syncResponsiveMemberActions();
   $('#modal-close').addEventListener('click',()=>$('#auth-dialog').close());
   $('#auth-dialog').addEventListener('click',e=>{ if(e.target === $('#auth-dialog')) $('#auth-dialog').close(); });
   $('#auth-form').addEventListener('submit',submitAuth);
