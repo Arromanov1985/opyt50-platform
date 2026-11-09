@@ -23,6 +23,7 @@
   <link rel="stylesheet" href="/static/release09-home.css?v=0901">
   <link rel="stylesheet" href="/static/release09-dashboard.css?v=0902">
   <link rel="stylesheet" href="/static/release09-forms.css?v=0901">
+  <link rel="stylesheet" href="/static/release09-mobile.css?v=0900">
   <title>стажно.ру — работа и новые возможности после 50 лет</title>
   <script src="/static/release02.js?v=0812" defer></script>
   <script src="/static/app.js?v=0814" defer></script>
@@ -41,7 +42,7 @@
       <div class="nav-actions hidden" id="member-actions"><button class="btn btn-text" id="account-open">Мой кабинет</button><button class="btn btn-outline btn-sm" id="logout">Выйти</button></div>
     </div>
   </header>
-  <nav class="mobile-quick-nav" aria-label="Быстрые разделы"><a href="#jobs">Вакансии</a><a href="#candidate-path">Соискателям</a><a href="#employer-path">Работодателям</a></nav>
+  <nav class="mobile-quick-nav" aria-label="Быстрые разделы"><a href="#jobs">Вакансии</a><a href="#candidate-path">Соискателям</a><a href="#employer-path">Работодателям</a><a href="#how">Как работает</a></nav>
   <div class="product-strip" role="status"><div class="container product-strip-inner"><span><strong>стажно.ру</strong> — работа и новые возможности</span><span class="product-strip-points"><b>✓</b> Надёжные работодатели <b>✓</b> Проверенные вакансии <b>✓</b> Поддержка на каждом этапе</span></div></div>
   <main>
     <section class="hero hero-v08" id="home"><div class="container hero-grid">
@@ -158,6 +159,16 @@
     <div class="auth-trust"><span>Без публикации контактов</span><span>Профиль можно заполнить позже</span></div>
     <p class="auth-switch" id="auth-switch"></p>
   </form></dialog>
+  <nav class="mobile-action-bar" id="mobile-guest-actions" aria-label="Быстрые действия">
+    <a href="#jobs">Вакансии</a>
+    <button type="button" id="mobile-login-open" class="mobile-secondary-hide">Войти</button>
+    <button type="button" class="mobile-primary" data-register="candidate">Создать профиль</button>
+  </nav>
+  <nav class="mobile-action-bar hidden" id="mobile-member-actions" aria-label="Быстрые действия кабинета">
+    <a href="#jobs">Вакансии</a>
+    <button type="button" id="mobile-account-open" class="mobile-dark">Кабинет</button>
+    <button type="button" id="mobile-logout" class="mobile-secondary-hide">Выйти</button>
+  </nav>
   <div class="toast hidden" id="toast" role="status" aria-live="polite"></div>
 </body>
 </html>
