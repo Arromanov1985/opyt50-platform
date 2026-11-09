@@ -105,6 +105,9 @@ def run_browser(page):
     expect(page.locator("#job-dialog")).not_to_be_visible()
 
     login(page, "kladovshik@demo.example")
+    expect(page.locator("#dashboard-main")).to_contain_text("ВАШ СЛЕДУЮЩИЙ ШАГ")
+    expect(page.locator("#dashboard-main .overview-stat-card")).to_have_count(4)
+    page.locator(".dashboard-tabs [data-tab='profile']").click()
     expect(page.locator("#profile-form")).to_be_visible()
     expect(page.locator(".profile-health")).to_be_visible()
     expect(page.locator(".profile-health")).to_contain_text("%")
@@ -217,6 +220,10 @@ def run_browser(page):
     page.locator("#logout").click()
 
     login(page, "company@demo.example")
+    expect(page.locator("#dashboard-main")).to_contain_text("ПРИОРИТЕТ СЕЙЧАС")
+    expect(page.locator("#dashboard-main .overview-stat-card")).to_have_count(4)
+    expect(page.locator("#dashboard-main .overview-funnel")).to_be_visible()
+    page.locator(".dashboard-tabs [data-tab='vacancies']").click()
     expect(page.locator(".employer-next")).to_be_visible()
     # Release 0.6: vacancy overview and direct navigation to its applications.
     expect(page.locator("#dashboard-main")).to_contain_text("Заинтересованные")
@@ -255,6 +262,8 @@ def run_browser(page):
     page.locator("#logout").click()
 
     login(page, "company@demo.example")
+    expect(page.locator("#dashboard-main")).to_contain_text("Есть согласие кандидата")
+    page.locator(".dashboard-tabs [data-tab='vacancies']").click()
     page.locator("#dashboard-main .item-card").filter(has_text="Кладовщик").locator("[data-action='matches']").click()
     expect(page.locator("#employer-matches .candidate-match-card")).to_be_visible()
     expect(page.locator("#employer-matches")).to_contain_text("Согласие получено")
@@ -322,6 +331,8 @@ def run_browser(page):
     login(page, "kladovshik@demo.example")
     expect(page.locator(".dashboard-tabs")).to_be_visible()
     assert page.locator(".dashboard-tabs [data-tab='profile']").bounding_box()["height"] >= 44
+    expect(page.locator("#dashboard-main .overview-stat-card")).to_have_count(4)
+    page.locator(".dashboard-tabs [data-tab='profile']").click()
     expect(page.locator("#profile-form")).to_be_visible()
     page.locator(".dashboard-tabs [data-tab='applications']").click()
     expect(page.locator("#dashboard-main")).to_contain_text("Знакомство состоялось (демо")
