@@ -335,7 +335,14 @@
       if(action==='reset'){$('#reset-token').value=token;$('#reset-dialog').showModal();}
       if(action==='verify'){req('POST','/api/account/email/confirm',{token}).then(()=>toast('Email подтверждён.')).catch(e=>toast(e.message,true));}
     }
-    ['profession-filter','salary-filter'].forEach(id=>$('#'+id).addEventListener('keydown',e=>{if(e.key==='Enter')loadPublicJobs();}));
-    $('#schedule-filter').addEventListener('change',loadPublicJobs);
+    ['profession-filter','city-filter','salary-filter'].forEach(id=>$('#'+id).addEventListener('keydown',e=>{if(e.key==='Enter')loadPublicJobs();}));
+    ['schedule-filter','employment-filter','sort-filter'].forEach(id=>$('#'+id).addEventListener('change',loadPublicJobs));
+    $('#jobs-reset').addEventListener('click',()=>{
+      ['profession-filter','city-filter','salary-filter'].forEach(id=>$('#'+id).value='');
+      $('#schedule-filter').value='';
+      $('#employment-filter').value='';
+      $('#sort-filter').value='recent';
+      loadPublicJobs();
+    });
   });
 })();
