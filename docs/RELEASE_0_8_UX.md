@@ -52,3 +52,17 @@ Move STAZHNO from an MVP-looking landing page to a clearer two-sided marketplace
   - employer priority action;
   - existing application/invitation/contact journey.
 - PostgreSQL migration/runtime integration green.
+
+
+## Vacancy discovery and matching
+
+- Public search now exposes profession/skill, city, salary, schedule, employment and sorting controls.
+- Search text also matches vacancy description, not only title/skills.
+- Sorting supports newest, higher salary first and lower salary first.
+- Active filters are shown as compact chips and can be reset in one click.
+- Vacancy cards show skill tags instead of a plain comma-separated line.
+- Candidate favorites are reflected directly on public/recommended cards.
+- Recommended vacancies show a concise fit score plus the first reasons before expansion.
+- Employer match cards show professional parameters, fit reasons and the invitation state.
+- Already invited candidates are no longer presented as if they can be invited again.
+- Invitation state is returned without exposing candidate name, email, phone or freeform profile text.
