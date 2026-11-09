@@ -684,9 +684,17 @@ def create_app(db_path: str | None = None) -> FastAPI:
     @app.get("/api/employer/vacancies/{job_id}/matches")
     def job_matches(job_id: int, user: dict = Depends(active_user), db: sqlite3.Connection = Depends(get_connection)):
         allowed(user, "employer")
-        vacancy = db.execute("SELECT * FROM vacancies WHERE id=? AND employer_id=?", (job_id, user["id"])).fetchone()
+        vacancy = db.execute(
+            """SELECT v.*,COALESCE(vm.status,'approved') AS moderation_status
+               FROM vacancies v
+               LEFT JOIN vacancy_moderation vm ON vm.vacancy_id=v.id
+               WHERE v.id=? AND v.employer_id=?""",
+            (job_id, user["id"]),
+        ).fetchone()
         if vacancy is None:
             raise HTTPException(404, "Вакансия не найдена")
+        if vacancy["moderation_status"] != "approved":
+            raise HTTPException(409, "Вакансия временно недоступна для подбора до завершения модерации")
         rows = db.execute(
             """SELECT c.*,u.id AS candidate_id,
                       i.id AS invitation_id,i.status AS invitation_status,
@@ -714,10 +722,16 @@ def create_app(db_path: str | None = None) -> FastAPI:
     def invite(data: InvitationIn, user: dict = Depends(active_user), db: sqlite3.Connection = Depends(get_connection)):
         allowed(user, "employer")
         vacancy = db.execute(
-            "SELECT * FROM vacancies WHERE id=? AND employer_id=? AND status='open'", (data.vacancy_id, user["id"])
+            """SELECT v.*,COALESCE(vm.status,'approved') AS moderation_status
+               FROM vacancies v
+               LEFT JOIN vacancy_moderation vm ON vm.vacancy_id=v.id
+               WHERE v.id=? AND v.employer_id=? AND v.status='open'""",
+            (data.vacancy_id, user["id"]),
         ).fetchone()
         if vacancy is None:
             raise HTTPException(404, "Нет активной вакансии с таким ID")
+        if vacancy["moderation_status"] != "approved":
+            raise HTTPException(409, "Вакансия ожидает проверки и пока не может использоваться для приглашений")
         candidate = db.execute(
             """SELECT c.* FROM candidate_profiles c JOIN users u ON u.id=c.user_id
                WHERE c.user_id=? AND u.role='candidate'""", (data.candidate_id,)
