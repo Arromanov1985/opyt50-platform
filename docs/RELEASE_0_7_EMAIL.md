@@ -27,8 +27,8 @@ Usually also required:
 
 Transport selection:
 
-- STARTTLS (default): `OPYT50_SMTP_STARTTLS=1`, `OPYT50_SMTP_SSL=0`;
-- implicit TLS: `OPYT50_SMTP_SSL=1`, `OPYT50_SMTP_STARTTLS=0`.
+- production-verified Timeweb mailbox transport: `smtp.timeweb.ru:465`, `OPYT50_SMTP_SSL=1`, `OPYT50_SMTP_STARTTLS=0`;
+- STARTTLS remains supported by the application for providers that require it.
 
 No SMTP credentials belong in GitHub.
 
@@ -59,6 +59,6 @@ No SMTP credentials belong in GitHub.
 7. Verify no reset token or SMTP password appears in application logs.
 8. If delivery fails, remove/disable the SMTP host variable to fall back to outbox-only mode without changing database state.
 
-## Production dependency still needed
+## Production status
 
-A real sending mailbox/provider must exist before SMTP can be enabled. The code does not assume a specific provider.
+Production delivery has been verified with the Timeweb mailbox `noreply@stazhno.ru` over implicit TLS on port 465. The application remains provider-agnostic.
