@@ -76,3 +76,19 @@ def test_smtp_failure_does_not_break_business_action(monkeypatch):
 
     monkeypatch.setattr(email_delivery.smtplib, "SMTP", BrokenSMTP)
     assert email_delivery.send_email("user@example.invalid", "Subject", "Sensitive token body") is False
+
+
+def test_idn_mailbox_is_converted_to_ascii_for_smtp(monkeypatch):
+    FakeSMTP.instances.clear()
+    configure(monkeypatch)
+    monkeypatch.setenv("OPYT50_SMTP_USER", "noreply@опытно.рф")
+    monkeypatch.setenv("OPYT50_MAIL_FROM", "noreply@опытно.рф")
+    monkeypatch.setattr(email_delivery.smtplib, "SMTP", FakeSMTP)
+
+    assert email_delivery.send_email("romanov.ins@ya.ru", "Тема", "Текст") is True
+
+    smtp = FakeSMTP.instances[-1]
+    expected = "noreply@xn--m1abbcp7c.xn--p1ai"
+    assert smtp.login_args == (expected, "secret")
+    assert smtp.message["From"] == expected
+    assert smtp.message["To"] == "romanov.ins@ya.ru"
