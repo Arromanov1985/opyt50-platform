@@ -283,9 +283,29 @@
           const {job}=await api(`/api/jobs/${id}`);
           $('#job-dialog-title').textContent=job.title;
           const skills=String(job.skills||'').split(',').map(x=>x.trim()).filter(Boolean);
-          $('#job-dialog-content').innerHTML=`<div class="job-detail-v08"><div class="job-detail-company"><span class="section-kicker">ВАКАНСИЯ</span><strong>${esc(job.company_name)}</strong><span>⌖ ${esc(job.city)}</span>${employerTrustBadges(job,true)}</div><div class="job-detail-pay">${formatPay(job)}</div><div class="job-detail-facts"><span><small>График</small><strong>${esc(job.schedule)}</strong></span><span><small>Занятость</small><strong>${esc(job.employment)}</strong></span></div>${skills.length?`<div class="job-skill-tags">${skills.slice(0,8).map(skill=>`<span>${esc(skill)}</span>`).join('')}</div>`:''}<div class="job-detail-description">${esc(job.description||'Подробности у работодателя').replace(/\n/g,'<br>')}</div><div class="job-employer-trust-note"><strong>О работодателе</strong><p>${job.employer_verified?'Компания прошла проверку администратором СТАЖНО по заполненным реквизитам и подтверждённому email.':job.employer_email_verified&&job.employer_inn_provided?'Email подтверждён, реквизиты указаны. Статус проверки компании ещё не присвоен.':job.employer_email_verified?'Email работодателя подтверждён. Реквизиты компании пока не указаны или не проверены.':'Статус проверки компании пока не подтверждён.'}</p></div><div class="job-detail-privacy">Ваши контакты не передаются работодателю автоматически. Сначала отправляется отклик, а знакомство проходит только через отдельное согласие.</div><div class="job-detail-action">${state.user?.role==='candidate' ? jobApplicationAction(Number(job.id), job) : !state.user ? `<button class="btn btn-primary" data-v02-action="apply" data-id="${Number(job.id)}">Откликнуться на вакансию →</button>` : `<span class="job-role-note">Вы вошли как ${state.user.role==='employer'?'работодатель':'администратор'}. Отклики доступны только соискателям.</span>`}</div></div>`;
+          $('#job-dialog-content').innerHTML=`<div class="job-detail-v08"><div class="job-detail-company"><span class="section-kicker">ВАКАНСИЯ</span><strong>${esc(job.company_name)}</strong><button class="link-button" type="button" data-v02-action="company" data-id="${Number(job.employer_id)}">О компании</button><span>⌖ ${esc(job.city)}</span>${employerTrustBadges(job,true)}</div><div class="job-detail-pay">${formatPay(job)}</div><div class="job-detail-facts"><span><small>График</small><strong>${esc(job.schedule)}</strong></span><span><small>Занятость</small><strong>${esc(job.employment)}</strong></span></div>${skills.length?`<div class="job-skill-tags">${skills.slice(0,8).map(skill=>`<span>${esc(skill)}</span>`).join('')}</div>`:''}<div class="job-detail-description">${esc(job.description||'Подробности у работодателя').replace(/\n/g,'<br>')}</div><div class="job-employer-trust-note"><strong>О работодателе</strong><p>${job.employer_verified?'Компания прошла проверку администратором СТАЖНО по заполненным реквизитам и подтверждённому email.':job.employer_email_verified&&job.employer_inn_provided?'Email подтверждён, реквизиты указаны. Статус проверки компании ещё не присвоен.':job.employer_email_verified?'Email работодателя подтверждён. Реквизиты компании пока не указаны или не проверены.':'Статус проверки компании пока не подтверждён.'}</p></div><div class="job-detail-privacy">Ваши контакты не передаются работодателю автоматически. Сначала отправляется отклик, а знакомство проходит только через отдельное согласие.</div><div class="job-safety-actions"><button class="btn btn-text btn-tiny" type="button" data-v02-action="report" data-id="${Number(job.id)}">Пожаловаться на вакансию или компанию</button></div><div class="job-detail-action">${state.user?.role==='candidate' ? jobApplicationAction(Number(job.id), job) : !state.user ? `<button class="btn btn-primary" data-v02-action="apply" data-id="${Number(job.id)}">Откликнуться на вакансию →</button>` : `<span class="job-role-note">Вы вошли как ${state.user.role==='employer'?'работодатель':'администратор'}. Отклики доступны только соискателям.</span>`}</div></div>`;
           $('#job-dialog').showModal();
-        }else if(['apply','favorite'].includes(type)){
+        }else if(type==='company'){
+  const result=await api('/api/companies/'+id);
+  const c=result.company, jobs=result.jobs||[];
+  $('#company-dialog-title').textContent=c.company_name;
+  const trust={employer_verified:c.trust&&c.trust.verified,employer_email_verified:c.trust&&c.trust.email_verified,employer_inn_provided:c.trust&&c.trust.inn_provided,employer_created_at:c.created_at};
+  const cards=jobs.map(j=>'<article class="item-card"><h4>'+esc(j.title)+'</h4><p>'+esc(j.city)+' · '+formatPay(j)+'</p><button class="btn btn-outline btn-tiny" data-v02-action="details" data-id="'+Number(j.id)+'">Подробнее</button></article>').join('');
+  $('#company-dialog-content').innerHTML='<div class="company-public-card">'+employerTrustBadges(trust,true)+'<p class="company-public-about">'+esc(c.about||'Компания пока не добавила описание.')+'</p><div class="company-public-stats"><strong>'+Number(c.open_vacancies||0)+'</strong><span> активных вакансий</span></div><div class="dashboard-list">'+cards+'</div></div>';
+  if($('#job-dialog').open) $('#job-dialog').close();
+  $('#company-dialog').showModal();
+}else if(type==='report'){
+  if(state.user?.role!=='candidate'){if($('#job-dialog').open)$('#job-dialog').close();openAuth('login','candidate');toast('Войдите как соискатель, чтобы отправить жалобу.');return;}
+  const target=(prompt('На что жалоба: вакансия или компания?','вакансия')||'').trim().toLowerCase();
+  if(target!=='вакансия'&&target!=='компания') throw Error('Укажите «вакансия» или «компания»');
+  const reason=(prompt('Причина: misleading, discrimination, fraud, contacts или other','other')||'').trim();
+  if(!['misleading','discrimination','fraud','contacts','other'].includes(reason)) throw Error('Неизвестная причина жалобы');
+  const details=(prompt('Коротко опишите проблему','')||'').trim().slice(0,800);
+  const result=await req('POST','/api/reports',{vacancy_id:id,target_type:target==='компания'?'employer':'vacancy',reason,details});
+  if($('#job-dialog').open) $('#job-dialog').close();
+  await loadPublicJobs();
+  toast(result.vacancy_pending_review?'Жалоба принята. Вакансия временно скрыта до проверки.':'Жалоба отправлена модератору.');
+}else if(['apply','favorite'].includes(type)){
           if(state.user?.role!=='candidate'){ if($('#job-dialog').open) $('#job-dialog').close(); if(state.user)throw Error('Действие доступно только соискателю');openAuth('login','candidate');return; }
           if(type==='apply'){
             try {
@@ -343,6 +363,7 @@
       finally{if(btn.isConnected)btn.disabled=false;}
     });
     $('#job-dialog-close').addEventListener('click',()=>$('#job-dialog').close());
+    $('#company-dialog-close').addEventListener('click',()=>$('#company-dialog').close());
     $('#reset-dialog-close').addEventListener('click',()=>$('#reset-dialog').close());
     $('#reset-request-form').addEventListener('submit',async event=>{
       event.preventDefault();
