@@ -28,3 +28,5 @@ jobs:
           python -m playwright install chromium
       - name: Browser end-to-end smoke
         run: python tests/browser_smoke.py
+      - name: Browser safety center smoke
+        run: python tests/browser_safety_smoke.py
