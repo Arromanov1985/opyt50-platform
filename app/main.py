@@ -443,11 +443,15 @@ def create_app(db_path: str | None = None) -> FastAPI:
                JOIN employer_profiles e ON e.user_id=v.employer_id
                JOIN users eu ON eu.id=e.user_id
                LEFT JOIN account_controls ac ON ac.user_id=e.user_id
+               LEFT JOIN vacancy_moderation vm ON vm.vacancy_id=v.id
                LEFT JOIN job_applications a
                     ON a.vacancy_id=v.id AND a.candidate_id=?
                LEFT JOIN invitations i
                     ON i.vacancy_id=v.id AND i.candidate_id=?
-               WHERE v.status='open' LIMIT 500""",
+               WHERE v.status='open'
+                 AND COALESCE(ac.status,'active')='active'
+                 AND COALESCE(vm.status,'approved')='approved'
+               LIMIT 500""",
             (user["id"],user["id"]),
         ).fetchall()
         matches = []
