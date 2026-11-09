@@ -583,6 +583,19 @@ def create_app(db_path: str | None = None) -> FastAPI:
             if original[field] != values[field]
         }
         if changed:
+            from .release02 import utc_now_text
+            db.execute(
+                """UPDATE vacancy_moderation
+                   SET status=CASE WHEN status='rejected' THEN 'pending' ELSE status END,
+                       reason=CASE WHEN status='rejected'
+                                   THEN 'Вакансия изменена работодателем и отправлена на повторную проверку'
+                                   ELSE reason END,
+                       reviewed_by=CASE WHEN status='rejected' THEN NULL ELSE reviewed_by END,
+                       reviewed_at=CASE WHEN status='rejected' THEN NULL ELSE reviewed_at END,
+                       updated_at=?
+                   WHERE vacancy_id=?""",
+                (utc_now_text(), job_id),
+            )
             event = db.execute(
                 "INSERT INTO vacancy_updates(vacancy_id,employer_id,changes_json) VALUES(?,?,?)",
                 (job_id, user["id"], json.dumps(changed, ensure_ascii=False)),
