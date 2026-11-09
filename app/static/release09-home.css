@@ -673,3 +673,35 @@ body.comfortable-view .job-employer-trust-note p{font-size:.9rem}
   .employer-trust-badge{font-size:8px;min-height:22px}
   .job-company-wrap{gap:5px}
 }
+
+
+/* Public employer card and safety actions */
+.company-dialog{max-width:760px}
+.company-public-card{display:grid;gap:16px}
+.company-public-about{
+  margin:0;
+  padding:16px 18px;
+  border:1px solid #DDEAE3;
+  border-radius:14px;
+  background:#FAFCFB;
+  color:#50675D;
+  line-height:1.65;
+  white-space:pre-line;
+}
+.company-public-stats{
+  display:flex;
+  align-items:baseline;
+  gap:8px;
+  color:#60746B;
+}
+.company-public-stats strong{font-size:28px;color:#0B2D26}
+.job-safety-actions{
+  display:flex;
+  justify-content:flex-end;
+  margin-top:-4px;
+}
+.job-safety-actions .btn{
+  color:#6A7771;
+  text-decoration:underline;
+  text-underline-offset:3px;
+}
