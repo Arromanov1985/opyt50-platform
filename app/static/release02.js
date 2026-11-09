@@ -44,13 +44,22 @@
     }
     jobMarkup = function(job, personalized = false) {
       const id = Number(job.id), open = job.status !== 'closed';
-      return `<article class="job-card"><div class="job-top"><span class="job-company">${esc(job.company_name || 'Работодатель')}</span><span class="job-category">${personalized ? 'Совпадение '+Number(job.score)+'%' : (open ? 'Вакансия' : 'Закрыта')}</span></div>
+      const saved = favoriteVacancyIds.has(id);
+      const skills = String(job.skills || '').split(',').map(s=>s.trim()).filter(Boolean).slice(0,4);
+      const score = Number(job.score || 0);
+      const scoreClass = score >= 80 ? 'high' : 'medium';
+      const reasons = Array.isArray(job.reasons) ? job.reasons : [];
+      const scoreBadge = personalized
+        ? `<span class="job-category match-score ${scoreClass}"><span class="match-score-dot"></span>${score}% совпадение</span>`
+        : `<span class="job-category">${open ? 'Вакансия' : 'Закрыта'}</span>`;
+      return `<article class="job-card job-card-v08" data-job-id="${id}"><div class="job-top"><span class="job-company">${esc(job.company_name || 'Работодатель')}</span>${scoreBadge}</div>
         <h3>${esc(job.title)}</h3><div class="job-salary">${formatPay(job)}</div>
         <div class="job-meta"><span>⌖ ${esc(job.city)}</span><span>${esc(job.schedule)}</span><span>${esc(job.employment)}</span></div>
-        <p>${esc(job.skills || 'Подробности в описании вакансии')}</p>
-        ${personalized ? `<details class="match-explanation"><summary>Почему мне подходит эта вакансия?</summary><ul>${(Array.isArray(job.reasons) ? job.reasons : []).map(reason => `<li>${esc(reason)}</li>`).join('') || '<li>Подходят основные условия вашего профиля</li>'}</ul><p class="muted">Процент совпадения — ориентир по данным анкеты, а не вероятность трудоустройства. Решение о приглашении принимает работодатель.</p></details>` : ''}
+        ${skills.length ? `<div class="job-skill-tags">${skills.map(skill=>`<span>${esc(skill)}</span>`).join('')}</div>` : ''}
+        ${personalized && reasons.length ? `<div class="match-reasons-preview">${reasons.slice(0,2).map(reason=>`<span>✓ ${esc(reason)}</span>`).join('')}</div>` : ''}
+        ${personalized ? `<details class="match-explanation"><summary>Почему эта вакансия в рекомендациях?</summary><ul>${reasons.map(reason => `<li>${esc(reason)}</li>`).join('') || '<li>Подходят основные условия вашего профиля</li>'}</ul><p class="muted">Совпадение рассчитывается по данным профиля и помогает сортировать варианты. Оно не гарантирует приглашение.</p></details>` : ''}
         <div class="job-actions"><button class="btn btn-outline btn-tiny" data-v02-action="details" data-id="${id}">Подробнее</button>
-        ${open ? `${state.user?.role === 'candidate' ? jobApplicationAction(id, job) : `<button type="button" class="btn btn-primary btn-tiny" data-v02-action="apply" data-id="${id}">Откликнуться</button>`}<button class="btn btn-outline btn-tiny" data-v02-action="favorite" data-id="${id}" aria-label="Сохранить вакансию">♡</button>` : ''}</div></article>`;
+        ${open ? `${state.user?.role === 'candidate' ? jobApplicationAction(id, job) : `<button type="button" class="btn btn-primary btn-tiny" data-v02-action="apply" data-id="${id}">Откликнуться</button>`}<button class="btn btn-outline btn-tiny favorite-toggle" data-v02-action="${saved ? 'favorite-remove-inline' : 'favorite'}" data-id="${id}" aria-label="${saved ? 'Убрать вакансию из избранного' : 'Сохранить вакансию'}" aria-pressed="${saved ? 'true' : 'false'}">${saved ? '♥' : '♡'}</button>` : ''}</div></article>`;
     };
     loadPublicJobs = async function() {
       try {
