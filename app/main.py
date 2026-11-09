@@ -522,7 +522,14 @@ def create_app(db_path: str | None = None) -> FastAPI:
     @app.get("/api/employer/vacancies")
     def employer_jobs(user: dict = Depends(active_user), db: sqlite3.Connection = Depends(get_connection)):
         allowed(user, "employer")
-        rows = db.execute("SELECT * FROM vacancies WHERE employer_id=? ORDER BY id DESC", (user["id"],)).fetchall()
+        rows = db.execute(
+            """SELECT v.*,COALESCE(vm.status,'approved') AS moderation_status,
+                      COALESCE(vm.reason,'') AS moderation_reason
+               FROM vacancies v
+               LEFT JOIN vacancy_moderation vm ON vm.vacancy_id=v.id
+               WHERE v.employer_id=? ORDER BY v.id DESC""",
+            (user["id"],),
+        ).fetchall()
         return {"jobs": [{**dict(row), "revision": vacancy_revision(row)} for row in rows]}
 
     @app.patch("/api/employer/vacancies/{job_id}")
