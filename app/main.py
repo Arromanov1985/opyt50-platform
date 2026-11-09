@@ -374,8 +374,15 @@ def create_app(db_path: str | None = None) -> FastAPI:
             raise HTTPException(422, "Недопустимая занятость")
         if sort not in {"recent", "salary_desc", "salary_asc"}:
             raise HTTPException(422, "Недопустимая сортировка")
-        sql = """SELECT v.*,e.company_name FROM vacancies v JOIN employer_profiles e
-                 ON e.user_id=v.employer_id WHERE v.status='open'"""
+        sql = """SELECT v.*,e.company_name,e.verified AS employer_verified,
+                        CASE WHEN length(e.inn)>0 THEN 1 ELSE 0 END AS employer_inn_provided,
+                        COALESCE(ac.email_verified,0) AS employer_email_verified,
+                        eu.created_at AS employer_created_at
+                 FROM vacancies v
+                 JOIN employer_profiles e ON e.user_id=v.employer_id
+                 JOIN users eu ON eu.id=e.user_id
+                 LEFT JOIN account_controls ac ON ac.user_id=e.user_id
+                 WHERE v.status='open'"""
         params: list = []
         if q.strip():
             # instr on Unicode-casefolded text ensures correct Cyrillic search.
@@ -413,12 +420,17 @@ def create_app(db_path: str | None = None) -> FastAPI:
         # the recommendation card authoritative across sessions and reloads;
         # no other candidate's application details are exposed.
         jobs_rows = db.execute(
-            """SELECT v.*,e.company_name,
+            """SELECT v.*,e.company_name,e.verified AS employer_verified,
+                      CASE WHEN length(e.inn)>0 THEN 1 ELSE 0 END AS employer_inn_provided,
+                      COALESCE(ac.email_verified,0) AS employer_email_verified,
+                      eu.created_at AS employer_created_at,
                       a.id AS application_id, a.status AS application_status,
                       i.id AS invitation_id,i.status AS invitation_status,
                       i.contact_shared AS contact_shared
                FROM vacancies v
                JOIN employer_profiles e ON e.user_id=v.employer_id
+               JOIN users eu ON eu.id=e.user_id
+               LEFT JOIN account_controls ac ON ac.user_id=e.user_id
                LEFT JOIN job_applications a
                     ON a.vacancy_id=v.id AND a.candidate_id=?
                LEFT JOIN invitations i
@@ -445,8 +457,15 @@ def create_app(db_path: str | None = None) -> FastAPI:
         from .matching import mismatch_reasons
         rows = db.execute(
             """SELECT v.id,v.title,v.city,v.salary_min,v.salary_max,v.schedule,
-                      v.employment,v.skills,v.description,v.status,e.company_name
-               FROM vacancies v JOIN employer_profiles e ON e.user_id=v.employer_id
+                      v.employment,v.skills,v.description,v.status,v.created_at,
+                      e.company_name,e.verified AS employer_verified,
+                      CASE WHEN length(e.inn)>0 THEN 1 ELSE 0 END AS employer_inn_provided,
+                      COALESCE(ac.email_verified,0) AS employer_email_verified,
+                      eu.created_at AS employer_created_at
+               FROM vacancies v
+               JOIN employer_profiles e ON e.user_id=v.employer_id
+               JOIN users eu ON eu.id=e.user_id
+               LEFT JOIN account_controls ac ON ac.user_id=e.user_id
                WHERE v.status='open' ORDER BY v.id DESC LIMIT 500"""
         ).fetchall()
         alternatives = []
@@ -681,9 +700,15 @@ def create_app(db_path: str | None = None) -> FastAPI:
             """SELECT i.id,i.status,i.share_consent,i.contact_shared,i.created_at,
                i.responded_at,v.title,v.city,v.salary_min,v.salary_max,
                v.schedule,v.employment,v.description,e.company_name,
+               e.verified AS employer_verified,
+               CASE WHEN length(e.inn)>0 THEN 1 ELSE 0 END AS employer_inn_provided,
+               COALESCE(ac.email_verified,0) AS employer_email_verified,
+               eu.created_at AS employer_created_at,
                a.id AS application_id
                FROM invitations i JOIN vacancies v ON i.vacancy_id=v.id
                JOIN employer_profiles e ON e.user_id=i.employer_id
+               JOIN users eu ON eu.id=e.user_id
+               LEFT JOIN account_controls ac ON ac.user_id=e.user_id
                LEFT JOIN job_applications a
                     ON a.vacancy_id=i.vacancy_id AND a.candidate_id=i.candidate_id
                WHERE i.candidate_id=? ORDER BY i.id DESC""", (user["id"],)
