@@ -19,12 +19,13 @@
    - `OPYT50_SMTP_USER=noreply@stazhno.ru`
    - `OPYT50_MAIL_FROM=noreply@stazhno.ru`
    - `OPYT50_SMTP_HOST=smtp.timeweb.ru`
-   - `OPYT50_SMTP_PORT=587`
-   - `OPYT50_SMTP_STARTTLS=1`
-   - `OPYT50_SMTP_SSL=0`
+   - `OPYT50_SMTP_PORT=465`
+   - `OPYT50_SMTP_STARTTLS=0`
+   - `OPYT50_SMTP_SSL=1`
 7. Store the mailbox password only in Timeweb as `OPYT50_SMTP_PASSWORD`.
 8. Redeploy.
 9. Verify homepage, registration/login, job search, candidate/employer dashboards, verification email and password reset.
+   - Verified production mail transport for `noreply@stazhno.ru`: `smtp.timeweb.ru:465` with implicit TLS.
 10. Keep the technical `.twc1.net` address available during acceptance.
 
 ## Mail DNS
