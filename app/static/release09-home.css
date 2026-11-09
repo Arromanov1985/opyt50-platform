@@ -218,3 +218,299 @@ body.comfortable-view .footer-column a{font-size:1rem}
   .job-card-v08 h3{font-size:19px}
   .job-actions .btn:not(.favorite-toggle){flex:1}
 }
+
+
+/* Release 0.9 — trust, how-it-works and pre-registration conversion */
+.launch-note{
+  display:flex;
+  align-items:flex-start;
+  gap:10px;
+  margin-top:18px;
+  padding:12px 14px;
+  border:1px solid #E2E9E5;
+  border-radius:14px;
+  background:#FBFDFC;
+  color:#60746B;
+}
+.launch-note>span{
+  width:22px;height:22px;min-width:22px;
+  display:grid;place-items:center;
+  border-radius:50%;
+  background:#EAF8F0;
+  color:#08793A;
+  font-family:serif;
+  font-weight:900;
+  font-size:12px;
+}
+.launch-note p{margin:0;font-size:11px;line-height:1.55}
+.launch-note strong{color:#385148}
+
+.how-v09{position:relative;overflow:hidden}
+.how-v09:before{
+  content:"";
+  position:absolute;
+  width:520px;height:520px;
+  right:-220px;top:80px;
+  border-radius:50%;
+  background:radial-gradient(circle,#DDF7E7 0,rgba(221,247,231,0) 68%);
+  pointer-events:none;
+}
+.journey-grid-v09{
+  position:relative;
+  z-index:1;
+  align-items:stretch;
+}
+.journey-grid-v09 .journey-panel{
+  display:flex;
+  flex-direction:column;
+  padding:28px;
+}
+.journey-grid-v09 .journey-panel ol{
+  flex:1;
+  gap:20px;
+}
+.journey-grid-v09 .journey-panel li{
+  grid-template-columns:38px 1fr;
+}
+.journey-grid-v09 .journey-panel li>b{
+  width:36px;height:36px;
+  border:1px solid #CFE6D8;
+}
+.journey-grid-v09 .journey-panel li strong{
+  font-size:15px;
+  color:#0B2D26;
+}
+.journey-grid-v09 .journey-panel li small{
+  font-size:12px;
+  color:#667970;
+}
+
+.trust-center{
+  position:relative;
+  z-index:1;
+  margin-top:22px;
+  padding:28px;
+  border:1px solid #DDEAE3;
+  border-radius:24px;
+  background:#fff;
+  box-shadow:0 14px 40px #0B2D2608;
+}
+.trust-center-head{
+  display:flex;
+  align-items:flex-end;
+  justify-content:space-between;
+  gap:24px;
+  margin-bottom:20px;
+}
+.trust-center-head h3{
+  margin:6px 0 0;
+  color:#0B2D26;
+  font-size:28px;
+  letter-spacing:-.04em;
+}
+.trust-center-head>p{
+  max-width:340px;
+  margin:0;
+  color:#667970;
+  line-height:1.55;
+  font-size:12px;
+}
+.trust-grid{
+  display:grid;
+  grid-template-columns:repeat(4,minmax(0,1fr));
+  gap:10px;
+}
+.trust-card{
+  display:flex;
+  align-items:flex-start;
+  gap:11px;
+  padding:16px;
+  border:1px solid #E0ECE5;
+  border-radius:16px;
+  background:#F8FCF9;
+}
+.trust-icon{
+  width:38px;height:38px;min-width:38px;
+  display:grid;place-items:center;
+  border-radius:12px;
+  background:#DDF7E7;
+  color:#08793A;
+  font-size:13px;
+  font-weight:900;
+}
+.trust-card>div{display:grid;gap:4px}
+.trust-card strong{
+  color:#0B2D26;
+  font-size:13px;
+}
+.trust-card p{
+  margin:0;
+  color:#61766D;
+  font-size:11px;
+  line-height:1.5;
+}
+.privacy-panel-v09{
+  position:relative;
+  z-index:1;
+  margin-top:14px;
+  grid-template-columns:58px 1fr;
+}
+.privacy-panel-v09 .privacy-icon{
+  font-size:20px;
+  font-weight:900;
+}
+
+.prestart-section{
+  padding:76px 0;
+  background:#fff;
+}
+.prestart-head{
+  max-width:760px;
+  margin:0 0 26px;
+}
+.prestart-head h2{
+  margin:7px 0 10px;
+  color:#0B2D26;
+  font-size:clamp(38px,4.2vw,58px);
+  line-height:1.03;
+  letter-spacing:-.055em;
+}
+.prestart-head p{
+  margin:0;
+  color:#5C6F67;
+  font-size:15px;
+  line-height:1.6;
+}
+.prestart-grid{
+  display:grid;
+  grid-template-columns:1fr 1fr;
+  gap:16px;
+}
+.prestart-card{
+  position:relative;
+  overflow:hidden;
+  display:flex;
+  flex-direction:column;
+  min-height:360px;
+  padding:28px;
+  border:1px solid #DDEAE3;
+  border-radius:24px;
+  background:#F8FCF9;
+}
+.prestart-card:after{
+  content:"";
+  position:absolute;
+  width:160px;height:160px;
+  right:-55px;bottom:-55px;
+  border-radius:50%;
+  background:#DDF7E7;
+  opacity:.65;
+}
+.prestart-card.employer-start{
+  background:#0B2D26;
+  border-color:#0B2D26;
+  color:#fff;
+}
+.prestart-card.employer-start:after{
+  background:#00C853;
+  opacity:.14;
+}
+.prestart-label{
+  display:inline-flex;
+  width:max-content;
+  padding:7px 10px;
+  border-radius:999px;
+  background:#EAF8F0;
+  color:#08793A;
+  font-size:10px;
+  font-weight:900;
+  letter-spacing:.08em;
+}
+.employer-start .prestart-label{
+  background:#17483B;
+  color:#69E596;
+}
+.prestart-card h3{
+  position:relative;
+  z-index:1;
+  margin:22px 0 10px;
+  max-width:520px;
+  color:#0B2D26;
+  font-size:29px;
+  line-height:1.08;
+  letter-spacing:-.04em;
+}
+.employer-start h3{color:#fff}
+.prestart-card p{
+  position:relative;
+  z-index:1;
+  margin:0;
+  max-width:560px;
+  color:#5C6F67;
+  font-size:13px;
+  line-height:1.65;
+}
+.employer-start p{color:#C9DDD2}
+.prestart-actions{
+  position:relative;
+  z-index:1;
+  display:flex;
+  gap:9px;
+  flex-wrap:wrap;
+  margin-top:auto;
+  padding-top:26px;
+}
+.prestart-card>small{
+  position:relative;
+  z-index:1;
+  display:block;
+  margin-top:13px;
+  color:#71847C;
+  font-size:10px;
+  line-height:1.5;
+}
+.employer-start>small{color:#9EB8AB}
+.employer-start .btn-outline{
+  border-color:#41685A;
+  background:transparent;
+  color:#fff;
+}
+.employer-start .btn-outline:hover{
+  background:#17483B;
+  border-color:#69E596;
+}
+
+body.comfortable-view .launch-note p,
+body.comfortable-view .trust-card p,
+body.comfortable-view .trust-center-head>p,
+body.comfortable-view .prestart-card p,
+body.comfortable-view .prestart-card>small{
+  font-size:1rem;
+}
+
+@media(max-width:980px){
+  .trust-grid{grid-template-columns:1fr 1fr}
+  .trust-center-head{align-items:flex-start;flex-direction:column}
+}
+@media(max-width:760px){
+  .prestart-grid{grid-template-columns:1fr}
+  .prestart-card{min-height:0}
+}
+@media(max-width:620px){
+  .launch-note{margin-top:13px;padding:11px 12px}
+  .how-v09:before{display:none}
+  .journey-grid-v09 .journey-panel{padding:18px}
+  .journey-grid-v09 .journey-panel ol{gap:16px}
+  .trust-center{padding:18px;border-radius:20px}
+  .trust-center-head h3{font-size:24px}
+  .trust-grid{grid-template-columns:1fr}
+  .trust-card{padding:14px}
+  .privacy-panel-v09{grid-template-columns:1fr}
+  .prestart-section{padding:54px 0}
+  .prestart-head h2{font-size:36px}
+  .prestart-grid{gap:12px}
+  .prestart-card{padding:20px;border-radius:20px}
+  .prestart-card h3{font-size:25px}
+  .prestart-actions{display:grid;grid-template-columns:1fr;padding-top:22px}
+  .prestart-actions .btn{width:100%}
+}
