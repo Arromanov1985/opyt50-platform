@@ -66,3 +66,13 @@ Move STAZHNO from an MVP-looking landing page to a clearer two-sided marketplace
 - Employer match cards show professional parameters, fit reasons and the invitation state.
 - Already invited candidates are no longer presented as if they can be invited again.
 - Invitation state is returned without exposing candidate name, email, phone or freeform profile text.
+
+
+## Role dashboards
+
+- Candidate and employer sessions now open on an overview screen instead of a long form/list.
+- Candidate overview shows profile readiness, recommended jobs, active applications, pending invitations, favorites and unread vacancy changes.
+- Candidate overview selects one priority next step based on profile completeness and current workflow state.
+- Employer overview shows open vacancies, applications requiring attention, candidate consents and opened contacts.
+- Employer overview adds a compact vacancy -> application -> invitation -> introduction funnel.
+- Overview remains available from extended release 0.2 tabs such as favorites, applications, vacancy changes and employer applications.
