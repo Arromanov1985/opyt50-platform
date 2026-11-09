@@ -87,10 +87,48 @@ CREATE TABLE IF NOT EXISTS vacancy_update_recipients (
 CREATE INDEX IF NOT EXISTS idx_vacancy_update_recipients_candidate ON vacancy_update_recipients(candidate_id,read_at,update_id);
 """
 
+RELEASE09_RUNTIME_DDL = (
+    """CREATE TABLE IF NOT EXISTS employer_public_profiles (
+        employer_id INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+        about TEXT NOT NULL DEFAULT '',
+        updated_at TEXT NOT NULL
+    )""",
+    """CREATE TABLE IF NOT EXISTS vacancy_moderation (
+        vacancy_id INTEGER PRIMARY KEY REFERENCES vacancies(id) ON DELETE CASCADE,
+        status TEXT NOT NULL CHECK(status IN ('pending','approved','rejected')),
+        reason TEXT NOT NULL DEFAULT '',
+        reviewed_by INTEGER REFERENCES users(id),
+        reviewed_at TEXT,
+        updated_at TEXT NOT NULL
+    )""",
+    """CREATE TABLE IF NOT EXISTS content_reports (
+        report_key TEXT PRIMARY KEY,
+        reporter_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        vacancy_id INTEGER NOT NULL REFERENCES vacancies(id) ON DELETE CASCADE,
+        employer_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        target_type TEXT NOT NULL CHECK(target_type IN ('vacancy','employer')),
+        reason TEXT NOT NULL CHECK(reason IN ('misleading','discrimination','fraud','contacts','other')),
+        details TEXT NOT NULL DEFAULT '',
+        status TEXT NOT NULL CHECK(status IN ('new','reviewed','dismissed','actioned')),
+        created_at TEXT NOT NULL,
+        reviewed_at TEXT,
+        reviewed_by INTEGER REFERENCES users(id)
+    )""",
+    "CREATE INDEX IF NOT EXISTS idx_vacancy_moderation_status ON vacancy_moderation(status)",
+    "CREATE INDEX IF NOT EXISTS idx_content_reports_status ON content_reports(status,created_at)",
+    "CREATE INDEX IF NOT EXISTS idx_content_reports_vacancy ON content_reports(vacancy_id,status)",
+)
+MIGRATION += "\n" + "\n".join(statement + ";" for statement in RELEASE09_RUNTIME_DDL)
+
 
 def init_release02(path: str) -> None:
     with database(path) as db:
         db.executescript(MIGRATION)
+        # PostgreSQL runtime intentionally skips SQLite executescript().
+        # These 0.9 tables use cross-compatible additive DDL so existing production
+        # databases can gain them safely with CREATE TABLE/INDEX IF NOT EXISTS.
+        for statement in RELEASE09_RUNTIME_DDL:
+            db.execute(statement)
 
 
 def enqueue_notice(db: sqlite3.Connection, user_id: int, event: str, subject: str, message: str) -> None:
@@ -117,6 +155,7 @@ class AccountStatusIn(BaseModel):
 class EmployerCompanyIn(BaseModel):
     company_name: str = Field(min_length=2, max_length=120)
     inn: str = Field(default="", max_length=12)
+    about: str = Field(default="", max_length=1200)
 
     @field_validator("inn")
     @classmethod
@@ -133,6 +172,22 @@ class EmployerVerificationIn(BaseModel):
 
 class VacancyAdminStatusIn(BaseModel):
     status: Literal["open", "closed"]
+
+
+class VacancyModerationIn(BaseModel):
+    status: Literal["pending", "approved", "rejected"]
+    reason: str = Field(default="", max_length=500)
+
+
+class ContentReportIn(BaseModel):
+    vacancy_id: int = Field(gt=0)
+    target_type: Literal["vacancy", "employer"]
+    reason: Literal["misleading", "discrimination", "fraud", "contacts", "other"]
+    details: str = Field(default="", max_length=800)
+
+
+class ContentReportStatusIn(BaseModel):
+    status: Literal["reviewed", "dismissed", "actioned"]
 
 
 class EmailTokenIn(BaseModel):
@@ -174,6 +229,18 @@ def redeem_token(db: sqlite3.Connection, raw: str, purpose: str) -> sqlite3.Row:
         raise HTTPException(400, "Ссылка недействительна или срок истёк")
     db.execute("UPDATE email_tokens SET used_at=datetime('now') WHERE token_hash=?", (row["token_hash"],))
     return row
+
+
+def utc_now_text() -> str:
+    return datetime.now(timezone.utc).replace(tzinfo=None).isoformat(sep=" ", timespec="seconds")
+
+
+def moderation_status(db: sqlite3.Connection, vacancy_id: int) -> str:
+    row = db.execute(
+        "SELECT status FROM vacancy_moderation WHERE vacancy_id=?",
+        (vacancy_id,),
+    ).fetchone()
+    return row["status"] if row else "approved"
 
 
 def employer_trust(db: sqlite3.Connection, employer_id: int) -> dict | None:
