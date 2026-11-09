@@ -340,7 +340,10 @@ def install_routes(app) -> None:
     def employer_company(user: dict = Depends(active_user), db: sqlite3.Connection = Depends(get_connection)):
         allowed(user, "employer")
         profile = db.execute(
-            "SELECT company_name,inn,verified FROM employer_profiles WHERE user_id=?",
+            """SELECT e.company_name,e.inn,e.verified,COALESCE(p.about,'') AS about
+               FROM employer_profiles e
+               LEFT JOIN employer_public_profiles p ON p.employer_id=e.user_id
+               WHERE e.user_id=?""",
             (user["id"],),
         ).fetchone()
         if profile is None:
@@ -351,6 +354,7 @@ def install_routes(app) -> None:
                 "company_name": profile["company_name"],
                 "inn": profile["inn"],
                 "verified": bool(profile["verified"]),
+                "about": profile["about"],
             },
             "trust": trust,
         }
@@ -377,8 +381,106 @@ def install_routes(app) -> None:
             "UPDATE employer_profiles SET company_name=?,inn=?,verified=? WHERE user_id=?",
             (data.company_name.strip(), data.inn, verified, user["id"]),
         )
+        db.execute(
+            """INSERT INTO employer_public_profiles(employer_id,about,updated_at) VALUES(?,?,?)
+               ON CONFLICT(employer_id) DO UPDATE SET about=excluded.about,updated_at=excluded.updated_at""",
+            (user["id"], data.about.strip(), utc_now_text()),
+        )
         db.commit()
         return {"ok": True, "trust": employer_trust(db, user["id"])}
+
+    @app.get("/api/companies/{employer_id}")
+    def public_company(employer_id: int, db: sqlite3.Connection = Depends(get_connection)):
+        company = db.execute(
+            """SELECT e.company_name,e.verified,u.created_at,COALESCE(c.status,'active') AS account_status,
+                      COALESCE(p.about,'') AS about
+               FROM employer_profiles e
+               JOIN users u ON u.id=e.user_id
+               LEFT JOIN account_controls c ON c.user_id=e.user_id
+               LEFT JOIN employer_public_profiles p ON p.employer_id=e.user_id
+               WHERE e.user_id=? AND u.role='employer'""",
+            (employer_id,),
+        ).fetchone()
+        if company is None or company["account_status"] != "active":
+            raise HTTPException(404, "Компания не найдена")
+        jobs = db.execute(
+            """SELECT v.id,v.employer_id,v.title,v.city,v.salary_min,v.salary_max,
+                      v.schedule,v.employment,v.skills,v.description,v.created_at
+               FROM vacancies v
+               LEFT JOIN vacancy_moderation vm ON vm.vacancy_id=v.id
+               WHERE v.employer_id=? AND v.status='open'
+                 AND COALESCE(vm.status,'approved')='approved'
+               ORDER BY v.id DESC LIMIT 20""",
+            (employer_id,),
+        ).fetchall()
+        trust = employer_trust(db, employer_id)
+        return {
+            "company": {
+                "id": employer_id,
+                "company_name": company["company_name"],
+                "about": company["about"],
+                "created_at": normalize_event_time(company["created_at"]),
+                "trust": trust,
+                "open_vacancies": len(jobs),
+            },
+            "jobs": [dict(row) for row in jobs],
+        }
+
+    @app.post("/api/reports", status_code=201)
+    def create_content_report(
+        data: ContentReportIn,
+        user: dict = Depends(active_user),
+        db: sqlite3.Connection = Depends(get_connection),
+    ):
+        allowed(user, "candidate")
+        vacancy = db.execute(
+            """SELECT v.id,v.employer_id,v.status,COALESCE(vm.status,'approved') AS moderation_status
+               FROM vacancies v
+               LEFT JOIN vacancy_moderation vm ON vm.vacancy_id=v.id
+               WHERE v.id=?""",
+            (data.vacancy_id,),
+        ).fetchone()
+        if vacancy is None or vacancy["status"] != "open" or vacancy["moderation_status"] != "approved":
+            raise HTTPException(404, "Вакансия недоступна")
+        duplicate = db.execute(
+            """SELECT report_key FROM content_reports
+               WHERE reporter_id=? AND vacancy_id=? AND target_type=?
+                 AND status IN ('new','reviewed')""",
+            (user["id"], data.vacancy_id, data.target_type),
+        ).fetchone()
+        if duplicate is not None:
+            raise HTTPException(409, "Жалоба уже отправлена и находится на рассмотрении")
+        report_key = secrets.token_urlsafe(12)
+        db.execute(
+            """INSERT INTO content_reports(
+                   report_key,reporter_id,vacancy_id,employer_id,target_type,reason,details,status,created_at
+               ) VALUES(?,?,?,?,?,?,?,?,?)""",
+            (
+                report_key, user["id"], data.vacancy_id, vacancy["employer_id"],
+                data.target_type, data.reason, data.details.strip(), "new", utc_now_text(),
+            ),
+        )
+        auto_pending = False
+        if data.target_type == "vacancy":
+            count = db.execute(
+                """SELECT COUNT(DISTINCT reporter_id) FROM content_reports
+                   WHERE vacancy_id=? AND target_type='vacancy' AND status IN ('new','reviewed')""",
+                (data.vacancy_id,),
+            ).fetchone()[0]
+            current = moderation_status(db, data.vacancy_id)
+            if count >= 2 and current == "approved":
+                now = utc_now_text()
+                db.execute(
+                    """INSERT INTO vacancy_moderation(vacancy_id,status,reason,updated_at)
+                       VALUES(?,?,?,?)
+                       ON CONFLICT(vacancy_id) DO UPDATE SET
+                         status=excluded.status,reason=excluded.reason,
+                         reviewed_by=NULL,reviewed_at=NULL,updated_at=excluded.updated_at""",
+                    (data.vacancy_id, "pending", "Автоматически скрыта после нескольких жалоб", now),
+                )
+                auto_pending = True
+        db.commit()
+        return {"ok": True, "report_key": report_key, "vacancy_pending_review": auto_pending}
 
     @app.patch("/api/admin/employers/{user_id}/verification")
     def admin_employer_verification(
@@ -779,9 +881,20 @@ def install_routes(app) -> None:
     @app.get("/api/admin/vacancies")
     def admin_vacancies(user: dict = Depends(active_user), db: sqlite3.Connection = Depends(get_connection)):
         allowed(user, "admin")
-        rows = db.execute("""SELECT v.id,v.title,v.city,v.status,v.created_at,e.company_name
-                             FROM vacancies v JOIN employer_profiles e ON e.user_id=v.employer_id
-                             ORDER BY v.id DESC LIMIT 300""").fetchall()
+        rows = db.execute(
+            """SELECT v.id,v.employer_id,v.title,v.city,v.status,v.created_at,e.company_name,
+                      COALESCE(vm.status,'approved') AS moderation_status,
+                      COALESCE(vm.reason,'') AS moderation_reason,
+                      COALESCE((
+                        SELECT COUNT(*) FROM content_reports r
+                        WHERE r.vacancy_id=v.id AND r.status IN ('new','reviewed')
+                      ),0) AS active_reports
+               FROM vacancies v
+               JOIN employer_profiles e ON e.user_id=v.employer_id
+               LEFT JOIN vacancy_moderation vm ON vm.vacancy_id=v.id
+               ORDER BY CASE COALESCE(vm.status,'approved') WHEN 'pending' THEN 0 WHEN 'rejected' THEN 1 ELSE 2 END,
+                        v.id DESC LIMIT 300"""
+        ).fetchall()
         return {"jobs": [dict(r) for r in rows]}
 
     @app.patch("/api/admin/vacancies/{job_id}/status")
@@ -794,6 +907,74 @@ def install_routes(app) -> None:
         db.execute("INSERT INTO admin_audit(admin_id,action,target_id) VALUES(?,?,?)",
                    (user["id"], "vacancy_" + data.status, job_id))
         # Commit before the HTTP response: a new dashboard request may arrive immediately.
+        db.commit()
+        return {"ok": True}
+
+    @app.patch("/api/admin/vacancies/{job_id}/moderation")
+    def admin_vacancy_moderation(
+        job_id: int,
+        data: VacancyModerationIn,
+        user: dict = Depends(active_user),
+        db: sqlite3.Connection = Depends(get_connection),
+    ):
+        allowed(user, "admin")
+        if data.status == "rejected" and not data.reason.strip():
+            raise HTTPException(422, "Укажите причину отклонения вакансии")
+        if db.execute("SELECT 1 FROM vacancies WHERE id=?", (job_id,)).fetchone() is None:
+            raise HTTPException(404, "Вакансия не найдена")
+        now = utc_now_text()
+        db.execute(
+            """INSERT INTO vacancy_moderation(vacancy_id,status,reason,reviewed_by,reviewed_at,updated_at)
+               VALUES(?,?,?,?,?,?)
+               ON CONFLICT(vacancy_id) DO UPDATE SET
+                 status=excluded.status,reason=excluded.reason,reviewed_by=excluded.reviewed_by,
+                 reviewed_at=excluded.reviewed_at,updated_at=excluded.updated_at""",
+            (job_id, data.status, data.reason.strip(), user["id"], now, now),
+        )
+        db.execute(
+            "INSERT INTO admin_audit(admin_id,action,target_id) VALUES(?,?,?)",
+            (user["id"], "vacancy_moderation_" + data.status, job_id),
+        )
+        db.commit()
+        return {"ok": True, "status": data.status}
+
+    @app.get("/api/admin/reports")
+    def admin_reports(user: dict = Depends(active_user), db: sqlite3.Connection = Depends(get_connection)):
+        allowed(user, "admin")
+        rows = db.execute(
+            """SELECT r.report_key,r.vacancy_id,r.employer_id,r.target_type,r.reason,r.details,
+                      r.status,r.created_at,r.reviewed_at,v.title,e.company_name
+               FROM content_reports r
+               JOIN vacancies v ON v.id=r.vacancy_id
+               JOIN employer_profiles e ON e.user_id=r.employer_id
+               ORDER BY CASE r.status WHEN 'new' THEN 0 WHEN 'reviewed' THEN 1 ELSE 2 END,
+                        r.created_at DESC LIMIT 300"""
+        ).fetchall()
+        return {"reports": [dict(row) for row in rows]}
+
+    @app.patch("/api/admin/reports/{report_key}/status")
+    def admin_report_status(
+        report_key: str,
+        data: ContentReportStatusIn,
+        user: dict = Depends(active_user),
+        db: sqlite3.Connection = Depends(get_connection),
+    ):
+        allowed(user, "admin")
+        report = db.execute(
+            "SELECT vacancy_id FROM content_reports WHERE report_key=?",
+            (report_key,),
+        ).fetchone()
+        if report is None:
+            raise HTTPException(404, "Жалоба не найдена")
+        db.execute(
+            """UPDATE content_reports SET status=?,reviewed_at=?,reviewed_by=?
+               WHERE report_key=?""",
+            (data.status, utc_now_text(), user["id"], report_key),
+        )
+        db.execute(
+            "INSERT INTO admin_audit(admin_id,action,target_id) VALUES(?,?,?)",
+            (user["id"], "report_" + data.status, report["vacancy_id"]),
+        )
         db.commit()
         return {"ok": True}
 
