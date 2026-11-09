@@ -75,3 +75,24 @@
   .cta-actions{display:grid;width:100%;grid-template-columns:1fr}
   .cta-actions .btn{width:100%}
 }
+
+.profile-health{margin:18px 0 16px;padding:16px 18px;background:#f3f8fc;border:1px solid #dce9f3;border-radius:14px}
+.profile-health-copy{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:9px}
+.profile-health-copy span{font-size:12px;font-weight:750;color:#526d84}
+.profile-health-copy strong{font-size:20px;color:#083664}
+.profile-health-track{height:8px;border-radius:999px;background:#dfeaf2;overflow:hidden}
+.profile-health-track span{display:block;height:100%;border-radius:999px;background:linear-gradient(90deg,#007fce,#00c7b8)}
+.profile-health>small{display:block;margin-top:8px;color:#6d8192;font-size:11px}
+
+.employer-next{margin-bottom:20px;border:1px solid #d9e8f3;background:linear-gradient(105deg,#edf7fd,#f4fbfa);border-radius:14px;padding:16px 18px;display:flex;align-items:center;justify-content:space-between;gap:18px}
+.employer-next>div{display:flex;flex-direction:column;gap:4px}
+.employer-next span{font-size:10px;font-weight:850;letter-spacing:.12em;color:#007fce;text-transform:uppercase}
+.employer-next strong{font-size:16px}
+.employer-next small{font-size:11px;color:#647b8f;line-height:1.45}
+.employer-next-ok{background:#f4faf7;border-color:#dceee5}
+.employer-next-ok span{color:#008e83}
+
+@media(max-width:570px){
+  .employer-next{align-items:flex-start;flex-direction:column}
+  .employer-next .btn{width:100%}
+}
