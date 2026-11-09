@@ -1,6 +1,5 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
-  <defs><linearGradient id="s" x1="0" y1="1" x2="1" y2="0"><stop stop-color="#083664"/><stop offset=".6" stop-color="#007FCE"/><stop offset="1" stop-color="#00C7B8"/></linearGradient></defs>
-  <rect x="3" y="3" width="58" height="58" rx="18" fill="url(#s)"/>
-  <path d="M45 20C41 15 35 13 28 14C20 15 15 19 15 25C15 31 20 34 28 35L36 36C42 37 45 39 44 44C43 49 38 52 32 52C24 53 18 49 14 44" fill="none" stroke="#fff" stroke-width="6" stroke-linecap="round"/>
-  <path d="M44 42L53 40L48 49Z" fill="#00C7B8"/>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="стажно.ру">
+  <rect x="2" y="2" width="60" height="60" rx="17" fill="#0B2D26"/>
+  <path d="M46 14H27C14 14 7 22 7 32s7 18 20 18h19l-7-10H28c-7 0-11-3-11-8s4-8 11-8h11z" fill="#fff"/>
+  <path d="M29 25h10l12 7-12 7H29l7-7z" fill="#00C853"/>
 </svg>

@@ -1,0 +1,199 @@
+/* Release 0.8 dashboard overview */
+.overview-stack{display:grid;gap:16px}
+.dashboard-overview-hero{background:linear-gradient(135deg,#F3FAF6,#F6FBF8);border-color:#d9e9f3}
+.employer-overview-hero{background:linear-gradient(135deg,#F3FAF6,#F6FBF8)}
+.overview-priority{display:flex;align-items:center;justify-content:space-between;gap:24px;margin-top:10px}
+.overview-priority h3{font-size:27px;margin:0 0 7px}
+.overview-priority p{margin:0;max-width:650px}
+.overview-health{display:grid;grid-template-columns:auto minmax(120px,1fr) auto;align-items:center;gap:12px;margin-top:20px;padding-top:16px;border-top:1px solid #D5E5DC}
+.overview-health>span{font-size:12px;font-weight:750;color:#4F665D}
+.overview-health>strong{font-size:14px;color:#0B2D26}
+.overview-stat-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px}
+.overview-stat-card{appearance:none;text-align:left;border:1px solid #DDEAE3;background:#fff;border-radius:15px;padding:18px;min-height:126px;color:#0B2D26;display:flex;flex-direction:column;gap:5px;transition:transform .18s,box-shadow .18s,border-color .18s}
+.overview-stat-card:hover{transform:translateY(-2px);box-shadow:0 10px 28px #0B2D260D;border-color:#B9D9C8}
+.overview-stat-card:focus-visible{outline:3px solid #00C853;outline-offset:2px}
+.overview-stat-card strong{font-size:30px;line-height:1}
+.overview-stat-card span{font-size:13px;font-weight:800;line-height:1.35}
+.overview-stat-card small{margin-top:auto;color:#71847C;font-size:10px;line-height:1.45}
+.overview-alert{display:flex;align-items:center;justify-content:space-between;gap:18px;border:1px solid #f0d69b;background:#fff8e7;border-radius:14px;padding:14px 16px}
+.overview-alert>div{display:flex;flex-direction:column;gap:4px}
+.overview-alert strong{font-size:13px;color:#6B5421}
+.overview-alert span{font-size:11px;color:#80652f}
+.overview-recommendation .job-card{margin-top:4px}
+.overview-funnel-steps{display:grid;grid-template-columns:1fr auto 1fr auto 1fr auto 1fr;align-items:center;gap:10px;margin-top:22px}
+.overview-funnel-steps>div{background:#F3FAF6;border:1px solid #DDEAE3;border-radius:13px;padding:17px;text-align:center}
+.overview-funnel-steps strong{display:block;font-size:27px;color:#0B2D26}
+.overview-funnel-steps span{font-size:11px;color:#61766E}
+.overview-funnel-steps>b{color:#9ab0c1;font-size:18px}
+@media(max-width:900px){
+  .overview-stat-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .overview-funnel-steps{grid-template-columns:1fr 1fr}
+  .overview-funnel-steps>b{display:none}
+}
+@media(max-width:570px){
+  .overview-priority{align-items:flex-start;flex-direction:column}
+  .overview-priority .btn{width:100%}
+  .overview-health{grid-template-columns:1fr auto}
+  .overview-health .profile-health-track{grid-column:1/-1;grid-row:2}
+  .overview-stat-grid{grid-template-columns:1fr}
+  .overview-stat-card{min-height:105px}
+  .overview-alert{align-items:flex-start;flex-direction:column}
+  .overview-alert .btn{width:100%}
+  .overview-funnel-steps{grid-template-columns:1fr 1fr}
+}
+
+/* Release 0.8 flow polish: vacancy details + employer application review */
+.job-detail-v08{display:grid;gap:18px}
+.job-detail-company{display:flex;flex-wrap:wrap;align-items:center;gap:10px 14px}
+.job-detail-company strong{font-size:1.08rem}
+.job-detail-pay{font-size:clamp(1.45rem,3vw,2rem);font-weight:800;letter-spacing:-.03em}
+.job-detail-facts{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
+.job-detail-facts span,.application-profile-strip span{display:grid;gap:4px;padding:14px 16px;border:1px solid var(--line,#e2e5e9);border-radius:16px;background:#fff}
+.job-detail-facts small,.application-profile-strip small{color:var(--muted,#667085);font-size:.78rem}
+.job-detail-description{line-height:1.65;padding:18px;border-radius:16px;background:var(--soft,#f6f7f8)}
+.job-detail-privacy{padding:14px 16px;border-radius:14px;background:#F0F9F4;border:1px solid #D8EDE2;font-size:.92rem;line-height:1.45}
+.job-detail-action{display:flex;flex-wrap:wrap;gap:10px}
+.application-flow-legend{display:flex;flex-wrap:wrap;align-items:center;gap:7px;font-size:.78rem;color:var(--muted,#667085)}
+.application-flow-legend span{padding:7px 9px;border-radius:999px;background:var(--soft,#f6f7f8)}
+.application-profile-strip{display:grid;grid-template-columns:minmax(0,1.3fr) minmax(0,.7fr);gap:10px;margin:14px 0}
+.application-profile-strip strong{font-size:.94rem;line-height:1.35}
+.application-next-action{display:grid;gap:3px;margin:14px 0 8px;padding:12px 14px;border-left:3px solid currentColor;background:var(--soft,#f6f7f8);border-radius:0 12px 12px 0}
+.application-next-action span{font-size:.75rem;text-transform:uppercase;letter-spacing:.06em;color:var(--muted,#667085)}
+.application-review-card .item-actions{margin-top:10px}
+@media(max-width:720px){
+  .job-detail-facts,.application-profile-strip{grid-template-columns:1fr}
+  .application-flow-legend b{display:none}
+  .application-flow-legend{gap:6px}
+}
+
+
+/* STAZHNO brand system v2 — account areas */
+.dashboard-grid{gap:18px}
+.side-panel{
+  background:#F8FCF9;
+  border-color:#DDEAE3;
+  border-radius:22px;
+}
+.dashboard-tabs{gap:7px}
+.dashboard-tabs button{
+  color:#355148;
+  border-radius:13px;
+  min-height:46px;
+  font-weight:760;
+}
+.dashboard-tabs button:hover{background:#EAF8F0;color:#0B2D26}
+.dashboard-tabs button.active{
+  background:#DDF7E7;
+  color:#0B2D26;
+  box-shadow:inset 3px 0 0 #00C853;
+}
+.dashboard-overview-hero,.employer-overview-hero{
+  background:linear-gradient(135deg,#F3FAF6,#EAF8F0);
+  border-color:#D4E9DC;
+  border-radius:22px;
+}
+.overview-priority h3{color:#0B2D26}
+.overview-health{border-color:#D8E8DF}
+.overview-health>span{color:#526A60}
+.overview-health>strong{color:#0B2D26}
+.profile-health-track{background:#D9E9E0}
+.profile-health-track span{background:linear-gradient(90deg,#00A844,#00C853)}
+.overview-stat-card{
+  border-color:#DDEAE3;
+  border-radius:18px;
+  color:#0B2D26;
+  box-shadow:0 8px 26px #0B2D2605;
+}
+.overview-stat-card:hover{
+  border-color:#B8DEC6;
+  box-shadow:0 16px 34px #0B2D260d;
+}
+.overview-stat-card:focus-visible{outline-color:#00C853}
+.overview-stat-card small{color:#6B7C75}
+.overview-funnel-steps>div{
+  background:#F3FAF6;
+  border-color:#DDEAE3;
+  border-radius:16px;
+}
+.overview-funnel-steps strong{color:#0B2D26}
+.overview-funnel-steps span{color:#61756C}
+.overview-funnel-steps>b{color:#95B3A3}
+
+.profile-health{
+  background:#F3FAF6;
+  border-color:#D5E8DC;
+}
+.profile-health-copy span{color:#526A60}
+.profile-health-copy strong{color:#0B2D26}
+.profile-progress-step{
+  background:#0B2D26;
+  color:#fff;
+}
+.profile-next-actions,
+.experience-entry-inner{
+  border-color:#DDEAE3;
+  background:#F8FCF9;
+}
+.candidate-profile h3,.vacancy-compose h3,.item-card h4{color:#0B2D26}
+
+.item-card{
+  border-color:#DDEAE3;
+  border-radius:18px;
+  box-shadow:0 7px 24px #0B2D2605;
+}
+.item-card:hover{border-color:#C2DEC9}
+.mini-badge{background:#E8F8EE;color:#08793A}
+.mini-badge.gray{background:#F0F4F1;color:#61756C}
+.info-box{
+  background:#F3FAF6;
+  border-color:#CFE6D8;
+  color:#25483B;
+}
+.application-timeline{border-color:#DDEAE3}
+.interaction-note{background:#F3FAF6;border-color:#D6EADD;color:#355148}
+
+.employer-next{
+  background:linear-gradient(105deg,#F3FAF6,#EAF8F0);
+  border-color:#D5E8DC;
+}
+.employer-next span{color:#08793A}
+.employer-next small{color:#60746B}
+.employer-next-ok{background:#F3FAF6;border-color:#D6E9DE}
+.employer-next-ok span{color:#08793A}
+
+.application-profile-strip span,.job-detail-facts span{
+  border-color:#DDEAE3;
+  background:#fff;
+}
+.application-profile-strip small,.job-detail-facts small{color:#667970}
+.application-next-action{
+  background:#F3FAF6;
+  border-left-color:#00C853;
+  color:#0B2D26;
+}
+.application-next-action span{color:#61756C}
+.application-flow-legend span{background:#F3FAF6;color:#385148}
+.job-detail-pay{color:#0B2D26}
+.job-detail-description{background:#F3FAF6;color:#29483D}
+.job-detail-privacy{
+  background:#EAF8F0;
+  border-color:#CDE8D7;
+  color:#355148;
+}
+
+body.comfortable-view .dashboard-tabs button{min-height:52px;font-size:1rem}
+body.comfortable-view .overview-stat-card span,
+body.comfortable-view .item-card,
+body.comfortable-view .field label{font-size:1rem}
+body.comfortable-view .overview-stat-card small,
+body.comfortable-view .field-help{font-size:.9rem}
+
+@media(max-width:720px){
+  .dashboard-grid{gap:12px}
+  .side-panel{border-radius:18px}
+  .dashboard-tabs{display:grid;grid-template-columns:repeat(2,minmax(0,1fr))}
+  .dashboard-tabs button{text-align:left}
+}
+@media(max-width:460px){
+  .dashboard-tabs{grid-template-columns:1fr}
+}

@@ -219,7 +219,7 @@ def create_app(db_path: str | None = None) -> FastAPI:
         init_release02(app.state.db_path)
         yield
 
-    app = FastAPI(title="СТАЖНО", version="0.3.0-dev", lifespan=lifespan, docs_url="/api/docs")
+    app = FastAPI(title="СТАЖНО", version="0.8.0-dev", lifespan=lifespan, docs_url="/api/docs")
     app.state.db_path = db_location
     app.state.auth_attempts = defaultdict(deque)
     app.mount("/static", StaticFiles(directory=str(BASE / "static")), name="static")
@@ -295,7 +295,7 @@ def create_app(db_path: str | None = None) -> FastAPI:
 
     @app.get("/api/health")
     def health():
-        return {"status": "ok", "version": "0.3.0-dev", "payments": "demo_only"}
+        return {"status": "ok", "version": "0.8.0-dev", "payments": "demo_only"}
 
     @app.post("/api/register", status_code=201)
     def register(data: Registration, response: Response, db: sqlite3.Connection = Depends(get_connection)):
@@ -363,22 +363,27 @@ def create_app(db_path: str | None = None) -> FastAPI:
 
     @app.get("/api/jobs")
     def jobs(q: str = "", city: str = "", salary_min: int = 0, schedule: str = "",
-             employment: str = "", db: sqlite3.Connection = Depends(get_connection)):
-        """Public job search: profession/title, location, minimum acceptable salary, schedule."""
+             employment: str = "", sort: str = "recent",
+             db: sqlite3.Connection = Depends(get_connection)):
+        """Public job search with transparent filters and deterministic sorting."""
         if salary_min < 0 or salary_min > 10_000_000 or len(q) > 120 or len(city) > 100:
             raise HTTPException(422, "Проверьте параметры поиска")
         if schedule and schedule not in SCHEDULES:
             raise HTTPException(422, "Недопустимый график")
         if employment and employment not in EMPLOYMENTS:
             raise HTTPException(422, "Недопустимая занятость")
+        if sort not in {"recent", "salary_desc", "salary_asc"}:
+            raise HTTPException(422, "Недопустимая сортировка")
         sql = """SELECT v.*,e.company_name FROM vacancies v JOIN employer_profiles e
                  ON e.user_id=v.employer_id WHERE v.status='open'"""
         params: list = []
         if q.strip():
             # instr on Unicode-casefolded text ensures correct Cyrillic search.
-            sql += " AND (instr(unicode_fold(v.title), ?) > 0 OR instr(unicode_fold(v.skills), ?) > 0)"
+            sql += """ AND (instr(unicode_fold(v.title), ?) > 0
+                         OR instr(unicode_fold(v.skills), ?) > 0
+                         OR instr(unicode_fold(v.description), ?) > 0)"""
             needle = q.strip().casefold()
-            params.extend([needle, needle])
+            params.extend([needle, needle, needle])
         if city.strip():
             sql += " AND (unicode_fold(v.city)=? OR unicode_fold(v.city)='удалённо' OR unicode_fold(v.city)='любой город')"
             params.append(city.strip().casefold())
@@ -391,7 +396,13 @@ def create_app(db_path: str | None = None) -> FastAPI:
         if employment and employment != "Любая":
             sql += " AND (v.employment=? OR v.employment='Любая')"
             params.append(employment)
-        sql += " ORDER BY v.id DESC LIMIT 100"
+        if sort == "salary_desc":
+            sql += " ORDER BY v.salary_max DESC, v.salary_min DESC, v.id DESC"
+        elif sort == "salary_asc":
+            sql += " ORDER BY v.salary_min ASC, v.salary_max ASC, v.id DESC"
+        else:
+            sql += " ORDER BY v.id DESC"
+        sql += " LIMIT 100"
         return {"jobs": [dict(row) for row in db.execute(sql, params).fetchall()]}
 
     @app.get("/api/candidate/jobs")
@@ -613,15 +624,26 @@ def create_app(db_path: str | None = None) -> FastAPI:
         if vacancy is None:
             raise HTTPException(404, "Вакансия не найдена")
         rows = db.execute(
-            """SELECT c.*,u.id AS candidate_id FROM candidate_profiles c
-               JOIN users u ON u.id=c.user_id WHERE c.is_active=1 AND u.role='candidate'"""
+            """SELECT c.*,u.id AS candidate_id,
+                      i.id AS invitation_id,i.status AS invitation_status,
+                      i.contact_shared AS contact_shared
+               FROM candidate_profiles c
+               JOIN users u ON u.id=c.user_id
+               LEFT JOIN invitations i ON i.candidate_id=u.id AND i.vacancy_id=?
+               WHERE c.is_active=1 AND u.role='candidate'""",
+            (job_id,),
         ).fetchall()
         matches = []
         for row in rows:
             score = match_candidate(dict(vacancy), dict(row))
             if score:
-                # Privacy: no name, phone, email or freeform about before candidate consent + demo payment.
-                matches.append({k: row[k] for k in ("candidate_id", "profession", "city", "skills", "salary_min", "schedule", "employment")} | score)
+                # Privacy: no name, phone, email or freeform about before candidate consent + contact opening.
+                public = {k: row[k] for k in (
+                    "candidate_id", "profession", "city", "skills",
+                    "salary_min", "schedule", "employment",
+                    "invitation_id", "invitation_status", "contact_shared",
+                )}
+                matches.append(public | score)
         return {"matches": sorted(matches, key=lambda x: (-x["score"], x["candidate_id"]))[:50]}
 
     @app.post("/api/employer/invitations", status_code=201)

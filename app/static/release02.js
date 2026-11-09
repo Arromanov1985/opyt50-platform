@@ -21,6 +21,12 @@
     // Keep application status beside recommended vacancies, so clicking twice
     // never looks like a system failure. The server still enforces uniqueness.
     let applicationByVacancy = new Map();
+    let favoriteVacancyIds = new Set();
+    async function refreshFavorites() {
+      if (state.user?.role !== 'candidate') { favoriteVacancyIds = new Set(); return; }
+      const result = await api('/api/candidate/favorites');
+      favoriteVacancyIds = new Set((result.jobs || []).map(job => Number(job.id)));
+    }
     async function refreshMyApplications() {
       if (state.user?.role !== 'candidate') { applicationByVacancy = new Map(); return; }
       const result = await api('/api/candidate/applications');
@@ -38,24 +44,54 @@
     }
     jobMarkup = function(job, personalized = false) {
       const id = Number(job.id), open = job.status !== 'closed';
-      return `<article class="job-card"><div class="job-top"><span class="job-company">${esc(job.company_name || 'Работодатель')}</span><span class="job-category">${personalized ? 'Совпадение '+Number(job.score)+'%' : (open ? 'Вакансия' : 'Закрыта')}</span></div>
+      const saved = favoriteVacancyIds.has(id);
+      const skills = String(job.skills || '').split(',').map(s=>s.trim()).filter(Boolean).slice(0,4);
+      const score = Number(job.score || 0);
+      const scoreClass = score >= 80 ? 'high' : 'medium';
+      const reasons = Array.isArray(job.reasons) ? job.reasons : [];
+      const scoreBadge = personalized
+        ? `<span class="job-category match-score ${scoreClass}"><span class="match-score-dot"></span>${score}% совпадение</span>`
+        : `<span class="job-category">${open ? 'Вакансия' : 'Закрыта'}</span>`;
+      return `<article class="job-card job-card-v08" data-job-id="${id}"><div class="job-top"><span class="job-company">${esc(job.company_name || 'Работодатель')}</span>${scoreBadge}</div>
         <h3>${esc(job.title)}</h3><div class="job-salary">${formatPay(job)}</div>
         <div class="job-meta"><span>⌖ ${esc(job.city)}</span><span>${esc(job.schedule)}</span><span>${esc(job.employment)}</span></div>
-        <p>${esc(job.skills || 'Подробности в описании вакансии')}</p>
-        ${personalized ? `<details class="match-explanation"><summary>Почему мне подходит эта вакансия?</summary><ul>${(Array.isArray(job.reasons) ? job.reasons : []).map(reason => `<li>${esc(reason)}</li>`).join('') || '<li>Подходят основные условия вашего профиля</li>'}</ul><p class="muted">Процент совпадения — ориентир по данным анкеты, а не вероятность трудоустройства. Решение о приглашении принимает работодатель.</p></details>` : ''}
+        ${skills.length ? `<div class="job-skill-tags">${skills.map(skill=>`<span>${esc(skill)}</span>`).join('')}</div>` : ''}
+        ${personalized && reasons.length ? `<div class="match-reasons-preview">${reasons.slice(0,2).map(reason=>`<span>✓ ${esc(reason)}</span>`).join('')}</div>` : ''}
+        ${personalized ? `<details class="match-explanation"><summary>Почему эта вакансия в рекомендациях?</summary><ul>${reasons.map(reason => `<li>${esc(reason)}</li>`).join('') || '<li>Подходят основные условия вашего профиля</li>'}</ul><p class="muted">Совпадение рассчитывается по данным профиля и помогает сортировать варианты. Оно не гарантирует приглашение.</p></details>` : ''}
         <div class="job-actions"><button class="btn btn-outline btn-tiny" data-v02-action="details" data-id="${id}">Подробнее</button>
-        ${open ? `${state.user?.role === 'candidate' ? jobApplicationAction(id, job) : `<button type="button" class="btn btn-primary btn-tiny" data-v02-action="apply" data-id="${id}">Откликнуться</button>`}<button class="btn btn-outline btn-tiny" data-v02-action="favorite" data-id="${id}" aria-label="Сохранить вакансию">♡</button>` : ''}</div></article>`;
+        ${open ? `${state.user?.role === 'candidate' ? jobApplicationAction(id, job) : `<button type="button" class="btn btn-primary btn-tiny" data-v02-action="apply" data-id="${id}">Откликнуться</button>`}<button class="btn btn-outline btn-tiny favorite-toggle" data-v02-action="${saved ? 'favorite-remove-inline' : 'favorite'}" data-id="${id}" aria-label="${saved ? 'Убрать вакансию из избранного' : 'Сохранить вакансию'}" aria-pressed="${saved ? 'true' : 'false'}">${saved ? '♥' : '♡'}</button>` : ''}</div></article>`;
     };
     loadPublicJobs = async function() {
       try {
+        await Promise.all([refreshMyApplications(), refreshFavorites()]);
         const qs = new URLSearchParams();
-        for (const [input,param] of [['profession-filter','q'],['city-filter','city'],['salary-filter','salary_min'],['schedule-filter','schedule']]) {
-          const value=searchValue(input); if(value) qs.set(param,value);
+        const filters = [
+          ['profession-filter','q','Профессия'],
+          ['city-filter','city','Город'],
+          ['salary-filter','salary_min','Зарплата от'],
+          ['schedule-filter','schedule','График'],
+          ['employment-filter','employment','Занятость']
+        ];
+        const active = [];
+        for (const [input,param,label] of filters) {
+          const value=searchValue(input);
+          if(value){ qs.set(param,value); active.push([label,value]); }
         }
-        const {jobs} = await api('/api/jobs'+(qs.size ? '?'+qs : ''));
+        const sort=searchValue('sort-filter') || 'recent';
+        qs.set('sort',sort);
+        const result = await api('/api/jobs?'+qs);
+        const jobs = result.jobs || [];
         $('#jobs-count').textContent = `Найдено: ${jobs.length}`;
-        $('#public-jobs').innerHTML = jobs.length ? jobs.map(j=>jobMarkup(j)).join('') : '<div class="empty-state">Вакансий по запросу нет. Попробуйте изменить условия.</div>';
-      } catch(e) { toast(e.message,true); $('#public-jobs').innerHTML='<div class="empty-state">Ошибка загрузки вакансий.</div>'; }
+        const sortLabels={salary_desc:'Сначала выше зарплата',salary_asc:'Сначала ниже зарплата'};
+        if(sortLabels[sort]) active.push(['Сортировка',sortLabels[sort]]);
+        $('#job-filter-summary').innerHTML = active.map(([label,value])=>`<span class="filter-chip">${esc(label)}: ${esc(value)}</span>`).join('');
+        $('#public-jobs').innerHTML = jobs.length
+          ? jobs.map(j=>jobMarkup(j)).join('')
+          : '<div class="empty-state"><strong>По этим условиям вакансий нет.</strong><p>Уберите один из фильтров или сбросьте поиск, чтобы увидеть больше вариантов.</p></div>';
+      } catch(e) {
+        toast(e.message,true);
+        $('#public-jobs').innerHTML='<div class="empty-state">Не удалось загрузить вакансии. Попробуйте ещё раз.</div>';
+      }
     };
 
     const oldCandidate = renderCandidate;
@@ -99,12 +135,13 @@
 
     renderCandidate = async function() {
       if (!candidateExtra.some(t=>t.id===state.tab)) {
-        if (state.tab === 'offers') {
-          try { await refreshMyApplications(); }
+        if (state.tab === 'offers' || state.tab === 'overview') {
+          try { await Promise.all([refreshMyApplications(), refreshFavorites()]); }
           catch (e) {
             applicationByVacancy = new Map();
-            // The recommended jobs API also returns application_status, so
-            // already-submitted requests still display correctly without this call.
+            favoriteVacancyIds = new Set();
+            // Recommended jobs still return application_status, so a temporary
+            // auxiliary-list failure must not hide the main recommendations.
           }
         }
         await oldCandidate();
@@ -137,7 +174,7 @@
         if (nav) nav.insertAdjacentHTML('beforeend',candidateExtra.map(t=>`<button type="button" data-tab="${t.id}">${t.label}</button>`).join(''));
         return;
       }
-      const nav = [{id:'profile',label:'Мой профиль'},{id:'offers',label:'Подходящие вакансии'},{id:'invitations',label:'Приглашения'},...candidateExtra];
+      const nav = [{id:'overview',label:'Обзор'},{id:'profile',label:'Мой профиль'},{id:'offers',label:'Подходящие вакансии'},{id:'invitations',label:'Приглашения'},...candidateExtra];
       $('#account-content').innerHTML=`<div class="dashboard-grid">${tabsMarkup(nav,'ДЛЯ СОИСКАТЕЛЯ','Ваша карьера')}<div id="dashboard-main"><div class="loading">Загрузка...</div></div></div>`;
       try {
         if(state.tab==='favorites'){
@@ -172,7 +209,7 @@
         if(nav) nav.insertAdjacentHTML('beforeend','<button type="button" data-tab="applications">Отклики соискателей</button>');
         return;
       }
-      const nav=[{id:'vacancies',label:'Мои вакансии'},{id:'create',label:'Новая вакансия'},{id:'invitations',label:'Приглашения и контакты'},...employerExtra];
+      const nav=[{id:'overview',label:'Обзор'},{id:'vacancies',label:'Мои вакансии'},{id:'create',label:'Новая вакансия'},{id:'invitations',label:'Приглашения и контакты'},...employerExtra];
       $('#account-content').innerHTML=`<div class="dashboard-grid">${tabsMarkup(nav,'ДЛЯ КОМПАНИИ',state.user.company?.company_name||'Работодатель')}<div id="dashboard-main"></div></div>`;
       try {
         const {applications}=await api('/api/employer/applications');
@@ -181,7 +218,7 @@
         const shown = selected === 'all' ? applications : applications.filter(a => String(a.vacancy_id) === selected);
         const options = jobs.map(j => `<option value="${Number(j.id)}" ${String(j.id) === selected ? 'selected' : ''}>${esc(j.title)}</option>`).join('');
         const selector = `<div class="field"><label for="employer-applications-vacancy">Вакансия</label><select id="employer-applications-vacancy"><option value="all">Все вакансии</option>${options}</select></div>`;
-        $('#dashboard-main').innerHTML=`<div class="panel"><h3>Отклики соискателей</h3><p class="muted">Профили обезличены. Контакты — только через отдельное согласие кандидата и действующий процесс знакомства.</p><div class="form-grid">${selector}</div><p class="muted" role="status">Найдено откликов: ${shown.length}</p><div class="dashboard-list">${shown.length?shown.map(a=>`<article class="item-card"><header><div><h4>${esc(a.profession)}</h4><p>${esc(a.title)} · ${esc(a.city)} · зарплатные ожидания от ${money(a.expected_salary)}</p></div><span class="mini-badge">${esc(workflowStatus(a,status[a.status]||a.status))}</span></header><p>${esc(a.skills||'Навыки не указаны')}</p>${activityTimelineMarkup(a)}${employerIntroBadge(a)}${['applied','reviewing','interview'].includes(a.status) && !a.invitation_id?`<div class="item-actions"><button class="btn btn-outline btn-tiny" data-v02-action="application-status" data-id="${Number(a.id)}" data-status="reviewing">Рассмотреть</button>${!a.invitation_id ? `<button class="btn btn-primary btn-tiny" data-v02-action="express-interest" data-id="${Number(a.id)}">Заинтересован · запросить согласие</button>` : ''}<button class="btn btn-outline btn-tiny" data-v02-action="application-status" data-id="${Number(a.id)}" data-status="rejected">Отказать</button></div>`:''}</article>`).join(''):'<div class="empty-state">Откликов пока нет.</div>'}</div></div>`;
+        $('#dashboard-main').innerHTML=`<div class="panel employer-applications-panel"><div class="split-header"><div><span class="section-kicker">ОТКЛИКИ</span><h3>Кандидаты по вашим вакансиям</h3><p class="muted">Сначала оценивайте опыт и навыки. Имя, телефон и email остаются скрытыми до отдельного согласия кандидата.</p></div><div class="application-flow-legend" aria-label="Этапы обработки отклика"><span>1. Отклик</span><b>→</b><span>2. Рассмотрение</span><b>→</b><span>3. Согласие</span><b>→</b><span>4. Знакомство</span></div></div><div class="form-grid">${selector}</div><p class="muted" role="status">Найдено откликов: ${shown.length}</p><div class="dashboard-list">${shown.length?shown.map(a=>`<article class="item-card application-review-card"><header><div><h4>${esc(a.profession)}</h4><p>${esc(a.title)} · ${esc(a.city)} · ожидания от ${money(a.expected_salary)}</p></div><span class="mini-badge">${esc(workflowStatus(a,status[a.status]||a.status))}</span></header><div class="application-profile-strip"><span><small>Навыки</small><strong>${esc(a.skills||'Не указаны')}</strong></span><span><small>Этап</small><strong>${a.contact_shared?'Контакт открыт':a.invitation_status==='accepted'?'Есть согласие':a.invitation_status==='sent'?'Ждём решения кандидата':a.status==='reviewing'?'На рассмотрении':'Новый отклик'}</strong></span></div>${activityTimelineMarkup(a)}${employerIntroBadge(a)}${['applied','reviewing','interview'].includes(a.status) && !a.invitation_id?`<div class="application-next-action"><span>Следующее действие</span><strong>${a.status==='applied'?'Проверьте профиль и переведите в рассмотрение':'Решите, хотите ли начать знакомство'}</strong></div><div class="item-actions"><button class="btn btn-outline btn-tiny" data-v02-action="application-status" data-id="${Number(a.id)}" data-status="reviewing">${a.status==='applied'?'Взять в рассмотрение':'Оставить на рассмотрении'}</button><button class="btn btn-primary btn-tiny" data-v02-action="express-interest" data-id="${Number(a.id)}">Запросить согласие на знакомство →</button><button class="btn btn-outline btn-tiny" data-v02-action="application-status" data-id="${Number(a.id)}" data-status="rejected">Отказать</button></div>`:''}</article>`).join(''):'<div class="empty-state"><strong>Откликов пока нет.</strong><p>Когда соискатель откликнется, его обезличенный профиль появится здесь.</p></div>'}</div></div>`;
       } catch(e) { $('#dashboard-main').textContent=e.message;toast(e.message,true); }
     };
 
@@ -220,7 +257,8 @@
         if(type==='details'){
           const {job}=await api(`/api/jobs/${id}`);
           $('#job-dialog-title').textContent=job.title;
-          $('#job-dialog-content').innerHTML=`<p><strong>${esc(job.company_name)}</strong> · ${esc(job.city)}</p><p class="job-salary">${formatPay(job)}</p><p>График: ${esc(job.schedule)} · Занятость: ${esc(job.employment)}</p><p><strong>Навыки:</strong> ${esc(job.skills||'По договорённости')}</p><p class="detail-description">${esc(job.description||'Подробности у работодателя')}</p>${state.user?.role==='candidate' ? jobApplicationAction(Number(job.id), job) : `<button class="btn btn-primary" data-v02-action="apply" data-id="${Number(job.id)}">Откликнуться</button>`}`;
+          const skills=String(job.skills||'').split(',').map(x=>x.trim()).filter(Boolean);
+          $('#job-dialog-content').innerHTML=`<div class="job-detail-v08"><div class="job-detail-company"><span class="section-kicker">ВАКАНСИЯ</span><strong>${esc(job.company_name)}</strong><span>⌖ ${esc(job.city)}</span></div><div class="job-detail-pay">${formatPay(job)}</div><div class="job-detail-facts"><span><small>График</small><strong>${esc(job.schedule)}</strong></span><span><small>Занятость</small><strong>${esc(job.employment)}</strong></span></div>${skills.length?`<div class="job-skill-tags">${skills.slice(0,8).map(skill=>`<span>${esc(skill)}</span>`).join('')}</div>`:''}<div class="job-detail-description">${esc(job.description||'Подробности у работодателя').replace(/\n/g,'<br>')}</div><div class="job-detail-privacy">Ваши контакты не передаются работодателю автоматически. Сначала отправляется отклик, а знакомство проходит только через отдельное согласие.</div><div class="job-detail-action">${state.user?.role==='candidate' ? jobApplicationAction(Number(job.id), job) : `<button class="btn btn-primary" data-v02-action="apply" data-id="${Number(job.id)}">Откликнуться на вакансию →</button>`}</div></div>`;
           $('#job-dialog').showModal();
         }else if(['apply','favorite'].includes(type)){
           if(state.user?.role!=='candidate'){ if($('#job-dialog').open) $('#job-dialog').close(); if(state.user)throw Error('Действие доступно только соискателю');openAuth('login','candidate');return; }
@@ -241,8 +279,23 @@
               } else throw err;
             }
           }
-          else {await req('POST',`/api/candidate/favorites/${id}`);toast('Вакансия сохранена');}
-        }else if(type==='remove-favorite'){await req('DELETE',`/api/candidate/favorites/${id}`);await showDashboard();toast('Вакансия удалена из избранного');}
+          else {
+            await req('POST',`/api/candidate/favorites/${id}`);
+            favoriteVacancyIds.add(id);
+            toast('Вакансия сохранена в избранном');
+            await loadPublicJobs();
+          }
+        }else if(type==='favorite-remove-inline'){
+          await req('DELETE',`/api/candidate/favorites/${id}`);
+          favoriteVacancyIds.delete(id);
+          toast('Вакансия удалена из избранного');
+          await loadPublicJobs();
+        }else if(type==='remove-favorite'){
+          await req('DELETE',`/api/candidate/favorites/${id}`);
+          favoriteVacancyIds.delete(id);
+          await showDashboard();
+          toast('Вакансия удалена из избранного');
+        }
         else if(type==='withdraw'){await req('POST',`/api/candidate/applications/${id}/withdraw`);await showDashboard();toast('Отклик отозван');}
         else if(type==='reapply'){const result=await req('POST','/api/candidate/applications',{vacancy_id:id});await refreshMyApplications();await showDashboard();toast(result.reapplied?'Отклик отправлен повторно':'Отклик отправлен');}
         else if(type==='mark-vacancy-update-read'){await req('POST',`/api/candidate/vacancy-updates/${id}/read`);await showDashboard();toast('Изменение отмечено прочитанным.');}
@@ -284,7 +337,14 @@
       if(action==='reset'){$('#reset-token').value=token;$('#reset-dialog').showModal();}
       if(action==='verify'){req('POST','/api/account/email/confirm',{token}).then(()=>toast('Email подтверждён.')).catch(e=>toast(e.message,true));}
     }
-    ['profession-filter','salary-filter'].forEach(id=>$('#'+id).addEventListener('keydown',e=>{if(e.key==='Enter')loadPublicJobs();}));
-    $('#schedule-filter').addEventListener('change',loadPublicJobs);
+    ['profession-filter','city-filter','salary-filter'].forEach(id=>$('#'+id).addEventListener('keydown',e=>{if(e.key==='Enter')loadPublicJobs();}));
+    ['schedule-filter','employment-filter','sort-filter'].forEach(id=>$('#'+id).addEventListener('change',loadPublicJobs));
+    $('#jobs-reset').addEventListener('click',()=>{
+      ['profession-filter','city-filter','salary-filter'].forEach(id=>$('#'+id).value='');
+      $('#schedule-filter').value='';
+      $('#employment-filter').value='';
+      $('#sort-filter').value='recent';
+      loadPublicJobs();
+    });
   });
 })();

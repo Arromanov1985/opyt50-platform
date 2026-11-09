@@ -61,6 +61,11 @@ def test_search_filters_and_details(app):
         assert visitor.get(f"/api/jobs/{jid}").json()["job"]["description"].startswith("Условия")
         assert visitor.get("/api/jobs",params={"schedule":"123"}).status_code==422
         assert visitor.get("/api/jobs",params={"salary_min":-1}).status_code==422
+        assert visitor.get("/api/jobs",params={"sort":"unknown"}).status_code==422
+        salary_desc=visitor.get("/api/jobs",params={"sort":"salary_desc"}).json()["jobs"]
+        assert [j["salary_max"] for j in salary_desc] == sorted([j["salary_max"] for j in salary_desc], reverse=True)
+        salary_asc=visitor.get("/api/jobs",params={"sort":"salary_asc"}).json()["jobs"]
+        assert [j["salary_min"] for j in salary_asc] == sorted([j["salary_min"] for j in salary_asc])
         assert employer.patch(f"/api/employer/vacancies/{jid}/status",json={"status":"closed"},headers=HEADERS).status_code==200
         assert visitor.get(f"/api/jobs/{jid}").status_code==404
 

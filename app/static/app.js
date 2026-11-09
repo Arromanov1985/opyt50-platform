@@ -2,7 +2,7 @@
 'use strict';
 const $ = (selector, root = document) => root.querySelector(selector);
 const $$ = (selector, root = document) => [...root.querySelectorAll(selector)];
-const state = { user: null, mode: 'register', role: 'candidate', tab: 'profile', activeVacancy: null, editVacancy: null, employerVacancyFilter: 'all', employerApplicationsVacancyFilter: 'all' };
+const state = { user: null, mode: 'register', role: 'candidate', tab: 'overview', activeVacancy: null, editVacancy: null, employerVacancyFilter: 'all', employerApplicationsVacancyFilter: 'all' };
 const esc = value => String(value ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const money = value => Number(value || 0).toLocaleString('ru-RU') + ' ₽';
 const formatPay = job => job.salary_min === job.salary_max ? money(job.salary_min) : `${money(job.salary_min)} — ${money(job.salary_max)}`;
@@ -81,8 +81,10 @@ function updateAuth() {
   $('#auth-password').autocomplete = reg ? 'new-password' : 'current-password';
   $('#auth-submit').textContent = reg ? 'Создать аккаунт →' : 'Войти →';
   $('#auth-guidance').textContent = reg
-    ? 'Для начала нужны только имя, email и пароль. Профессию и опыт добавите позже. В тестовой версии используйте только вымышленные данные.'
-    : 'Войдите в свой тестовый аккаунт. Реальные данные пока не используйте.';
+    ? (state.role === 'employer'
+      ? 'Для начала нужны имя, компания, email и пароль. Первую вакансию сможете создать сразу после регистрации.'
+      : 'Для начала нужны имя, email и пароль. Профессию, навыки и условия работы добавите в профиле.')
+    : 'Введите email и пароль от своего аккаунта СТАЖНО.';
   $$('.role-btn').forEach(b => b.classList.toggle('active', b.dataset.role === state.role));
   $('#auth-switch').innerHTML = reg ? 'Уже есть аккаунт? <button type="button" data-switch="login">Войти</button>' : 'Ещё нет аккаунта? <button type="button" data-switch="register">Создать профиль</button>';
 }
@@ -97,7 +99,7 @@ async function submitAuth(event) {
   const btn = $('#auth-submit'); btn.disabled = true;
   try {
     const data = await api(state.mode === 'register' ? '/api/register' : '/api/login', {method:'POST', body:JSON.stringify(body)});
-    $('#auth-dialog').close(); state.user = data.user; state.tab = data.user.role === 'employer' ? 'vacancies' : 'profile';
+    $('#auth-dialog').close(); state.user = data.user; state.tab = 'overview';
     await showDashboard(true); toast('Готово! Добро пожаловать в СТАЖНО.');
   } catch(e) { toast(e.message, true); } finally { btn.disabled = false; }
 }
@@ -119,12 +121,36 @@ async function showDashboard(scroll = false) {
 function tabsMarkup(items, heading, subtitle) {
   return `<aside class="panel side-panel"><span class="section-kicker">${esc(heading)}</span><h3 class="tab-heading">${esc(subtitle)}</h3><nav class="dashboard-tabs" aria-label="Разделы личного кабинета">${items.map(t => `<button type="button" data-tab="${esc(t.id)}" class="${state.tab === t.id ? 'active' : ''}">${esc(t.label)}</button>`).join('')}</nav></aside>`;
 }
+function candidateProfileHealth(profile = {}) {
+  const checks = [
+    Boolean((profile.profession || '').trim()),
+    Boolean((profile.city || '').trim()),
+    Number(profile.salary_min || 0) > 0,
+    Boolean((profile.skills || '').trim()),
+    Boolean((profile.about || '').trim())
+  ];
+  const completed = checks.filter(Boolean).length;
+  const percent = completed * 20;
+  const next = !checks[0] ? 'Укажите профессию'
+    : !checks[1] ? 'Укажите город'
+    : !checks[2] ? 'Добавьте зарплатные ожидания'
+    : !checks[3] ? 'Добавьте несколько навыков'
+    : !checks[4] ? 'Коротко опишите опыт'
+    : 'Профиль готов к подбору';
+  return {percent, next};
+}
 function profileMarkup(profile = {}, user = {}) {
+  const health = candidateProfileHealth(profile);
   // Additional details stay optional; open them explicitly when the candidate is ready.
   return `<div class="panel candidate-profile">
     <span class="section-kicker">ВАШ ПРОФЕССИОНАЛЬНЫЙ ОПЫТ</span>
     <h3>Расскажите, какую работу вы ищете</h3>
     <p class="muted">Начните с нескольких пунктов. Большое резюме не требуется. Эти сведения используются для подбора вакансий.</p>
+    <div class="profile-health" role="status" aria-label="Готовность профиля">
+      <div class="profile-health-copy"><span>Готовность профиля</span><strong>${health.percent}%</strong></div>
+      <div class="profile-health-track"><span style="width:${health.percent}%"></span></div>
+      <small>${esc(health.next)}</small>
+    </div>
     <div class="profile-progress" role="note"><span class="profile-progress-step">1</span><div><strong>Основные сведения</strong><small>Профессия, город, навыки, зарплата и график</small></div></div>
     <form id="profile-form">
       <div class="form-grid">
@@ -157,14 +183,14 @@ function profileMarkup(profile = {}, user = {}) {
               <div class="field"><label for="profile-employment">Тип занятости</label>
                 <select id="profile-employment" name="employment">${optList(employment,profile.employment)}</select></div>
               <div class="field"><label for="profile-phone">Телефон (необязательно)</label>
-                <input id="profile-phone" name="phone" type="tel" value="${esc(user.phone)}" maxlength="30" autocomplete="off" placeholder="Только вымышленный номер для теста">
-                <small class="field-help">В тестовой версии не вводите реальный номер. Контакт защищён отдельным согласием.</small></div>
+                <input id="profile-phone" name="phone" type="tel" value="${esc(user.phone)}" maxlength="30" autocomplete="off" placeholder="Например, +7 900 000-00-00">
+                <small class="field-help">Телефон не показывается работодателю автоматически и открывается только в предусмотренном сценарии знакомства.</small></div>
               <div class="field wide"><label for="profile-about">Немного о вашем опыте</label>
                 <textarea id="profile-about" name="about" maxlength="700" placeholder="Расскажите о своей работе и достижениях. Не указывайте здесь контакты.">${esc(profile.about)}</textarea>
                 <details class="experience-helper" id="experience-helper">
                   <summary>Не знаете, что написать? Поможем описать ваш опыт</summary>
                   <p class="experience-helper-intro">Ответьте на три простых вопроса. Мы составим текст только из ваших слов. Проверьте его и при желании добавьте в профиль.</p>
-                  <p class="experience-helper-privacy">Это локальный помощник без ИИ и внешних сервисов. Не указывайте настоящие имена, телефон, email или адреса.</p>
+                  <p class="experience-helper-privacy">Помощник работает локально и не отправляет ответы во внешние сервисы. Не добавляйте телефон, email или адрес в описание опыта.</p>
                   <div class="experience-helper-fields">
                     <label for="experience-work">1. Какой работой вы занимались?</label>
                     <textarea id="experience-work" rows="2" maxlength="220" placeholder="Например: учёт товаров на складе"></textarea>
@@ -200,11 +226,59 @@ function profileMarkup(profile = {}, user = {}) {
   </div>`;
 }
 async function renderCandidate() {
-  const nav = [{id:'profile',label:'Мой профиль'},{id:'offers',label:'Подходящие вакансии'},{id:'invitations',label:'Приглашения'}];
+  const nav = [{id:'overview',label:'Обзор'},{id:'profile',label:'Мой профиль'},{id:'offers',label:'Подходящие вакансии'},{id:'invitations',label:'Приглашения'}];
+  if (!nav.some(t => t.id === state.tab)) state.tab = 'overview';
   $('#account-content').innerHTML = `<div class="dashboard-grid">${tabsMarkup(nav,'ДЛЯ СОИСКАТЕЛЯ','Ваша карьера')}<div id="dashboard-main"><div class="loading">Загрузка...</div></div></div>`;
   const target = $('#dashboard-main');
   try {
-    if (state.tab === 'profile') target.innerHTML = profileMarkup(state.user.profile, state.user);
+    if (state.tab === 'overview') {
+      const [jobsResult, applicationsResult, invitationsResult, favoritesResult, updatesResult] = await Promise.all([
+        api('/api/candidate/jobs'),
+        api('/api/candidate/applications'),
+        api('/api/candidate/invitations'),
+        api('/api/candidate/favorites'),
+        api('/api/candidate/vacancy-updates')
+      ]);
+      const health = candidateProfileHealth(state.user.profile || {});
+      const jobs = jobsResult.jobs || [];
+      const applications = applicationsResult.applications || [];
+      const invitations = invitationsResult.invitations || [];
+      const favorites = favoritesResult.jobs || [];
+      const pendingInvitations = invitations.filter(item => item.status === 'sent').length;
+      const activeApplications = applications.filter(item => !['withdrawn','rejected'].includes(item.status)).length;
+      const unreadChanges = Number(updatesResult.unread_count || 0);
+      let nextTitle = 'Посмотрите подходящие вакансии';
+      let nextText = 'Профиль уже может участвовать в подборе. Проверьте новые рекомендации.';
+      let nextAction = '<button class="btn btn-primary" data-tab="offers">Открыть рекомендации →</button>';
+      if (health.percent < 60) {
+        nextTitle = health.next;
+        nextText = 'Чем полнее основные данные, тем точнее подбор вакансий.';
+        nextAction = '<button class="btn btn-primary" data-tab="profile">Продолжить профиль →</button>';
+      } else if (pendingInvitations > 0) {
+        nextTitle = 'Ответьте на приглашение работодателя';
+        nextText = `Ожидают решения: ${pendingInvitations}. Контакты не откроются без вашего согласия.`;
+        nextAction = '<button class="btn btn-primary" data-tab="invitations">Открыть приглашения →</button>';
+      } else if (!jobs.length) {
+        nextTitle = 'Расширьте поиск';
+        nextText = 'Строгих совпадений пока нет — можно посмотреть все открытые вакансии.';
+        nextAction = '<a class="btn btn-primary" href="#jobs">Все вакансии →</a>';
+      }
+      target.innerHTML = `<div class="overview-stack">
+        <section class="panel dashboard-overview-hero">
+          <span class="section-kicker">ВАШ СЛЕДУЮЩИЙ ШАГ</span>
+          <div class="overview-priority"><div><h3>${esc(nextTitle)}</h3><p class="muted">${esc(nextText)}</p></div>${nextAction}</div>
+          <div class="overview-health"><span>Готовность профиля</span><div class="profile-health-track"><span style="width:${health.percent}%"></span></div><strong>${health.percent}%</strong></div>
+        </section>
+        ${unreadChanges ? `<section class="overview-alert" role="status"><div><strong>Изменились условия вакансий</strong><span>Непрочитанных изменений: ${unreadChanges}</span></div><button class="btn btn-outline btn-tiny" data-tab="changes">Проверить изменения</button></section>` : ''}
+        <section class="overview-stat-grid" aria-label="Сводка соискателя">
+          <button type="button" class="overview-stat-card" data-tab="offers"><strong>${jobs.length}</strong><span>Подходящие вакансии</span><small>По вашему профилю</small></button>
+          <button type="button" class="overview-stat-card" data-tab="applications"><strong>${activeApplications}</strong><span>Активные отклики</span><small>В процессе</small></button>
+          <button type="button" class="overview-stat-card" data-tab="invitations"><strong>${pendingInvitations}</strong><span>Новые приглашения</span><small>Ждут решения</small></button>
+          <button type="button" class="overview-stat-card" data-tab="favorites"><strong>${favorites.length}</strong><span>Избранное</span><small>Сохранённые вакансии</small></button>
+        </section>
+        ${jobs.length ? `<section class="panel overview-recommendation"><div class="split-header"><div><span class="section-kicker">ЛУЧШЕЕ СОВПАДЕНИЕ</span><h3>Начните с этой вакансии</h3></div><button class="btn btn-outline btn-tiny" data-tab="offers">Все рекомендации</button></div><div class="dashboard-list">${jobMarkup(jobs[0],true)}</div></section>` : ''}
+      </div>`;
+    } else if (state.tab === 'profile') target.innerHTML = profileMarkup(state.user.profile, state.user);
     else if (state.tab === 'offers') {
       const {jobs} = await api('/api/candidate/jobs');
       target.innerHTML = `<div class="panel"><h3>Подходящие вакансии</h3><p class="muted">Алгоритм учитывает навыки, город, график и ожидания по зарплате. Совпадение — рекомендация, не решение о трудоустройстве.</p><div class="dashboard-list">${jobs.length ? jobs.map(x => jobMarkup(x,true)).join('') : '<div class="empty-state"><p>Подходящих вакансий пока нет. Можно изменить профессию, город или желаемую зарплату.</p><button type="button" class="btn btn-outline" data-tab="profile">Уточнить профиль</button> <a class="btn btn-primary" href="#jobs">Посмотреть все вакансии</a></div>'}</div></div>`;
@@ -219,13 +293,63 @@ function invitationCandidateMarkup(x) {
    <p>${esc(x.description || 'Подробности на собеседовании.')}</p>${activityTimelineMarkup(x)}${x.status === 'sent' ? `<div class="item-actions"><label class="checks"><input type="checkbox" id="consent-${x.id}"> Согласен(-на) передать мои имя и контакты этой компании после тестового подтверждения знакомства</label></div><div class="item-actions"><button class="btn btn-primary btn-tiny" data-action="accept" data-id="${x.id}">Интересно, согласен(-на)</button><button class="btn btn-outline btn-tiny" data-action="decline" data-id="${x.id}">Отказаться</button></div>` : (x.contact_shared ? '<div class="info-box">Контакты были открыты работодателю в демонстрационном режиме.</div>' : '')}</article>`;
 }
 async function renderEmployer() {
-  const nav = [{id:'vacancies',label:'Мои вакансии'},{id:'create',label:'Новая вакансия'},{id:'invitations',label:'Приглашения и контакты'}];
-  if (state.tab === 'edit') nav.splice(1, 0, {id:'edit',label:'Редактирование'});
-  if (!nav.some(t => t.id === state.tab)) state.tab = 'vacancies';
+  const nav = [{id:'overview',label:'Обзор'},{id:'vacancies',label:'Мои вакансии'},{id:'create',label:'Новая вакансия'},{id:'invitations',label:'Приглашения и контакты'}];
+  if (state.tab === 'edit') nav.splice(2, 0, {id:'edit',label:'Редактирование'});
+  if (!nav.some(t => t.id === state.tab)) state.tab = 'overview';
   $('#account-content').innerHTML = `<div class="dashboard-grid">${tabsMarkup(nav,'ДЛЯ КОМПАНИИ',state.user.company?.company_name || 'Работодатель')}<div id="dashboard-main"><div class="loading">Загрузка...</div></div></div>`;
   const target = $('#dashboard-main');
   try {
-    if (state.tab === 'create') target.innerHTML = vacancyFormMarkup();
+    if (state.tab === 'overview') {
+      const [jobsResult, applicationsResult, invitationsResult] = await Promise.all([
+        api('/api/employer/vacancies'),
+        api('/api/employer/applications'),
+        api('/api/employer/invitations')
+      ]);
+      const jobs = jobsResult.jobs || [];
+      const applications = applicationsResult.applications || [];
+      const invitations = invitationsResult.invitations || [];
+      const openJobs = jobs.filter(job => job.status === 'open');
+      const waitingApplications = applications.filter(item => ['applied','reviewing'].includes(item.status));
+      const acceptedInvitations = invitations.filter(item => item.status === 'accepted' && !item.contact_shared);
+      const openedContacts = invitations.filter(item => item.contact_shared).length;
+      let nextTitle = 'Создайте первую вакансию';
+      let nextText = 'После публикации можно получать отклики и запускать подбор кандидатов.';
+      let nextAction = '<button class="btn btn-primary" data-tab="create">Создать вакансию →</button>';
+      if (acceptedInvitations.length) {
+        nextTitle = 'Есть согласие кандидата';
+        nextText = `Можно продолжить знакомство по ${acceptedInvitations.length} кандидатам.`;
+        nextAction = '<button class="btn btn-primary" data-tab="invitations">Продолжить знакомства →</button>';
+      } else if (waitingApplications.length) {
+        nextTitle = 'Разберите новые отклики';
+        nextText = `Требуют внимания: ${waitingApplications.length}.`;
+        nextAction = '<button class="btn btn-primary" data-tab="applications">Открыть отклики →</button>';
+      } else if (openJobs.length) {
+        nextTitle = 'Запустите подбор по открытой вакансии';
+        nextText = 'Посмотрите подходящие обезличенные профили и пригласите тех, кто подходит.';
+        nextAction = '<button class="btn btn-primary" data-tab="vacancies">К вакансиям →</button>';
+      }
+      target.innerHTML = `<div class="overview-stack">
+        <section class="panel dashboard-overview-hero employer-overview-hero">
+          <span class="section-kicker">ПРИОРИТЕТ СЕЙЧАС</span>
+          <div class="overview-priority"><div><h3>${esc(nextTitle)}</h3><p class="muted">${esc(nextText)}</p></div>${nextAction}</div>
+        </section>
+        <section class="overview-stat-grid employer-overview-stats" aria-label="Сводка работодателя">
+          <button type="button" class="overview-stat-card" data-tab="vacancies"><strong>${openJobs.length}</strong><span>Открытые вакансии</span><small>Сейчас в работе</small></button>
+          <button type="button" class="overview-stat-card" data-tab="applications"><strong>${waitingApplications.length}</strong><span>Отклики требуют внимания</span><small>Новые и на рассмотрении</small></button>
+          <button type="button" class="overview-stat-card" data-tab="invitations"><strong>${acceptedInvitations.length}</strong><span>Согласия кандидатов</span><small>Можно продолжить знакомство</small></button>
+          <button type="button" class="overview-stat-card" data-tab="invitations"><strong>${openedContacts}</strong><span>Открытые контакты</span><small>Завершённые знакомства</small></button>
+        </section>
+        <section class="panel overview-funnel">
+          <div class="split-header"><div><span class="section-kicker">ВОРОНКА</span><h3>От вакансии до знакомства</h3></div><button class="btn btn-outline btn-tiny" data-tab="vacancies">Управлять вакансиями</button></div>
+          <div class="overview-funnel-steps">
+            <div><strong>${jobs.length}</strong><span>Вакансии</span></div><b>→</b>
+            <div><strong>${applications.length}</strong><span>Отклики</span></div><b>→</b>
+            <div><strong>${invitations.length}</strong><span>Приглашения</span></div><b>→</b>
+            <div><strong>${openedContacts}</strong><span>Знакомства</span></div>
+          </div>
+        </section>
+      </div>`;
+    } else if (state.tab === 'create') target.innerHTML = vacancyFormMarkup();
     else if (state.tab === 'edit') await loadEmployerVacancyEdit();
     else if (state.tab === 'vacancies') await loadEmployerVacancies();
     else await loadEmployerInvitations();
@@ -255,7 +379,7 @@ function vacancyFormMarkup(job = null) {
     <span class="section-kicker">${isEdit ? 'РЕДАКТИРОВАНИЕ ВАКАНСИИ' : 'НОВАЯ ВАКАНСИЯ'}</span>
     <h3>${isEdit ? 'Изменить вакансию' : 'Разместить вакансию'}</h3>
     <p class="muted">${isEdit ? 'Исправьте условия и проверьте объявление перед сохранением. ID вакансии и существующие отклики останутся прежними.' : 'Заполните короткие разделы, проверьте объявление глазами соискателя и только затем опубликуйте. Размещение бесплатное; контакты кандидата защищены отдельным согласием.'}</p>
-    <p class="vacancy-demo-warning">Тестовый стенд: используйте только вымышленные сведения о компании, вакансии и контактах.</p>
+    <p class="vacancy-demo-warning">Не указывайте личные контакты в тексте вакансии: для связи с кандидатом используется защищённый сценарий знакомства.</p>
     ${isEdit ? `<p class="vacancy-edit-warning">Редактирование не удаляет отклики и приглашения, но ранее откликнувшиеся соискатели не получат автоматического уведомления об изменении условий. Статус вакансии остаётся прежним.</p>` : ``}
     <form id="vacancy-form" data-edit-id="${isEdit ? job.id : ''}" data-revision="${isEdit ? esc(job.revision) : ''}" data-edit-mode="${legacy ? 'legacy' : 'structured'}">
       <fieldset class="vacancy-step">
@@ -333,7 +457,19 @@ async function loadEmployerVacancies() {
   const visibleJobs = filter === 'all' ? jobs : jobs.filter(job => job.status === filter);
   const interestedCount = applications.filter(a => a.status === 'interview' || a.invitation_id).length;
   const introducedCount = applications.filter(a => a.contact_shared).length;
-  view.innerHTML = `<div class="panel"><div class="split-header"><div><h3>Мои вакансии</h3><p class="muted">После размещения получите список обезличенных профилей.</p></div><button class="btn btn-primary btn-tiny" data-action="new-job">+ Добавить</button></div><div class="stat-grid" aria-label="Статистика вакансий"><div class="stat-tile"><strong>${jobs.length}</strong><span>Всего вакансий</span></div><div class="stat-tile"><strong>${openCount}</strong><span>Открыты</span></div><div class="stat-tile"><strong>${closedCount}</strong><span>Закрыты</span></div></div><div class="stat-grid" aria-label="Воронка подбора"><div class="stat-tile"><strong>${applications.length}</strong><span>Отклики</span></div><div class="stat-tile"><strong>${interestedCount}</strong><span>Заинтересованные</span></div><div class="stat-tile"><strong>${introducedCount}</strong><span>Знакомства (демо)</span></div></div><div class="item-actions" role="group" aria-label="Фильтр вакансий"><button type="button" class="btn btn-tiny ${filter === 'all' ? 'btn-dark' : 'btn-outline'}" data-action="filter-employer-jobs" data-filter="all" aria-pressed="${filter === 'all'}">Все (${jobs.length})</button><button type="button" class="btn btn-tiny ${filter === 'open' ? 'btn-dark' : 'btn-outline'}" data-action="filter-employer-jobs" data-filter="open" aria-pressed="${filter === 'open'}">Открытые (${openCount})</button><button type="button" class="btn btn-tiny ${filter === 'closed' ? 'btn-dark' : 'btn-outline'}" data-action="filter-employer-jobs" data-filter="closed" aria-pressed="${filter === 'closed'}">Закрытые (${closedCount})</button></div><div class="dashboard-list">${visibleJobs.length ? visibleJobs.map(job => jobEmployerMarkup(job, applicationsByJob.get(Number(job.id)))).join('') : '<div class="empty-state">В выбранной категории вакансий нет.</div>'}</div></div><div id="employer-matches" class="hidden"></div>`;
+  const firstOpenJob = jobs.find(job => job.status === 'open');
+  const firstApplication = applications[0];
+  let nextAction = '<div class="employer-next"><div><span>Следующий шаг</span><strong>Создайте первую вакансию</strong><small>После публикации можно получать отклики и запускать подбор.</small></div><button class="btn btn-primary btn-tiny" data-action="new-job">Создать вакансию →</button></div>';
+  if (jobs.length && applications.length === 0 && firstOpenJob) {
+    nextAction = `<div class="employer-next"><div><span>Следующий шаг</span><strong>Запустите подбор кандидатов</strong><small>Открытая вакансия уже есть — посмотрите подходящие профили.</small></div><button class="btn btn-dark btn-tiny" data-action="matches" data-id="${Number(firstOpenJob.id)}">Подобрать кандидатов →</button></div>`;
+  } else if (applications.length && interestedCount === 0 && firstApplication) {
+    nextAction = `<div class="employer-next"><div><span>Требует внимания</span><strong>Разберите новые отклики</strong><small>Сейчас в воронке ${applications.length} откликов.</small></div><button class="btn btn-primary btn-tiny" data-action="vacancy-applications" data-id="${Number(firstApplication.vacancy_id)}">Открыть отклики →</button></div>`;
+  } else if (interestedCount > introducedCount) {
+    nextAction = `<div class="employer-next"><div><span>Следующий шаг</span><strong>Продолжите знакомства</strong><small>Есть кандидаты, по которым процесс ещё не завершён.</small></div><button class="btn btn-primary btn-tiny" data-tab="invitations">Открыть приглашения →</button></div>`;
+  } else if (jobs.length) {
+    nextAction = '<div class="employer-next employer-next-ok"><div><span>Воронка под контролем</span><strong>Продолжайте работу с вакансиями</strong><small>Статусы и следующие действия собраны в одном кабинете.</small></div></div>';
+  }
+  view.innerHTML = `<div class="panel">${nextAction}<div class="split-header"><div><h3>Мои вакансии</h3><p class="muted">После размещения получите список обезличенных профилей.</p></div><button class="btn btn-primary btn-tiny" data-action="new-job">+ Добавить</button></div><div class="stat-grid" aria-label="Статистика вакансий"><div class="stat-tile"><strong>${jobs.length}</strong><span>Всего вакансий</span></div><div class="stat-tile"><strong>${openCount}</strong><span>Открыты</span></div><div class="stat-tile"><strong>${closedCount}</strong><span>Закрыты</span></div></div><div class="stat-grid" aria-label="Воронка подбора"><div class="stat-tile"><strong>${applications.length}</strong><span>Отклики</span></div><div class="stat-tile"><strong>${interestedCount}</strong><span>Заинтересованные</span></div><div class="stat-tile"><strong>${introducedCount}</strong><span>Знакомства (демо)</span></div></div><div class="item-actions" role="group" aria-label="Фильтр вакансий"><button type="button" class="btn btn-tiny ${filter === 'all' ? 'btn-dark' : 'btn-outline'}" data-action="filter-employer-jobs" data-filter="all" aria-pressed="${filter === 'all'}">Все (${jobs.length})</button><button type="button" class="btn btn-tiny ${filter === 'open' ? 'btn-dark' : 'btn-outline'}" data-action="filter-employer-jobs" data-filter="open" aria-pressed="${filter === 'open'}">Открытые (${openCount})</button><button type="button" class="btn btn-tiny ${filter === 'closed' ? 'btn-dark' : 'btn-outline'}" data-action="filter-employer-jobs" data-filter="closed" aria-pressed="${filter === 'closed'}">Закрытые (${closedCount})</button></div><div class="dashboard-list">${visibleJobs.length ? visibleJobs.map(job => jobEmployerMarkup(job, applicationsByJob.get(Number(job.id)))).join('') : '<div class="empty-state">В выбранной категории вакансий нет.</div>'}</div></div><div id="employer-matches" class="hidden"></div>`;
   if (state.activeVacancy && jobs.some(j=>j.id===state.activeVacancy)) await loadMatches(state.activeVacancy);
 }
 function jobEmployerMarkup(x, stats = {total: 0, interested: 0}) {
@@ -346,7 +482,21 @@ async function loadMatches(jobId) {
   state.activeVacancy = jobId;
   try {
     const {matches} = await api(`/api/employer/vacancies/${jobId}/matches`);
-    target.innerHTML = `<div class="panel"><div class="split-header"><h3>Подходящие кандидаты</h3><span class="mini-badge blue">${matches.length} совпадений</span></div><p class="muted">Контакты скрыты. Пригласите кандидата, дождитесь его согласия и используйте демонстрационную оплату.</p><div class="dashboard-list">${matches.length ? matches.map(m => `<article class="item-card"><header><div><h4>${esc(m.profession)}</h4><p>Город: ${esc(m.city)} · Ожидания от ${money(m.salary_min)}</p></div><span class="mini-badge">${m.score}% совпадение</span></header><p class="candidate-skills">${esc(m.skills || 'Навыки не указаны')}</p><p>${m.reasons.map(esc).join(' · ')}</p><button class="btn btn-primary btn-tiny" data-action="invite" data-job="${jobId}" data-id="${m.candidate_id}">Пригласить кандидата →</button></article>`).join('') : '<div class="empty-state">Пока нет совпадений. Попробуйте расширить условия поиска.</div>'}</div></div>`;
+    target.innerHTML = `<div class="panel"><div class="split-header"><div><h3>Подходящие кандидаты</h3><p class="muted">Сначала оценивайте профессиональные параметры. Имя, телефон и email остаются скрытыми до согласия кандидата и предусмотренного этапа знакомства.</p></div><span class="mini-badge blue">${matches.length} совпадений</span></div><div class="dashboard-list">${matches.length ? matches.map(m => {
+      const scoreClass = Number(m.score) >= 80 ? 'high' : 'medium';
+      const reasons = Array.isArray(m.reasons) ? m.reasons : [];
+      let action = `<button class="btn btn-primary btn-tiny" data-action="invite" data-job="${jobId}" data-id="${m.candidate_id}">Пригласить кандидата →</button>`;
+      if (m.contact_shared) action = '<button class="btn btn-outline btn-tiny" data-tab="invitations">Контакт уже открыт →</button>';
+      else if (m.invitation_status === 'accepted') action = '<button class="btn btn-primary btn-tiny" data-tab="invitations">Согласие получено · продолжить →</button>';
+      else if (m.invitation_status === 'sent') action = '<button class="btn btn-outline btn-tiny" data-tab="invitations">Приглашение отправлено · ожидаем ответ</button>';
+      else if (m.invitation_status === 'declined') action = '<button class="btn btn-outline btn-tiny" type="button" disabled>Кандидат отказался</button>';
+      return `<article class="item-card candidate-match-card ${scoreClass}">
+        <header><div><h4>${esc(m.profession)}</h4><div class="candidate-match-meta"><span>⌖ ${esc(m.city)}</span><span>от ${money(m.salary_min)}</span><span>${esc(m.schedule)}</span><span>${esc(m.employment)}</span></div></div><div class="candidate-match-score"><span class="match-score-dot"></span><strong>${Number(m.score)}%</strong></div></header>
+        <div class="job-skill-tags">${String(m.skills || '').split(',').map(s=>s.trim()).filter(Boolean).slice(0,5).map(skill=>`<span>${esc(skill)}</span>`).join('') || '<span>Навыки не указаны</span>'}</div>
+        <div class="candidate-match-reasons">${reasons.slice(0,3).map(reason=>`<span>✓ ${esc(reason)}</span>`).join('')}</div>
+        <div class="item-actions">${action}</div>
+      </article>`;
+    }).join('') : '<div class="empty-state"><strong>Точных совпадений пока нет.</strong><p>Попробуйте расширить график, город или зарплатный диапазон вакансии.</p></div>'}</div></div>`;
   } catch(e) { target.innerHTML = `<div class="panel">${esc(e.message)}</div>`; toast(e.message,true); }
 }
 async function loadEmployerInvitations() {
@@ -463,8 +613,8 @@ async function start() {
   $('#city-filter').addEventListener('keydown',e=>{if(e.key==='Enter')loadPublicJobs();});
   $('#account-content').addEventListener('click',handleDashboardClick);
   $('#account-content').addEventListener('submit',handleDashboardSubmit);
-  await loadPublicJobs();
   await reloadUser();
-  if (state.user) { state.tab = state.user.role==='employer'?'vacancies':'profile'; await showDashboard(); }
+  await loadPublicJobs();
+  if (state.user) { state.tab = 'overview'; await showDashboard(); }
 }
 document.addEventListener('DOMContentLoaded',start);

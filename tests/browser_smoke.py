@@ -38,9 +38,11 @@ def run_browser(page):
     expect(page.locator(".brand-word").first).to_contain_text("стажно")
     assert "СТАЖНО" in page.title()
     assert "опытно.рф" not in page.locator("body").inner_text().casefold()
-    expect(page.locator(".release-ribbon")).to_contain_text("0.3.0-dev")
+    expect(page.locator(".product-strip")).to_contain_text("Без возрастных барьеров")
+    expect(page.locator("#candidate-path")).to_be_visible()
+    expect(page.locator("#employer-path")).to_be_visible()
     # Search first; registration is not required to inspect a vacancy.
-    page.get_by_role("link", name="Посмотреть вакансии").first.click()
+    page.get_by_role("link", name="Найти работу").first.click()
     assert page.evaluate("location.hash") == "#jobs"
     expect(page.locator("#guest-actions")).to_be_visible()
 
@@ -71,19 +73,30 @@ def run_browser(page):
 
     page.locator("#register-open").click()
     expect(page.locator("#auth-name")).to_be_focused()
-    expect(page.locator("#auth-guidance")).to_contain_text("вымышленные данные")
+    expect(page.locator("#auth-guidance")).to_contain_text("Профессию, навыки")
+    page.locator(".role-btn[data-role='employer']").click()
+    expect(page.locator("#auth-company-row")).to_be_visible()
+    expect(page.locator("#auth-guidance")).to_contain_text("Первую вакансию")
+    page.locator(".role-btn[data-role='candidate']").click()
     page.locator("#modal-close").click()
     expect(page.locator("#profession-filter")).to_be_visible()
     expect(page.locator("#schedule-filter")).to_be_visible()
+    expect(page.locator("#employment-filter")).to_be_visible()
+    expect(page.locator("#sort-filter")).to_be_visible()
 
     page.locator("#profession-filter").fill("Кладовщик")
     page.locator("#city-filter").fill("Подольск")
     page.locator("#salary-filter").fill("70000")
     page.locator("#schedule-filter").select_option(label="Сменный")
+    page.locator("#employment-filter").select_option(label="Полная")
+    page.locator("#sort-filter").select_option("salary_desc")
     page.locator("#jobs-filter").click()
     expect(page.locator("#public-jobs .job-card")).to_have_count(1)
     expect(page.locator("#jobs-count")).to_contain_text("Найдено: 1")
+    expect(page.locator("#job-filter-summary")).to_contain_text("Занятость: Полная")
+    expect(page.locator("#job-filter-summary")).to_contain_text("Сортировка: Сначала выше зарплата")
     expect(page.locator("#public-jobs .job-card")).to_contain_text("Кладовщик")
+    expect(page.locator("#public-jobs .job-skill-tags")).to_contain_text("склад")
 
     page.locator("#public-jobs [data-v02-action='details']").click()
     expect(page.locator("#job-dialog")).to_be_visible()
@@ -92,7 +105,12 @@ def run_browser(page):
     expect(page.locator("#job-dialog")).not_to_be_visible()
 
     login(page, "kladovshik@demo.example")
+    expect(page.locator("#dashboard-main")).to_contain_text("ВАШ СЛЕДУЮЩИЙ ШАГ")
+    expect(page.locator("#dashboard-main .overview-stat-card")).to_have_count(4)
+    page.locator(".dashboard-tabs [data-tab='profile']").click()
     expect(page.locator("#profile-form")).to_be_visible()
+    expect(page.locator(".profile-health")).to_be_visible()
+    expect(page.locator(".profile-health")).to_contain_text("%")
     expect(page.locator("#profile-profession")).to_have_value("Кладовщик")
     expect(page.locator(".profile-optional")).not_to_have_attribute("open", "")
     expect(page.locator("#profile-phone")).not_to_be_visible()
@@ -147,8 +165,10 @@ def run_browser(page):
     saved_profile = page.request.get(URL + "/api/me").json()["user"]["profile"]
     assert saved_profile["about"].startswith("Ранее записанный опыт.\n\nНаправление работы:")
     assert "1С и ведение документов" in saved_profile["about"]
-    # A full browser reload must retain what the candidate saved.
+    # A full browser reload returns to the overview; profile data must remain intact.
     page.reload(wait_until="networkidle")
+    expect(page.locator("#dashboard-main")).to_contain_text("ВАШ СЛЕДУЮЩИЙ ШАГ")
+    page.locator(".dashboard-tabs [data-tab='profile']").click()
     expect(page.locator("#profile-about")).to_have_value(saved_profile["about"])
     expect(page.locator(".profile-optional")).not_to_have_attribute("open", "")
     expect(page.locator("#experience-start")).to_contain_text("Помочь описать опыт")
@@ -162,9 +182,11 @@ def run_browser(page):
     expect(page.locator("#dashboard-main .match-explanation").first).to_be_visible()
     page.locator("#dashboard-main .match-explanation summary").first.click()
     expect(page.locator("#dashboard-main .match-explanation").first).to_contain_text("Подходят зарплатные ожидания")
-    expect(page.locator("#dashboard-main .match-explanation").first).to_contain_text("не вероятность трудоустройства")
+    expect(page.locator("#dashboard-main .match-explanation").first).to_contain_text("не гарантирует приглашение")
     page.locator("#public-jobs .job-card").filter(has_text="Кладовщик").locator("[data-v02-action='favorite']").click()
     expect(page.locator("#toast")).to_contain_text("сохранена")
+    expect(page.locator("#public-jobs .job-card").filter(has_text="Кладовщик").locator(".favorite-toggle")).to_have_attribute("aria-pressed","true")
+    expect(page.locator("#public-jobs .job-card").filter(has_text="Кладовщик").locator(".favorite-toggle")).to_contain_text("♥")
     page.locator(".dashboard-tabs [data-tab='favorites']").click()
     expect(page.locator("#dashboard-main")).to_contain_text("Избранные вакансии")
     expect(page.locator("#dashboard-main")).to_contain_text("Кладовщик")
@@ -200,6 +222,11 @@ def run_browser(page):
     page.locator("#logout").click()
 
     login(page, "company@demo.example")
+    expect(page.locator("#dashboard-main")).to_contain_text("ПРИОРИТЕТ СЕЙЧАС")
+    expect(page.locator("#dashboard-main .overview-stat-card")).to_have_count(4)
+    expect(page.locator("#dashboard-main .overview-funnel")).to_be_visible()
+    page.locator(".dashboard-tabs [data-tab='vacancies']").click()
+    expect(page.locator(".employer-next")).to_be_visible()
     # Release 0.6: vacancy overview and direct navigation to its applications.
     expect(page.locator("#dashboard-main")).to_contain_text("Заинтересованные")
     expect(page.locator("#dashboard-main")).to_contain_text("Знакомства (демо)")
@@ -237,6 +264,12 @@ def run_browser(page):
     page.locator("#logout").click()
 
     login(page, "company@demo.example")
+    expect(page.locator("#dashboard-main")).to_contain_text("Есть согласие кандидата")
+    page.locator(".dashboard-tabs [data-tab='vacancies']").click()
+    page.locator("#dashboard-main .item-card").filter(has_text="Кладовщик").locator("[data-action='matches']").click()
+    expect(page.locator("#employer-matches .candidate-match-card")).to_be_visible()
+    expect(page.locator("#employer-matches")).to_contain_text("Согласие получено")
+    expect(page.locator("#employer-matches")).to_contain_text("%")
     page.locator(".dashboard-tabs [data-tab='invitations']").click()
     expect(page.locator("#dashboard-main")).to_contain_text("Согласие получено")
     page.once("dialog", lambda dialog: dialog.accept())
@@ -273,7 +306,7 @@ def run_browser(page):
     # Reproduce the real screenshot: account has an existing application
     # before reloading the website and opening recommended jobs again.
     page.reload(wait_until="networkidle")
-    expect(page.locator(".release-ribbon")).to_contain_text("0.3.0-dev")
+    expect(page.locator(".product-strip")).to_contain_text("СТАЖНО")
     page.locator(".dashboard-tabs [data-tab='offers']").click()
     expect(page.locator("#dashboard-main")).to_contain_text("Отклик: Отправлен")
     expect(page.locator("#dashboard-main [data-v02-action='apply']")).to_have_count(0)
@@ -300,6 +333,8 @@ def run_browser(page):
     login(page, "kladovshik@demo.example")
     expect(page.locator(".dashboard-tabs")).to_be_visible()
     assert page.locator(".dashboard-tabs [data-tab='profile']").bounding_box()["height"] >= 44
+    expect(page.locator("#dashboard-main .overview-stat-card")).to_have_count(4)
+    page.locator(".dashboard-tabs [data-tab='profile']").click()
     expect(page.locator("#profile-form")).to_be_visible()
     page.locator(".dashboard-tabs [data-tab='applications']").click()
     expect(page.locator("#dashboard-main")).to_contain_text("Знакомство состоялось (демо")

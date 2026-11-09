@@ -98,6 +98,11 @@ def test_complete_introduction_flow(app):
         invitation = post(employer, "/api/employer/invitations", {"vacancy_id":job_id, "candidate_id":cid})
         assert invitation.status_code == 201
         iid = invitation.json()["id"]
+        sent_match = employer.get(f"/api/employer/vacancies/{job_id}/matches").json()["matches"][0]
+        assert sent_match["invitation_id"] == iid
+        assert sent_match["invitation_status"] == "sent"
+        assert not sent_match["contact_shared"]
+        assert "email" not in sent_match and "phone" not in sent_match and "name" not in sent_match
         assert post(employer, f"/api/employer/invitations/{iid}/demo-pay").status_code == 409
         assert post(employer, "/api/employer/invitations", {"vacancy_id":job_id, "candidate_id":cid}).status_code == 409
         candidate_invite = candidate.get("/api/candidate/invitations").json()["invitations"]
@@ -107,6 +112,9 @@ def test_complete_introduction_flow(app):
         assert result.status_code == 200
         before = employer.get("/api/employer/invitations").json()["invitations"][0]
         assert before["status"] == "accepted" and "contact" not in before
+        accepted_match = employer.get(f"/api/employer/vacancies/{job_id}/matches").json()["matches"][0]
+        assert accepted_match["invitation_status"] == "accepted"
+        assert not accepted_match["contact_shared"]
         paid = post(employer, f"/api/employer/invitations/{iid}/demo-pay")
         assert paid.status_code == 200
         assert paid.json()["amount_rub"] == 1490
@@ -115,6 +123,9 @@ def test_complete_introduction_flow(app):
         assert post(employer, f"/api/employer/invitations/{iid}/demo-pay").status_code == 200  # idempotent
         after = employer.get("/api/employer/invitations").json()["invitations"][0]
         assert after["contact"]["name"] == "Светлана Иванова"
+        opened_match = employer.get(f"/api/employer/vacancies/{job_id}/matches").json()["matches"][0]
+        assert opened_match["contact_shared"] == 1
+        assert "email" not in opened_match and "phone" not in opened_match and "name" not in opened_match
         with database(app.state.db_path) as db:
             assert db.execute("SELECT COUNT(*) FROM demo_transactions").fetchone()[0] == 1
             assert db.execute("SELECT employer_id FROM invitations WHERE id=?", (iid,)).fetchone()[0] == eid
