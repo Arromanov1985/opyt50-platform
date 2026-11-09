@@ -21,6 +21,12 @@
     // Keep application status beside recommended vacancies, so clicking twice
     // never looks like a system failure. The server still enforces uniqueness.
     let applicationByVacancy = new Map();
+    let favoriteVacancyIds = new Set();
+    async function refreshFavorites() {
+      if (state.user?.role !== 'candidate') { favoriteVacancyIds = new Set(); return; }
+      const result = await api('/api/candidate/favorites');
+      favoriteVacancyIds = new Set((result.jobs || []).map(job => Number(job.id)));
+    }
     async function refreshMyApplications() {
       if (state.user?.role !== 'candidate') { applicationByVacancy = new Map(); return; }
       const result = await api('/api/candidate/applications');
