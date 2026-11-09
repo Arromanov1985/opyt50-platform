@@ -1,0 +1,41 @@
+/* Release 0.8 vacancy discovery and matching */
+.jobs-toolbar-v08{grid-template-columns:1.25fr 1fr .85fr auto;gap:12px}
+.jobs-toolbar-v08 .jobs-result-meta{grid-column:1/-1;display:flex;align-items:center;justify-content:space-between;gap:12px;border-top:1px solid #edf2f6;padding-top:12px}
+.jobs-toolbar-v08 .jobs-count{font-size:13px;font-weight:800;color:#083664}
+.job-filter-summary{display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end}
+.filter-chip{display:inline-flex;align-items:center;padding:5px 8px;border-radius:999px;background:#eef6fb;color:#42637e;font-size:11px;font-weight:700}
+.jobs-reset{height:44px;white-space:nowrap}
+.job-card-v08{position:relative;gap:12px}
+.job-card-v08 .job-top{gap:12px}
+.job-card-v08 .job-category{white-space:nowrap}
+.job-skill-tags{display:flex;gap:6px;flex-wrap:wrap}
+.job-skill-tags span{padding:5px 8px;border-radius:999px;background:#f0f5f8;color:#526d82;font-size:10px;font-weight:750}
+.job-actions{align-items:center}
+.favorite-toggle{width:38px;min-width:38px;padding:7px 0!important;font-size:18px;line-height:1}
+.favorite-toggle[aria-pressed="true"]{background:#e8f8f6;border-color:#a9e6df;color:#008f85}
+.match-score{display:inline-flex;align-items:center;gap:7px}
+.match-score-dot{width:8px;height:8px;border-radius:50%;background:#00c7b8}
+.match-score.medium .match-score-dot{background:#e5a93d}
+.match-reasons-preview{display:flex;gap:6px;flex-wrap:wrap;margin-top:-2px}
+.match-reasons-preview span{font-size:10px;line-height:1.3;padding:5px 7px;border-radius:7px;background:#eef8f7;color:#34736d}
+.match-explanation{margin-top:2px}
+.match-explanation summary{cursor:pointer;color:#007fce;font-weight:750;font-size:12px}
+.candidate-match-card{border-left:4px solid #007fce}
+.candidate-match-card.high{border-left-color:#00a99d}
+.candidate-match-card.medium{border-left-color:#e5a93d}
+.candidate-match-score{display:flex;align-items:center;gap:8px}
+.candidate-match-score strong{font-size:18px}
+.candidate-match-reasons{display:flex;gap:6px;flex-wrap:wrap;margin:10px 0}
+.candidate-match-reasons span{padding:5px 8px;border-radius:999px;background:#f1f6f9;color:#536f83;font-size:10px;font-weight:700}
+.candidate-match-meta{display:flex;gap:8px;flex-wrap:wrap;color:#61788a;font-size:11px}
+.candidate-match-meta span{padding:5px 8px;border:1px solid #e4edf3;border-radius:8px}
+@media(max-width:1050px){
+  .jobs-toolbar-v08{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .jobs-toolbar-v08 .jobs-result-meta{grid-column:1/-1}
+}
+@media(max-width:650px){
+  .jobs-toolbar-v08{grid-template-columns:1fr}
+  .jobs-toolbar-v08 .jobs-result-meta{grid-column:auto;align-items:flex-start;flex-direction:column}
+  .job-filter-summary{justify-content:flex-start}
+  .jobs-reset{width:100%}
+}
