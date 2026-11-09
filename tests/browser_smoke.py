@@ -177,7 +177,7 @@ def run_browser(page):
     expect(page.locator("#dashboard-main .match-explanation").first).to_be_visible()
     page.locator("#dashboard-main .match-explanation summary").first.click()
     expect(page.locator("#dashboard-main .match-explanation").first).to_contain_text("Подходят зарплатные ожидания")
-    expect(page.locator("#dashboard-main .match-explanation").first).to_contain_text("не вероятность трудоустройства")
+    expect(page.locator("#dashboard-main .match-explanation").first).to_contain_text("не гарантирует приглашение")
     page.locator("#public-jobs .job-card").filter(has_text="Кладовщик").locator("[data-v02-action='favorite']").click()
     expect(page.locator("#toast")).to_contain_text("сохранена")
     expect(page.locator("#public-jobs .job-card").filter(has_text="Кладовщик").locator(".favorite-toggle")).to_have_attribute("aria-pressed","true")
