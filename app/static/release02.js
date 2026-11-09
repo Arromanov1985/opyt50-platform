@@ -63,14 +63,35 @@
     };
     loadPublicJobs = async function() {
       try {
+        await Promise.all([refreshMyApplications(), refreshFavorites()]);
         const qs = new URLSearchParams();
-        for (const [input,param] of [['profession-filter','q'],['city-filter','city'],['salary-filter','salary_min'],['schedule-filter','schedule']]) {
-          const value=searchValue(input); if(value) qs.set(param,value);
+        const filters = [
+          ['profession-filter','q','Профессия'],
+          ['city-filter','city','Город'],
+          ['salary-filter','salary_min','Зарплата от'],
+          ['schedule-filter','schedule','График'],
+          ['employment-filter','employment','Занятость']
+        ];
+        const active = [];
+        for (const [input,param,label] of filters) {
+          const value=searchValue(input);
+          if(value){ qs.set(param,value); active.push([label,value]); }
         }
-        const {jobs} = await api('/api/jobs'+(qs.size ? '?'+qs : ''));
+        const sort=searchValue('sort-filter') || 'recent';
+        qs.set('sort',sort);
+        const result = await api('/api/jobs?'+qs);
+        const jobs = result.jobs || [];
         $('#jobs-count').textContent = `Найдено: ${jobs.length}`;
-        $('#public-jobs').innerHTML = jobs.length ? jobs.map(j=>jobMarkup(j)).join('') : '<div class="empty-state">Вакансий по запросу нет. Попробуйте изменить условия.</div>';
-      } catch(e) { toast(e.message,true); $('#public-jobs').innerHTML='<div class="empty-state">Ошибка загрузки вакансий.</div>'; }
+        const sortLabels={salary_desc:'Сначала выше зарплата',salary_asc:'Сначала ниже зарплата'};
+        if(sortLabels[sort]) active.push(['Сортировка',sortLabels[sort]]);
+        $('#job-filter-summary').innerHTML = active.map(([label,value])=>`<span class="filter-chip">${esc(label)}: ${esc(value)}</span>`).join('');
+        $('#public-jobs').innerHTML = jobs.length
+          ? jobs.map(j=>jobMarkup(j)).join('')
+          : '<div class="empty-state"><strong>По этим условиям вакансий нет.</strong><p>Уберите один из фильтров или сбросьте поиск, чтобы увидеть больше вариантов.</p></div>';
+      } catch(e) {
+        toast(e.message,true);
+        $('#public-jobs').innerHTML='<div class="empty-state">Не удалось загрузить вакансии. Попробуйте ещё раз.</div>';
+      }
     };
 
     const oldCandidate = renderCandidate;
