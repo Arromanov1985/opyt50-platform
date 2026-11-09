@@ -102,3 +102,257 @@
 body.comfortable-view .site-header .nav-links{display:none}
 body.comfortable-view .mobile-quick-nav{display:flex;justify-content:center;flex-wrap:wrap;gap:5px;padding:8px 12px;border-bottom:1px solid #DDEAE3;background:#F3FAF6}
 body.comfortable-view .mobile-quick-nav a{padding:9px 12px;min-height:44px;display:inline-flex;align-items:center;border-radius:9px;text-decoration:none;color:#0B2D26;font-size:16px;font-weight:750}
+
+
+/* STAZHNO brand system v2 — approved visual direction */
+:root{
+  --st-dark:#0B2D26;
+  --st-green:#00C853;
+  --st-green-deep:#00A844;
+  --st-bg:#F3FAF6;
+  --st-soft:#EAF8F0;
+  --st-line:#DDEAE3;
+  --st-text:#0B2D26;
+  --st-muted:#5C6F67;
+}
+html{scroll-behavior:smooth}
+body{background:#fff;color:var(--st-text)}
+::selection{background:#BDF4CF;color:var(--st-dark)}
+a{color:inherit}
+.site-header{
+  background:rgba(255,255,255,.96);
+  border-bottom:1px solid var(--st-line);
+  box-shadow:0 8px 30px #0B2D2608;
+  backdrop-filter:blur(18px);
+}
+.nav-inner{height:82px;gap:18px}
+.brand{gap:7px;min-width:max-content}
+.brand-icon{width:47px;height:42px}
+.brand-word{font-size:29px;font-weight:900;letter-spacing:-.065em;color:var(--st-dark)}
+.brand-dot{color:var(--st-green)}
+.nav-links{gap:24px}
+.nav-links a{color:var(--st-dark);font-weight:720}
+.nav-links a:hover{color:var(--st-green-deep)}
+.reading-toggle{
+  background:var(--st-bg);
+  border:1px solid var(--st-line);
+  color:var(--st-dark);
+  border-radius:999px;
+  min-height:42px;
+  padding:0 15px;
+  font-weight:800;
+}
+.reading-toggle:hover,.reading-toggle[aria-pressed="true"]{
+  background:#DDF7E7;
+  border-color:#A9E4BD;
+  color:var(--st-dark);
+}
+.btn{
+  font-weight:800;
+  border-radius:999px;
+  box-shadow:none;
+}
+.btn-primary{
+  background:var(--st-green);
+  border-color:var(--st-green);
+  color:var(--st-dark);
+}
+.btn-primary:hover{background:#09D35C;border-color:#09D35C;color:var(--st-dark)}
+.btn-dark{background:var(--st-dark);border-color:var(--st-dark);color:#fff}
+.btn-dark:hover{background:#17483B;border-color:#17483B}
+.btn-outline{background:#fff;border-color:#BFD5C9;color:var(--st-dark)}
+.btn-outline:hover{background:var(--st-bg);border-color:var(--st-green);color:var(--st-dark)}
+.btn-text{color:var(--st-dark)}
+.btn-text:hover{color:var(--st-green-deep)}
+
+.mobile-quick-nav{background:#fff;border-bottom:1px solid var(--st-line)}
+.mobile-quick-nav a{color:var(--st-dark)}
+.product-strip{
+  background:var(--st-bg);
+  color:var(--st-dark);
+  border-top:0;
+  border-bottom:1px solid var(--st-line);
+}
+.product-strip strong{color:var(--st-dark);font-weight:900}
+.product-strip-points{color:var(--st-muted)}
+.product-strip-points b{color:var(--st-green)}
+
+.hero{
+  background:
+    radial-gradient(circle at 78% 42%,#DDF7E7 0,rgba(221,247,231,.65) 19%,rgba(255,255,255,0) 44%),
+    linear-gradient(115deg,#fff 0,#fff 48%,#F7FCF9 100%);
+}
+.hero-v08 .hero-grid{min-height:610px}
+.hero-content{padding-top:70px}
+.eyebrow{color:var(--st-green-deep);font-weight:850}
+.eyebrow-point{background:var(--st-green)}
+.hero h1{
+  max-width:720px;
+  color:var(--st-dark);
+  font-size:clamp(48px,5.2vw,74px);
+  line-height:.99;
+  letter-spacing:-.06em;
+}
+.hero h1 em{
+  display:inline-block;
+  color:var(--st-dark);
+  background:#BDF4CF;
+  border-radius:18px;
+  padding:2px 12px 8px;
+  margin-top:8px;
+  font-style:normal;
+}
+.hero-copy{color:var(--st-muted);max-width:640px;font-size:17px}
+.hero-helper,.hero-foot{color:var(--st-muted)}
+.hero-tick{color:var(--st-green)}
+.foot-divider{background:#C9DED1}
+.hero-visual:before{
+  content:"";
+  position:absolute;
+  inset:8% 1% 5% 9%;
+  border-radius:38% 16% 34% 14%;
+  background:linear-gradient(140deg,#0B2D26 0,#15513F 100%);
+  opacity:.06;
+  transform:rotate(-3deg);
+  z-index:-1;
+}
+.hero-floating{
+  border:1px solid var(--st-line);
+  color:var(--st-dark);
+  box-shadow:0 18px 50px #0B2D2612;
+}
+.hero-floating span{color:var(--st-green)}
+
+.role-paths{background:var(--st-bg);border-bottom:1px solid var(--st-line)}
+.role-path-card{
+  border-color:var(--st-line);
+  border-radius:24px;
+  box-shadow:0 16px 50px #0B2D2608;
+}
+.role-path-card:before,.role-path-card.employer-path:before{background:var(--st-green)}
+.role-path-label,.employer-path .role-path-label{
+  background:#E5F8EC;
+  color:#08793A;
+}
+.role-path-card h2{color:var(--st-dark)}
+.role-path-card p,.role-path-card li{color:var(--st-muted)}
+.role-path-card li:before{color:var(--st-green)}
+
+.value-band{background:#fff;border-color:var(--st-line)}
+.value-grid>div{border-color:var(--st-line)}
+.value-grid strong{color:var(--st-dark)}
+.value-grid small{color:var(--st-muted)}
+.feature-icon{
+  background:var(--st-bg);
+  color:var(--st-green);
+  border:1px solid #D9EEE2;
+}
+
+.section-kicker{color:var(--st-green-deep)}
+.section h2,.cta-section h2{color:var(--st-dark)}
+.section h2 em,.cta-section h2 em{color:var(--st-green-deep)}
+.section-heading>p{color:var(--st-muted)}
+.directions,.how-section{background:var(--st-bg)}
+.direction-card{
+  border-color:var(--st-line);
+  border-radius:18px;
+  box-shadow:0 6px 24px #0B2D2605;
+}
+.direction-card:hover{border-color:var(--st-green);box-shadow:0 16px 34px #0B2D260d}
+.direction-card>span{color:var(--st-green)}
+.direction-card strong{color:var(--st-dark)}
+.direction-card small{color:var(--st-muted)}
+
+.jobs-toolbar,.job-card,.panel,.journey-panel{
+  border-color:var(--st-line);
+  box-shadow:0 10px 32px #0B2D2607;
+}
+.jobs-toolbar{border-radius:22px;background:#fff}
+.jobs-toolbar input,.jobs-toolbar select,
+.field input,.field select,.field textarea{
+  border-color:#CFE1D7;
+  background:#fff;
+  color:var(--st-dark);
+}
+.jobs-toolbar input:focus,.jobs-toolbar select:focus,
+.field input:focus,.field select:focus,.field textarea:focus{
+  border-color:var(--st-green);
+  box-shadow:0 0 0 3px #00C8531f;
+  outline:none;
+}
+.job-card{border-radius:20px}
+.job-card:hover{border-color:#B9DEC7;box-shadow:0 18px 42px #0B2D2610}
+.job-company{color:var(--st-green-deep)}
+.job-category{background:#E8F8EE;color:#08793A}
+.job-salary{color:var(--st-dark)}
+.job-meta span{border-color:var(--st-line);color:var(--st-muted)}
+
+.journey-panel{border-radius:22px}
+.journey-head{border-color:var(--st-line)}
+.journey-head span,.journey-employer .journey-head span{color:var(--st-green-deep)}
+.journey-panel li>b,.journey-employer li>b{background:#E8F8EE;color:#08793A}
+.journey-panel li small{color:var(--st-muted)}
+.privacy-panel{
+  background:var(--st-dark);
+  border-radius:24px;
+  box-shadow:0 18px 50px #0B2D2616;
+}
+.privacy-icon{background:#17483B;color:var(--st-green)}
+.privacy-panel .section-kicker{color:#69E596}
+.privacy-panel p{color:#C9DDD2}
+
+.cta-section{background:linear-gradient(115deg,#DDF7E7 0,#F3FAF6 60%,#fff 100%)}
+.cta-section p{color:var(--st-muted)}
+.cta-v08 .btn-white{background:#fff;color:var(--st-dark);border-color:#CFE1D7}
+
+.account-section{background:#fff}
+.auth-dialog{
+  border:1px solid var(--st-line);
+  border-radius:24px;
+  box-shadow:0 30px 90px #0B2D2624;
+}
+.role-btn.active{background:var(--st-dark);border-color:var(--st-dark);color:#fff}
+.icon-button:hover{background:var(--st-bg)}
+.toast{background:var(--st-dark)}
+.demo-badge{background:#E8F8EE;color:#08793A;border-color:#CDE8D7}
+
+.footer{
+  background:var(--st-bg);
+  color:var(--st-dark);
+  border-top:1px solid var(--st-line);
+}
+.footer .brand-word{color:var(--st-dark)}
+.footer .brand-dot{color:var(--st-green)}
+.footer small,.footer-right{color:var(--st-muted)}
+.footer .brand-icon{filter:none}
+
+body.comfortable-view{
+  font-size:18px;
+}
+body.comfortable-view .reading-toggle{
+  background:#BDF4CF;
+  border-color:#83DFA4;
+}
+body.comfortable-view .brand-word{font-size:31px}
+body.comfortable-view .btn,
+body.comfortable-view input,
+body.comfortable-view select,
+body.comfortable-view textarea{font-size:1rem}
+
+@media(max-width:980px){
+  .nav-inner{gap:10px}
+  .brand-word{font-size:26px}
+  .brand-icon{width:42px;height:38px}
+}
+@media(max-width:680px){
+  .site-header{position:sticky;top:0;z-index:50}
+  .nav-inner{height:70px}
+  .brand{gap:5px}
+  .brand-word{font-size:22px}
+  .brand-icon{width:35px;height:32px}
+  .reading-toggle span{display:none}
+  .reading-toggle{min-width:46px;padding:0 11px}
+  .hero-content{padding-top:42px}
+  .hero h1{font-size:clamp(43px,11vw,62px)}
+  .hero h1 em{border-radius:13px;padding:1px 8px 5px}
+}
