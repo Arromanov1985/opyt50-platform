@@ -81,8 +81,10 @@ function updateAuth() {
   $('#auth-password').autocomplete = reg ? 'new-password' : 'current-password';
   $('#auth-submit').textContent = reg ? 'Создать аккаунт →' : 'Войти →';
   $('#auth-guidance').textContent = reg
-    ? 'Для начала нужны только имя, email и пароль. Профессию и опыт добавите позже. В тестовой версии используйте только вымышленные данные.'
-    : 'Войдите в свой тестовый аккаунт. Реальные данные пока не используйте.';
+    ? (state.role === 'employer'
+      ? 'Для начала нужны имя, компания, email и пароль. Первую вакансию сможете создать сразу после регистрации.'
+      : 'Для начала нужны имя, email и пароль. Профессию, навыки и условия работы добавите в профиле.')
+    : 'Введите email и пароль от своего аккаунта СТАЖНО.';
   $$('.role-btn').forEach(b => b.classList.toggle('active', b.dataset.role === state.role));
   $('#auth-switch').innerHTML = reg ? 'Уже есть аккаунт? <button type="button" data-switch="login">Войти</button>' : 'Ещё нет аккаунта? <button type="button" data-switch="register">Создать профиль</button>';
 }
