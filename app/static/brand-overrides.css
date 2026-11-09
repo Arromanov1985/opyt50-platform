@@ -1,4 +1,4 @@
-/* ОПЫТНО.РФ — brandbook-aligned interface. No external fonts or trackers. */
+/* СТАЖНО — brand interface. No external fonts or trackers. */
 :root{font-family:Manrope,Inter,"Segoe UI",Arial,sans-serif;color:#083664;background:#fff;--navy:#083664;--dark:#083664;--green:#00c7b8;--blue:#007fce;--sub:#64748b;--line:#e9eef4;--white:#fff;--cream:#f5f7fa;--radius:16px}
 body{background:#fff;color:#083664}.site-header{background:rgba(255,255,255,.97);border-bottom:1px solid #e9eef4}.nav-inner{height:78px}.brand{gap:3px;letter-spacing:-.05em}.brand-icon{width:40px;height:40px;object-fit:contain}.brand-word{font-weight:850;font-size:28px;color:#083664}.brand-plus{color:#00c7b8}.nav-links a{color:#083664;font-weight:650}.nav-links a:hover{color:#007fce}
 .btn{border-radius:999px}.btn-primary{background:#00c7b8;color:white}.btn-primary:hover{background:#00a99d}.btn-outline{border-color:#d5e1ed;color:#083664;background:white}.btn-outline:hover{background:#f5f7fa;border-color:#007fce}.btn-dark{background:#083664}.btn-dark:hover{background:#007fce}
