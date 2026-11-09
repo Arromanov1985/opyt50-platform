@@ -41,3 +41,27 @@
   .overview-alert .btn{width:100%}
   .overview-funnel-steps{grid-template-columns:1fr 1fr}
 }
+
+/* Release 0.8 flow polish: vacancy details + employer application review */
+.job-detail-v08{display:grid;gap:18px}
+.job-detail-company{display:flex;flex-wrap:wrap;align-items:center;gap:10px 14px}
+.job-detail-company strong{font-size:1.08rem}
+.job-detail-pay{font-size:clamp(1.45rem,3vw,2rem);font-weight:800;letter-spacing:-.03em}
+.job-detail-facts{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
+.job-detail-facts span,.application-profile-strip span{display:grid;gap:4px;padding:14px 16px;border:1px solid var(--line,#e2e5e9);border-radius:16px;background:#fff}
+.job-detail-facts small,.application-profile-strip small{color:var(--muted,#667085);font-size:.78rem}
+.job-detail-description{line-height:1.65;padding:18px;border-radius:16px;background:var(--soft,#f6f7f8)}
+.job-detail-privacy{padding:14px 16px;border-radius:14px;background:#f2f7ff;border:1px solid #d7e7ff;font-size:.92rem;line-height:1.45}
+.job-detail-action{display:flex;flex-wrap:wrap;gap:10px}
+.application-flow-legend{display:flex;flex-wrap:wrap;align-items:center;gap:7px;font-size:.78rem;color:var(--muted,#667085)}
+.application-flow-legend span{padding:7px 9px;border-radius:999px;background:var(--soft,#f6f7f8)}
+.application-profile-strip{display:grid;grid-template-columns:minmax(0,1.3fr) minmax(0,.7fr);gap:10px;margin:14px 0}
+.application-profile-strip strong{font-size:.94rem;line-height:1.35}
+.application-next-action{display:grid;gap:3px;margin:14px 0 8px;padding:12px 14px;border-left:3px solid currentColor;background:var(--soft,#f6f7f8);border-radius:0 12px 12px 0}
+.application-next-action span{font-size:.75rem;text-transform:uppercase;letter-spacing:.06em;color:var(--muted,#667085)}
+.application-review-card .item-actions{margin-top:10px}
+@media(max-width:720px){
+  .job-detail-facts,.application-profile-strip{grid-template-columns:1fr}
+  .application-flow-legend b{display:none}
+  .application-flow-legend{gap:6px}
+}
