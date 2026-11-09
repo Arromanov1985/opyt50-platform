@@ -96,3 +96,9 @@
   .employer-next{align-items:flex-start;flex-direction:column}
   .employer-next .btn{width:100%}
 }
+
+/* In large-text mode keep navigation readable instead of squeezing four links
+   into the desktop header. The quick navigation becomes the second row. */
+body.comfortable-view .site-header .nav-links{display:none}
+body.comfortable-view .mobile-quick-nav{display:flex;justify-content:center;flex-wrap:wrap;gap:5px;padding:8px 12px;border-bottom:1px solid #e5edf5;background:#f6f9fc}
+body.comfortable-view .mobile-quick-nav a{padding:9px 12px;min-height:44px;display:inline-flex;align-items:center;border-radius:9px;text-decoration:none;color:#083664;font-size:16px;font-weight:750}
