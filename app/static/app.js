@@ -26,8 +26,32 @@ function workflowStatus(x, fallback='') {
 function activityTimelineMarkup(x) {
   const entries = Array.isArray(x.timeline) ? x.timeline : [];
   if (!entries.length) return '';
-  return '<div class="application-timeline" aria-label="История взаимодействия"><strong>История взаимодействия:</strong>' +
-    entries.map(e=>'<span>'+esc(activityLabels[e.event]||e.event)+' · '+esc(e.created_at)+'</span>').join('')+'</div>';
+  const recent = entries.slice(-4);
+  return '<details class="application-timeline" aria-label="История взаимодействия"><summary>История взаимодействия</summary>' +
+    recent.map(e=>'<span>'+esc(activityLabels[e.event]||e.event)+' · '+esc(e.created_at)+'</span>').join('')+'</details>';
+}
+function interactionStageMarkup(x, kind='application') {
+  const introduced = x.introduction_stage === 'introduced' || x.contact_shared;
+  const consented = x.introduction_stage === 'consented' || x.status === 'accepted';
+  const awaiting = x.introduction_stage === 'awaiting_consent' || x.invitation_status === 'sent' || x.status === 'interview';
+  const reviewing = ['reviewing','interview'].includes(x.status) || awaiting || consented || introduced;
+  const applied = Boolean(x.application_id || x.vacancy_id || ['applied','reviewing','interview','withdrawn','rejected','hired'].includes(x.status));
+  const steps = kind === 'invitation'
+    ? [
+        ['Приглашение', true],
+        ['Согласие', consented || introduced],
+        ['Контакт', introduced]
+      ]
+    : [
+        ['Отклик', applied],
+        ['Рассмотрение', reviewing],
+        ['Согласие', consented || introduced],
+        ['Знакомство', introduced]
+      ];
+  const activeIndex = Math.max(0, steps.reduce((last,step,index)=>step[1]?index:last,0));
+  return '<div class="interaction-stage" aria-label="Этап взаимодействия">' +
+    steps.map((step,index)=>'<span class="'+(step[1]?'done ':'')+(index===activeIndex?'current':'')+'"><i>'+(step[1]?'✓':index+1)+'</i><b>'+esc(step[0])+'</b></span>').join('') +
+    '</div>';
 }
 let toastTimeout;
 function toast(message, error = false) {
@@ -112,14 +136,24 @@ async function reloadUser() {
 async function showDashboard(scroll = false) {
   await reloadUser(); if (!state.user) { openAuth('login'); return; }
   $('#welcome').textContent = `Здравствуйте, ${state.user.name.split(' ')[0]}!`;
-  $('#account-subtitle').textContent = ({candidate:'Ваши навыки — ваша сильная сторона.',employer:'Управляйте вакансиями и приглашениями.',admin:'Обзор работы платформы.'})[state.user.role];
+  $('#account-subtitle').textContent = ({candidate:'Вакансии, отклики и приглашения — в одном месте.',employer:'Вакансии, отклики и знакомства с кандидатами — в одном месте.',admin:'Обзор работы платформы.'})[state.user.role];
   if (state.user.role === 'candidate') await renderCandidate();
   if (state.user.role === 'employer') await renderEmployer();
   if (state.user.role === 'admin') await renderAdmin();
   if (scroll) $('#dashboard').scrollIntoView({behavior:'smooth',block:'start'});
 }
 function tabsMarkup(items, heading, subtitle) {
-  return `<aside class="panel side-panel"><span class="section-kicker">${esc(heading)}</span><h3 class="tab-heading">${esc(subtitle)}</h3><nav class="dashboard-tabs" aria-label="Разделы личного кабинета">${items.map(t => `<button type="button" data-tab="${esc(t.id)}" class="${state.tab === t.id ? 'active' : ''}">${esc(t.label)}</button>`).join('')}</nav></aside>`;
+  const icons = {
+    overview:'⌂',profile:'●',offers:'↗',invitations:'✉',favorites:'♡',
+    applications:'✓',changes:'↻',email:'@',vacancies:'▤',create:'＋',edit:'✎'
+  };
+  const roleLabel = state.user?.role === 'employer' ? 'Работодатель' : state.user?.role === 'candidate' ? 'Соискатель' : 'Администратор';
+  return `<aside class="panel side-panel">
+    <div class="dashboard-identity"><span class="dashboard-avatar" aria-hidden="true">${esc((state.user?.name||roleLabel).trim().charAt(0).toUpperCase())}</span><div><span>${esc(roleLabel)}</span><strong>${esc(subtitle)}</strong></div></div>
+    <span class="section-kicker dashboard-menu-kicker">${esc(heading)}</span>
+    <nav class="dashboard-tabs" aria-label="Разделы личного кабинета">${items.map(t => `<button type="button" data-tab="${esc(t.id)}" class="${state.tab === t.id ? 'active' : ''}"><span class="dashboard-tab-icon" aria-hidden="true">${icons[t.id]||'•'}</span><span>${esc(t.label)}</span></button>`).join('')}</nav>
+    <div class="dashboard-side-note"><span>Приватность</span><small>Контакты открываются только в сценарии знакомства.</small></div>
+  </aside>`;
 }
 function candidateProfileHealth(profile = {}) {
   const checks = [
@@ -289,8 +323,11 @@ async function renderCandidate() {
   } catch(e) { target.innerHTML = `<div class="panel">${esc(e.message)}</div>`; toast(e.message,true); }
 }
 function invitationCandidateMarkup(x) {
-  return `<article class="item-card"><header><div><h4>${esc(x.title)}</h4><p>${esc(x.company_name)} · ${esc(x.city)} · ${formatPay(x)}</p></div><span class="mini-badge ${statusBadge[x.status]}">${esc(workflowStatus(x,statusTitle[x.status]))}</span></header>
-   <p>${esc(x.description || 'Подробности на собеседовании.')}</p>${activityTimelineMarkup(x)}${x.status === 'sent' ? `<div class="item-actions"><label class="checks"><input type="checkbox" id="consent-${x.id}"> Согласен(-на) передать мои имя и контакты этой компании после тестового подтверждения знакомства</label></div><div class="item-actions"><button class="btn btn-primary btn-tiny" data-action="accept" data-id="${x.id}">Интересно, согласен(-на)</button><button class="btn btn-outline btn-tiny" data-action="decline" data-id="${x.id}">Отказаться</button></div>` : (x.contact_shared ? '<div class="info-box">Контакты были открыты работодателю в демонстрационном режиме.</div>' : '')}</article>`;
+  return `<article class="item-card invitation-card"><header><div><span class="card-eyebrow">ПРИГЛАШЕНИЕ</span><h4>${esc(x.title)}</h4><p>${esc(x.company_name)} · ${esc(x.city)} · ${formatPay(x)}</p></div><span class="mini-badge ${statusBadge[x.status]}">${esc(workflowStatus(x,statusTitle[x.status]))}</span></header>
+   ${interactionStageMarkup(x,'invitation')}
+   <p class="invitation-description">${esc(x.description || 'Подробности на собеседовании.')}</p>
+   ${activityTimelineMarkup(x)}
+   ${x.status === 'sent' ? `<div class="consent-box"><strong>Хотите познакомиться с компанией?</strong><p>Имя и контакты не будут переданы, пока вы явно не согласитесь.</p><label class="checks"><input type="checkbox" id="consent-${x.id}"> Да, я разрешаю открыть мои имя и контакты этой компании после подтверждения знакомства</label></div><div class="item-actions invitation-actions"><button class="btn btn-primary" data-action="accept" data-id="${x.id}">Да, интересно →</button><button class="btn btn-outline" data-action="decline" data-id="${x.id}">Нет, спасибо</button></div>` : (x.contact_shared ? '<div class="info-box contact-opened-note"><strong>✓ Знакомство состоялось</strong><span>Контакты открыты работодателю в демонстрационном режиме.</span></div>' : '')}</article>`;
 }
 async function renderEmployer() {
   const nav = [{id:'overview',label:'Обзор'},{id:'vacancies',label:'Мои вакансии'},{id:'create',label:'Новая вакансия'},{id:'invitations',label:'Приглашения и контакты'}];
@@ -501,13 +538,19 @@ async function loadMatches(jobId) {
 }
 async function loadEmployerInvitations() {
   const {invitations} = await api('/api/employer/invitations');
-  $('#dashboard-main').innerHTML = `<div class="panel"><h3>Приглашения и контакты</h3><div class="banner">Демонстрационные платежи не списывают деньги. В промышленной версии до раскрытия контакта требуется настоящий платёж и подтверждение согласия кандидата.</div><div class="dashboard-list">${invitations.length ? invitations.map(invitationEmployerMarkup).join('') : '<div class="empty-state">Вы ещё не отправляли приглашений.</div>'}</div></div>`;
+  const waiting = invitations.filter(x=>x.status==='sent').length;
+  const accepted = invitations.filter(x=>x.status==='accepted' && !x.contact_shared).length;
+  const opened = invitations.filter(x=>x.contact_shared).length;
+  $('#dashboard-main').innerHTML = `<div class="panel invitation-center"><div class="split-header"><div><span class="section-kicker">ЗНАКОМСТВА</span><h3>Приглашения и контакты</h3><p class="muted">Здесь виден путь от приглашения до открытого контакта. Контакты появляются только после согласия кандидата.</p></div></div>
+    <div class="mini-stat-row"><div><strong>${waiting}</strong><span>Ждут ответа</span></div><div><strong>${accepted}</strong><span>Есть согласие</span></div><div><strong>${opened}</strong><span>Контакты открыты</span></div></div>
+    <div class="demo-note"><strong>Тестовый режим</strong><span>Открытие контакта сейчас имитирует оплату и не списывает деньги.</span></div>
+    <div class="dashboard-list">${invitations.length ? invitations.map(invitationEmployerMarkup).join('') : '<div class="empty-state"><strong>Приглашений пока нет.</strong><p>Откройте вакансию, запустите подбор и пригласите подходящего кандидата.</p><button class="btn btn-primary" data-tab="vacancies">К вакансиям →</button></div>'}</div></div>`;
 }
 function invitationEmployerMarkup(x) {
-  return `<article class="item-card"><header><div><h4>${esc(x.candidate_profession)}</h4><p>Вакансия: ${esc(x.vacancy_title)} · кандидат #${x.candidate_id}</p></div><span class="mini-badge ${statusBadge[x.status]}">${esc(workflowStatus(x,statusTitle[x.status]))}</span></header>
+  return `<article class="item-card invitation-card employer-invitation-card"><header><div><span class="card-eyebrow">ЗНАКОМСТВО</span><h4>${esc(x.candidate_profession)}</h4><p>${esc(x.vacancy_title)} · кандидат #${x.candidate_id}</p></div><span class="mini-badge ${statusBadge[x.status]}">${esc(workflowStatus(x,statusTitle[x.status]))}</span></header>
+  ${interactionStageMarkup(x,'invitation')}
   ${activityTimelineMarkup(x)}
-  <p>Демо-стоимость знакомства: <span class="price">${money(x.price_rub)}</span></p>
-  ${x.contact ? `<div class="info-box"><strong>Контакт открыт (демо)</strong><div>Имя: ${esc(x.contact.name)}</div><div>Email: ${esc(x.contact.email)}</div><div>Телефон: ${esc(x.contact.phone || 'не указан')}</div></div>` : (x.status === 'accepted' ? `<button class="btn btn-primary btn-tiny" data-action="demo-pay" data-id="${x.id}">Тестовая оплата и открытие контакта ↗</button>` : '')}</article>`;
+  ${x.contact ? `<div class="contact-card"><span>КОНТАКТ ОТКРЫТ</span><strong>${esc(x.contact.name)}</strong><div><a href="mailto:${esc(x.contact.email)}">${esc(x.contact.email)}</a><b>·</b><span>${esc(x.contact.phone || 'Телефон не указан')}</span></div></div>` : (x.status === 'accepted' ? `<div class="application-next-action"><span>Следующее действие</span><strong>Кандидат согласился на знакомство</strong><small>Демо-стоимость: ${money(x.price_rub)}</small></div><button class="btn btn-primary" data-action="demo-pay" data-id="${x.id}">Открыть контакт (демо) →</button>` : '<p class="muted invitation-waiting">Ожидаем решение кандидата. Контакты пока скрыты.</p>')}</article>`;
 }
 async function renderAdmin() {
   $('#account-content').innerHTML = '<div class="panel"><h3>Панель управления</h3><p class="muted">Статистика работы MVP, без раскрытия персональных данных.</p><div class="stat-grid" id="admin-stats"><div class="loading">Загрузка...</div></div></div>';
