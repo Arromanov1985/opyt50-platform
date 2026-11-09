@@ -63,6 +63,11 @@
     const element = form.querySelector('#' + id);
     if (element) element.textContent = text;
   }
+  function hasContactDetails(text) {
+    const email = /[^\s@]+@[^\s@]+\.[^\s@]+/i;
+    const phone = /(?:\+7|8)[\s\-]*(?:\(?\d{3}\)?)[\s\-]*\d{3}[\s\-]*\d{2}[\s\-]*\d{2}/;
+    return email.test(text) || phone.test(text);
+  }
   function showPreview(form) {
     invalidate(form);
     if (!form.reportValidity()) {
@@ -87,6 +92,11 @@
     const description = describe(form);
     if (description.length > maxDescription) {
       message(form, 'Описание превышает допустимую длину 1200 символов. Сократите текст.', true);
+      return;
+    }
+    const publicText = [description,getField(form,'skills')].join('\n');
+    if (hasContactDetails(publicText)) {
+      message(form, 'Уберите телефон или email из вакансии. Контакты открываются только через защищённый сценарий знакомства.', true);
       return;
     }
     // Plain text only. The employer cannot inject markup into the preview.
