@@ -97,35 +97,91 @@ function openAuth(mode = 'register', role = 'candidate') {
 }
 function updateAuth() {
   const reg = state.mode === 'register';
-  $('#auth-title').textContent = reg ? 'Создать аккаунт' : 'Войти в аккаунт';
+  const employer = state.role === 'employer';
+  $('#auth-kicker').textContent = reg ? 'РЕГИСТРАЦИЯ' : 'ВХОД';
+  $('#auth-title').textContent = reg ? (employer ? 'Аккаунт работодателя' : 'Создать профиль') : 'Войти в аккаунт';
+  $('#auth-intro').textContent = reg
+    ? (employer
+      ? 'Создайте аккаунт компании. Первую вакансию можно разместить сразу после регистрации.'
+      : 'Создайте простой аккаунт. Профессию, опыт и условия поиска добавите следующим шагом.')
+    : 'Введите email и пароль. После входа откроется ваш рабочий кабинет.';
   $('#signup-role').classList.toggle('hidden', !reg);
   $('#auth-name-row').classList.toggle('hidden', !reg);
-  $('#auth-company-row').classList.toggle('hidden', !(reg && state.role === 'employer'));
+  $('#auth-company-row').classList.toggle('hidden', !(reg && employer));
   $('#password-hint').classList.toggle('hidden', !reg);
+  $('#auth-route').classList.toggle('hidden', !reg);
+  $('#auth-name').required = reg;
+  $('#auth-company').required = reg && employer;
+  $('#auth-password').type = 'password';
+  $('#auth-password').minLength = reg ? 10 : 1;
   $('#auth-password').autocomplete = reg ? 'new-password' : 'current-password';
-  $('#auth-submit').textContent = reg ? 'Создать аккаунт →' : 'Войти →';
+  const passwordToggle = $('#password-toggle');
+  if (passwordToggle) { passwordToggle.textContent = 'Показать'; passwordToggle.setAttribute('aria-pressed','false'); }
+  $('#auth-submit').textContent = reg ? (employer ? 'Создать аккаунт компании →' : 'Создать профиль →') : 'Войти →';
   $('#auth-guidance').textContent = reg
-    ? (state.role === 'employer'
-      ? 'Для начала нужны имя, компания, email и пароль. Первую вакансию сможете создать сразу после регистрации.'
-      : 'Для начала нужны имя, email и пароль. Профессию, навыки и условия работы добавите в профиле.')
-    : 'Введите email и пароль от своего аккаунта СТАЖНО.';
-  $$('.role-btn').forEach(b => b.classList.toggle('active', b.dataset.role === state.role));
-  $('#auth-switch').innerHTML = reg ? 'Уже есть аккаунт? <button type="button" data-switch="login">Войти</button>' : 'Ещё нет аккаунта? <button type="button" data-switch="register">Создать профиль</button>';
+    ? (employer
+      ? 'Нужны только имя, компания, email и пароль. Контактные данные кандидатов не открываются автоматически.'
+      : 'Нужны только имя, email и пароль. Ваш телефон не требуется для создания профиля.')
+    : 'Если не помните пароль, воспользуйтесь восстановлением доступа.';
+  if (reg) {
+    $('#auth-route-title').textContent = employer ? 'Как начнётся работа' : 'Как начнётся поиск';
+    $('#auth-route-steps').innerHTML = employer
+      ? '<span><i>1</i>Аккаунт</span><span><i>2</i>Вакансия</span><span><i>3</i>Кандидаты</span>'
+      : '<span><i>1</i>Аккаунт</span><span><i>2</i>Короткий профиль</span><span><i>3</i>Отклик</span>';
+  }
+  const message = $('#auth-message'); if (message) message.textContent = '';
+  $('.role-btn').forEach(b => b.classList.toggle('active', b.dataset.role === state.role));
+  $('#auth-switch').innerHTML = reg ? 'Уже есть аккаунт? <button type="button" data-switch="login">Войти</button>' : 'Ещё нет аккаунта? <button type="button" data-switch="register">Зарегистрироваться</button>';
 }
 async function submitAuth(event) {
   event.preventDefault();
   const form = event.currentTarget;
-  const body = {email:$('#auth-email').value.trim(), password:$('#auth-password').value};
+  const message = $('#auth-message');
+  const showError = (text, field = null) => {
+    if (message) message.textContent = text;
+    if (field) field.focus();
+  };
+  const email = $('#auth-email');
+  const password = $('#auth-password');
+  if (!email.value.trim() || !email.validity.valid) {
+    showError('Проверьте email — он нужен для входа и восстановления доступа.', email);
+    return;
+  }
+  if (state.mode === 'register') {
+    const name = $('#auth-name');
+    if (name.value.trim().length < 2) {
+      showError('Укажите имя и фамилию или привычное имя, которым к вам можно обращаться.', name);
+      return;
+    }
+    if (state.role === 'employer') {
+      const company = $('#auth-company');
+      if (company.value.trim().length < 2) {
+        showError('Укажите название компании.', company);
+        return;
+      }
+    }
+    if (password.value.length < 10) {
+      showError('Для регистрации нужен пароль не короче 10 символов.', password);
+      return;
+    }
+  } else if (!password.value) {
+    showError('Введите пароль.', password);
+    return;
+  }
+  const body = {email:email.value.trim(), password:password.value};
   if (state.mode === 'register') {
     body.role = state.role; body.name = $('#auth-name').value.trim();
     if (body.role === 'employer') body.company_name = $('#auth-company').value.trim();
   }
   const btn = $('#auth-submit'); btn.disabled = true;
+  if (message) message.textContent = '';
   try {
     const data = await api(state.mode === 'register' ? '/api/register' : '/api/login', {method:'POST', body:JSON.stringify(body)});
     $('#auth-dialog').close(); state.user = data.user; state.tab = 'overview';
-    await showDashboard(true); toast('Готово! Добро пожаловать в СТАЖНО.');
-  } catch(e) { toast(e.message, true); } finally { btn.disabled = false; }
+    await showDashboard(true); toast(state.mode === 'register' ? 'Аккаунт создан. Можно продолжать.' : 'Вы вошли в аккаунт.');
+  } catch(e) {
+    showError(e.message || 'Не удалось выполнить вход. Проверьте данные и попробуйте ещё раз.');
+  } finally { btn.disabled = false; }
 }
 async function reloadUser() {
   try { const data = await api('/api/me'); state.user = data.user; } catch { state.user = null; }
@@ -423,14 +479,20 @@ function vacancyFormMarkup(job = null) {
          <small class="field-help">График, оформление, место работы, особенности оплаты. До 350 символов.</small>
        </div>`;
   return `<div class="panel vacancy-compose">
-    <span class="section-kicker">${isEdit ? 'РЕДАКТИРОВАНИЕ ВАКАНСИИ' : 'НОВАЯ ВАКАНСИЯ'}</span>
-    <h3>${isEdit ? 'Изменить вакансию' : 'Разместить вакансию'}</h3>
-    <p class="muted">${isEdit ? 'Исправьте условия и проверьте объявление перед сохранением. ID вакансии и существующие отклики останутся прежними.' : 'Заполните короткие разделы, проверьте объявление глазами соискателя и только затем опубликуйте. Размещение бесплатное; контакты кандидата защищены отдельным согласием.'}</p>
-    <p class="vacancy-demo-warning">Не указывайте личные контакты в тексте вакансии: для связи с кандидатом используется защищённый сценарий знакомства.</p>
-    ${isEdit ? `<p class="vacancy-edit-warning">Редактирование не удаляет отклики и приглашения, но ранее откликнувшиеся соискатели не получат автоматического уведомления об изменении условий. Статус вакансии остаётся прежним.</p>` : ``}
+    <div class="vacancy-compose-header"><div><span class="section-kicker">${isEdit ? 'РЕДАКТИРОВАНИЕ ВАКАНСИИ' : 'НОВАЯ ВАКАНСИЯ'}</span><h3>${isEdit ? 'Изменить вакансию' : 'Разместить вакансию'}</h3><p class="muted">${isEdit ? 'Исправьте условия и проверьте объявление перед сохранением. Отклики и история вакансии сохранятся.' : 'Сначала основные условия, затем короткое описание работы. Перед публикацией вы увидите вакансию глазами соискателя.'}</p></div><span class="vacancy-compose-badge">${isEdit ? 'Изменения сохранят историю' : 'Размещение бесплатно'}</span></div>
+    <p class="vacancy-demo-warning">Не добавляйте телефон или email в текст вакансии. Для контакта используется защищённый сценарий знакомства.</p>
+    ${isEdit ? `<p class="vacancy-edit-warning">Редактирование не удаляет отклики и приглашения. После изменения условий соискатель увидит уведомление в своём кабинете.</p>` : ``}
     <form id="vacancy-form" data-edit-id="${isEdit ? job.id : ''}" data-revision="${isEdit ? esc(job.revision) : ''}" data-edit-mode="${legacy ? 'legacy' : 'structured'}">
-      <fieldset class="vacancy-step">
-        <legend>1. Основная информация</legend>
+      <div class="vacancy-progress" aria-label="Прогресс заполнения вакансии">
+        <span class="vacancy-progress-step is-current"><i>1</i><b>Основное</b></span>
+        <span class="vacancy-progress-step"><i>2</i><b>Описание</b></span>
+        <span class="vacancy-progress-step"><i>3</i><b>Проверка</b></span>
+        <span class="vacancy-progress-step"><i>4</i><b>${isEdit ? 'Сохранение' : 'Публикация'}</b></span>
+        <div class="vacancy-progress-meta"><div class="vacancy-progress-track"><span id="vacancy-progress-bar"></span></div><small id="vacancy-progress-label">Начните с основных условий</small></div>
+      </div>
+      <fieldset class="vacancy-step" data-vacancy-step="1">
+        <legend>1. Основные условия</legend>
+        <p class="vacancy-step-hint">Укажите то, по чему соискатель решает, подходит ли ему вакансия: должность, место работы, зарплату и график.</p>
         <div class="form-grid">
           <div class="field wide"><label for="vacancy-title">Должность *</label><input id="vacancy-title" name="title" value="${esc(job?.title || '')}" placeholder="Например, инженер по эксплуатации" minlength="3" maxlength="120" required></div>
           <div class="field"><label for="vacancy-city">Город или формат работы *</label><input id="vacancy-city" name="city" value="${esc(job?.city || '')}" placeholder="Например, Москва или Удалённо" minlength="2" maxlength="100" required></div>
@@ -441,13 +503,13 @@ function vacancyFormMarkup(job = null) {
           <div class="field"><label for="vacancy-employment">Занятость</label><select id="vacancy-employment" name="employment">${optList(employment,job?.employment || 'Любая')}</select></div>
         </div>
       </fieldset>
-      <fieldset class="vacancy-step">
+      <fieldset class="vacancy-step" data-vacancy-step="2">
         <legend>2. Расскажите о работе</legend>
-        <p class="muted">${legacy ? 'Это старая вакансия: исходное описание сохранено в одном поле без потерь.' : 'Три небольших блока помогут человеку сразу понять обязанности, требования и условия.'}</p>
+        <p class="vacancy-step-hint">${legacy ? 'Это вакансия старого формата: исходное описание сохранено без потерь.' : 'Три коротких блока: что делать, что важно уметь и что предлагает компания. Пишите простыми словами.'}</p>
         ${fields}
       </fieldset>
-      <div class="vacancy-preview-intro">
-        <strong>3. ${isEdit ? 'Проверьте изменения перед сохранением' : 'Проверьте объявление перед публикацией'}</strong>
+      <div class="vacancy-preview-intro" data-vacancy-step="3">
+        <strong>3. ${isEdit ? 'Проверьте изменения глазами соискателя' : 'Проверьте вакансию глазами соискателя'}</strong>
         <p>Вы увидите должность, зарплату и описание так, как их увидит соискатель. ${isEdit ? 'До подтверждения изменения не попадут в опубликованную вакансию.' : 'До вашего подтверждения объявление не будет опубликовано.'}</p>
         <button class="btn btn-outline btn-lg" type="button" id="vacancy-show-preview" aria-controls="vacancy-preview">Посмотреть вакансию →</button>
         <p id="vacancy-form-message" class="vacancy-form-message" role="status" aria-live="polite"></p>
