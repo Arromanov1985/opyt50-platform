@@ -42,6 +42,20 @@
       if (known.status === 'withdrawn') return `<button type="button" class="btn btn-primary btn-tiny" data-v02-action="reapply" data-id="${jobId}">Откликнуться повторно</button>`;
       return `<button type="button" class="btn btn-outline btn-tiny" data-v02-action="see-applications">Отклик: ${esc(workflowStatus(known,status[known.status] || known.status))} · история</button>`;
     }
+    function employerTrustBadges(job, detailed = false) {
+      const badges = [];
+      if (job.employer_verified) badges.push('<span class="employer-trust-badge verified">✓ Компания проверена</span>');
+      else {
+        if (job.employer_email_verified) badges.push('<span class="employer-trust-badge">✓ Email подтверждён</span>');
+        if (job.employer_inn_provided) badges.push('<span class="employer-trust-badge">Реквизиты указаны</span>');
+      }
+      if (detailed && job.employer_created_at) {
+        const year = String(job.employer_created_at).slice(0,4);
+        if (/^\d{4}$/.test(year)) badges.push(`<span class="employer-trust-badge neutral">На СТАЖНО с ${esc(year)} года</span>`);
+      }
+      return badges.length ? `<div class="employer-trust-badges">${badges.join('')}</div>` : '';
+    }
+
     jobMarkup = function(job, personalized = false) {
       const id = Number(job.id), open = job.status !== 'closed';
       const saved = favoriteVacancyIds.has(id);
@@ -59,7 +73,7 @@
       } else if (open && !state.user) {
         roleActions = `<button type="button" class="btn btn-primary btn-tiny" data-v02-action="apply" data-id="${id}">Откликнуться</button>`;
       }
-      return `<article class="job-card job-card-v08" data-job-id="${id}"><div class="job-top"><span class="job-company">${esc(job.company_name || 'Работодатель')}</span>${scoreBadge}</div>
+      return `<article class="job-card job-card-v08" data-job-id="${id}"><div class="job-top"><div class="job-company-wrap"><span class="job-company">${esc(job.company_name || 'Работодатель')}</span>${employerTrustBadges(job)}</div>${scoreBadge}</div>
         <h3>${esc(job.title)}</h3><div class="job-salary">${formatPay(job)}</div>
         <div class="job-meta"><span>⌖ ${esc(job.city)}</span><span>${esc(job.schedule)}</span><span>${esc(job.employment)}</span></div>
         ${preview ? `<p class="job-preview">${esc(preview)}${String(job.description || '').replace(/\s+/g,' ').trim().length > 180 ? '…' : ''}</p>` : ''}
@@ -240,7 +254,7 @@
       root.textContent='Загрузка...';
       if(kind==='users'){
         const {users}=await api('/api/admin/users');
-        root.innerHTML='<h3>Пользователи</h3><div class="dashboard-list">'+users.map(u=>`<article class="item-card"><header><div><h4>${esc(u.name)}</h4><p>${esc(u.email)} · ${esc(u.role)}</p></div><span class="mini-badge">${u.status==='active'?'Активен':'Заблокирован'}</span></header>${u.role==='admin'?'':`<button class="btn btn-outline btn-tiny" data-v02-action="admin-user-status" data-id="${Number(u.id)}" data-status="${u.status==='active'?'disabled':'active'}">${u.status==='active'?'Заблокировать':'Разблокировать'}</button>`}</article>`).join('')+'</div>';
+        root.innerHTML='<h3>Пользователи и работодатели</h3><div class="dashboard-list">'+users.map(u=>`<article class="item-card admin-user-card"><header><div><h4>${esc(u.role==='employer' && u.company_name ? u.company_name : u.name)}</h4><p>${esc(u.email)} · ${esc(u.role)}</p></div><span class="mini-badge ${u.status==='active'?'':'gray'}">${u.status==='active'?'Активен':'Заблокирован'}</span></header>${u.role==='employer'?`<div class="admin-trust-row"><span class="${u.email_verified?'is-ok':'is-pending'}">${u.email_verified?'✓ Email':'Email не подтверждён'}</span><span class="${u.inn?'is-ok':'is-pending'}">${u.inn?'ИНН '+esc(u.inn):'ИНН не указан'}</span><span class="${u.employer_verified?'is-ok':'is-pending'}">${u.employer_verified?'✓ Компания проверена':'Не проверена'}</span></div><div class="item-actions"><button class="btn ${u.employer_verified?'btn-outline':'btn-primary'} btn-tiny" data-v02-action="admin-employer-verification" data-id="${Number(u.id)}" data-verified="${u.employer_verified?'false':'true'}" ${!u.employer_verified&&(!u.email_verified||!u.inn)?'disabled title="Нужны подтверждённый email и ИНН"':''}>${u.employer_verified?'Снять проверку':'Проверить компанию'}</button></div>`:''}${u.role==='admin'?'':`<div class="item-actions"><button class="btn btn-outline btn-tiny" data-v02-action="admin-user-status" data-id="${Number(u.id)}" data-status="${u.status==='active'?'disabled':'active'}">${u.status==='active'?'Заблокировать':'Разблокировать'}</button></div>`}</article>`).join('')+'</div>';
       } else if(kind==='jobs'){
         const {jobs}=await api('/api/admin/vacancies');
         root.innerHTML='<h3>Вакансии</h3><div class="dashboard-list">'+jobs.map(j=>`<article class="item-card"><header><div><h4>${esc(j.title)}</h4><p>${esc(j.company_name)} · ${esc(j.city)}</p></div><span class="mini-badge">${j.status==='open'?'Открыта':'Закрыта'}</span></header><button class="btn btn-outline btn-tiny" data-v02-action="admin-job-status" data-id="${Number(j.id)}" data-status="${j.status==='open'?'closed':'open'}">${j.status==='open'?'Закрыть':'Открыть'}</button></article>`).join('')+'</div>';
@@ -266,7 +280,7 @@
           const {job}=await api(`/api/jobs/${id}`);
           $('#job-dialog-title').textContent=job.title;
           const skills=String(job.skills||'').split(',').map(x=>x.trim()).filter(Boolean);
-          $('#job-dialog-content').innerHTML=`<div class="job-detail-v08"><div class="job-detail-company"><span class="section-kicker">ВАКАНСИЯ</span><strong>${esc(job.company_name)}</strong><span>⌖ ${esc(job.city)}</span></div><div class="job-detail-pay">${formatPay(job)}</div><div class="job-detail-facts"><span><small>График</small><strong>${esc(job.schedule)}</strong></span><span><small>Занятость</small><strong>${esc(job.employment)}</strong></span></div>${skills.length?`<div class="job-skill-tags">${skills.slice(0,8).map(skill=>`<span>${esc(skill)}</span>`).join('')}</div>`:''}<div class="job-detail-description">${esc(job.description||'Подробности у работодателя').replace(/\n/g,'<br>')}</div><div class="job-detail-privacy">Ваши контакты не передаются работодателю автоматически. Сначала отправляется отклик, а знакомство проходит только через отдельное согласие.</div><div class="job-detail-action">${state.user?.role==='candidate' ? jobApplicationAction(Number(job.id), job) : !state.user ? `<button class="btn btn-primary" data-v02-action="apply" data-id="${Number(job.id)}">Откликнуться на вакансию →</button>` : `<span class="job-role-note">Вы вошли как ${state.user.role==='employer'?'работодатель':'администратор'}. Отклики доступны только соискателям.</span>`}</div></div>`;
+          $('#job-dialog-content').innerHTML=`<div class="job-detail-v08"><div class="job-detail-company"><span class="section-kicker">ВАКАНСИЯ</span><strong>${esc(job.company_name)}</strong><span>⌖ ${esc(job.city)}</span>${employerTrustBadges(job,true)}</div><div class="job-detail-pay">${formatPay(job)}</div><div class="job-detail-facts"><span><small>График</small><strong>${esc(job.schedule)}</strong></span><span><small>Занятость</small><strong>${esc(job.employment)}</strong></span></div>${skills.length?`<div class="job-skill-tags">${skills.slice(0,8).map(skill=>`<span>${esc(skill)}</span>`).join('')}</div>`:''}<div class="job-detail-description">${esc(job.description||'Подробности у работодателя').replace(/\n/g,'<br>')}</div><div class="job-employer-trust-note"><strong>О работодателе</strong><p>${job.employer_verified?'Компания прошла проверку администратором СТАЖНО по заполненным реквизитам и подтверждённому email.':job.employer_email_verified&&job.employer_inn_provided?'Email подтверждён, реквизиты указаны. Статус проверки компании ещё не присвоен.':job.employer_email_verified?'Email работодателя подтверждён. Реквизиты компании пока не указаны или не проверены.':'Статус проверки компании пока не подтверждён.'}</p></div><div class="job-detail-privacy">Ваши контакты не передаются работодателю автоматически. Сначала отправляется отклик, а знакомство проходит только через отдельное согласие.</div><div class="job-detail-action">${state.user?.role==='candidate' ? jobApplicationAction(Number(job.id), job) : !state.user ? `<button class="btn btn-primary" data-v02-action="apply" data-id="${Number(job.id)}">Откликнуться на вакансию →</button>` : `<span class="job-role-note">Вы вошли как ${state.user.role==='employer'?'работодатель':'администратор'}. Отклики доступны только соискателям.</span>`}</div></div>`;
           $('#job-dialog').showModal();
         }else if(['apply','favorite'].includes(type)){
           if(state.user?.role!=='candidate'){ if($('#job-dialog').open) $('#job-dialog').close(); if(state.user)throw Error('Действие доступно только соискателю');openAuth('login','candidate');return; }
@@ -316,7 +330,8 @@
         else if(type==='admin-users')await adminView('users');
         else if(type==='admin-jobs')await adminView('jobs');
         else if(type==='admin-mail')await adminView('mail');
-        else if(type==='admin-user-status'){await req('PATCH',`/api/admin/users/${id}/status`,{status:btn.dataset.status});await adminView('users');toast('Статус пользователя изменён');}
+        else if(type==='admin-employer-verification'){await req('PATCH',`/api/admin/employers/${id}/verification`,{verified:btn.dataset.verified==='true'});await adminView('users');await loadPublicJobs();toast(btn.dataset.verified==='true'?'Компания отмечена как проверенная':'Статус проверки снят');}
+                else if(type==='admin-user-status'){await req('PATCH',`/api/admin/users/${id}/status`,{status:btn.dataset.status});await adminView('users');toast('Статус пользователя изменён');}
         else if(type==='admin-job-status'){await req('PATCH',`/api/admin/vacancies/${id}/status`,{status:btn.dataset.status});await adminView('jobs');await loadPublicJobs();toast('Вакансия обновлена');}
       }catch(e){toast(e.message,true);}
       finally{if(btn.isConnected)btn.disabled=false;}
