@@ -135,12 +135,13 @@
 
     renderCandidate = async function() {
       if (!candidateExtra.some(t=>t.id===state.tab)) {
-        if (state.tab === 'offers') {
-          try { await refreshMyApplications(); }
+        if (state.tab === 'offers' || state.tab === 'overview') {
+          try { await Promise.all([refreshMyApplications(), refreshFavorites()]); }
           catch (e) {
             applicationByVacancy = new Map();
-            // The recommended jobs API also returns application_status, so
-            // already-submitted requests still display correctly without this call.
+            favoriteVacancyIds = new Set();
+            // Recommended jobs still return application_status, so a temporary
+            // auxiliary-list failure must not hide the main recommendations.
           }
         }
         await oldCandidate();
