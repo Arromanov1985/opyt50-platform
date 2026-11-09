@@ -461,6 +461,7 @@ function employerCompanyMarkup(result) {
     <form id="company-form" class="company-form">
       <div class="form-grid">
         <div class="field wide"><label for="company-name">Название компании *</label><input id="company-name" name="company_name" value="${esc(company.company_name||'')}" minlength="2" maxlength="120" required><small class="field-help">Так название отображается в вакансиях и приглашениях.</small></div>
+        <div class="field wide"><label for="company-about">О компании</label><textarea id="company-about" name="about" maxlength="1200" rows="5" placeholder="Коротко расскажите о компании и условиях работы.">${esc(company.about||'')}</textarea><small class="field-help">Это описание увидят соискатели в публичной карточке компании.</small></div>
         <div class="field"><label for="company-inn">ИНН компании</label><input id="company-inn" name="inn" value="${esc(company.inn||'')}" inputmode="numeric" maxlength="12" placeholder="10 или 12 цифр"><small class="field-help">Нужен для проверки компании. Соискателям полный ИНН не показывается.</small></div>
         <div class="field company-email-status"><label>Email аккаунта</label><div class="company-static-field"><strong>${esc(state.user?.email||'')}</strong><span class="${trust.email_verified?'is-ok':'is-pending'}">${trust.email_verified?'✓ Подтверждён':'Не подтверждён'}</span></div>${trust.email_verified?'':'<button type="button" class="btn btn-outline btn-tiny" data-v02-action="verify-email">Подтвердить email</button>'}</div>
       </div>
@@ -687,7 +688,7 @@ function jobEmployerMarkup(x, stats = {total: 0, interested: 0}) {
   const quality = vacancyQuality(x);
   const qualityClass = quality.percent >= 88 ? 'high' : quality.percent >= 63 ? 'medium' : 'low';
   return `<article class="item-card employer-vacancy-card ${needsAttention ? 'needs-attention' : ''}">
-    <header><div><span class="card-eyebrow">${esc(nextLabel)}</span><h4>${esc(x.title)}</h4><p>${esc(x.city)} · ${formatPay(x)} · ${esc(x.schedule)}</p></div><span class="mini-badge ${x.status === 'open' ? '' : 'gray'}">${x.status === 'open' ? 'Открыта' : 'Закрыта'}</span></header>
+    <header><div><span class="card-eyebrow">${esc(nextLabel)}</span><h4>${esc(x.title)}</h4><p>${esc(x.city)} · ${formatPay(x)} · ${esc(x.schedule)}</p><div class="vacancy-moderation-state ${esc(x.moderation_status||'approved')}"><strong>${x.moderation_status==='pending'?'На проверке':x.moderation_status==='rejected'?'Отклонена модератором':'Опубликована'}</strong>${x.moderation_reason?`<small>${esc(x.moderation_reason)}</small>`:''}</div></div><span class="mini-badge ${x.status === 'open' ? '' : 'gray'}">${x.status === 'open' ? 'Открыта' : 'Закрыта'}</span></header>
     <div class="vacancy-pipeline-mini"><span><strong>${stats.total}</strong><small>Отклики</small></span><span><strong>${stats.interested}</strong><small>Заинтересованы</small></span><span><strong>${Math.max(0,stats.total-stats.interested)}</strong><small>На рассмотрении</small></span></div>
     <div class="vacancy-quality ${qualityClass}"><div class="vacancy-quality-head"><span>Качество объявления</span><strong>${quality.percent}%</strong></div><div class="vacancy-quality-track"><span style="width:${quality.percent}%"></span></div>${quality.suggestions.length?`<p>${esc(quality.suggestions.slice(0,2).join(' · '))}</p>`:'<p>Основные условия заполнены хорошо.</p>'}</div>
     <div class="employer-vacancy-primary">${needsAttention ? `<button type="button" class="btn btn-primary" data-action="vacancy-applications-primary" data-id="${x.id}">Разобрать отклики →</button>` : `<button class="btn btn-dark" data-action="matches-primary" data-id="${x.id}" ${x.status === 'closed' ? 'disabled':''}>Подобрать кандидатов →</button>`}</div>
@@ -753,7 +754,7 @@ async function handleDashboardSubmit(event) {
   }
   if (form.id === 'company-form') {
     event.preventDefault();
-    const body = {company_name:formValue(form,'company_name'),inn:formValue(form,'inn')};
+    const body = {company_name:formValue(form,'company_name'),inn:formValue(form,'inn'),about:formValue(form,'about')};
     try {
       await api('/api/employer/company',{method:'PUT',body:JSON.stringify(body)});
       await reloadUser();
