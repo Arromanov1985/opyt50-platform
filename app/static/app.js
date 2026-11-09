@@ -99,7 +99,7 @@ async function submitAuth(event) {
   const btn = $('#auth-submit'); btn.disabled = true;
   try {
     const data = await api(state.mode === 'register' ? '/api/register' : '/api/login', {method:'POST', body:JSON.stringify(body)});
-    $('#auth-dialog').close(); state.user = data.user; state.tab = data.user.role === 'employer' ? 'vacancies' : 'profile';
+    $('#auth-dialog').close(); state.user = data.user; state.tab = 'overview';
     await showDashboard(true); toast('Готово! Добро пожаловать в СТАЖНО.');
   } catch(e) { toast(e.message, true); } finally { btn.disabled = false; }
 }
@@ -517,6 +517,6 @@ async function start() {
   $('#account-content').addEventListener('submit',handleDashboardSubmit);
   await reloadUser();
   await loadPublicJobs();
-  if (state.user) { state.tab = state.user.role==='employer'?'vacancies':'profile'; await showDashboard(); }
+  if (state.user) { state.tab = 'overview'; await showDashboard(); }
 }
 document.addEventListener('DOMContentLoaded',start);
