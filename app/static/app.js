@@ -293,13 +293,63 @@ function invitationCandidateMarkup(x) {
    <p>${esc(x.description || 'Подробности на собеседовании.')}</p>${activityTimelineMarkup(x)}${x.status === 'sent' ? `<div class="item-actions"><label class="checks"><input type="checkbox" id="consent-${x.id}"> Согласен(-на) передать мои имя и контакты этой компании после тестового подтверждения знакомства</label></div><div class="item-actions"><button class="btn btn-primary btn-tiny" data-action="accept" data-id="${x.id}">Интересно, согласен(-на)</button><button class="btn btn-outline btn-tiny" data-action="decline" data-id="${x.id}">Отказаться</button></div>` : (x.contact_shared ? '<div class="info-box">Контакты были открыты работодателю в демонстрационном режиме.</div>' : '')}</article>`;
 }
 async function renderEmployer() {
-  const nav = [{id:'vacancies',label:'Мои вакансии'},{id:'create',label:'Новая вакансия'},{id:'invitations',label:'Приглашения и контакты'}];
-  if (state.tab === 'edit') nav.splice(1, 0, {id:'edit',label:'Редактирование'});
-  if (!nav.some(t => t.id === state.tab)) state.tab = 'vacancies';
+  const nav = [{id:'overview',label:'Обзор'},{id:'vacancies',label:'Мои вакансии'},{id:'create',label:'Новая вакансия'},{id:'invitations',label:'Приглашения и контакты'}];
+  if (state.tab === 'edit') nav.splice(2, 0, {id:'edit',label:'Редактирование'});
+  if (!nav.some(t => t.id === state.tab)) state.tab = 'overview';
   $('#account-content').innerHTML = `<div class="dashboard-grid">${tabsMarkup(nav,'ДЛЯ КОМПАНИИ',state.user.company?.company_name || 'Работодатель')}<div id="dashboard-main"><div class="loading">Загрузка...</div></div></div>`;
   const target = $('#dashboard-main');
   try {
-    if (state.tab === 'create') target.innerHTML = vacancyFormMarkup();
+    if (state.tab === 'overview') {
+      const [jobsResult, applicationsResult, invitationsResult] = await Promise.all([
+        api('/api/employer/vacancies'),
+        api('/api/employer/applications'),
+        api('/api/employer/invitations')
+      ]);
+      const jobs = jobsResult.jobs || [];
+      const applications = applicationsResult.applications || [];
+      const invitations = invitationsResult.invitations || [];
+      const openJobs = jobs.filter(job => job.status === 'open');
+      const waitingApplications = applications.filter(item => ['applied','reviewing'].includes(item.status));
+      const acceptedInvitations = invitations.filter(item => item.status === 'accepted' && !item.contact_shared);
+      const openedContacts = invitations.filter(item => item.contact_shared).length;
+      let nextTitle = 'Создайте первую вакансию';
+      let nextText = 'После публикации можно получать отклики и запускать подбор кандидатов.';
+      let nextAction = '<button class="btn btn-primary" data-tab="create">Создать вакансию →</button>';
+      if (acceptedInvitations.length) {
+        nextTitle = 'Есть согласие кандидата';
+        nextText = `Можно продолжить знакомство по ${acceptedInvitations.length} кандидатам.`;
+        nextAction = '<button class="btn btn-primary" data-tab="invitations">Продолжить знакомства →</button>';
+      } else if (waitingApplications.length) {
+        nextTitle = 'Разберите новые отклики';
+        nextText = `Требуют внимания: ${waitingApplications.length}.`;
+        nextAction = '<button class="btn btn-primary" data-tab="applications">Открыть отклики →</button>';
+      } else if (openJobs.length) {
+        nextTitle = 'Запустите подбор по открытой вакансии';
+        nextText = 'Посмотрите подходящие обезличенные профили и пригласите тех, кто подходит.';
+        nextAction = '<button class="btn btn-primary" data-tab="vacancies">К вакансиям →</button>';
+      }
+      target.innerHTML = `<div class="overview-stack">
+        <section class="panel dashboard-overview-hero employer-overview-hero">
+          <span class="section-kicker">ПРИОРИТЕТ СЕЙЧАС</span>
+          <div class="overview-priority"><div><h3>${esc(nextTitle)}</h3><p class="muted">${esc(nextText)}</p></div>${nextAction}</div>
+        </section>
+        <section class="overview-stat-grid employer-overview-stats" aria-label="Сводка работодателя">
+          <button type="button" class="overview-stat-card" data-tab="vacancies"><strong>${openJobs.length}</strong><span>Открытые вакансии</span><small>Сейчас в работе</small></button>
+          <button type="button" class="overview-stat-card" data-tab="applications"><strong>${waitingApplications.length}</strong><span>Отклики требуют внимания</span><small>Новые и на рассмотрении</small></button>
+          <button type="button" class="overview-stat-card" data-tab="invitations"><strong>${acceptedInvitations.length}</strong><span>Согласия кандидатов</span><small>Можно продолжить знакомство</small></button>
+          <button type="button" class="overview-stat-card" data-tab="invitations"><strong>${openedContacts}</strong><span>Открытые контакты</span><small>Завершённые знакомства</small></button>
+        </section>
+        <section class="panel overview-funnel">
+          <div class="split-header"><div><span class="section-kicker">ВОРОНКА</span><h3>От вакансии до знакомства</h3></div><button class="btn btn-outline btn-tiny" data-tab="vacancies">Управлять вакансиями</button></div>
+          <div class="overview-funnel-steps">
+            <div><strong>${jobs.length}</strong><span>Вакансии</span></div><b>→</b>
+            <div><strong>${applications.length}</strong><span>Отклики</span></div><b>→</b>
+            <div><strong>${invitations.length}</strong><span>Приглашения</span></div><b>→</b>
+            <div><strong>${openedContacts}</strong><span>Знакомства</span></div>
+          </div>
+        </section>
+      </div>`;
+    } else if (state.tab === 'create') target.innerHTML = vacancyFormMarkup();
     else if (state.tab === 'edit') await loadEmployerVacancyEdit();
     else if (state.tab === 'vacancies') await loadEmployerVacancies();
     else await loadEmployerInvitations();
