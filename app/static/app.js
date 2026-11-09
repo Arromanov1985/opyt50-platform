@@ -1,4 +1,4 @@
-/* ОПЫТ 50+ — progressive vanilla JS client; no tracking or external dependencies. */
+/* СТАЖНО — progressive vanilla JS client; no tracking or external dependencies. */
 'use strict';
 const $ = (selector, root = document) => root.querySelector(selector);
 const $$ = (selector, root = document) => [...root.querySelectorAll(selector)];
@@ -98,7 +98,7 @@ async function submitAuth(event) {
   try {
     const data = await api(state.mode === 'register' ? '/api/register' : '/api/login', {method:'POST', body:JSON.stringify(body)});
     $('#auth-dialog').close(); state.user = data.user; state.tab = data.user.role === 'employer' ? 'vacancies' : 'profile';
-    await showDashboard(true); toast('Готово! Добро пожаловать в ОПЫТ.');
+    await showDashboard(true); toast('Готово! Добро пожаловать в СТАЖНО.');
   } catch(e) { toast(e.message, true); } finally { btn.disabled = false; }
 }
 async function reloadUser() {

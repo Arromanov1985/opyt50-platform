@@ -35,6 +35,9 @@ def run_browser(page):
     console_errors = []
     page.on("pageerror", lambda error: console_errors.append(str(error)))
     page.goto(URL, wait_until="networkidle")
+    expect(page.locator(".brand-word").first).to_contain_text("стажно")
+    assert "СТАЖНО" in page.title()
+    assert "опытно.рф" not in page.locator("body").inner_text().casefold()
     expect(page.locator(".release-ribbon")).to_contain_text("0.3.0-dev")
     # Search first; registration is not required to inspect a vacancy.
     page.get_by_role("link", name="Посмотреть вакансии").first.click()

@@ -3,7 +3,7 @@
 document.addEventListener('DOMContentLoaded', () => {
   const button=document.getElementById('reading-mode-toggle');
   if(!button) return;
-  const key='opytno-large-text';
+  const key='stazhno-large-text';
   function readPreference() {
     try { return localStorage.getItem(key)==='yes'; } catch { return false; }
   }

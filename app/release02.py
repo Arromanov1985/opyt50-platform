@@ -144,7 +144,7 @@ def issue_email_token(db: sqlite3.Connection, user_id: int, purpose: str) -> Non
     ttl = "30 минут" if purpose == "reset" else "24 часа"
     action = "восстановления пароля" if purpose == "reset" else "подтверждения email"
     enqueue_notice(
-        db, user_id, f"account_{purpose}", "ОПЫТНО.РФ — подтверждение",
+        db, user_id, f"account_{purpose}", "СТАЖНО — подтверждение",
         f"Ссылка для {action}: {link}\n\nСрок действия ссылки: {ttl}. "
         "Если вы не запрашивали это действие, просто проигнорируйте письмо.",
     )
@@ -307,7 +307,7 @@ def install_routes(app) -> None:
             "INSERT INTO application_events(application_id,event) VALUES(?,?)",
             (application_id, event),
         )
-        enqueue_notice(db, job["employer_id"], "new_application", "Новый отклик — ОПЫТНО.РФ",
+        enqueue_notice(db, job["employer_id"], "new_application", "Новый отклик — СТАЖНО",
                        f"Получен обезличенный отклик на вакансию «{job['title']}». Откройте кабинет.")
         # Commit before the HTTP response: a new dashboard request may arrive immediately.
         db.commit()
@@ -355,7 +355,7 @@ def install_routes(app) -> None:
                    (application_id,))
         db.execute("INSERT INTO application_events(application_id,event) VALUES(?,?)",
                    (application_id, "withdrawn"))
-        enqueue_notice(db, item["employer_id"], "application_withdrawn", "Отклик отозван — ОПЫТНО.РФ",
+        enqueue_notice(db, item["employer_id"], "application_withdrawn", "Отклик отозван — СТАЖНО",
                        f"Отклик на вакансию «{item['title']}» отозван.")
         # Commit before the HTTP response: a new dashboard request may arrive immediately.
         db.commit()
@@ -445,7 +445,7 @@ def install_routes(app) -> None:
             if created:
                 enqueue_notice(
                     db, item["candidate_id"], "invitation",
-                    "Работодатель заинтересован — ОПЫТНО.РФ",
+                    "Работодатель заинтересован — СТАЖНО",
                     f"По вашему отклику на «{item['title']}» поступил запрос на знакомство. "
                     "Контакты будут переданы только после отдельного согласия.",
                 )
@@ -464,7 +464,7 @@ def install_routes(app) -> None:
             )
             enqueue_notice(
                 db, item["candidate_id"], "application_status",
-                "Статус отклика — ОПЫТНО.РФ",
+                "Статус отклика — СТАЖНО",
                 f"Работодатель заинтересовался откликом на «{item['title']}». Откройте кабинет.",
             )
         # Commit before the HTTP response: a new dashboard request may arrive immediately.
@@ -503,7 +503,7 @@ def install_routes(app) -> None:
                    (body.status, application_id))
         db.execute("INSERT INTO application_events(application_id,event) VALUES(?,?)",
                    (application_id, body.status))
-        enqueue_notice(db, item["candidate_id"], "application_status", "Статус отклика — ОПЫТНО.РФ",
+        enqueue_notice(db, item["candidate_id"], "application_status", "Статус отклика — СТАЖНО",
                        f"Статус отклика на «{item['title']}» изменён на {body.status}. Откройте кабинет.")
         # Commit before the HTTP response: a new dashboard request may arrive immediately.
         db.commit()
