@@ -74,12 +74,16 @@
       </div>
     </div></section>
     <section class="section jobs-section" id="jobs"><div class="container"><div class="section-heading"><div><span class="section-kicker">ВАКАНСИИ</span><h2>Актуальные <em>возможности</em></h2></div><p>Вакансии подбираются по навыкам, городу и условиям работы. Ниже сейчас показаны только демонстрационные объявления.</p></div>
-      <div class="jobs-toolbar jobs-toolbar-v02">
-        <label class="search-field" for="profession-filter">Профессия<input id="profession-filter" placeholder="Например, кладовщик" maxlength="120"></label>
+      <div class="jobs-toolbar jobs-toolbar-v02 jobs-toolbar-v08">
+        <label class="search-field" for="profession-filter">Профессия или навык<input id="profession-filter" placeholder="Например, кладовщик или 1С" maxlength="120"></label>
         <label class="search-field" for="city-filter">Город<input id="city-filter" placeholder="Москва" maxlength="100"></label>
         <label class="search-field salary-field" for="salary-filter">Зарплата от, ₽<input id="salary-filter" type="number" min="0" max="10000000" placeholder="60 000"></label>
+        <button class="btn btn-dark" id="jobs-filter">Найти вакансии</button>
         <label class="search-field" for="schedule-filter">График<select id="schedule-filter"><option value="">Любой график</option><option>Полный день</option><option>Сменный</option><option>Гибкий</option><option>Удалённо</option></select></label>
-        <button class="btn btn-dark" id="jobs-filter">Найти вакансии</button><span class="jobs-count" id="jobs-count" aria-live="polite"></span>
+        <label class="search-field" for="employment-filter">Занятость<select id="employment-filter"><option value="">Любая занятость</option><option>Полная</option><option>Частичная</option><option>Проектная</option></select></label>
+        <label class="search-field" for="sort-filter">Сортировка<select id="sort-filter"><option value="recent">Сначала новые</option><option value="salary_desc">Сначала выше зарплата</option><option value="salary_asc">Сначала ниже зарплата</option></select></label>
+        <button class="btn btn-outline jobs-reset" id="jobs-reset" type="button">Сбросить</button>
+        <div class="jobs-result-meta"><span class="jobs-count" id="jobs-count" aria-live="polite"></span><div class="job-filter-summary" id="job-filter-summary" aria-live="polite"></div></div>
       </div>
       <div id="public-jobs" class="job-grid"><div class="empty-state">Загружаем вакансии...</div></div>
       <p class="notice small">Это развивающаяся версия сервиса. Платежи пока работают только в демонстрационном режиме.</p>
