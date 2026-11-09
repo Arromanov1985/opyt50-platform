@@ -277,8 +277,23 @@
               } else throw err;
             }
           }
-          else {await req('POST',`/api/candidate/favorites/${id}`);toast('Вакансия сохранена');}
-        }else if(type==='remove-favorite'){await req('DELETE',`/api/candidate/favorites/${id}`);await showDashboard();toast('Вакансия удалена из избранного');}
+          else {
+            await req('POST',`/api/candidate/favorites/${id}`);
+            favoriteVacancyIds.add(id);
+            toast('Вакансия сохранена в избранном');
+            await loadPublicJobs();
+          }
+        }else if(type==='favorite-remove-inline'){
+          await req('DELETE',`/api/candidate/favorites/${id}`);
+          favoriteVacancyIds.delete(id);
+          toast('Вакансия удалена из избранного');
+          await loadPublicJobs();
+        }else if(type==='remove-favorite'){
+          await req('DELETE',`/api/candidate/favorites/${id}`);
+          favoriteVacancyIds.delete(id);
+          await showDashboard();
+          toast('Вакансия удалена из избранного');
+        }
         else if(type==='withdraw'){await req('POST',`/api/candidate/applications/${id}/withdraw`);await showDashboard();toast('Отклик отозван');}
         else if(type==='reapply'){const result=await req('POST','/api/candidate/applications',{vacancy_id:id});await refreshMyApplications();await showDashboard();toast(result.reapplied?'Отклик отправлен повторно':'Отклик отправлен');}
         else if(type==='mark-vacancy-update-read'){await req('POST',`/api/candidate/vacancy-updates/${id}/read`);await showDashboard();toast('Изменение отмечено прочитанным.');}
