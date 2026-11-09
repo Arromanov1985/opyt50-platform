@@ -932,3 +932,88 @@ body.comfortable-view .vacancy-quality p{font-size:.9rem}
   color:#9B4738;
 }
 body.comfortable-view .vacancy-moderation-state{font-size:.9rem}
+
+
+/* Admin safety center */
+.safety-center{display:grid;gap:16px}
+.safety-summary{
+  display:grid;
+  grid-template-columns:repeat(4,minmax(0,1fr));
+  gap:10px;
+}
+.safety-summary>button,
+.safety-summary>div{
+  display:grid;
+  gap:4px;
+  min-height:82px;
+  padding:14px;
+  border:1px solid #DDE8E2;
+  border-radius:14px;
+  background:#FAFCFB;
+  text-align:left;
+}
+.safety-summary>button{
+  cursor:pointer;
+  font:inherit;
+}
+.safety-summary>button:hover{border-color:#BFD8CA;background:#F5FAF7}
+.safety-summary strong{color:#0B2D26;font-size:24px;line-height:1}
+.safety-summary span{color:#60746B;font-size:10px;font-weight:750}
+.safety-filter-row{display:flex;flex-wrap:wrap;gap:7px}
+.safety-list{gap:10px}
+.safety-report-card,
+.safety-vacancy-card{border-left:3px solid #D8E5DE}
+.safety-report-card:has(.mini-badge.warning),
+.safety-vacancy-card{border-left-color:#C99A32}
+.safety-report-text,
+.safety-reason-note{
+  margin:10px 0;
+  padding:11px 12px;
+  border-radius:11px;
+  background:#F7F9F8;
+  color:#52685E;
+  font-size:10px;
+  line-height:1.5;
+}
+.safety-report-meta{
+  margin:8px 0;
+  color:#849089;
+  font-size:9px;
+}
+.safety-vacancy-card textarea{
+  min-height:76px;
+  resize:vertical;
+}
+.safety-footnote{
+  padding:10px 12px;
+  border-radius:10px;
+  background:#F5F7F6;
+  color:#6D7C75;
+  font-size:10px;
+}
+.admin-moderation-inline{
+  display:inline-flex;
+  flex-wrap:wrap;
+  gap:6px;
+  margin-top:7px;
+  padding:5px 8px;
+  border-radius:9px;
+  background:#EEF8F2;
+  color:#34614B;
+  font-size:9px;
+}
+.admin-moderation-inline.pending{background:#FFF7E6;color:#87651C}
+.admin-moderation-inline.rejected{background:#FFF0EC;color:#9B4738}
+.mini-badge.warning{background:#FFF0C9;color:#7B5B14}
+body.comfortable-view .safety-summary span,
+body.comfortable-view .safety-report-text,
+body.comfortable-view .safety-reason-note,
+body.comfortable-view .safety-footnote{font-size:.9rem}
+
+@media(max-width:760px){
+  .safety-summary{grid-template-columns:repeat(2,minmax(0,1fr))}
+}
+@media(max-width:430px){
+  .safety-summary{grid-template-columns:1fr 1fr}
+  .safety-filter-row .btn{flex:1 1 calc(50% - 7px)}
+}
