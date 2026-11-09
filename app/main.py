@@ -482,7 +482,11 @@ def create_app(db_path: str | None = None) -> FastAPI:
                JOIN employer_profiles e ON e.user_id=v.employer_id
                JOIN users eu ON eu.id=e.user_id
                LEFT JOIN account_controls ac ON ac.user_id=e.user_id
-               WHERE v.status='open' ORDER BY v.id DESC LIMIT 500"""
+               LEFT JOIN vacancy_moderation vm ON vm.vacancy_id=v.id
+               WHERE v.status='open'
+                 AND COALESCE(ac.status,'active')='active'
+                 AND COALESCE(vm.status,'approved')='approved'
+               ORDER BY v.id DESC LIMIT 500"""
         ).fetchall()
         alternatives = []
         for row in rows:
