@@ -177,8 +177,14 @@ async function submitAuth(event) {
   if (message) message.textContent = '';
   try {
     const data = await api(state.mode === 'register' ? '/api/register' : '/api/login', {method:'POST', body:JSON.stringify(body)});
-    $('#auth-dialog').close(); state.user = data.user; state.tab = 'overview';
-    await showDashboard(true); toast(state.mode === 'register' ? 'Аккаунт создан. Можно продолжать.' : 'Вы вошли в аккаунт.');
+    $('#auth-dialog').close(); state.user = data.user;
+    state.tab = state.mode === 'register'
+      ? (data.user.role === 'candidate' ? 'profile' : data.user.role === 'employer' ? 'create' : 'overview')
+      : 'overview';
+    await showDashboard(true);
+    toast(state.mode === 'register'
+      ? (data.user.role === 'candidate' ? 'Аккаунт создан. Заполните короткий профиль.' : data.user.role === 'employer' ? 'Аккаунт создан. Можно разместить первую вакансию.' : 'Аккаунт создан.')
+      : 'Вы вошли в аккаунт.');
   } catch(e) {
     showError(e.message || 'Не удалось выполнить вход. Проверьте данные и попробуйте ещё раз.');
   } finally { btn.disabled = false; }
