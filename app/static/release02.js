@@ -173,7 +173,7 @@
         if (nav) nav.insertAdjacentHTML('beforeend',candidateExtra.map(t=>`<button type="button" data-tab="${t.id}">${t.label}</button>`).join(''));
         return;
       }
-      const nav = [{id:'profile',label:'Мой профиль'},{id:'offers',label:'Подходящие вакансии'},{id:'invitations',label:'Приглашения'},...candidateExtra];
+      const nav = [{id:'overview',label:'Обзор'},{id:'profile',label:'Мой профиль'},{id:'offers',label:'Подходящие вакансии'},{id:'invitations',label:'Приглашения'},...candidateExtra];
       $('#account-content').innerHTML=`<div class="dashboard-grid">${tabsMarkup(nav,'ДЛЯ СОИСКАТЕЛЯ','Ваша карьера')}<div id="dashboard-main"><div class="loading">Загрузка...</div></div></div>`;
       try {
         if(state.tab==='favorites'){
@@ -208,7 +208,7 @@
         if(nav) nav.insertAdjacentHTML('beforeend','<button type="button" data-tab="applications">Отклики соискателей</button>');
         return;
       }
-      const nav=[{id:'vacancies',label:'Мои вакансии'},{id:'create',label:'Новая вакансия'},{id:'invitations',label:'Приглашения и контакты'},...employerExtra];
+      const nav=[{id:'overview',label:'Обзор'},{id:'vacancies',label:'Мои вакансии'},{id:'create',label:'Новая вакансия'},{id:'invitations',label:'Приглашения и контакты'},...employerExtra];
       $('#account-content').innerHTML=`<div class="dashboard-grid">${tabsMarkup(nav,'ДЛЯ КОМПАНИИ',state.user.company?.company_name||'Работодатель')}<div id="dashboard-main"></div></div>`;
       try {
         const {applications}=await api('/api/employer/applications');
