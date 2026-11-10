@@ -213,3 +213,144 @@ def test_admin_login_revokes_previous_session_and_uses_short_lifetime(tmp_path):
                     ("admin-security@example.test",),
                 ).fetchone()[0]
                 assert count == 1
+
+
+
+def test_admin_email_mfa_requires_second_factor_before_session(tmp_path, monkeypatch):
+    monkeypatch.setenv("OPYT50_ENV", "development")
+    monkeypatch.setenv("OPYT50_ADMIN_MFA_MODE", "email")
+    monkeypatch.delenv("OPYT50_PUBLIC_URL", raising=False)
+    app = create_app(str(tmp_path / "admin-mfa.db"))
+    password = "Administrator secure password 2026"
+
+    with TestClient(app) as client:
+        with database(app.state.db_path) as db:
+            db.execute(
+                "INSERT INTO users(role,email,name,password_hash) VALUES(?,?,?,?)",
+                ("admin", "mfa-admin@example.test", "Администратор", make_password_hash(password)),
+            )
+
+        login = client.post(
+            "/api/login",
+            headers=XHR,
+            json={"email": "mfa-admin@example.test", "password": password},
+        )
+        assert login.status_code == 200, login.text
+        payload = login.json()
+        assert payload["mfa_required"] is True
+        assert payload["challenge_id"]
+        assert payload["debug_code"].isdigit() and len(payload["debug_code"]) == 8
+        assert "set-cookie" not in login.headers
+        assert client.get("/api/me").status_code == 401
+
+        wrong = client.post(
+            "/api/admin/mfa/verify",
+            headers=XHR,
+            json={"challenge_id": payload["challenge_id"], "code": "00000000"},
+        )
+        assert wrong.status_code == 401
+        assert client.get("/api/me").status_code == 401
+
+        verified = client.post(
+            "/api/admin/mfa/verify",
+            headers=XHR,
+            json={"challenge_id": payload["challenge_id"], "code": payload["debug_code"]},
+        )
+        assert verified.status_code == 200, verified.text
+        assert verified.json()["user"]["role"] == "admin"
+        assert client.get("/api/me").status_code == 200
+
+        reused = client.post(
+            "/api/admin/mfa/verify",
+            headers=XHR,
+            json={"challenge_id": payload["challenge_id"], "code": payload["debug_code"]},
+        )
+        assert reused.status_code == 400
+
+        with database(app.state.db_path) as db:
+            events = db.execute(
+                "SELECT event_type,detail FROM security_events ORDER BY created_at"
+            ).fetchall()
+            event_types = [row["event_type"] for row in events]
+            assert "admin_mfa_challenge_issued" in event_types
+            assert "login_password_verified_mfa_required" in event_types
+            assert "admin_mfa_failed" in event_types
+            assert "admin_mfa_success" in event_types
+            serialized = "\n".join(str(dict(row)) for row in events)
+            assert payload["debug_code"] not in serialized
+
+
+def test_admin_mfa_challenge_locks_after_five_wrong_codes(tmp_path, monkeypatch):
+    monkeypatch.setenv("OPYT50_ENV", "development")
+    monkeypatch.setenv("OPYT50_ADMIN_MFA_MODE", "email")
+    monkeypatch.delenv("OPYT50_PUBLIC_URL", raising=False)
+    app = create_app(str(tmp_path / "admin-mfa-lock.db"))
+    password = "Administrator secure password 2026"
+
+    with TestClient(app) as client:
+        with database(app.state.db_path) as db:
+            db.execute(
+                "INSERT INTO users(role,email,name,password_hash) VALUES(?,?,?,?)",
+                ("admin", "mfa-lock@example.test", "Администратор", make_password_hash(password)),
+            )
+
+        login = client.post(
+            "/api/login",
+            headers=XHR,
+            json={"email": "mfa-lock@example.test", "password": password},
+        ).json()
+        challenge = login["challenge_id"]
+        correct = login["debug_code"]
+        wrong = "00000000" if correct != "00000000" else "11111111"
+
+        for attempt in range(1, 6):
+            response = client.post(
+                "/api/admin/mfa/verify",
+                headers=XHR,
+                json={"challenge_id": challenge, "code": wrong},
+            )
+            assert response.status_code == (429 if attempt == 5 else 401)
+
+        blocked_correct = client.post(
+            "/api/admin/mfa/verify",
+            headers=XHR,
+            json={"challenge_id": challenge, "code": correct},
+        )
+        assert blocked_correct.status_code in {400, 429}
+        assert client.get("/api/me").status_code == 401
+
+
+def test_admin_security_events_endpoint_is_admin_only(tmp_path):
+    app = create_app(str(tmp_path / "security-events.db"))
+    password = "Administrator secure password 2026"
+
+    with TestClient(app) as admin, TestClient(app) as candidate:
+        with database(app.state.db_path) as db:
+            db.execute(
+                "INSERT INTO users(role,email,name,password_hash) VALUES(?,?,?,?)",
+                ("admin", "events-admin@example.test", "Администратор", make_password_hash(password)),
+            )
+
+        admin_login = admin.post(
+            "/api/login",
+            headers=XHR,
+            json={"email": "events-admin@example.test", "password": password},
+        )
+        assert admin_login.status_code == 200
+
+        candidate_registration = candidate.post(
+            "/api/register",
+            headers=XHR,
+            json={
+                "role": "candidate",
+                "name": "Кандидат",
+                "email": "events-candidate@example.test",
+                "password": "candidate secure password 2026",
+            },
+        )
+        assert candidate_registration.status_code == 201
+
+        allowed = admin.get("/api/admin/security-events")
+        assert allowed.status_code == 200
+        assert isinstance(allowed.json()["events"], list)
+        assert candidate.get("/api/admin/security-events").status_code == 403
