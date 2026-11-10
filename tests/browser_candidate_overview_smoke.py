@@ -60,6 +60,13 @@ def run_overview(page):
     page.locator(".dashboard-tabs [data-tab='overview']").click()
     expect(dashboard.locator(".candidate-overview-grid")).to_be_visible()
 
+    # Account-security controls are available without leaving the dashboard.
+    page.locator(".dashboard-tabs [data-tab='security']").click()
+    expect(dashboard).to_contain_text("БЕЗОПАСНОСТЬ АККАУНТА")
+    expect(dashboard.locator("#security-password-form")).to_be_visible()
+    expect(dashboard.locator("[data-action='revoke-other-sessions']")).to_be_visible()
+    expect(dashboard.locator(".account-security-summary")).to_be_visible()
+
     if browser_errors:
         raise AssertionError("Uncaught browser errors: " + " | ".join(browser_errors))
 
