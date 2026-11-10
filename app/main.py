@@ -470,7 +470,7 @@ def create_app(db_path: str | None = None) -> FastAPI:
         profile = candidate_view(db, user["id"])
         if not profile["profession"] or not profile["city"] or not profile["is_active"]:
             return {"jobs": []}
-        from .matching import mismatch_reasons
+        from .matching import evaluate_candidate
         rows = db.execute(
             """SELECT v.id,v.title,v.city,v.salary_min,v.salary_max,v.schedule,
                       v.employment,v.skills,v.description,v.status,v.created_at,
@@ -491,12 +491,22 @@ def create_app(db_path: str | None = None) -> FastAPI:
         alternatives = []
         for row in rows:
             vacancy = dict(row)
-            if match_candidate(vacancy, profile):
+            evaluation = evaluate_candidate(vacancy, profile)
+            if evaluation["eligible"]:
                 continue
-            reasons = mismatch_reasons(vacancy, profile)
+            reasons = evaluation["mismatch_reasons"]
             if reasons:
-                alternatives.append({**vacancy, "mismatch_reasons": reasons})
-        alternatives.sort(key=lambda v: (len(v["mismatch_reasons"]), -v["id"]))
+                alternatives.append({
+                    **vacancy,
+                    "mismatch_reasons": reasons,
+                    "near_score": evaluation["score"],
+                    "strengths": evaluation["strengths"],
+                    "cautions": evaluation["cautions"],
+                    "score_breakdown": evaluation["score_breakdown"],
+                })
+        alternatives.sort(
+            key=lambda v: (-v["near_score"], len(v["mismatch_reasons"]), -v["id"])
+        )
         return {"jobs": alternatives[:10]}
 
     @app.post("/api/employer/vacancies", status_code=201)
