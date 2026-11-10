@@ -1,6 +1,8 @@
 """Security regression tests for the production hardening baseline."""
 import hashlib
 
+import pytest
+
 from fastapi.testclient import TestClient
 
 from app.db import database
@@ -354,3 +356,73 @@ def test_admin_security_events_endpoint_is_admin_only(tmp_path):
         assert allowed.status_code == 200
         assert isinstance(allowed.json()["events"], list)
         assert candidate.get("/api/admin/security-events").status_code == 403
+
+
+
+def test_login_throttle_limits_repeated_failures_for_same_identity_and_source(tmp_path):
+    app = create_app(str(tmp_path / "login-throttle.db"))
+    password = "Candidate secure password 2026"
+    with TestClient(app) as client:
+        with database(app.state.db_path) as db:
+            cursor = db.execute(
+                "INSERT INTO users(role,email,name,password_hash) VALUES(?,?,?,?)",
+                ("candidate", "throttle@example.test", "Кандидат", make_password_hash(password)),
+            )
+            db.execute("INSERT INTO candidate_profiles(user_id) VALUES(?)", (cursor.lastrowid,))
+
+        for _ in range(10):
+            response = client.post(
+                "/api/login",
+                headers=XHR,
+                json={"email": "throttle@example.test", "password": "wrong password"},
+            )
+            assert response.status_code == 401
+
+        blocked = client.post(
+            "/api/login",
+            headers=XHR,
+            json={"email": "throttle@example.test", "password": password},
+        )
+        assert blocked.status_code == 429
+        assert blocked.headers["retry-after"] == "900"
+
+
+def test_admin_security_status_reports_hardening_without_secrets(tmp_path):
+    app = create_app(str(tmp_path / "security-status.db"))
+    password = "Administrator secure password 2026"
+    with TestClient(app) as client:
+        with database(app.state.db_path) as db:
+            db.execute(
+                "INSERT INTO users(role,email,name,password_hash) VALUES(?,?,?,?)",
+                ("admin", "status-admin@example.test", "Администратор", make_password_hash(password)),
+            )
+        login = client.post(
+            "/api/login",
+            headers=XHR,
+            json={"email": "status-admin@example.test", "password": password},
+        )
+        assert login.status_code == 200
+        status = client.get("/api/admin/security-status")
+        assert status.status_code == 200
+        data = status.json()
+        assert data["password_hash"] == "argon2id"
+        assert data["admin_session_minutes"] == 30
+        assert data["admin_mfa_mode"] in {"off", "email"}
+        assert "password" not in str(data).casefold()
+        assert "token" not in str(data).casefold()
+
+
+def test_production_refuses_email_mfa_without_smtp(tmp_path, monkeypatch):
+    monkeypatch.setenv("OPYT50_ENV", "production")
+    monkeypatch.setenv("OPYT50_PUBLIC_URL", "https://stazhno.ru")
+    monkeypatch.setenv("OPYT50_COOKIE_SECURE", "1")
+    monkeypatch.setenv("OPYT50_ENABLE_DOCS", "0")
+    monkeypatch.setenv("OPYT50_ADMIN_MFA_MODE", "email")
+    monkeypatch.delenv("OPYT50_SMTP_HOST", raising=False)
+    monkeypatch.delenv("OPYT50_MAIL_FROM", raising=False)
+    monkeypatch.delenv("DATABASE_URL", raising=False)
+
+    app = create_app(str(tmp_path / "unsafe-production.db"))
+    with pytest.raises(RuntimeError, match="admin email MFA requires configured SMTP"):
+        with TestClient(app):
+            pass
