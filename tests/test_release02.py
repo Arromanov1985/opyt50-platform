@@ -98,23 +98,32 @@ def test_favorites_applications_privacy_and_status(app):
         assert candidate.get("/api/candidate/favorites").json()["jobs"]==[]
 
 
-def test_demo_mail_verification_reset_and_one_time_tokens(app):
+def test_demo_mail_verification_reset_and_one_time_tokens(app, monkeypatch):
+    delivered = []
+    monkeypatch.setattr(
+        "app.release02.send_email",
+        lambda to_email, subject, body: delivered.append(body) or True,
+    )
     with TestClient(app) as c:
         uid=register(c,"user@demo.example")
         assert c.get("/api/account/email/status").json()["email_verified"] is False
         assert post(c,"/api/account/email/request").status_code==200
-        with database(app.state.db_path) as db:
-            sent=db.execute("SELECT body FROM email_outbox WHERE event='account_verify' ORDER BY id DESC").fetchone()["body"]
+        sent=delivered[-1]
         token=re.search(r"token=([A-Za-z0-9_-]+)",sent).group(1)
+        with database(app.state.db_path) as db:
+            stored=db.execute("SELECT body FROM email_outbox WHERE event='account_verify' ORDER BY id DESC").fetchone()["body"]
+            assert "token=" not in stored
         assert post(c,"/api/account/email/confirm",{"token":token}).status_code==200
         assert post(c,"/api/account/email/confirm",{"token":token}).status_code==400
         assert c.get("/api/account/email/status").json()["email_verified"] is True
         assert post(c,"/api/account/password/request",{"email":"unknown@demo.example"}).status_code==200
         assert post(c,"/api/account/password/request",{"email":"user@demo.example"}).status_code==200
-        with database(app.state.db_path) as db:
-            sent=db.execute("SELECT body FROM email_outbox WHERE event='account_reset' ORDER BY id DESC").fetchone()["body"]
-            assert db.execute("SELECT COUNT(*) FROM email_outbox WHERE event='welcome'").fetchone()[0]==1
+        sent=delivered[-1]
         reset=re.search(r"token=([A-Za-z0-9_-]+)",sent).group(1)
+        with database(app.state.db_path) as db:
+            stored=db.execute("SELECT body FROM email_outbox WHERE event='account_reset' ORDER BY id DESC").fetchone()["body"]
+            assert "token=" not in stored
+            assert db.execute("SELECT COUNT(*) FROM email_outbox WHERE event='welcome'").fetchone()[0]==1
         assert post(c,"/api/account/password/reset",{"token":reset,"password":"DifferentPass2026!"}).status_code==200
         assert post(c,"/api/account/password/reset",{"token":reset,"password":"DifferentPass2026!"}).status_code==400
         assert c.get("/api/me").status_code==401
@@ -533,13 +542,21 @@ def test_account_email_endpoints_are_rate_limited(app):
 
 def test_account_email_links_use_public_origin(app, monkeypatch):
     monkeypatch.setenv("OPYT50_PUBLIC_URL", "https://example.invalid")
-    with TestClient(app) as c:
+    delivered = []
+    monkeypatch.setattr(
+        "app.release02.send_email",
+        lambda to_email, subject, body: delivered.append(body) or True,
+    )
+    with TestClient(app, base_url="https://testserver") as c:
         register(c, "public-link@demo.example")
         response = post(c, "/api/account/email/request")
         assert response.status_code == 200
         assert "token" not in response.text.lower()
+        assert delivered[-1].startswith(
+            "Ссылка для подтверждения email: https://example.invalid/?account_action=verify&token="
+        )
         with database(app.state.db_path) as db:
             body = db.execute(
                 "SELECT body FROM email_outbox WHERE event='account_verify' ORDER BY id DESC"
             ).fetchone()["body"]
-        assert body.startswith("Ссылка для подтверждения email: https://example.invalid/?account_action=verify&token=")
+        assert "token=" not in body
