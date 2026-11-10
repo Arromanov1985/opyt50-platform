@@ -76,3 +76,15 @@ def test_smtp_failure_does_not_break_business_action(monkeypatch):
 
     monkeypatch.setattr(email_delivery.smtplib, "SMTP", BrokenSMTP)
     assert email_delivery.send_email("user@example.invalid", "Subject", "Sensitive token body") is False
+
+
+def test_non_ascii_smtp_password_fails_closed(monkeypatch):
+    configure(monkeypatch)
+    monkeypatch.setenv("OPYT50_SMTP_PASSWORD", "пароль")
+
+    class EncodingSMTP(FakeSMTP):
+        def login(self, username, password):
+            raise UnicodeEncodeError("ascii", password, 0, 1, "ordinal not in range(128)")
+
+    monkeypatch.setattr(email_delivery.smtplib, "SMTP", EncodingSMTP)
+    assert email_delivery.send_email("user@example.invalid", "Subject", "Body") is False
