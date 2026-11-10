@@ -14,6 +14,8 @@ import secrets
 import re
 import sqlite3
 import time
+
+import pyotp
 from collections import defaultdict, deque
 from contextlib import asynccontextmanager
 from datetime import datetime, timedelta, timezone
@@ -75,7 +77,7 @@ class Login(BaseModel):
 
 class AdminMfaVerify(BaseModel):
     challenge_id: str = Field(min_length=20, max_length=160)
-    code: str = Field(pattern=r"^\d{8}$")
+    code: str = Field(pattern=r"^\d{6,8}$")
 
 
 class CandidateProfile(BaseModel):
@@ -172,7 +174,7 @@ def production_runtime() -> bool:
 
 def admin_mfa_mode() -> str:
     mode = os.getenv("OPYT50_ADMIN_MFA_MODE", "off").strip().casefold()
-    return mode if mode in {"off", "email"} else "off"
+    return mode if mode in {"off", "email", "totp"} else "off"
 
 
 def secure_cookie_enabled() -> bool:
@@ -216,9 +218,21 @@ def validate_production_security() -> None:
         )
         if not smtp_tls:
             errors.append("SMTP must use TLS")
-    if admin_mfa_mode() == "email":
+    mfa_mode = admin_mfa_mode()
+    if mfa_mode == "off":
+        errors.append("administrator MFA must be enabled in production")
+    elif mfa_mode == "email":
         if not os.getenv("OPYT50_SMTP_HOST", "").strip() or not os.getenv("OPYT50_MAIL_FROM", "").strip():
             errors.append("admin email MFA requires configured SMTP delivery")
+    elif mfa_mode == "totp":
+        secret = os.getenv("OPYT50_ADMIN_TOTP_SECRET", "").strip()
+        if len(secret) < 16:
+            errors.append("admin TOTP secret is missing or too short")
+        else:
+            try:
+                pyotp.TOTP(secret, digits=6, interval=30).at(0)
+            except Exception:
+                errors.append("admin TOTP secret is not valid base32")
     if errors:
         raise RuntimeError("Unsafe production configuration: " + "; ".join(errors))
 
@@ -486,7 +500,7 @@ def create_app(db_path: str | None = None) -> FastAPI:
 
     @app.post("/api/login")
     def login(data: Login, request: Request, response: Response, db: sqlite3.Connection = Depends(get_connection)):
-        from .release02 import issue_admin_mfa_challenge, record_security_event
+        from .release02 import issue_admin_mfa_challenge, issue_admin_totp_challenge, record_security_event
 
         email = data.email.strip().casefold()
         source = request.client.host if request.client else "unknown"
@@ -524,20 +538,35 @@ def create_app(db_path: str | None = None) -> FastAPI:
                 (make_password_hash(data.password), row["id"]),
             )
 
-        if row["role"] == "admin" and admin_mfa_mode() == "email":
-            challenge_id, debug_code = issue_admin_mfa_challenge(db, row["id"])
-            record_security_event(db, row["id"], "login_password_verified_mfa_required")
-            db.commit()
-            from .email_delivery import delivery_mode
-            result = {
-                "mfa_required": True,
-                "challenge_id": challenge_id,
-                "expires_in": 300,
-                "delivery": delivery_mode(),
-            }
-            if not production_runtime():
-                result["debug_code"] = debug_code
-            return result
+        if row["role"] == "admin":
+            mode = admin_mfa_mode()
+            if mode == "email":
+                challenge_id, debug_code = issue_admin_mfa_challenge(db, row["id"])
+                record_security_event(db, row["id"], "login_password_verified_mfa_required", "method=email")
+                db.commit()
+                from .email_delivery import delivery_mode
+                result = {
+                    "mfa_required": True,
+                    "mfa_method": "email",
+                    "code_length": 8,
+                    "challenge_id": challenge_id,
+                    "expires_in": 300,
+                    "delivery": delivery_mode(),
+                }
+                if not production_runtime():
+                    result["debug_code"] = debug_code
+                return result
+            if mode == "totp":
+                challenge_id = issue_admin_totp_challenge(db, row["id"])
+                record_security_event(db, row["id"], "login_password_verified_mfa_required", "method=totp")
+                db.commit()
+                return {
+                    "mfa_required": True,
+                    "mfa_method": "totp",
+                    "code_length": 6,
+                    "challenge_id": challenge_id,
+                    "expires_in": 300,
+                }
 
         old_token = (
             request.cookies.get(session_cookie_name())
@@ -589,7 +618,15 @@ def create_app(db_path: str | None = None) -> FastAPI:
             raise HTTPException(429, "Слишком много неверных попыток. Войдите заново")
 
         attempts = int(challenge["attempts"] or 0) + 1
-        if not verify_password(data.code, challenge["code_hash"]):
+        if challenge["code_hash"] == "totp-v1":
+            secret = os.getenv("OPYT50_ADMIN_TOTP_SECRET", "").strip()
+            code_ok = bool(secret) and pyotp.TOTP(secret, digits=6, interval=30).verify(
+                data.code,
+                valid_window=1,
+            )
+        else:
+            code_ok = verify_password(data.code, challenge["code_hash"])
+        if not code_ok:
             used_at = now.isoformat() if attempts >= 5 else None
             db.execute(
                 """UPDATE admin_mfa_challenges SET attempts=?,used_at=?
@@ -666,6 +703,7 @@ def create_app(db_path: str | None = None) -> FastAPI:
         return {
             "admin_mfa_mode": admin_mfa_mode(),
             "admin_mfa_enabled": admin_mfa_mode() != "off",
+            "admin_mfa_strength": "app-based TOTP" if admin_mfa_mode() == "totp" else ("email OTP" if admin_mfa_mode() == "email" else "off"),
             "admin_session_minutes": ADMIN_SESSION_SECONDS // 60,
             "password_hash": "argon2id",
             "secure_cookie": secure_cookie_enabled(),
