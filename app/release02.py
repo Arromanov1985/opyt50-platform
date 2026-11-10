@@ -114,9 +114,23 @@ RELEASE09_RUNTIME_DDL = (
         reviewed_at TEXT,
         reviewed_by INTEGER REFERENCES users(id)
     )""",
+    """CREATE TABLE IF NOT EXISTS taxonomy_observations (
+        term_key TEXT PRIMARY KEY,
+        kind TEXT NOT NULL CHECK(kind IN ('profession','skill')),
+        normalized_value TEXT NOT NULL,
+        display_value TEXT NOT NULL,
+        candidate_seen INTEGER NOT NULL DEFAULT 0,
+        vacancy_seen INTEGER NOT NULL DEFAULT 0,
+        status TEXT NOT NULL DEFAULT 'pending' CHECK(status IN ('pending','approved','rejected')),
+        reviewed_by INTEGER REFERENCES users(id),
+        reviewed_at TEXT,
+        updated_at TEXT NOT NULL,
+        UNIQUE(kind,normalized_value)
+    )""",
     "CREATE INDEX IF NOT EXISTS idx_vacancy_moderation_status ON vacancy_moderation(status)",
     "CREATE INDEX IF NOT EXISTS idx_content_reports_status ON content_reports(status,created_at)",
     "CREATE INDEX IF NOT EXISTS idx_content_reports_vacancy ON content_reports(vacancy_id,status)",
+    "CREATE INDEX IF NOT EXISTS idx_taxonomy_observations_status ON taxonomy_observations(status,kind,updated_at)",
 )
 MIGRATION += "\n" + "\n".join(statement + ";" for statement in RELEASE09_RUNTIME_DDL)
 
@@ -190,6 +204,10 @@ class ContentReportStatusIn(BaseModel):
     status: Literal["reviewed", "dismissed", "actioned"]
 
 
+class TaxonomyObservationStatusIn(BaseModel):
+    status: Literal["approved", "rejected"]
+
+
 class EmailTokenIn(BaseModel):
     token: str = Field(min_length=20, max_length=256)
 
@@ -233,6 +251,82 @@ def redeem_token(db: sqlite3.Connection, raw: str, purpose: str) -> sqlite3.Row:
 
 def utc_now_text() -> str:
     return datetime.now(timezone.utc).replace(tzinfo=None).isoformat(sep=" ", timespec="seconds")
+
+
+def refresh_taxonomy_observations(db: sqlite3.Connection) -> None:
+    """Aggregate anonymous profession/skill terms from current profiles and vacancies.
+
+    Only term text and aggregate counts are stored. No user/vacancy identifiers
+    are persisted in this learning queue.
+    """
+    from .matching import normalize_phrase, taxonomy_payload
+
+    payload = taxonomy_payload()
+    known_professions = {
+        normalize_phrase(item["value"]) for item in payload["professions"]
+    }
+    known_skills = set()
+    for item in payload["skills"]:
+        known_skills.add(normalize_phrase(item["value"]))
+        known_skills.update(normalize_phrase(alias) for alias in item.get("aliases", []))
+
+    profession_counts: dict[str, dict[str, object]] = {}
+    skill_counts: dict[str, dict[str, object]] = {}
+
+    def add(bucket: dict, raw: str, source: str) -> None:
+        display = str(raw or "").strip()
+        normalized = normalize_phrase(display)
+        if not normalized:
+            return
+        row = bucket.setdefault(normalized, {
+            "display": display, "candidate": 0, "vacancy": 0,
+        })
+        # Prefer the most recently observed human spelling, but never attach identity.
+        row["display"] = display
+        row[source] = int(row[source]) + 1
+
+    for row in db.execute(
+        "SELECT profession,skills FROM candidate_profiles WHERE length(trim(profession))>0 OR length(trim(skills))>0"
+    ).fetchall():
+        if row["profession"]:
+            add(profession_counts, row["profession"], "candidate")
+        for skill in re.split(r"[,;\n]+", str(row["skills"] or "")):
+            if skill.strip():
+                add(skill_counts, skill, "candidate")
+
+    for row in db.execute(
+        "SELECT title,skills FROM vacancies WHERE length(trim(title))>0 OR length(trim(skills))>0"
+    ).fetchall():
+        if row["title"]:
+            add(profession_counts, row["title"], "vacancy")
+        for skill in re.split(r"[,;\n]+", str(row["skills"] or "")):
+            if skill.strip():
+                add(skill_counts, skill, "vacancy")
+
+    now = utc_now_text()
+
+    def sync(kind: str, counts: dict, known: set[str]) -> None:
+        for normalized, item in counts.items():
+            if normalized in known:
+                continue
+            term_key = hashlib.sha256(f"{kind}\0{normalized}".encode("utf-8")).hexdigest()[:24]
+            db.execute(
+                """INSERT INTO taxonomy_observations(
+                       term_key,kind,normalized_value,display_value,candidate_seen,vacancy_seen,updated_at
+                   ) VALUES(?,?,?,?,?,?,?)
+                   ON CONFLICT(term_key) DO UPDATE SET
+                     display_value=excluded.display_value,
+                     candidate_seen=excluded.candidate_seen,
+                     vacancy_seen=excluded.vacancy_seen,
+                     updated_at=excluded.updated_at""",
+                (
+                    term_key, kind, normalized, str(item["display"]),
+                    int(item["candidate"]), int(item["vacancy"]), now,
+                ),
+            )
+
+    sync("profession", profession_counts, known_professions)
+    sync("skill", skill_counts, known_skills)
 
 
 def moderation_status(db: sqlite3.Connection, vacancy_id: int) -> str:
