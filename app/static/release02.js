@@ -264,6 +264,7 @@
     };
 
     let adminSafetyFilter = 'new';
+    let adminTaxonomyFilter = 'pending';
     const reportReasonLabels = {
       misleading:'Недостоверная информация',
       discrimination:'Дискриминационные требования',
@@ -283,7 +284,7 @@
 
     renderAdmin = async function(){
       await oldAdmin();
-      $('#account-content').insertAdjacentHTML('beforeend','<div class="panel admin-v02"><div class="item-actions"><button class="btn btn-outline" data-v02-action="admin-users">Пользователи</button><button class="btn btn-outline" data-v02-action="admin-jobs">Вакансии</button><button class="btn btn-outline" data-v02-action="admin-reports">Центр безопасности</button><button class="btn btn-outline" data-v02-action="admin-mail">Почтовые события</button></div><div id="admin-v02-results"></div></div>');
+      $('#account-content').insertAdjacentHTML('beforeend','<div class="panel admin-v02"><div class="item-actions"><button class="btn btn-outline" data-v02-action="admin-users">Пользователи</button><button class="btn btn-outline" data-v02-action="admin-jobs">Вакансии</button><button class="btn btn-outline" data-v02-action="admin-reports">Центр безопасности</button><button class="btn btn-outline" data-v02-action="admin-taxonomy">Словарь</button><button class="btn btn-outline" data-v02-action="admin-mail">Почтовые события</button></div><div id="admin-v02-results"></div></div>');
     };
 
     async function adminView(kind){
@@ -318,6 +319,24 @@
           content=visibleReports.length?visibleReports.map(r=>`<article class="item-card safety-report-card"><header><div><span class="card-eyebrow">${r.target_type==='employer'?'РАБОТОДАТЕЛЬ':'ВАКАНСИЯ'}</span><h4>${esc(r.title)}</h4><p>${esc(r.company_name)} · ${esc(reportReasonLabels[r.reason]||r.reason)}</p></div><span class="mini-badge ${r.status==='new'?'warning':r.status==='actioned'?'':'gray'}">${esc(reportStatusLabels[r.status]||r.status)}</span></header>${r.details?`<div class="safety-report-text">${esc(r.details)}</div>`:''}<div class="safety-report-meta">Получено: ${esc(r.created_at||'—')}</div>${['new','reviewed'].includes(r.status)?`<div class="item-actions">${r.status==='new'?'<button class="btn btn-outline btn-tiny" data-v02-action="admin-report-status" data-key="'+esc(r.report_key)+'" data-status="reviewed">Взять в работу</button>':''}<button class="btn btn-outline btn-tiny" data-v02-action="admin-report-status" data-key="${esc(r.report_key)}" data-status="dismissed">Не подтверждено</button><button class="btn btn-primary btn-tiny" data-v02-action="admin-report-status" data-key="${esc(r.report_key)}" data-status="actioned">Меры приняты</button></div>`:''}</article>`).join(''):'<div class="empty-state"><strong>В этой очереди пока пусто.</strong><p>Переключите фильтр выше, чтобы посмотреть другие обращения.</p></div>';
         }
         root.innerHTML=`<div class="safety-center"><div class="split-header"><div><span class="section-kicker">БЕЗОПАСНОСТЬ И МОДЕРАЦИЯ</span><h3>Центр безопасности</h3><p class="muted">Разбирайте сигналы пользователей и возвращайте в поиск только проверенные вакансии.</p></div></div><div class="safety-summary"><button data-v02-action="admin-safety-filter" data-filter="new"><strong>${newReports.length}</strong><span>Новые жалобы</span></button><button data-v02-action="admin-safety-filter" data-filter="pending"><strong>${pendingJobs.length}</strong><span>Вакансии на проверке</span></button><button data-v02-action="admin-safety-filter" data-filter="reviewed"><strong>${reviewReports.length}</strong><span>В работе</span></button><div><strong>${resolvedReports.length}</strong><span>Обработано</span></div></div><div class="safety-filter-row">${filterButtons.map(([value,label,count])=>`<button class="btn btn-tiny ${filter===value?'btn-dark':'btn-outline'}" data-v02-action="admin-safety-filter" data-filter="${value}">${label} · ${count}</button>`).join('')}</div><div class="dashboard-list safety-list">${content}</div>${rejectedJobs.length?`<div class="safety-footnote">Отклонённых вакансий вне активной очереди: <strong>${rejectedJobs.length}</strong></div>`:''}</div>`;
+      } else if(kind==='taxonomy'){
+        const {terms,summary}=await api('/api/admin/taxonomy');
+        const filter=adminTaxonomyFilter;
+        const visible=terms.filter(term=>filter==='all'||term.status===filter);
+        const filterButtons=[
+          ['pending','Новые',summary.pending||0],
+          ['approved','Добавленные',summary.approved||0],
+          ['rejected','Отклонённые',summary.rejected||0],
+          ['all','Все',terms.length]
+        ];
+        const cards=visible.length?visible.map(term=>`<article class="item-card taxonomy-admin-card">
+          <header><div><span class="card-eyebrow">${term.kind==='profession'?'ПРОФЕССИЯ':'НАВЫК'}</span><h4>${esc(term.display_value)}</h4><p>В профилях: <strong>${Number(term.candidate_seen||0)}</strong> · В вакансиях: <strong>${Number(term.vacancy_seen||0)}</strong></p></div><span class="mini-badge ${term.status==='pending'?'warning':term.status==='approved'?'':'gray'}">${term.status==='pending'?'Новый':term.status==='approved'?'В подсказках':'Отклонён'}</span></header>
+          <div class="taxonomy-admin-note">${term.kind==='profession'
+            ? 'Добавление в подсказки не связывает эту профессию с существующей группой и не меняет matching.'
+            : 'После подтверждения навык появится в подсказках как самостоятельный термин.'}</div>
+          ${term.status==='pending'?`<div class="item-actions"><button class="btn btn-primary btn-tiny" data-v02-action="admin-taxonomy-status" data-key="${esc(term.term_key)}" data-status="approved">Добавить в подсказки</button><button class="btn btn-outline btn-tiny" data-v02-action="admin-taxonomy-status" data-key="${esc(term.term_key)}" data-status="rejected">Не добавлять</button></div>`:''}
+        </article>`).join(''):'<div class="empty-state"><strong>В этой очереди пока пусто.</strong><p>Новые формулировки появятся здесь автоматически после заполнения профилей и вакансий.</p></div>';
+        root.innerHTML=`<div class="taxonomy-admin-center"><div class="split-header"><div><span class="section-kicker">СЛОВАРЬ</span><h3>Новые профессии и навыки</h3><p class="muted">СТАЖНО собирает только текст терминов и агрегированную частоту. Пользователи и конкретные резюме здесь не показываются.</p></div></div><div class="taxonomy-admin-summary"><div><strong>${summary.pending||0}</strong><span>ждут решения</span></div><div><strong>${summary.approved||0}</strong><span>добавлено</span></div><div><strong>${summary.rejected||0}</strong><span>отклонено</span></div></div><div class="safety-filter-row">${filterButtons.map(([value,label,count])=>`<button class="btn btn-tiny ${filter===value?'btn-dark':'btn-outline'}" data-v02-action="admin-taxonomy-filter" data-filter="${value}">${label} · ${count}</button>`).join('')}</div><div class="dashboard-list">${cards}</div></div>`;
       } else {
         const {messages}=await api('/api/admin/mail-preview');
         root.innerHTML='<h3>Тестовая очередь</h3><p class="muted">Сообщения НЕ отправляются. Секретные ссылки здесь скрыты.</p>'+messages.map(m=>`<p>${esc(m.created_at)} · ${esc(m.event)} · ${esc(m.subject)}</p>`).join('');
@@ -416,6 +435,7 @@
         else if(type==='admin-users')await adminView('users');
         else if(type==='admin-jobs')await adminView('jobs');
         else if(type==='admin-reports'){adminSafetyFilter='new';await adminView('reports');}
+        else if(type==='admin-taxonomy'){adminTaxonomyFilter='pending';await adminView('taxonomy');}
         else if(type==='admin-mail')await adminView('mail');
         else if(type==='admin-employer-verification'){await req('PATCH',`/api/admin/employers/${id}/verification`,{verified:btn.dataset.verified==='true'});await adminView('users');await loadPublicJobs();toast(btn.dataset.verified==='true'?'Компания отмечена как проверенная':'Статус проверки снят');}
                 else if(type==='admin-user-status'){await req('PATCH',`/api/admin/users/${id}/status`,{status:btn.dataset.status});await adminView('users');toast('Статус пользователя изменён');}
@@ -423,6 +443,8 @@
         else if(type==='admin-safety-filter'){adminSafetyFilter=btn.dataset.filter||'new';await adminView('reports');}
         else if(type==='admin-moderation'){const status=btn.dataset.status;const field=document.querySelector(`[data-moderation-reason="${id}"]`);const reason=status==='rejected'?(field?.value.trim()||''):'';if(status==='rejected'&&!reason)throw Error('Укажите причину отклонения в поле выше');await req('PATCH',`/api/admin/vacancies/${id}/moderation`,{status,reason});await adminView('reports');await loadPublicJobs();toast(status==='approved'?'Вакансия одобрена и возвращена в поиск':'Вакансия отклонена');}
         else if(type==='admin-report-status'){await req('PATCH',`/api/admin/reports/${btn.dataset.key}/status`,{status:btn.dataset.status});await adminView('reports');toast('Жалоба обработана');}
+        else if(type==='admin-taxonomy-filter'){adminTaxonomyFilter=btn.dataset.filter||'pending';await adminView('taxonomy');}
+        else if(type==='admin-taxonomy-status'){await req('PATCH',`/api/admin/taxonomy/${btn.dataset.key}`,{status:btn.dataset.status});await adminView('taxonomy');toast(btn.dataset.status==='approved'?'Термин добавлен в подсказки':'Термин отклонён');}
       }catch(e){toast(e.message,true);}
       finally{if(btn.isConnected)btn.disabled=false;}
     });
