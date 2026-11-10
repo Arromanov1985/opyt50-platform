@@ -30,3 +30,5 @@ jobs:
         run: python tests/browser_smoke.py
       - name: Browser safety center smoke
         run: python tests/browser_safety_smoke.py
+      - name: Browser candidate overview smoke
+        run: python tests/browser_candidate_overview_smoke.py
