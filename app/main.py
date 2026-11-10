@@ -16,11 +16,29 @@ import sqlite3
 import time
 
 import pyotp
+from webauthn import (
+    base64url_to_bytes,
+    generate_authentication_options,
+    generate_registration_options,
+    options_to_json,
+    verify_authentication_response,
+    verify_registration_response,
+)
+from webauthn.helpers.exceptions import (
+    InvalidAuthenticationResponse,
+    InvalidRegistrationResponse,
+)
+from webauthn.helpers.structs import (
+    AuthenticatorSelectionCriteria,
+    PublicKeyCredentialDescriptor,
+    ResidentKeyRequirement,
+    UserVerificationRequirement,
+)
 from collections import defaultdict, deque
 from contextlib import asynccontextmanager
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from typing import Literal
+from typing import Any, Literal
 from urllib.parse import urlsplit
 
 from fastapi import Depends, FastAPI, HTTPException, Request, Response
@@ -79,6 +97,21 @@ class Login(BaseModel):
 class AdminMfaVerify(BaseModel):
     challenge_id: str = Field(min_length=20, max_length=160)
     code: str = Field(pattern=r"^\d{6,8}$")
+
+
+class AdminWebAuthnRegistrationVerify(BaseModel):
+    challenge_id: str = Field(min_length=20, max_length=160)
+    credential: dict[str, Any]
+    label: str = Field(default="Passkey администратора", min_length=2, max_length=80)
+
+
+class AdminWebAuthnAuthenticationVerify(BaseModel):
+    challenge_id: str = Field(min_length=20, max_length=160)
+    credential: dict[str, Any]
+
+
+class AdminWebAuthnFallback(BaseModel):
+    challenge_id: str = Field(min_length=20, max_length=160)
 
 
 class CandidateProfile(BaseModel):
@@ -175,7 +208,7 @@ def production_runtime() -> bool:
 
 def admin_mfa_mode() -> str:
     mode = os.getenv("OPYT50_ADMIN_MFA_MODE", "off").strip().casefold()
-    return mode if mode in {"off", "email", "totp"} else "off"
+    return mode if mode in {"off", "email", "totp", "hybrid"} else "off"
 
 
 def security_profile() -> str:
@@ -192,6 +225,82 @@ def secure_cookie_enabled() -> bool:
 
 def session_cookie_name() -> str:
     return "__Host-stazhno_session" if secure_cookie_enabled() else COOKIE_NAME
+
+
+def _bytes_to_base64url(value: bytes) -> str:
+    return base64.urlsafe_b64encode(value).rstrip(b"=").decode("ascii")
+
+
+def _webauthn_context(request: Request) -> tuple[str, str]:
+    configured = os.getenv("OPYT50_PUBLIC_URL", "").strip()
+    parsed = urlsplit(configured or str(request.base_url))
+    if not parsed.scheme or not parsed.netloc or not parsed.hostname:
+        raise HTTPException(500, "Не настроен публичный адрес для passkey")
+    origin = f"{parsed.scheme}://{parsed.netloc}"
+    return origin, parsed.hostname
+
+
+def _store_admin_webauthn_challenge(
+    db: sqlite3.Connection,
+    user_id: int,
+    kind: str,
+    challenge: bytes,
+    rp_id: str,
+    origin: str,
+) -> str:
+    challenge_key = secrets.token_urlsafe(32)
+    now = datetime.now(timezone.utc)
+    db.execute(
+        """INSERT INTO admin_webauthn_challenges(
+               challenge_key,user_id,kind,challenge_b64,rp_id,origin,
+               expires_at,attempts,used_at,created_at
+           ) VALUES(?,?,?,?,?,?,?,0,NULL,?)""",
+        (
+            challenge_key,
+            user_id,
+            kind,
+            _bytes_to_base64url(challenge),
+            rp_id,
+            origin,
+            (now + timedelta(minutes=5)).isoformat(),
+            now.isoformat(),
+        ),
+    )
+    db.execute(
+        "DELETE FROM admin_webauthn_challenges WHERE expires_at<?",
+        ((now - timedelta(days=1)).isoformat(),),
+    )
+    return challenge_key
+
+
+def issue_admin_webauthn_authentication(
+    db: sqlite3.Connection,
+    user_id: int,
+    request: Request,
+) -> tuple[str, dict[str, Any]] | None:
+    rows = db.execute(
+        """SELECT credential_id
+           FROM admin_webauthn_credentials
+           WHERE user_id=?
+           ORDER BY created_at""",
+        (user_id,),
+    ).fetchall()
+    if not rows:
+        return None
+    origin, rp_id = _webauthn_context(request)
+    options = generate_authentication_options(
+        rp_id=rp_id,
+        allow_credentials=[
+            PublicKeyCredentialDescriptor(id=base64url_to_bytes(str(row["credential_id"])))
+            for row in rows
+        ],
+        user_verification=UserVerificationRequirement.REQUIRED,
+        timeout=120_000,
+    )
+    challenge_key = _store_admin_webauthn_challenge(
+        db, user_id, "authentication", options.challenge, rp_id, origin
+    )
+    return challenge_key, json.loads(options_to_json(options))
 
 
 DUMMY_PASSWORD_HASH = make_password_hash("dummy-authentication-verifier-not-a-user-password")
@@ -300,8 +409,8 @@ def validate_production_security() -> None:
     mfa_mode = admin_mfa_mode()
     profile = security_profile()
     if profile == "high":
-        if mfa_mode != "totp":
-            errors.append("high security profile requires TOTP administrator MFA")
+        if mfa_mode not in {"totp", "hybrid"}:
+            errors.append("high security profile requires TOTP or hybrid passkey administrator MFA")
         hosts = [
             host.strip()
             for host in os.getenv("OPYT50_ALLOWED_HOSTS", "").split(",")
@@ -318,7 +427,7 @@ def validate_production_security() -> None:
     elif mfa_mode == "email":
         if not os.getenv("OPYT50_SMTP_HOST", "").strip() or not os.getenv("OPYT50_MAIL_FROM", "").strip():
             errors.append("admin email MFA requires configured SMTP delivery")
-    elif mfa_mode == "totp":
+    elif mfa_mode in {"totp", "hybrid"}:
         secret = os.getenv("OPYT50_ADMIN_TOTP_SECRET", "").strip()
         if len(secret) < 32:
             errors.append("admin TOTP secret is missing or shorter than 160 bits")
@@ -725,6 +834,26 @@ def create_app(db_path: str | None = None) -> FastAPI:
                 if not production_runtime():
                     result["debug_code"] = debug_code
                 return result
+            if mode == "hybrid":
+                webauthn_challenge = issue_admin_webauthn_authentication(
+                    db, row["id"], request
+                )
+                if webauthn_challenge is not None:
+                    challenge_id, public_key = webauthn_challenge
+                    record_security_event(
+                        db, row["id"], "login_password_verified_mfa_required",
+                        "method=webauthn",
+                    )
+                    db.commit()
+                    return {
+                        "mfa_required": True,
+                        "mfa_method": "webauthn",
+                        "challenge_id": challenge_id,
+                        "public_key": public_key,
+                        "expires_in": 300,
+                        "totp_fallback": True,
+                    }
+                mode = "totp"
             if mode == "totp":
                 challenge_id = issue_admin_totp_challenge(db, row["id"])
                 record_security_event(db, row["id"], "login_password_verified_mfa_required", "method=totp")
@@ -835,6 +964,327 @@ def create_app(db_path: str | None = None) -> FastAPI:
         }
         add_session(db, response, challenge["user_id"])
         return {"user": user_response(user, db)}
+
+    @app.post("/api/admin/passkeys/register/options")
+    def admin_passkey_registration_options(
+        request: Request,
+        user: dict = Depends(active_user),
+        db: sqlite3.Connection = Depends(get_connection),
+    ):
+        allowed(user, "admin")
+        origin, rp_id = _webauthn_context(request)
+        existing = db.execute(
+            "SELECT credential_id FROM admin_webauthn_credentials WHERE user_id=?",
+            (user["id"],),
+        ).fetchall()
+        user_handle = hashlib.sha256(
+            f"stazhno-admin:{user['id']}".encode("utf-8")
+        ).digest()
+        options = generate_registration_options(
+            rp_id=rp_id,
+            rp_name="СТАЖНО",
+            user_id=user_handle,
+            user_name=user["email"],
+            user_display_name=user["name"],
+            exclude_credentials=[
+                PublicKeyCredentialDescriptor(
+                    id=base64url_to_bytes(str(row["credential_id"]))
+                )
+                for row in existing
+            ],
+            authenticator_selection=AuthenticatorSelectionCriteria(
+                resident_key=ResidentKeyRequirement.PREFERRED,
+                user_verification=UserVerificationRequirement.REQUIRED,
+            ),
+            timeout=120_000,
+        )
+        challenge_id = _store_admin_webauthn_challenge(
+            db, user["id"], "registration", options.challenge, rp_id, origin
+        )
+        db.commit()
+        return {
+            "challenge_id": challenge_id,
+            "public_key": json.loads(options_to_json(options)),
+        }
+
+    @app.post("/api/admin/passkeys/register/verify")
+    def admin_passkey_registration_verify(
+        data: AdminWebAuthnRegistrationVerify,
+        user: dict = Depends(active_user),
+        db: sqlite3.Connection = Depends(get_connection),
+    ):
+        allowed(user, "admin")
+        from .release02 import record_security_event
+
+        challenge = db.execute(
+            """SELECT * FROM admin_webauthn_challenges
+               WHERE challenge_key=? AND user_id=? AND kind='registration'""",
+            (data.challenge_id, user["id"]),
+        ).fetchone()
+        now = datetime.now(timezone.utc)
+        if challenge is None or challenge["used_at"] is not None:
+            raise HTTPException(400, "Запрос регистрации passkey недействителен")
+        try:
+            expired = datetime.fromisoformat(challenge["expires_at"]) <= now
+        except (TypeError, ValueError):
+            expired = True
+        if expired:
+            db.execute(
+                "UPDATE admin_webauthn_challenges SET used_at=? WHERE challenge_key=?",
+                (now.isoformat(), data.challenge_id),
+            )
+            db.commit()
+            raise HTTPException(400, "Срок регистрации passkey истёк")
+        try:
+            verified = verify_registration_response(
+                credential=data.credential,
+                expected_challenge=base64url_to_bytes(challenge["challenge_b64"]),
+                expected_rp_id=challenge["rp_id"],
+                expected_origin=challenge["origin"],
+                require_user_verification=True,
+            )
+        except InvalidRegistrationResponse:
+            attempts = int(challenge["attempts"] or 0) + 1
+            db.execute(
+                """UPDATE admin_webauthn_challenges
+                   SET attempts=?,used_at=?
+                   WHERE challenge_key=?""",
+                (
+                    attempts,
+                    now.isoformat() if attempts >= 5 else None,
+                    data.challenge_id,
+                ),
+            )
+            record_security_event(
+                db, user["id"], "admin_passkey_registration_failed",
+                f"attempt={attempts}",
+            )
+            db.commit()
+            raise HTTPException(400, "Не удалось проверить passkey") from None
+
+        credential_id = _bytes_to_base64url(verified.credential_id)
+        public_key = _bytes_to_base64url(verified.credential_public_key)
+        device_type = getattr(
+            verified.credential_device_type, "value",
+            str(verified.credential_device_type),
+        )
+        transports = data.credential.get("response", {}).get("transports", [])
+        if not isinstance(transports, list):
+            transports = []
+        try:
+            db.execute(
+                """INSERT INTO admin_webauthn_credentials(
+                       credential_id,user_id,public_key,sign_count,label,transports,
+                       credential_device_type,backed_up,created_at,last_used_at
+                   ) VALUES(?,?,?,?,?,?,?,?,?,NULL)""",
+                (
+                    credential_id,
+                    user["id"],
+                    public_key,
+                    int(verified.sign_count),
+                    data.label.strip(),
+                    json.dumps(transports, ensure_ascii=False),
+                    device_type,
+                    1 if verified.credential_backed_up else 0,
+                    now.isoformat(),
+                ),
+            )
+        except sqlite3.IntegrityError:
+            raise HTTPException(409, "Этот passkey уже зарегистрирован") from None
+        db.execute(
+            "UPDATE admin_webauthn_challenges SET used_at=? WHERE challenge_key=?",
+            (now.isoformat(), data.challenge_id),
+        )
+        record_security_event(
+            db, user["id"], "admin_passkey_registered",
+            "credential=" + hashlib.sha256(credential_id.encode("utf-8")).hexdigest()[:16],
+        )
+        db.commit()
+        return {"ok": True}
+
+    @app.delete("/api/admin/passkeys/{passkey_id}")
+    def delete_admin_passkey(
+        passkey_id: str,
+        user: dict = Depends(active_user),
+        db: sqlite3.Connection = Depends(get_connection),
+    ):
+        allowed(user, "admin")
+        from .release02 import record_security_event
+
+        if not re.fullmatch(r"[0-9a-f]{24}", passkey_id):
+            raise HTTPException(404, "Passkey не найден")
+        rows = db.execute(
+            "SELECT credential_id FROM admin_webauthn_credentials WHERE user_id=?",
+            (user["id"],),
+        ).fetchall()
+        target = None
+        for row in rows:
+            credential_id = str(row["credential_id"])
+            public_id = hashlib.sha256(
+                ("webauthn-public-id:" + credential_id).encode("utf-8")
+            ).hexdigest()[:24]
+            if secrets.compare_digest(public_id, passkey_id):
+                target = credential_id
+                break
+        if target is None:
+            raise HTTPException(404, "Passkey не найден")
+        db.execute(
+            "DELETE FROM admin_webauthn_credentials WHERE user_id=? AND credential_id=?",
+            (user["id"], target),
+        )
+        record_security_event(db, user["id"], "admin_passkey_deleted")
+        db.commit()
+        return {"ok": True}
+
+    @app.post("/api/admin/mfa/webauthn/verify")
+    def verify_admin_webauthn_mfa(
+        data: AdminWebAuthnAuthenticationVerify,
+        response: Response,
+        db: sqlite3.Connection = Depends(get_connection),
+    ):
+        from .release02 import record_security_event
+
+        challenge = db.execute(
+            """SELECT c.*,u.email,u.name,u.phone,u.role
+               FROM admin_webauthn_challenges c
+               JOIN users u ON u.id=c.user_id
+               WHERE c.challenge_key=? AND c.kind='authentication'""",
+            (data.challenge_id,),
+        ).fetchone()
+        now = datetime.now(timezone.utc)
+        if (
+            challenge is None
+            or challenge["used_at"] is not None
+            or challenge["role"] != "admin"
+        ):
+            raise HTTPException(400, "Passkey-запрос недействителен или уже использован")
+        try:
+            expired = datetime.fromisoformat(challenge["expires_at"]) <= now
+        except (TypeError, ValueError):
+            expired = True
+        if expired:
+            db.execute(
+                "UPDATE admin_webauthn_challenges SET used_at=? WHERE challenge_key=?",
+                (now.isoformat(), data.challenge_id),
+            )
+            record_security_event(db, challenge["user_id"], "admin_passkey_expired")
+            db.commit()
+            raise HTTPException(400, "Срок подтверждения passkey истёк")
+        if int(challenge["attempts"] or 0) >= 5:
+            raise HTTPException(429, "Слишком много неверных попыток. Войдите заново")
+
+        credential_id = str(data.credential.get("id") or "")
+        stored = db.execute(
+            """SELECT credential_id,public_key,sign_count
+               FROM admin_webauthn_credentials
+               WHERE user_id=? AND credential_id=?""",
+            (challenge["user_id"], credential_id),
+        ).fetchone()
+        if stored is None:
+            raise HTTPException(401, "Этот passkey не зарегистрирован")
+        try:
+            verified = verify_authentication_response(
+                credential=data.credential,
+                expected_challenge=base64url_to_bytes(challenge["challenge_b64"]),
+                expected_rp_id=challenge["rp_id"],
+                expected_origin=challenge["origin"],
+                credential_public_key=base64url_to_bytes(stored["public_key"]),
+                credential_current_sign_count=int(stored["sign_count"] or 0),
+                require_user_verification=True,
+            )
+        except InvalidAuthenticationResponse:
+            attempts = int(challenge["attempts"] or 0) + 1
+            db.execute(
+                """UPDATE admin_webauthn_challenges
+                   SET attempts=?,used_at=?
+                   WHERE challenge_key=?""",
+                (
+                    attempts,
+                    now.isoformat() if attempts >= 5 else None,
+                    data.challenge_id,
+                ),
+            )
+            record_security_event(
+                db, challenge["user_id"], "admin_passkey_failed",
+                f"attempt={attempts}",
+            )
+            db.commit()
+            if attempts >= 5:
+                raise HTTPException(429, "Слишком много неверных попыток. Войдите заново")
+            raise HTTPException(401, "Passkey не подтверждён") from None
+
+        control = db.execute(
+            "SELECT status FROM account_controls WHERE user_id=?",
+            (challenge["user_id"],),
+        ).fetchone()
+        if control is not None and control["status"] == "disabled":
+            raise HTTPException(403, "Аккаунт временно заблокирован")
+        db.execute(
+            """UPDATE admin_webauthn_credentials
+               SET sign_count=?,last_used_at=?
+               WHERE user_id=? AND credential_id=?""",
+            (
+                int(verified.new_sign_count),
+                now.isoformat(),
+                challenge["user_id"],
+                credential_id,
+            ),
+        )
+        db.execute(
+            "UPDATE admin_webauthn_challenges SET used_at=? WHERE challenge_key=?",
+            (now.isoformat(), data.challenge_id),
+        )
+        record_security_event(db, challenge["user_id"], "admin_passkey_success")
+        user = {
+            "id": challenge["user_id"],
+            "email": challenge["email"],
+            "name": challenge["name"],
+            "phone": challenge["phone"],
+            "role": challenge["role"],
+        }
+        add_session(db, response, challenge["user_id"])
+        return {"user": user_response(user, db)}
+
+    @app.post("/api/admin/mfa/webauthn/fallback-totp")
+    def admin_webauthn_fallback_totp(
+        data: AdminWebAuthnFallback,
+        db: sqlite3.Connection = Depends(get_connection),
+    ):
+        if admin_mfa_mode() != "hybrid":
+            raise HTTPException(403, "Резервный TOTP не включён")
+        from .release02 import issue_admin_totp_challenge, record_security_event
+
+        challenge = db.execute(
+            """SELECT challenge_key,user_id,expires_at,used_at
+               FROM admin_webauthn_challenges
+               WHERE challenge_key=? AND kind='authentication'""",
+            (data.challenge_id,),
+        ).fetchone()
+        now = datetime.now(timezone.utc)
+        if challenge is None or challenge["used_at"] is not None:
+            raise HTTPException(400, "Passkey-запрос недействителен")
+        try:
+            expired = datetime.fromisoformat(challenge["expires_at"]) <= now
+        except (TypeError, ValueError):
+            expired = True
+        if expired:
+            raise HTTPException(400, "Срок подтверждения истёк")
+        db.execute(
+            "UPDATE admin_webauthn_challenges SET used_at=? WHERE challenge_key=?",
+            (now.isoformat(), data.challenge_id),
+        )
+        challenge_id = issue_admin_totp_challenge(db, challenge["user_id"])
+        record_security_event(
+            db, challenge["user_id"], "admin_passkey_fallback_totp"
+        )
+        db.commit()
+        return {
+            "mfa_required": True,
+            "mfa_method": "totp",
+            "code_length": 6,
+            "challenge_id": challenge_id,
+            "expires_in": 300,
+        }
 
     @app.post("/api/logout")
     def logout(request: Request, response: Response, db: sqlite3.Connection = Depends(get_connection)):
