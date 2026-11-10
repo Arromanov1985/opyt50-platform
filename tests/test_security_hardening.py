@@ -87,7 +87,7 @@ def test_security_headers_and_oversized_api_requests(tmp_path):
     with TestClient(app) as client:
         page = client.get("/")
         assert page.headers["x-content-type-options"] == "nosniff"
-        assert page.headers["x-frame-options"] == "DENY"
+        assert page.headers["x-frame-options"] == "DENY"\n        assert page.headers["referrer-policy"] == "no-referrer"
         assert page.headers["x-xss-protection"] == "0"
         assert page.headers["cross-origin-opener-policy"] == "same-origin"
         assert page.headers["cross-origin-resource-policy"] == "same-origin"
