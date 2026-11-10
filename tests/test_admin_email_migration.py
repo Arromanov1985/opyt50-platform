@@ -19,7 +19,7 @@ def prepare_schema(path: str) -> None:
     init_release02(path)
 
 
-def test_legacy_admin_email_migrates_without_changing_identity(tmp_path: Path):
+def test_legacy_admin_email_migrates_without_changing_identity(tmp_path: Path, monkeypatch):
     path = str(tmp_path / "admin-email.db")
     prepare_schema(path)
 
@@ -84,7 +84,8 @@ def test_legacy_admin_email_migrates_without_changing_identity(tmp_path: Path):
             ),
         )
 
-    # Re-running the normal release initializer performs the one-time migration.
+    # Re-running the normal production initializer performs the one-time migration.
+    monkeypatch.setenv("OPYT50_ENV", "production")
     init_release02(path)
 
     with database(path) as db:
@@ -147,3 +148,31 @@ def test_admin_email_migration_refuses_identity_collision(tmp_path: Path):
         )
         with pytest.raises(RuntimeError, match="already used"):
             migrate_legacy_admin_email(db)
+
+
+def test_demo_environment_keeps_fictional_admin_email(tmp_path: Path, monkeypatch):
+    path = str(tmp_path / "admin-email-demo.db")
+    monkeypatch.delenv("OPYT50_ENV", raising=False)
+    monkeypatch.delenv("OPYT50_PUBLIC_URL", raising=False)
+    prepare_schema(path)
+
+    with database(path) as db:
+        user_id = db.execute(
+            "INSERT INTO users(role,email,name,password_hash) VALUES(?,?,?,?)",
+            (
+                "admin",
+                LEGACY_ADMIN_EMAIL,
+                "Демо администратор",
+                make_password_hash("Demo administrator password 2026"),
+            ),
+        ).lastrowid
+
+    init_release02(path)
+
+    with database(path) as db:
+        row = db.execute("SELECT email FROM users WHERE id=?", (user_id,)).fetchone()
+        assert row["email"] == LEGACY_ADMIN_EMAIL
+        assert db.execute(
+            "SELECT COUNT(*) FROM users WHERE email=?",
+            (PRODUCTION_ADMIN_EMAIL,),
+        ).fetchone()[0] == 0
