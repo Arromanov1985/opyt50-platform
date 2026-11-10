@@ -1370,7 +1370,7 @@ def install_routes(app) -> None:
             issue_email_token(db, row["id"], "reset")
         # Commit before the HTTP response: a new dashboard request may arrive immediately.
         db.commit()
-        return {"ok": True, "delivery": "demo_outbox_only"}
+        return {"ok": True, "delivery": delivery_mode()}
 
     @app.post("/api/account/password/reset")
     def reset_password(data: PasswordResetIn, db: sqlite3.Connection = Depends(get_connection)):
