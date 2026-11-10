@@ -110,10 +110,27 @@ function updateAuth() {
     $('#auth-company-row').classList.add('hidden');
     $('#password-hint').classList.add('hidden');
     $('#auth-route').classList.add('hidden');
+    const totp = state.mfaMethod === 'totp';
     $('#auth-kicker').textContent = 'ДВУХФАКТОРНЫЙ ВХОД';
     $('#auth-title').textContent = 'Подтвердите вход';
-    $('#auth-intro').textContent = 'Пароль принят. Для входа администратора нужен второй фактор.';
-    $('#auth-guidance').textContent = 'Код одноразовый и действует 5 минут.';
+    $('#auth-intro').textContent = totp
+      ? 'Пароль принят. Введите код из приложения Authenticator.'
+      : 'Пароль принят. Для входа администратора нужен второй фактор.';
+    $('#auth-guidance').textContent = totp
+      ? 'Введите текущий 6-значный код. Он меняется примерно каждые 30 секунд.'
+      : 'Код одноразовый и действует 5 минут.';
+    const mfaText = $('#auth-mfa-text');
+    if (mfaText) mfaText.textContent = totp
+      ? 'Откройте приложение Authenticator и введите текущий 6-значный код.'
+      : 'Мы отправили одноразовый 8-значный код на email администратора. Код действует 5 минут.';
+    const mfaCode = $('#auth-mfa-code');
+    if (mfaCode) {
+      const length = totp ? 6 : 8;
+      mfaCode.minLength = length;
+      mfaCode.maxLength = length;
+      mfaCode.pattern = '[0-9]{' + length + '}';
+      mfaCode.placeholder = totp ? '000000' : '00000000';
+    }
     $('#auth-submit').textContent = 'Подтвердить вход →';
     $('#auth-switch').innerHTML = '<button type="button" data-mfa-cancel>Вернуться ко входу по email и паролю</button>';
     const message = $('#auth-message'); if (message) message.textContent = '';
@@ -177,6 +194,8 @@ async function submitAuth(event) {
         body:JSON.stringify({challenge_id:state.mfaChallenge, code})
       });
       state.mfaChallenge = null;
+      state.mfaMethod = null;
+      state.mfaCodeLength = 8;
       $('#auth-dialog').close();
       state.user = data.user;
       state.tab = 'overview';
@@ -228,6 +247,8 @@ async function submitAuth(event) {
     const data = await api(state.mode === 'register' ? '/api/register' : '/api/login', {method:'POST', body:JSON.stringify(body)});
     if (data.mfa_required) {
       state.mfaChallenge = data.challenge_id;
+      state.mfaMethod = data.mfa_method || 'email';
+      state.mfaCodeLength = Number(data.code_length || (state.mfaMethod === 'totp' ? 6 : 8));
       updateAuth();
       $('#auth-mfa-code').value = '';
       $('#auth-mfa-code').focus();
