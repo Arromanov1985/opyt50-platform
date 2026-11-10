@@ -147,12 +147,23 @@ def init_release02(path: str) -> None:
             db.execute(statement)
 
 
-def enqueue_notice(db: sqlite3.Connection, user_id: int, event: str, subject: str, message: str) -> None:
-    """Persist every notice and optionally deliver it through configured SMTP."""
+def enqueue_notice(
+    db: sqlite3.Connection,
+    user_id: int,
+    event: str,
+    subject: str,
+    message: str,
+    *,
+    stored_body: str | None = None,
+) -> None:
+    """Persist a redaction-safe notice and optionally deliver the real message."""
     user = db.execute("SELECT email FROM users WHERE id=?", (user_id,)).fetchone()
     if user is not None:
-        db.execute("INSERT INTO email_outbox(to_email,event,subject,body) VALUES(?,?,?,?)",
-                   (user["email"], event, subject, message))
+        persisted = message if stored_body is None else stored_body
+        db.execute(
+            "INSERT INTO email_outbox(to_email,event,subject,body) VALUES(?,?,?,?)",
+            (user["email"], event, subject, persisted),
+        )
         send_email(user["email"], subject, message)
 
 
@@ -235,10 +246,20 @@ def issue_email_token(db: sqlite3.Connection, user_id: int, purpose: str) -> Non
     link = public_url + path if public_url else path
     ttl = "30 минут" if purpose == "reset" else "24 часа"
     action = "восстановления пароля" if purpose == "reset" else "подтверждения email"
-    enqueue_notice(
-        db, user_id, f"account_{purpose}", "СТАЖНО — подтверждение",
+    message = (
         f"Ссылка для {action}: {link}\n\nСрок действия ссылки: {ttl}. "
-        "Если вы не запрашивали это действие, просто проигнорируйте письмо.",
+        "Если вы не запрашивали это действие, просто проигнорируйте письмо."
+    )
+    enqueue_notice(
+        db,
+        user_id,
+        f"account_{purpose}",
+        "СТАЖНО — подтверждение",
+        message,
+        stored_body=(
+            f"Ссылка для {action} отправлена пользователю. "
+            f"Срок действия: {ttl}. Секретный токен намеренно не сохраняется."
+        ),
     )
 
 
