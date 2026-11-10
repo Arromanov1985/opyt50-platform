@@ -7,9 +7,14 @@ from __future__ import annotations
 
 import json
 import os
+import sys
+from pathlib import Path
 from urllib.parse import urlsplit
 
-from app.main import admin_mfa_mode, secure_cookie_enabled
+ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT))
+
+from app.main import admin_mfa_mode, secure_cookie_enabled  # noqa: E402
 
 
 def assess() -> dict:
