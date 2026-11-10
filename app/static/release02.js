@@ -69,7 +69,7 @@
         <small>${esc(factor.text||'')}</small>
       </div>`).join('');
       const cautionMarkup = cautions.length ? `<div class="match-cautions"><strong>Что стоит уточнить</strong>${cautions.slice(0,compact?2:4).map(text=>`<span>! ${esc(text)}</span>`).join('')}</div>` : '';
-      return `<div class="match-breakdown ${compact?'compact':''}">${rows}${cautionMarkup}<p class="match-method-note">Оценка основана только на профессии, навыках и условиях работы. Возраст и другие личные характеристики не используются. Итог округляется до 5%.</p></div>`;
+      return `<div class="match-breakdown ${compact?'compact':''}">${rows}${cautionMarkup}<p class="match-method-note">Оценка основана только на профессии, навыках и условиях работы. Возраст и другие личные характеристики не используются. Итог округляется до 5% и помогает сортировать варианты, но не гарантирует приглашение.</p></div>`;
     }
 
     jobMarkup = function(job, personalized = false) {
