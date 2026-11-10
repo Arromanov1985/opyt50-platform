@@ -481,7 +481,8 @@ const accountSecurityLabels = {
   admin_passkey_success:'Вход администратора подтверждён passkey',
   admin_passkey_failed:'Ошибка подтверждения passkey',
   admin_passkey_fallback_totp:'Выбран резервный код Authenticator',
-  new_device_login:'Вход с нового устройства'
+  new_device_login:'Вход с нового устройства',
+  admin_email_migrated:'Email администратора изменён'
 };
 function accountSecurityEventMarkup(item) {
   const label = accountSecurityLabels[item.event_type] || 'Событие безопасности';
