@@ -9,7 +9,7 @@ import sqlite3
 from datetime import datetime, timedelta, timezone
 from typing import Literal
 
-from fastapi import Depends, HTTPException, Response
+from fastapi import Depends, HTTPException, Request, Response
 from pydantic import BaseModel, Field, field_validator
 
 from .db import database
@@ -1236,6 +1236,7 @@ def install_routes(app) -> None:
     @app.post("/api/account/password/change")
     def change_password(
         data: PasswordChangeIn,
+        request: Request,
         response: Response,
         user: dict = Depends(active_user),
         db: sqlite3.Connection = Depends(get_connection),
@@ -1272,7 +1273,7 @@ def install_routes(app) -> None:
         record_security_event(db, user["id"], "password_changed_all_sessions_revoked")
         # add_session commits the password update/audit event and rotates the
         # browser to a fresh opaque session token.
-        add_session(db, response, user["id"])
+        add_session(db, response, user["id"], request)
         return {"ok": True}
 
     @app.get("/api/account/email/status")
