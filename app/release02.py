@@ -8,12 +8,12 @@ import sqlite3
 from datetime import datetime, timedelta, timezone
 from typing import Literal
 
-from fastapi import Depends, HTTPException
+from fastapi import Depends, HTTPException, Response
 from pydantic import BaseModel, Field, field_validator
 
 from .db import database
 from .email_delivery import delivery_mode, send_email
-from .security import make_password_hash, token_hash
+from .security import make_password_hash, token_hash, verify_password
 
 
 MIGRATION = """
@@ -263,6 +263,11 @@ class PasswordRequestIn(BaseModel):
 
 class PasswordResetIn(EmailTokenIn):
     password: str = Field(min_length=15, max_length=128)
+
+
+class PasswordChangeIn(BaseModel):
+    current_password: str = Field(min_length=1, max_length=128)
+    new_password: str = Field(min_length=15, max_length=128)
 
 
 def issue_email_token(db: sqlite3.Connection, user_id: int, purpose: str) -> None:
@@ -553,7 +558,8 @@ def install_routes(app) -> None:
     # Imported here to avoid a circular module initialization.
     from .main import (
         CONTACT_EMAIL_PATTERN, CONTACT_PHONE_PATTERN,
-        active_user, allowed, candidate_view, get_connection,
+        active_user, add_session, allowed, candidate_view,
+        clear_security_rate_limit, consume_security_rate_limit, get_connection,
     )
 
     @app.get("/api/employer/company")
@@ -1056,6 +1062,92 @@ def install_routes(app) -> None:
         # Commit before the HTTP response: a new dashboard request may arrive immediately.
         db.commit()
         return {"ok": True, "status": body.status}
+
+    @app.get("/api/account/security")
+    def account_security(user: dict = Depends(active_user), db: sqlite3.Connection = Depends(get_connection)):
+        active_sessions = db.execute(
+            "SELECT COUNT(*) FROM sessions WHERE user_id=? AND expires_at>?",
+            (user["id"], datetime.now(timezone.utc).isoformat()),
+        ).fetchone()[0]
+        email_row = db.execute(
+            "SELECT email_verified FROM account_controls WHERE user_id=?",
+            (user["id"],),
+        ).fetchone()
+        events = db.execute(
+            """SELECT event_type,detail,created_at
+               FROM security_events
+               WHERE user_id=?
+               ORDER BY created_at DESC
+               LIMIT 20""",
+            (user["id"],),
+        ).fetchall()
+        return {
+            "active_sessions": int(active_sessions),
+            "email_verified": bool(email_row and email_row["email_verified"]),
+            "events": [dict(row) for row in events],
+            "password_min_length": 15,
+        }
+
+    @app.post("/api/account/sessions/revoke-others")
+    def revoke_other_sessions(
+        user: dict = Depends(active_user),
+        db: sqlite3.Connection = Depends(get_connection),
+    ):
+        current_digest = user.get("token_hash")
+        if not current_digest:
+            raise HTTPException(401, "Текущая сессия не определена")
+        result = db.execute(
+            "DELETE FROM sessions WHERE user_id=? AND token_hash<>?",
+            (user["id"], current_digest),
+        )
+        revoked = max(int(result.rowcount or 0), 0)
+        record_security_event(
+            db, user["id"], "other_sessions_revoked", f"count={revoked}"
+        )
+        db.commit()
+        return {"ok": True, "revoked": revoked}
+
+    @app.post("/api/account/password/change")
+    def change_password(
+        data: PasswordChangeIn,
+        response: Response,
+        user: dict = Depends(active_user),
+        db: sqlite3.Connection = Depends(get_connection),
+    ):
+        subject = str(user["id"])
+        allowed_attempt, retry_after = consume_security_rate_limit(
+            db, "password_change", subject, 5, 900
+        )
+        if not allowed_attempt:
+            db.commit()
+            raise HTTPException(
+                429,
+                "Слишком много попыток. Повторите позже",
+                headers={"Retry-After": str(retry_after)},
+            )
+        row = db.execute(
+            "SELECT password_hash FROM users WHERE id=?",
+            (user["id"],),
+        ).fetchone()
+        if row is None or not verify_password(data.current_password, row["password_hash"]):
+            record_security_event(db, user["id"], "password_change_failed")
+            db.commit()
+            raise HTTPException(401, "Текущий пароль указан неверно")
+        if verify_password(data.new_password, row["password_hash"]):
+            db.commit()
+            raise HTTPException(422, "Новый пароль должен отличаться от текущего")
+
+        db.execute(
+            "UPDATE users SET password_hash=? WHERE id=?",
+            (make_password_hash(data.new_password), user["id"]),
+        )
+        db.execute("DELETE FROM sessions WHERE user_id=?", (user["id"],))
+        clear_security_rate_limit(db, "password_change", subject, 900)
+        record_security_event(db, user["id"], "password_changed_all_sessions_revoked")
+        # add_session commits the password update/audit event and rotates the
+        # browser to a fresh opaque session token.
+        add_session(db, response, user["id"])
+        return {"ok": True}
 
     @app.get("/api/account/email/status")
     def email_status(user: dict = Depends(active_user), db: sqlite3.Connection = Depends(get_connection)):
