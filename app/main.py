@@ -179,6 +179,34 @@ def session_cookie_name() -> str:
 DUMMY_PASSWORD_HASH = make_password_hash("dummy-authentication-verifier-not-a-user-password")
 
 
+def validate_production_security() -> None:
+    if os.getenv("OPYT50_ENV", "").strip().casefold() not in {"prod", "production"}:
+        return
+    errors = []
+    public_url = os.getenv("OPYT50_PUBLIC_URL", "").strip()
+    if not public_url.startswith("https://"):
+        errors.append("OPYT50_PUBLIC_URL must use https://")
+    if not secure_cookie_enabled():
+        errors.append("secure session cookies must be enabled")
+    if os.getenv("OPYT50_ENABLE_DOCS", "0") == "1":
+        errors.append("API docs must be disabled")
+    if os.getenv("OPYT50_PREVIEW_SEED_DEMO", "0") == "1":
+        errors.append("demo seeding must be disabled")
+    if os.getenv("DATABASE_URL", "").strip():
+        sslmode = os.getenv("OPYT50_DB_SSLMODE", "").strip().casefold()
+        if sslmode not in {"require", "verify-ca", "verify-full"}:
+            errors.append("PostgreSQL TLS must use require, verify-ca or verify-full")
+    if os.getenv("OPYT50_SMTP_HOST", "").strip():
+        smtp_tls = (
+            os.getenv("OPYT50_SMTP_SSL", "0") == "1"
+            or os.getenv("OPYT50_SMTP_STARTTLS", "1") == "1"
+        )
+        if not smtp_tls:
+            errors.append("SMTP must use TLS")
+    if errors:
+        raise RuntimeError("Unsafe production configuration: " + "; ".join(errors))
+
+
 def get_connection(request: Request):
     with database(request.app.state.db_path) as connection:
         yield connection
@@ -252,6 +280,7 @@ def create_app(db_path: str | None = None) -> FastAPI:
 
     @asynccontextmanager
     async def lifespan(app: FastAPI):
+        validate_production_security()
         init_db(app.state.db_path)
         from .release02 import init_release02
         init_release02(app.state.db_path)
