@@ -30,7 +30,7 @@ from pydantic import BaseModel, Field, field_validator, model_validator
 from .db import database, init_db
 from .matching import lead_price, match_candidate, taxonomy_payload
 from .security import (
-    COOKIE_NAME, SESSION_SECONDS, issue_session, make_password_hash,
+    ADMIN_SESSION_SECONDS, COOKIE_NAME, SESSION_SECONDS, issue_session, make_password_hash,
     password_needs_rehash, token_hash, verify_password,
 )
 
@@ -155,8 +155,8 @@ class VacancyStatus(BaseModel):
     status: Literal["open", "closed"]
 
 
-def utc_expiry() -> str:
-    return (datetime.now(timezone.utc) + timedelta(seconds=SESSION_SECONDS)).isoformat()
+def utc_expiry(seconds: int = SESSION_SECONDS) -> str:
+    return (datetime.now(timezone.utc) + timedelta(seconds=seconds)).isoformat()
 
 
 def production_runtime() -> bool:
@@ -259,8 +259,16 @@ def user_response(user: dict, db: sqlite3.Connection) -> dict:
 
 
 def add_session(db: sqlite3.Connection, response: Response, user_id: int) -> None:
+    role_row = db.execute("SELECT role FROM users WHERE id=?", (user_id,)).fetchone()
+    role = role_row["role"] if role_row is not None else ""
+    lifetime = ADMIN_SESSION_SECONDS if role == "admin" else SESSION_SECONDS
+    if role == "admin":
+        db.execute("DELETE FROM sessions WHERE user_id=?", (user_id,))
     token, digest = issue_session()
-    db.execute("INSERT INTO sessions(token_hash,user_id,expires_at) VALUES(?,?,?)", (digest, user_id, utc_expiry()))
+    db.execute(
+        "INSERT INTO sessions(token_hash,user_id,expires_at) VALUES(?,?,?)",
+        (digest, user_id, utc_expiry(lifetime)),
+    )
     # FastAPI yield dependencies may finalize after the response is sent.
     # Commit before issuing the session cookie, so the next /api/me sees it.
     db.commit()
@@ -270,7 +278,7 @@ def add_session(db: sqlite3.Connection, response: Response, user_id: int) -> Non
         httponly=True,
         secure=secure_cookie_enabled(),
         samesite="strict",
-        max_age=SESSION_SECONDS,
+        max_age=lifetime,
         path="/",
     )
 
