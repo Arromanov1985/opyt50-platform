@@ -153,9 +153,9 @@ def _salary_factor(vacancy: Mapping, candidate: Mapping) -> dict:
     # Some legacy/unit fixtures do not specify the lower bound. If the upper
     # bound covers the expectation, do not invent a penalty from a missing value.
     if salary_min <= 0:
-        return _factor("salary", 1.0, "Верхняя граница соответствует ожиданиям")
+        return _factor("salary", 1.0, "Подходят зарплатные ожидания")
     if expected <= salary_min:
-        return _factor("salary", 1.0, "Зарплатный диапазон соответствует ожиданиям")
+        return _factor("salary", 1.0, "Подходят зарплатные ожидания")
     if salary_max <= salary_min:
         return _factor("salary", 0.7, "Ожидания укладываются в заявленный уровень")
     headroom = max(0.0, min(1.0, (salary_max - expected) / (salary_max - salary_min)))
