@@ -226,8 +226,8 @@ def validate_production_security() -> None:
             errors.append("admin email MFA requires configured SMTP delivery")
     elif mfa_mode == "totp":
         secret = os.getenv("OPYT50_ADMIN_TOTP_SECRET", "").strip()
-        if len(secret) < 16:
-            errors.append("admin TOTP secret is missing or too short")
+        if len(secret) < 32:
+            errors.append("admin TOTP secret is missing or shorter than 160 bits")
         else:
             try:
                 pyotp.TOTP(secret, digits=6, interval=30).at(0)
@@ -327,7 +327,7 @@ def create_app(db_path: str | None = None) -> FastAPI:
     docs_enabled = os.getenv("OPYT50_ENABLE_DOCS", "0" if production_runtime() else "1") == "1"
     app = FastAPI(
         title="СТАЖНО",
-        version="0.17.0-dev",
+        version="0.18.0-dev",
         lifespan=lifespan,
         docs_url="/api/docs" if docs_enabled else None,
         redoc_url="/api/redoc" if docs_enabled else None,
@@ -447,7 +447,9 @@ def create_app(db_path: str | None = None) -> FastAPI:
 
     @app.get("/api/health")
     def health():
-        return {"status": "ok", "version": "0.17.0-dev", "payments": "demo_only"}
+        if production_runtime():
+            return {"status": "ok"}
+        return {"status": "ok", "version": "0.18.0-dev", "payments": "demo_only"}
 
     @app.get("/api/taxonomy")
     def taxonomy(db: sqlite3.Connection = Depends(get_connection)):
