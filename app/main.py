@@ -24,10 +24,7 @@ from webauthn import (
     verify_authentication_response,
     verify_registration_response,
 )
-from webauthn.helpers.exceptions import (
-    InvalidAuthenticationResponse,
-    InvalidRegistrationResponse,
-)
+from webauthn.helpers.exceptions import WebAuthnException
 from webauthn.helpers.structs import (
     AuthenticatorSelectionCriteria,
     PublicKeyCredentialDescriptor,
@@ -1043,7 +1040,7 @@ def create_app(db_path: str | None = None) -> FastAPI:
                 expected_origin=challenge["origin"],
                 require_user_verification=True,
             )
-        except InvalidRegistrationResponse:
+        except WebAuthnException:
             attempts = int(challenge["attempts"] or 0) + 1
             db.execute(
                 """UPDATE admin_webauthn_challenges
@@ -1192,7 +1189,7 @@ def create_app(db_path: str | None = None) -> FastAPI:
                 credential_current_sign_count=int(stored["sign_count"] or 0),
                 require_user_verification=True,
             )
-        except InvalidAuthenticationResponse:
+        except WebAuthnException:
             attempts = int(challenge["attempts"] or 0) + 1
             db.execute(
                 """UPDATE admin_webauthn_challenges
