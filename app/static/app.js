@@ -954,6 +954,40 @@ function formValue(form, name) { return form.elements.namedItem(name).value.trim
 function parseNumber(form, name) { return Number(formValue(form,name)); }
 async function handleDashboardSubmit(event) {
   const form = event.target;
+  if (form.id === 'security-password-form') {
+    event.preventDefault();
+    const message = $('#security-password-message');
+    const currentPassword = formValue(form,'current_password');
+    const newPassword = formValue(form,'new_password');
+    const confirmPassword = formValue(form,'new_password_confirm');
+    if (newPassword.length < 15) {
+      if (message) message.textContent = 'Новый пароль должен содержать не менее 15 символов.';
+      return;
+    }
+    if (newPassword !== confirmPassword) {
+      if (message) message.textContent = 'Новые пароли не совпадают.';
+      return;
+    }
+    const submit = form.querySelector('button[type="submit"]');
+    submit.disabled = true;
+    if (message) message.textContent = '';
+    try {
+      await api('/api/account/password/change',{
+        method:'POST',
+        body:JSON.stringify({current_password:currentPassword,new_password:newPassword})
+      });
+      form.reset();
+      await reloadUser();
+      await renderAccountSecurity($('#dashboard-main'));
+      toast('Пароль изменён. Все старые сессии завершены.');
+    } catch(e) {
+      if (message) message.textContent = e.message;
+      toast(e.message,true);
+    } finally {
+      if (submit.isConnected) submit.disabled = false;
+    }
+    return;
+  }
   if (form.id === 'profile-form') {
     event.preventDefault();
     const body = {profession:formValue(form,'profession'),city:formValue(form,'city'),skills:formValue(form,'skills'),salary_min:parseNumber(form,'salary_min'),phone:formValue(form,'phone'),schedule:formValue(form,'schedule'),employment:formValue(form,'employment'),about:formValue(form,'about'),is_active:form.elements.namedItem('is_active').checked};
@@ -1010,6 +1044,12 @@ async function handleDashboardClick(event) {
   if (btn.disabled) return;
   btn.disabled = true;
   try {
+    if (action === 'revoke-other-sessions') {
+      const result = await api('/api/account/sessions/revoke-others',{method:'POST'});
+      await renderAccountSecurity($('#dashboard-main'));
+      toast(result.revoked ? 'Другие сессии завершены.' : 'Других активных сессий нет.');
+      return;
+    }
     if (action === 'filter-employer-jobs') {
       if (!['all', 'open', 'closed'].includes(btn.dataset.filter)) return;
       state.employerVacancyFilter = btn.dataset.filter;
