@@ -358,9 +358,17 @@ function accountSecurityEventMarkup(item) {
   const label = accountSecurityLabels[item.event_type] || 'Событие безопасности';
   return `<div class="account-security-event"><span class="account-security-event-dot" aria-hidden="true"></span><div><strong>${esc(label)}</strong><small>${esc(item.created_at || '')}</small></div></div>`;
 }
+function accountSecuritySessionMarkup(item) {
+  const seen = item.last_seen_at || item.authenticated_at || '';
+  return `<div class="account-security-session">
+    <div><strong>${item.current ? 'Этот браузер' : 'Другая активная сессия'}</strong><small>Последняя активность: ${esc(seen)}</small></div>
+    ${item.current ? '<span class="status success">Текущая</span>' : `<button type="button" class="btn btn-outline btn-small" data-action="revoke-session" data-session-id="${esc(item.id)}">Завершить</button>`}
+  </div>`;
+}
 async function renderAccountSecurity(target) {
   const data = await api('/api/account/security');
   const events = Array.isArray(data.events) ? data.events : [];
+  const sessions = Array.isArray(data.sessions) ? data.sessions : [];
   target.innerHTML = `<div class="account-security-stack">
     <section class="panel account-security-hero">
       <span class="section-kicker">БЕЗОПАСНОСТЬ АККАУНТА</span>
@@ -372,6 +380,12 @@ async function renderAccountSecurity(target) {
         <div><strong>15+</strong><span>минимум символов пароля</span></div>
       </div>
       <button type="button" class="btn btn-outline" data-action="revoke-other-sessions">Завершить все другие сессии</button>
+    </section>
+    <section class="panel account-security-sessions">
+      <span class="section-kicker">АКТИВНЫЕ СЕССИИ</span>
+      <h3>Устройства с доступом к аккаунту</h3>
+      <p class="muted">Текущий браузер отмечен отдельно. Любую другую сессию можно завершить точечно.</p>
+      <div class="account-security-session-list">${sessions.length ? sessions.map(accountSecuritySessionMarkup).join('') : '<div class="empty-state">Активных сессий не найдено.</div>'}</div>
     </section>
     <section class="panel account-security-password">
       <span class="section-kicker">ПАРОЛЬ</span>
@@ -1048,6 +1062,14 @@ async function handleDashboardClick(event) {
       const result = await api('/api/account/sessions/revoke-others',{method:'POST'});
       await renderAccountSecurity($('#dashboard-main'));
       toast(result.revoked ? 'Другие сессии завершены.' : 'Других активных сессий нет.');
+      return;
+    }
+    if (action === 'revoke-session') {
+      const sessionId = String(btn.dataset.sessionId || '');
+      if (!sessionId) return;
+      await api(`/api/account/sessions/${encodeURIComponent(sessionId)}`,{method:'DELETE'});
+      await renderAccountSecurity($('#dashboard-main'));
+      toast('Сессия завершена.');
       return;
     }
     if (action === 'filter-employer-jobs') {
