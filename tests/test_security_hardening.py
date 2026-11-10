@@ -1,0 +1,131 @@
+"""Security regression tests for the production hardening baseline."""
+import hashlib
+
+from fastapi.testclient import TestClient
+
+from app.db import database
+from app.main import create_app
+from app.security import (
+    LEGACY_PASSWORD_ROUNDS,
+    make_password_hash,
+    password_needs_rehash,
+    verify_password,
+)
+
+XHR = {"X-Requested-With": "OPYT50"}
+
+
+def legacy_pbkdf2(password: str) -> str:
+    salt = bytes.fromhex("00112233445566778899aabbccddeeff")
+    digest = hashlib.pbkdf2_hmac(
+        "sha256", password.encode(), salt, LEGACY_PASSWORD_ROUNDS
+    )
+    return "pbkdf2_sha256$" + str(LEGACY_PASSWORD_ROUNDS) + "$" + salt.hex() + "$" + digest.hex()
+
+
+def test_argon2id_is_default_and_legacy_pbkdf2_remains_verifiable():
+    password = "A very long secure passphrase 2026"
+    current = make_password_hash(password)
+    assert current.startswith("$argon2id$")
+    assert verify_password(password, current)
+    assert not verify_password(password + "x", current)
+    assert not password_needs_rehash(current)
+
+    legacy = legacy_pbkdf2(password)
+    assert verify_password(password, legacy)
+    assert password_needs_rehash(legacy)
+
+
+def test_successful_login_transparently_upgrades_legacy_password(tmp_path):
+    app = create_app(str(tmp_path / "security.db"))
+    password = "Legacy password long enough 2026"
+    with TestClient(app) as client:
+        with database(app.state.db_path) as db:
+            cursor = db.execute(
+                "INSERT INTO users(role,email,name,password_hash) VALUES(?,?,?,?)",
+                ("candidate", "legacy@example.test", "Legacy User", legacy_pbkdf2(password)),
+            )
+            db.execute(
+                "INSERT INTO candidate_profiles(user_id) VALUES(?)",
+                (cursor.lastrowid,),
+            )
+
+        response = client.post(
+            "/api/login",
+            headers=XHR,
+            json={"email": "legacy@example.test", "password": password},
+        )
+        assert response.status_code == 200, response.text
+
+        with database(app.state.db_path) as db:
+            upgraded = db.execute(
+                "SELECT password_hash FROM users WHERE email=?",
+                ("legacy@example.test",),
+            ).fetchone()["password_hash"]
+        assert upgraded.startswith("$argon2id$")
+        assert verify_password(password, upgraded)
+
+
+def test_new_single_factor_passwords_require_15_characters(tmp_path):
+    app = create_app(str(tmp_path / "password-policy.db"))
+    with TestClient(app) as client:
+        response = client.post(
+            "/api/register",
+            headers=XHR,
+            json={
+                "role": "candidate",
+                "name": "Кандидат",
+                "email": "short@example.test",
+                "password": "12345678901234",
+            },
+        )
+        assert response.status_code == 422
+
+
+def test_security_headers_and_oversized_api_requests(tmp_path):
+    app = create_app(str(tmp_path / "headers.db"))
+    with TestClient(app) as client:
+        page = client.get("/")
+        assert page.headers["x-content-type-options"] == "nosniff"
+        assert page.headers["x-frame-options"] == "DENY"
+        assert page.headers["x-xss-protection"] == "0"
+        assert page.headers["cross-origin-opener-policy"] == "same-origin"
+        assert page.headers["cross-origin-resource-policy"] == "same-origin"
+        assert page.headers["strict-transport-security"] == "max-age=31536000"
+        assert "geolocation=()" in page.headers["permissions-policy"]
+        assert "form-action 'self'" in page.headers["content-security-policy"]
+
+        huge = client.post(
+            "/api/login",
+            headers={**XHR, "Content-Type": "application/json"},
+            content=b"x" * 262_145,
+        )
+        assert huge.status_code == 413
+
+
+def test_production_hides_docs_and_sets_strict_secure_cookie(tmp_path, monkeypatch):
+    monkeypatch.setenv("OPYT50_PUBLIC_URL", "https://stazhno.ru")
+    monkeypatch.delenv("OPYT50_ENABLE_DOCS", raising=False)
+    monkeypatch.delenv("OPYT50_COOKIE_SECURE", raising=False)
+    app = create_app(str(tmp_path / "production.db"))
+
+    with TestClient(app, base_url="https://stazhno.ru") as client:
+        assert client.get("/api/docs").status_code == 404
+        assert client.get("/api/redoc").status_code == 404
+        assert client.get("/api/openapi.json").status_code == 404
+
+        response = client.post(
+            "/api/register",
+            headers=XHR,
+            json={
+                "role": "candidate",
+                "name": "Безопасный пользователь",
+                "email": "secure@example.test",
+                "password": "long secure password 2026",
+            },
+        )
+        assert response.status_code == 201, response.text
+        cookies = "\n".join(response.headers.get_list("set-cookie")).lower()
+        assert "secure" in cookies
+        assert "httponly" in cookies
+        assert "samesite=strict" in cookies
