@@ -1,5 +1,6 @@
 """Security regression tests for the production hardening baseline."""
 import hashlib
+from datetime import datetime, timedelta, timezone
 
 import pytest
 import pyotp
@@ -412,9 +413,12 @@ def test_admin_security_status_reports_hardening_without_secrets(tmp_path):
         assert data["admin_mfa_strength"] in {"off", "email OTP", "app-based TOTP"}
         assert set(data) == {
             "admin_mfa_mode", "admin_mfa_enabled", "admin_mfa_strength",
-            "admin_session_minutes", "password_hash", "secure_cookie",
-            "production_runtime", "api_docs_enabled",
+            "admin_session_minutes", "admin_idle_minutes", "user_idle_hours",
+            "password_hash", "secure_cookie", "production_runtime",
+            "api_docs_enabled",
         }
+        assert data["admin_idle_minutes"] == 15
+        assert data["user_idle_hours"] == 12
         assert data["password_hash"] == "argon2id"
         serialized = str(data).casefold()
         assert "token_hash" not in serialized
@@ -524,3 +528,133 @@ def test_production_rejects_invalid_totp_secret(tmp_path, monkeypatch):
     with pytest.raises(RuntimeError, match="TOTP secret"):
         with TestClient(app):
             pass
+
+
+
+def test_candidate_session_expires_after_idle_timeout(tmp_path):
+    app = create_app(str(tmp_path / "candidate-idle.db"))
+    password = "Candidate idle timeout password 2026"
+    with TestClient(app) as client:
+        registration = client.post(
+            "/api/register",
+            headers=XHR,
+            json={
+                "role": "candidate",
+                "name": "Кандидат",
+                "email": "candidate-idle@example.test",
+                "password": password,
+            },
+        )
+        assert registration.status_code == 201, registration.text
+        assert client.get("/api/me").status_code == 200
+
+        with database(app.state.db_path) as db:
+            row = db.execute(
+                """SELECT s.token_hash FROM sessions s
+                   JOIN users u ON u.id=s.user_id
+                   WHERE u.email=?""",
+                ("candidate-idle@example.test",),
+            ).fetchone()
+            old = (datetime.now(timezone.utc) - timedelta(hours=13)).isoformat()
+            db.execute(
+                "UPDATE session_activity SET last_seen_at=? WHERE token_hash=?",
+                (old, row["token_hash"]),
+            )
+
+        expired = client.get("/api/me")
+        assert expired.status_code == 401
+        assert "бездействия" in expired.json()["detail"]
+
+        with database(app.state.db_path) as db:
+            count = db.execute(
+                """SELECT COUNT(*) FROM sessions s
+                   JOIN users u ON u.id=s.user_id
+                   WHERE u.email=?""",
+                ("candidate-idle@example.test",),
+            ).fetchone()[0]
+            assert count == 0
+
+
+def test_admin_session_expires_after_fifteen_minutes_idle(tmp_path):
+    app = create_app(str(tmp_path / "admin-idle.db"))
+    password = "Administrator idle timeout password 2026"
+    with TestClient(app) as client:
+        with database(app.state.db_path) as db:
+            db.execute(
+                "INSERT INTO users(role,email,name,password_hash) VALUES(?,?,?,?)",
+                ("admin", "admin-idle@example.test", "Администратор", make_password_hash(password)),
+            )
+
+        login = client.post(
+            "/api/login",
+            headers=XHR,
+            json={"email": "admin-idle@example.test", "password": password},
+        )
+        assert login.status_code == 200, login.text
+        assert client.get("/api/me").status_code == 200
+
+        with database(app.state.db_path) as db:
+            row = db.execute(
+                """SELECT s.token_hash FROM sessions s
+                   JOIN users u ON u.id=s.user_id
+                   WHERE u.email=?""",
+                ("admin-idle@example.test",),
+            ).fetchone()
+            old = (datetime.now(timezone.utc) - timedelta(minutes=16)).isoformat()
+            db.execute(
+                "UPDATE session_activity SET last_seen_at=? WHERE token_hash=?",
+                (old, row["token_hash"]),
+            )
+
+        expired = client.get("/api/me")
+        assert expired.status_code == 401
+
+        with database(app.state.db_path) as db:
+            events = db.execute(
+                """SELECT event_type,detail FROM security_events
+                   WHERE user_id=(SELECT id FROM users WHERE email=?)
+                   ORDER BY created_at DESC""",
+                ("admin-idle@example.test",),
+            ).fetchall()
+            assert any(row["event_type"] == "session_idle_expired" for row in events)
+
+
+def test_authenticated_activity_refreshes_last_seen_after_touch_interval(tmp_path):
+    app = create_app(str(tmp_path / "session-touch.db"))
+    with TestClient(app) as client:
+        response = client.post(
+            "/api/register",
+            headers=XHR,
+            json={
+                "role": "candidate",
+                "name": "Активный кандидат",
+                "email": "touch@example.test",
+                "password": "Candidate touch password 2026",
+            },
+        )
+        assert response.status_code == 201, response.text
+
+        with database(app.state.db_path) as db:
+            row = db.execute(
+                """SELECT s.token_hash FROM sessions s
+                   JOIN users u ON u.id=s.user_id
+                   WHERE u.email=?""",
+                ("touch@example.test",),
+            ).fetchone()
+            old_dt = datetime.now(timezone.utc) - timedelta(minutes=2)
+            db.execute(
+                "UPDATE session_activity SET last_seen_at=? WHERE token_hash=?",
+                (old_dt.isoformat(), row["token_hash"]),
+            )
+
+        assert client.get("/api/me").status_code == 200
+
+        with database(app.state.db_path) as db:
+            refreshed = db.execute(
+                "SELECT last_seen_at FROM session_activity WHERE token_hash=?",
+                (row["token_hash"],),
+            ).fetchone()["last_seen_at"]
+        refreshed_dt = datetime.fromisoformat(refreshed)
+        if refreshed_dt.tzinfo is None:
+            refreshed_dt = refreshed_dt.replace(tzinfo=timezone.utc)
+        assert refreshed_dt > old_dt
