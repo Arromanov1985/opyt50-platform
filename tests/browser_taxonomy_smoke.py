@@ -66,6 +66,23 @@ def run_taxonomy(page):
     expect(skills.locator("xpath=..").locator(".taxonomy-context")).to_contain_text("Excel")
     expect(skills.locator("xpath=..").locator(".taxonomy-context")).to_contain_text("Битрикс24")
 
+    learned_profile = page.request.put(
+        URL + "/api/candidate/profile",
+        headers=HEADERS,
+        data={
+            "profession": "Менеджер маркетплейсов",
+            "city": "Москва",
+            "skills": "Юнит-экономика маркетплейсов",
+            "salary_min": 90000,
+            "schedule": "Любой",
+            "employment": "Любая",
+            "about": "",
+            "is_active": True,
+            "phone": "",
+        },
+    )
+    assert learned_profile.status == 200, learned_profile.text()
+
     api_logout(page)
     api_login(page, "company@demo.example")
     page.locator(".dashboard-tabs [data-tab='create']").click()
@@ -87,6 +104,55 @@ def run_taxonomy(page):
     employer_skill_suggestions.locator(".taxonomy-option", has_text="Битрикс24").first.click()
     expect(vacancy_skills).to_have_value("Битрикс24")
     expect(vacancy_skills.locator("xpath=..").locator(".taxonomy-context")).to_contain_text("Битрикс24")
+
+    learned_vacancy = page.request.post(
+        URL + "/api/employer/vacancies",
+        headers=HEADERS,
+        data={
+            "title": "Менеджер маркетплейсов",
+            "city": "Москва",
+            "salary_min": 90000,
+            "salary_max": 130000,
+            "schedule": "Любой",
+            "employment": "Любая",
+            "skills": "Юнит-экономика маркетплейсов",
+            "description": "Работа с ассортиментом и аналитикой продаж на маркетплейсах.",
+        },
+    )
+    assert learned_vacancy.status == 201, learned_vacancy.text()
+
+    api_logout(page)
+    api_login(page, "admin@demo.example")
+    taxonomy_button = page.locator("[data-v02-action='admin-taxonomy']")
+    expect(taxonomy_button).to_be_visible()
+    taxonomy_button.click()
+
+    admin_root = page.locator("#admin-v02-results")
+    expect(admin_root).to_contain_text("Новые профессии и навыки")
+    profession_card = admin_root.locator(".taxonomy-admin-card", has_text="Менеджер маркетплейсов")
+    expect(profession_card).to_be_visible()
+    expect(profession_card).to_contain_text("В профилях: 1")
+    expect(profession_card).to_contain_text("В вакансиях: 1")
+    profession_card.locator("[data-v02-action='admin-taxonomy-status'][data-status='approved']").click()
+
+    skill_card = admin_root.locator(".taxonomy-admin-card", has_text="Юнит-экономика маркетплейсов")
+    expect(skill_card).to_be_visible()
+    skill_card.locator("[data-v02-action='admin-taxonomy-status'][data-status='approved']").click()
+
+    api_logout(page)
+    api_login(page, "kladovshik@demo.example")
+    page.locator(".dashboard-tabs [data-tab='profile']").click()
+    learned_profession = page.locator("#profile-profession")
+    learned_profession.fill("маркетп")
+    learned_suggestions = learned_profession.locator("xpath=..").locator(".taxonomy-suggestions")
+    expect(learned_suggestions).to_be_visible()
+    expect(learned_suggestions).to_contain_text("Менеджер маркетплейсов")
+
+    learned_skills = page.locator("#profile-skills")
+    learned_skills.fill("юнит")
+    learned_skill_suggestions = learned_skills.locator("xpath=..").locator(".taxonomy-suggestions")
+    expect(learned_skill_suggestions).to_be_visible()
+    expect(learned_skill_suggestions).to_contain_text("Юнит-экономика маркетплейсов")
 
     if browser_errors:
         raise AssertionError("Uncaught browser errors: " + " | ".join(browser_errors))
@@ -165,7 +231,7 @@ def main():
             finally:
                 log.close()
 
-    print("Browser taxonomy smoke: candidate and employer suggestions PASSED")
+    print("Browser taxonomy smoke: suggestions, learning queue and approval PASSED")
 
 
 if __name__ == "__main__":
