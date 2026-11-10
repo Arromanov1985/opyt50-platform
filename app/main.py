@@ -73,6 +73,11 @@ class Login(BaseModel):
     password: str = Field(min_length=1, max_length=128)
 
 
+class AdminMfaVerify(BaseModel):
+    challenge_id: str = Field(min_length=20, max_length=160)
+    code: str = Field(pattern=r"^\d{8}$")
+
+
 class CandidateProfile(BaseModel):
     profession: str = Field(min_length=2, max_length=120)
     city: str = Field(min_length=2, max_length=100)
@@ -165,6 +170,11 @@ def production_runtime() -> bool:
     return explicit in {"prod", "production"} or public_url.startswith("https://") or bool(os.getenv("DATABASE_URL", "").strip())
 
 
+def admin_mfa_mode() -> str:
+    mode = os.getenv("OPYT50_ADMIN_MFA_MODE", "off").strip().casefold()
+    return mode if mode in {"off", "email"} else "off"
+
+
 def secure_cookie_enabled() -> bool:
     explicit = os.getenv("OPYT50_COOKIE_SECURE")
     if explicit is not None:
@@ -203,6 +213,9 @@ def validate_production_security() -> None:
         )
         if not smtp_tls:
             errors.append("SMTP must use TLS")
+    if admin_mfa_mode() == "email":
+        if not os.getenv("OPYT50_SMTP_HOST", "").strip() or not os.getenv("OPYT50_MAIL_FROM", "").strip():
+            errors.append("admin email MFA requires configured SMTP delivery")
     if errors:
         raise RuntimeError("Unsafe production configuration: " + "; ".join(errors))
 
@@ -371,6 +384,7 @@ def create_app(db_path: str | None = None) -> FastAPI:
                 "/api/account/password/reset": (20, 600),
                 "/api/account/email/request": (10, 600),
                 "/api/account/email/confirm": (20, 600),
+                "/api/admin/mfa/verify": (12, 600),
             }
             limit = rate_limits.get(request.url.path)
             if limit:
@@ -468,28 +482,133 @@ def create_app(db_path: str | None = None) -> FastAPI:
 
     @app.post("/api/login")
     def login(data: Login, request: Request, response: Response, db: sqlite3.Connection = Depends(get_connection)):
+        from .release02 import issue_admin_mfa_challenge, record_security_event
+
         email = data.email.strip().casefold()
         row = db.execute("SELECT * FROM users WHERE email=?", (email,)).fetchone()
         stored_hash = row["password_hash"] if row is not None else DUMMY_PASSWORD_HASH
         password_ok = verify_password(data.password, stored_hash)
         if row is None or not password_ok:
+            if row is not None:
+                record_security_event(db, row["id"], "login_password_failed")
+                db.commit()
             raise HTTPException(401, "Неверный email или пароль")
         block = db.execute("SELECT status FROM account_controls WHERE user_id=?", (row["id"],)).fetchone()
         if block is not None and block["status"] == "disabled":
+            record_security_event(db, row["id"], "login_blocked_disabled_account")
+            db.commit()
             raise HTTPException(403, "Аккаунт временно заблокирован")
         if password_needs_rehash(row["password_hash"]):
             db.execute(
                 "UPDATE users SET password_hash=? WHERE id=?",
                 (make_password_hash(data.password), row["id"]),
             )
+
+        if row["role"] == "admin" and admin_mfa_mode() == "email":
+            challenge_id, debug_code = issue_admin_mfa_challenge(db, row["id"])
+            record_security_event(db, row["id"], "login_password_verified_mfa_required")
+            db.commit()
+            from .email_delivery import delivery_mode
+            result = {
+                "mfa_required": True,
+                "challenge_id": challenge_id,
+                "expires_in": 300,
+                "delivery": delivery_mode(),
+            }
+            if not production_runtime():
+                result["debug_code"] = debug_code
+            return result
+
         old_token = (
             request.cookies.get(session_cookie_name())
             or request.cookies.get(COOKIE_NAME)
         )
         if old_token:
             db.execute("DELETE FROM sessions WHERE token_hash=?", (token_hash(old_token),))
+        record_security_event(db, row["id"], "login_success")
         add_session(db, response, row["id"])
         return {"user": user_response(dict(row), db)}
+
+    @app.post("/api/admin/mfa/verify")
+    def verify_admin_mfa(
+        data: AdminMfaVerify,
+        response: Response,
+        db: sqlite3.Connection = Depends(get_connection),
+    ):
+        from .release02 import record_security_event
+
+        challenge = db.execute(
+            """SELECT c.challenge_key,c.user_id,c.code_hash,c.expires_at,c.attempts,c.used_at,
+                      u.email,u.name,u.phone,u.role
+               FROM admin_mfa_challenges c
+               JOIN users u ON u.id=c.user_id
+               WHERE c.challenge_key=?""",
+            (data.challenge_id,),
+        ).fetchone()
+        now = datetime.now(timezone.utc)
+        invalid = (
+            challenge is None
+            or challenge["used_at"] is not None
+            or challenge["role"] != "admin"
+        )
+        if invalid:
+            raise HTTPException(400, "Код недействителен или срок истёк")
+        try:
+            expired = datetime.fromisoformat(challenge["expires_at"]) <= now
+        except (TypeError, ValueError):
+            expired = True
+        if expired:
+            db.execute(
+                "UPDATE admin_mfa_challenges SET used_at=? WHERE challenge_key=?",
+                (now.isoformat(), data.challenge_id),
+            )
+            record_security_event(db, challenge["user_id"], "admin_mfa_expired")
+            db.commit()
+            raise HTTPException(400, "Код недействителен или срок истёк")
+        if int(challenge["attempts"] or 0) >= 5:
+            raise HTTPException(429, "Слишком много неверных попыток. Войдите заново")
+
+        attempts = int(challenge["attempts"] or 0) + 1
+        if not verify_password(data.code, challenge["code_hash"]):
+            used_at = now.isoformat() if attempts >= 5 else None
+            db.execute(
+                """UPDATE admin_mfa_challenges SET attempts=?,used_at=?
+                   WHERE challenge_key=?""",
+                (attempts, used_at, data.challenge_id),
+            )
+            record_security_event(
+                db,
+                challenge["user_id"],
+                "admin_mfa_failed",
+                f"attempt={attempts}",
+            )
+            db.commit()
+            if attempts >= 5:
+                raise HTTPException(429, "Слишком много неверных попыток. Войдите заново")
+            raise HTTPException(401, "Неверный код подтверждения")
+
+        control = db.execute(
+            "SELECT status FROM account_controls WHERE user_id=?",
+            (challenge["user_id"],),
+        ).fetchone()
+        if control is not None and control["status"] == "disabled":
+            raise HTTPException(403, "Аккаунт временно заблокирован")
+
+        db.execute(
+            "UPDATE admin_mfa_challenges SET attempts=?,used_at=? WHERE challenge_key=?",
+            (attempts, now.isoformat(), data.challenge_id),
+        )
+        db.execute("DELETE FROM sessions WHERE user_id=?", (challenge["user_id"],))
+        record_security_event(db, challenge["user_id"], "admin_mfa_success")
+        user = {
+            "id": challenge["user_id"],
+            "email": challenge["email"],
+            "name": challenge["name"],
+            "phone": challenge["phone"],
+            "role": challenge["role"],
+        }
+        add_session(db, response, challenge["user_id"])
+        return {"user": user_response(user, db)}
 
     @app.post("/api/logout")
     def logout(request: Request, response: Response, db: sqlite3.Connection = Depends(get_connection)):
