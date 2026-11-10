@@ -211,6 +211,57 @@ RELEASE09_RUNTIME_DDL = (
 MIGRATION += "\n" + "\n".join(statement + ";" for statement in RELEASE09_RUNTIME_DDL)
 
 
+LEGACY_ADMIN_EMAIL = "admin@demo.example"
+PRODUCTION_ADMIN_EMAIL = "admin@stazhno.ru"
+
+
+def migrate_legacy_admin_email(db: sqlite3.Connection) -> bool:
+    """Move the original demo administrator login to the production mailbox.
+
+    The user id is preserved so TOTP/passkeys/audit relations stay attached to
+    the same administrator. A conflicting target account aborts startup rather
+    than merging two identities implicitly.
+    """
+    old = db.execute(
+        "SELECT id,role FROM users WHERE email=?",
+        (LEGACY_ADMIN_EMAIL,),
+    ).fetchone()
+    if old is None:
+        return False
+    if old["role"] != "admin":
+        raise RuntimeError("legacy administrator email belongs to a non-admin account")
+
+    target = db.execute(
+        "SELECT id,role FROM users WHERE email=?",
+        (PRODUCTION_ADMIN_EMAIL,),
+    ).fetchone()
+    if target is not None and int(target["id"]) != int(old["id"]):
+        raise RuntimeError("production administrator email is already used by another account")
+
+    user_id = int(old["id"])
+    db.execute(
+        "UPDATE users SET email=? WHERE id=?",
+        (PRODUCTION_ADMIN_EMAIL, user_id),
+    )
+    # Old reset/verification links must not survive an identity-address change.
+    db.execute("DELETE FROM email_tokens WHERE user_id=?", (user_id,))
+    # Force a fresh login with the new address; WebAuthn/TOTP credentials remain.
+    db.execute("DELETE FROM sessions WHERE user_id=?", (user_id,))
+    db.execute("DELETE FROM admin_mfa_challenges WHERE user_id=?", (user_id,))
+    db.execute("DELETE FROM admin_webauthn_challenges WHERE user_id=?", (user_id,))
+    db.execute(
+        "UPDATE account_controls SET email_verified=0 WHERE user_id=?",
+        (user_id,),
+    )
+    record_security_event(
+        db,
+        user_id,
+        "admin_email_migrated",
+        "legacy_demo_address_replaced",
+    )
+    return True
+
+
 def init_release02(path: str) -> None:
     with database(path) as db:
         db.executescript(MIGRATION)
@@ -219,6 +270,7 @@ def init_release02(path: str) -> None:
         # databases can gain them safely with CREATE TABLE/INDEX IF NOT EXISTS.
         for statement in RELEASE09_RUNTIME_DDL:
             db.execute(statement)
+        migrate_legacy_admin_email(db)
 
 
 def enqueue_notice(
