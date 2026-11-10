@@ -190,7 +190,7 @@ DUMMY_PASSWORD_HASH = make_password_hash("dummy-authentication-verifier-not-a-us
 
 
 def validate_production_security() -> None:
-    if os.getenv("OPYT50_ENV", "").strip().casefold() not in {"prod", "production"}:
+    if not production_runtime():
         return
     errors = []
     public_url = os.getenv("OPYT50_PUBLIC_URL", "").strip()
