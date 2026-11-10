@@ -29,6 +29,7 @@ jobs:
       - name: Production security preflight
         env:
           OPYT50_ENV: production
+          OPYT50_SECURITY_PROFILE: high
           OPYT50_PUBLIC_URL: https://stazhno.ru
           OPYT50_COOKIE_SECURE: "1"
           OPYT50_ENABLE_DOCS: "0"
