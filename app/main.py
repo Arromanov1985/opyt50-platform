@@ -32,8 +32,9 @@ from pydantic import BaseModel, Field, field_validator, model_validator
 from .db import database, init_db
 from .matching import lead_price, match_candidate, taxonomy_payload
 from .security import (
-    ADMIN_SESSION_SECONDS, COOKIE_NAME, SESSION_SECONDS, issue_session, make_password_hash,
-    password_needs_rehash, token_hash, verify_password,
+    ADMIN_SESSION_IDLE_SECONDS, ADMIN_SESSION_SECONDS, COOKIE_NAME,
+    SESSION_SECONDS, SESSION_TOUCH_SECONDS, USER_SESSION_IDLE_SECONDS,
+    issue_session, make_password_hash, password_needs_rehash, token_hash, verify_password,
 )
 
 BASE = Path(__file__).resolve().parent
@@ -250,19 +251,74 @@ def active_user(request: Request, db: sqlite3.Connection = Depends(get_connectio
         token = request.cookies.get(COOKIE_NAME)
     if not token:
         raise HTTPException(401, "Нужно войти в аккаунт")
+
+    digest = token_hash(token)
+    now = datetime.now(timezone.utc)
     row = db.execute(
-        """SELECT u.id,u.email,u.name,u.phone,u.role FROM sessions s
-           JOIN users u ON u.id=s.user_id WHERE s.token_hash=? AND s.expires_at>?""",
-        (token_hash(token), datetime.now(timezone.utc).isoformat()),
+        """SELECT u.id,u.email,u.name,u.phone,u.role,s.token_hash,s.expires_at,
+                  a.authenticated_at,a.last_seen_at
+           FROM sessions s
+           JOIN users u ON u.id=s.user_id
+           LEFT JOIN session_activity a ON a.token_hash=s.token_hash
+           WHERE s.token_hash=? AND s.expires_at>?""",
+        (digest, now.isoformat()),
     ).fetchone()
     if row is None:
         raise HTTPException(401, "Сессия завершена. Войдите снова")
+
+    # Existing sessions created before the activity table rollout are migrated
+    # lazily on first successful authenticated request.
+    if not row["last_seen_at"]:
+        db.execute(
+            """INSERT INTO session_activity(token_hash,authenticated_at,last_seen_at)
+               VALUES(?,?,?)
+               ON CONFLICT(token_hash) DO NOTHING""",
+            (digest, now.isoformat(), now.isoformat()),
+        )
+        last_seen = now
+    else:
+        try:
+            last_seen = datetime.fromisoformat(row["last_seen_at"])
+            if last_seen.tzinfo is None:
+                last_seen = last_seen.replace(tzinfo=timezone.utc)
+        except (TypeError, ValueError):
+            # Corrupt activity metadata must fail closed for the session.
+            db.execute("DELETE FROM sessions WHERE token_hash=?", (digest,))
+            db.commit()
+            raise HTTPException(401, "Сессия завершена. Войдите снова") from None
+
+    idle_limit = (
+        ADMIN_SESSION_IDLE_SECONDS if row["role"] == "admin"
+        else USER_SESSION_IDLE_SECONDS
+    )
+    if (now - last_seen).total_seconds() > idle_limit:
+        db.execute("DELETE FROM sessions WHERE token_hash=?", (digest,))
+        try:
+            from .release02 import record_security_event
+            record_security_event(
+                db, row["id"], "session_idle_expired",
+                "role=" + str(row["role"]),
+            )
+        except Exception:
+            # Authentication must still fail closed even if audit storage has
+            # an unexpected issue.
+            pass
+        db.commit()
+        raise HTTPException(401, "Сессия завершена из-за бездействия. Войдите снова")
+
+    # Avoid a write on every API call while still keeping idle enforcement
+    # accurate to roughly one minute.
+    if (now - last_seen).total_seconds() >= SESSION_TOUCH_SECONDS:
+        db.execute(
+            "UPDATE session_activity SET last_seen_at=? WHERE token_hash=?",
+            (now.isoformat(), digest),
+        )
+
     # User controls exist after the 0.2 migration; deny disabled accounts on every authenticated request.
     control = db.execute("SELECT status FROM account_controls WHERE user_id=?", (row["id"],)).fetchone()
     if control is not None and control["status"] == "disabled":
         raise HTTPException(403, "Аккаунт временно заблокирован")
-    return dict(row)
-
+    return {key: row[key] for key in ("id", "email", "name", "phone", "role")}
 
 def allowed(user: dict, role: str) -> None:
     if user["role"] != role:
@@ -295,9 +351,14 @@ def add_session(db: sqlite3.Connection, response: Response, user_id: int) -> Non
     if role == "admin":
         db.execute("DELETE FROM sessions WHERE user_id=?", (user_id,))
     token, digest = issue_session()
+    now = datetime.now(timezone.utc).isoformat()
     db.execute(
         "INSERT INTO sessions(token_hash,user_id,expires_at) VALUES(?,?,?)",
         (digest, user_id, utc_expiry(lifetime)),
+    )
+    db.execute(
+        "INSERT INTO session_activity(token_hash,authenticated_at,last_seen_at) VALUES(?,?,?)",
+        (digest, now, now),
     )
     # FastAPI yield dependencies may finalize after the response is sent.
     # Commit before issuing the session cookie, so the next /api/me sees it.
@@ -311,7 +372,6 @@ def add_session(db: sqlite3.Connection, response: Response, user_id: int) -> Non
         max_age=lifetime,
         path="/",
     )
-
 
 def create_app(db_path: str | None = None) -> FastAPI:
     db_location = db_path or DEFAULT_DB
@@ -707,6 +767,8 @@ def create_app(db_path: str | None = None) -> FastAPI:
             "admin_mfa_enabled": admin_mfa_mode() != "off",
             "admin_mfa_strength": "app-based TOTP" if admin_mfa_mode() == "totp" else ("email OTP" if admin_mfa_mode() == "email" else "off"),
             "admin_session_minutes": ADMIN_SESSION_SECONDS // 60,
+            "admin_idle_minutes": ADMIN_SESSION_IDLE_SECONDS // 60,
+            "user_idle_hours": USER_SESSION_IDLE_SECONDS // 3600,
             "password_hash": "argon2id",
             "secure_cookie": secure_cookie_enabled(),
             "production_runtime": production_runtime(),
