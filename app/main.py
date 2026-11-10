@@ -318,6 +318,7 @@ def create_app(db_path: str | None = None) -> FastAPI:
     )
     app.state.db_path = db_location
     app.state.auth_attempts = defaultdict(deque)
+    app.state.login_failures = defaultdict(deque)
     allowed_hosts = [
         host.strip()
         for host in os.getenv("OPYT50_ALLOWED_HOSTS", "").split(",")
@@ -485,14 +486,30 @@ def create_app(db_path: str | None = None) -> FastAPI:
         from .release02 import issue_admin_mfa_challenge, record_security_event
 
         email = data.email.strip().casefold()
+        source = request.client.host if request.client else "unknown"
+        identity = hashlib.sha256(email.encode("utf-8")).hexdigest()
+        failure_key = (source, identity)
+        failure_queue = request.app.state.login_failures[failure_key]
+        failure_now = time.monotonic()
+        while failure_queue and failure_queue[0] < failure_now - 900:
+            failure_queue.popleft()
+        if len(failure_queue) >= 10:
+            raise HTTPException(
+                429,
+                "Слишком много неверных попыток входа. Повторите позже",
+                headers={"Retry-After": "900"},
+            )
+
         row = db.execute("SELECT * FROM users WHERE email=?", (email,)).fetchone()
         stored_hash = row["password_hash"] if row is not None else DUMMY_PASSWORD_HASH
         password_ok = verify_password(data.password, stored_hash)
         if row is None or not password_ok:
+            failure_queue.append(failure_now)
             if row is not None:
                 record_security_event(db, row["id"], "login_password_failed")
                 db.commit()
             raise HTTPException(401, "Неверный email или пароль")
+        failure_queue.clear()
         block = db.execute("SELECT status FROM account_controls WHERE user_id=?", (row["id"],)).fetchone()
         if block is not None and block["status"] == "disabled":
             record_security_event(db, row["id"], "login_blocked_disabled_account")
@@ -639,6 +656,19 @@ def create_app(db_path: str | None = None) -> FastAPI:
     @app.get("/api/me")
     def me(user: dict = Depends(active_user), db: sqlite3.Connection = Depends(get_connection)):
         return {"user": user_response(user, db)}
+
+    @app.get("/api/admin/security-status")
+    def admin_security_status(user: dict = Depends(active_user)):
+        allowed(user, "admin")
+        return {
+            "admin_mfa_mode": admin_mfa_mode(),
+            "admin_mfa_enabled": admin_mfa_mode() != "off",
+            "admin_session_minutes": ADMIN_SESSION_SECONDS // 60,
+            "password_hash": "argon2id",
+            "secure_cookie": secure_cookie_enabled(),
+            "production_runtime": production_runtime(),
+            "api_docs_enabled": docs_enabled,
+        }
 
     @app.put("/api/candidate/profile")
     def save_profile(
