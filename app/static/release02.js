@@ -195,7 +195,7 @@
                 const markup = jobs.map(job => `<article class="item-card alternative-job-card">
                   <div class="alternative-job-head"><div><span class="card-eyebrow">БЛИЗКИЙ ВАРИАНТ</span><h4>${esc(job.title)}</h4><p>${esc(job.company_name)} · ${esc(job.city)} · ${formatPay(job)}</p></div><span class="near-fit-score">${Number(job.near_score||0)}%</span></div>
                   ${Array.isArray(job.strengths)&&job.strengths.length?`<div class="match-reasons-preview">${job.strengths.slice(0,2).map(reason=>`<span>✓ ${esc(reason)}</span>`).join('')}</div>`:''}
-                  <div class="alternative-mismatches"><strong>Почему не попала в строгий подбор</strong>${job.mismatch_reasons.map(reason => `<span>× ${esc(reason)}</span>`).join('')}</div>
+                  <div class="alternative-mismatches"><strong>Что не совпадает:</strong>${job.mismatch_reasons.map(reason => `<span>× ${esc(reason)}</span>`).join('')}</div>
                   <details class="match-explanation"><summary>Посмотреть факторы</summary>${matchBreakdownMarkup(job,true)}</details>
                   <p class="muted">Это не строгая рекомендация: есть несовместимый фактор. Решите самостоятельно, готовы ли вы его рассматривать.</p>
                   <button type="button" class="btn btn-outline btn-tiny" data-v02-action="details" data-id="${Number(job.id)}">Подробнее</button>
