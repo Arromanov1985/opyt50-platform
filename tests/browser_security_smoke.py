@@ -96,6 +96,34 @@ def run_security(page):
     assert company_dialog.locator("img[src='x']").count() == 0
     assert page.evaluate("typeof window.__companyXss") == "undefined"
 
+    # Administrator password alone must not create a session when MFA is enabled.
+    page.locator("#login-open").click()
+    expect(page.locator("#auth-dialog")).to_be_visible()
+    page.locator("#auth-email").fill("admin@demo.example")
+    page.locator("#auth-password").fill("DemoPass2026!")
+    with page.expect_response(lambda response: (
+        response.url.endswith("/api/login") and response.request.method == "POST"
+    )) as login_response:
+        page.locator("#auth-submit").click()
+    login_payload = login_response.value.json()
+    assert login_payload["mfa_required"] is True
+    assert login_payload["debug_code"].isdigit()
+    expect(page.locator("#auth-mfa-panel")).to_be_visible()
+    expect(page.locator("#auth-title")).to_have_text("Подтвердите вход")
+    assert page.request.get(URL + "/api/me").status == 401
+
+    page.locator("#auth-mfa-code").fill(login_payload["debug_code"])
+    with page.expect_response(lambda response: (
+        response.url.endswith("/api/admin/mfa/verify") and
+        response.request.method == "POST"
+    )) as verify_response:
+        page.locator("#auth-submit").click()
+    assert verify_response.value.status == 200, verify_response.value.text()
+    expect(page.locator("#auth-dialog")).not_to_be_visible()
+    expect(page.locator("#dashboard")).to_be_visible()
+    expect(page.locator("#account-content")).to_contain_text("Администратор")
+    assert page.request.get(URL + "/api/me").status == 200
+
     if dialogs:
         raise AssertionError("Unexpected browser dialogs: " + " | ".join(dialogs))
     if browser_errors:
@@ -110,6 +138,7 @@ def main():
             OPYT50_PREVIEW_SEED_DEMO="0",
             OPYT50_COOKIE_SECURE="0",
             OPYT50_ENV="development",
+            OPYT50_ADMIN_MFA_MODE="email",
         )
         subprocess.run(
             [sys.executable, "scripts/seed_demo.py", "--db", env["OPYT50_DB_PATH"]],
@@ -176,7 +205,7 @@ def main():
             finally:
                 log.close()
 
-    print("Browser security smoke: stored XSS remains escaped PASSED")
+    print("Browser security smoke: XSS escaping and admin MFA PASSED")
 
 
 if __name__ == "__main__":
