@@ -123,8 +123,11 @@ def run_security(page):
     assert verify_response.value.status == 200, verify_response.value.text()
     expect(page.locator("#auth-dialog")).not_to_be_visible()
     expect(page.locator("#dashboard")).to_be_visible()
-    expect(page.locator("#account-content")).to_contain_text("Администратор")
-    assert page.request.get(URL + "/api/me").status == 200
+    expect(page.locator("#account-content")).to_contain_text("Панель управления")
+    expect(page.locator("[data-v02-action='admin-security']")).to_be_visible()
+    me = page.request.get(URL + "/api/me")
+    assert me.status == 200
+    assert me.json()["user"]["role"] == "admin"
 
     if dialogs:
         raise AssertionError("Unexpected browser dialogs: " + " | ".join(dialogs))
