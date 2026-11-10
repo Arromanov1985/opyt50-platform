@@ -747,6 +747,18 @@ function jobEmployerMarkup(x, stats = {total: 0, interested: 0}) {
     <div class="item-actions employer-vacancy-secondary"><button type="button" class="btn btn-outline btn-tiny" data-action="vacancy-applications" data-id="${x.id}">Отклики</button><button class="btn btn-outline btn-tiny" data-action="matches" data-id="${x.id}" ${x.status === 'closed' ? 'disabled':''}>Подбор</button><button class="btn btn-outline btn-tiny" data-action="edit-job" data-id="${x.id}">Редактировать</button><button class="btn btn-outline btn-tiny" data-action="job-status" data-id="${x.id}" data-status="${x.status === 'open' ? 'closed' : 'open'}">${x.status === 'open' ? 'Закрыть' : 'Открыть'}</button></div>
   </article>`;
 }
+function employerMatchBreakdownMarkup(item) {
+  const factors = Array.isArray(item.score_breakdown) ? item.score_breakdown : [];
+  const cautions = Array.isArray(item.cautions) ? item.cautions : [];
+  if (!factors.length) return '';
+  const rows = factors.map(factor => `<div class="match-factor-row ${esc(factor.state||'good')}">
+    <div class="match-factor-head"><span>${esc(factor.label||factor.key||'Фактор')}</span><strong>${Number(factor.points||0).toLocaleString('ru-RU')} / ${Number(factor.max_points||0).toLocaleString('ru-RU')}</strong></div>
+    <div class="match-factor-track"><span style="width:${Math.max(0,Math.min(100,Number(factor.percent||0)))}%"></span></div>
+    <small>${esc(factor.text||'')}</small>
+  </div>`).join('');
+  const cautionMarkup = cautions.length ? `<div class="match-cautions"><strong>Что уточнить до приглашения</strong>${cautions.slice(0,3).map(text=>`<span>! ${esc(text)}</span>`).join('')}</div>` : '';
+  return `<div class="match-breakdown compact">${rows}${cautionMarkup}<p class="match-method-note">Оценка строится только по профессиональному профилю и условиям вакансии. Возраст не используется.</p></div>`;
+}
 async function loadMatches(jobId) {
   const target = $('#employer-matches');
   target.classList.remove('hidden');
@@ -754,18 +766,23 @@ async function loadMatches(jobId) {
   state.activeVacancy = jobId;
   try {
     const {matches} = await api(`/api/employer/vacancies/${jobId}/matches`);
-    target.innerHTML = `<div class="panel matches-panel"><div class="split-header"><div><span class="section-kicker">ПОДБОР</span><h3>Подходящие кандидаты</h3><p class="muted">Сравнивайте профессию, навыки, условия и процент совпадения. Личные данные остаются скрытыми до согласия кандидата.</p></div><span class="mini-badge">${matches.length} совпадений</span></div><div class="matches-guide"><span><b>1</b>Оцените опыт</span><span><b>2</b>Отправьте приглашение</span><span><b>3</b>Дождитесь согласия</span></div><div class="dashboard-list">${matches.length ? matches.map(m => {
-      const scoreClass = Number(m.score) >= 80 ? 'high' : 'medium';
-      const reasons = Array.isArray(m.reasons) ? m.reasons : [];
+    target.innerHTML = `<div class="panel matches-panel"><div class="split-header"><div><span class="section-kicker">ПОДБОР</span><h3>Подходящие кандидаты</h3><p class="muted">Сравнивайте профессию, навыки и условия. Процент прозрачно разложен по факторам; личные данные остаются скрытыми до согласия кандидата.</p></div><span class="mini-badge">${matches.length} совпадений</span></div><div class="matches-guide"><span><b>1</b>Оцените факторы</span><span><b>2</b>Отправьте приглашение</span><span><b>3</b>Дождитесь согласия</span></div><div class="dashboard-list">${matches.length ? matches.map(m => {
+      const score = Number(m.score||0);
+      const scoreClass = score >= 90 ? 'excellent' : score >= 80 ? 'high' : score >= 70 ? 'medium' : 'basic';
+      const reasons = Array.isArray(m.strengths) ? m.strengths : (Array.isArray(m.reasons) ? m.reasons : []);
+      const cautions = Array.isArray(m.cautions) ? m.cautions : [];
+      const level = m.match_level || (score>=90?'Очень сильное совпадение':score>=80?'Сильное совпадение':score>=70?'Хорошее совпадение':'Подходит по основным условиям');
       let action = `<button class="btn btn-primary btn-tiny" data-action="invite" data-job="${jobId}" data-id="${m.candidate_id}">Пригласить кандидата →</button>`;
       if (m.contact_shared) action = '<button class="btn btn-outline btn-tiny" data-tab="invitations">Контакт уже открыт →</button>';
       else if (m.invitation_status === 'accepted') action = '<button class="btn btn-primary btn-tiny" data-tab="invitations">Согласие получено · продолжить →</button>';
       else if (m.invitation_status === 'sent') action = '<button class="btn btn-outline btn-tiny" data-tab="invitations">Приглашение отправлено · ожидаем ответ</button>';
       else if (m.invitation_status === 'declined') action = '<button class="btn btn-outline btn-tiny" type="button" disabled>Кандидат отказался</button>';
       return `<article class="item-card candidate-match-card ${scoreClass}">
-        <header><div><h4>${esc(m.profession)}</h4><div class="candidate-match-meta"><span>⌖ ${esc(m.city)}</span><span>от ${money(m.salary_min)}</span><span>${esc(m.schedule)}</span><span>${esc(m.employment)}</span></div></div><div class="candidate-match-score"><span class="match-score-dot"></span><strong>${Number(m.score)}%</strong></div></header>
+        <header><div><h4>${esc(m.profession)}</h4><div class="candidate-match-meta"><span>⌖ ${esc(m.city)}</span><span>от ${money(m.salary_min)}</span><span>${esc(m.schedule)}</span><span>${esc(m.employment)}</span></div></div><div class="candidate-match-score"><span class="match-score-dot"></span><strong>${score}%</strong><small>${esc(level)}</small></div></header>
         <div class="job-skill-tags">${String(m.skills || '').split(',').map(s=>s.trim()).filter(Boolean).slice(0,5).map(skill=>`<span>${esc(skill)}</span>`).join('') || '<span>Навыки не указаны</span>'}</div>
         <div class="candidate-match-reasons">${reasons.slice(0,3).map(reason=>`<span>✓ ${esc(reason)}</span>`).join('')}</div>
+        ${cautions.length ? `<div class="candidate-match-cautions">${cautions.slice(0,2).map(text=>`<span>! ${esc(text)}</span>`).join('')}</div>` : ''}
+        <details class="candidate-match-explanation"><summary>Показать расчёт совпадения</summary>${employerMatchBreakdownMarkup(m)}</details>
         <div class="item-actions">${action}</div>
       </article>`;
     }).join('') : '<div class="empty-state"><strong>Точных совпадений пока нет.</strong><p>Попробуйте расширить график, город или зарплатный диапазон вакансии.</p></div>'}</div></div>`;
