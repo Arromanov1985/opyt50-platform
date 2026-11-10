@@ -214,13 +214,24 @@ def _location_factor(vacancy: Mapping, candidate: Mapping) -> dict:
     )
 
 
-def evaluate_candidate(vacancy: Mapping, candidate: Mapping) -> dict:
+def evaluate_candidate(vacancy: Mapping, candidate: Mapping | None) -> dict:
     """Return a transparent compatibility snapshot, including blockers.
 
     The function intentionally never reads age, date of birth, gender or any
     other protected/personal characteristic. Only job conditions and the
     professional profile are considered.
     """
+    if not candidate:
+        return {
+            "eligible": False,
+            "score": 0,
+            "match_level": "Профиль ещё не заполнен",
+            "reasons": [],
+            "strengths": [],
+            "cautions": [],
+            "mismatch_reasons": [],
+            "score_breakdown": [],
+        }
     profession = _text(candidate, "profession")
     city = _text(candidate, "city")
     active = bool(candidate.get("is_active"))
