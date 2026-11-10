@@ -94,6 +94,9 @@ class PostgresCompatConnection:
             "connect_timeout": 10,
             "autocommit": False,
             "row_factory": hybrid_row,
+            # Bound accidentally expensive requests and abandoned transactions.
+            # Current application queries are short and deterministic.
+            "options": "-c statement_timeout=10000 -c idle_in_transaction_session_timeout=15000",
         }
         sslmode = os.getenv("OPYT50_DB_SSLMODE", "").strip()
         if sslmode:
