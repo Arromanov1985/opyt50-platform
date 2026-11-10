@@ -126,6 +126,18 @@ def test_production_hides_docs_and_sets_strict_secure_cookie(tmp_path, monkeypat
         )
         assert response.status_code == 201, response.text
         cookies = "\n".join(response.headers.get_list("set-cookie")).lower()
+        assert "__host-stazhno_session=" in cookies
         assert "secure" in cookies
         assert "httponly" in cookies
         assert "samesite=strict" in cookies
+
+
+
+def test_trusted_host_allowlist_rejects_forged_host(tmp_path, monkeypatch):
+    monkeypatch.setenv("OPYT50_ALLOWED_HOSTS", "stazhno.ru,www.stazhno.ru")
+    app = create_app(str(tmp_path / "trusted-host.db"))
+
+    with TestClient(app, base_url="https://stazhno.ru") as client:
+        assert client.get("/api/health").status_code == 200
+    with TestClient(app, base_url="https://evil.example") as attacker:
+        assert attacker.get("/api/health").status_code == 400
