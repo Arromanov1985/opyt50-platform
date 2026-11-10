@@ -1542,3 +1542,117 @@ body.comfortable-view .taxonomy-admin-note{font-size:.9rem}
 @media(max-width:620px){
   .taxonomy-admin-summary{grid-template-columns:1fr}
 }
+
+
+/* Administrator security posture */
+.admin-security-center{display:grid;gap:16px}
+.admin-security-summary{
+  display:grid;
+  grid-template-columns:repeat(3,minmax(0,1fr));
+  gap:10px;
+}
+.admin-security-summary>div{
+  display:grid;
+  gap:5px;
+  min-height:104px;
+  padding:14px;
+  border:1px solid #DDE8E2;
+  border-radius:14px;
+  background:#FAFCFB;
+}
+.admin-security-summary>div.is-ok{
+  border-color:#CFE6D8;
+  background:#F3FAF6;
+}
+.admin-security-summary>div.is-warning{
+  border-color:#EBDDB9;
+  background:#FFF9EA;
+}
+.admin-security-summary span{
+  color:#687B72;
+  font-size:9px;
+  font-weight:800;
+  text-transform:uppercase;
+  letter-spacing:.04em;
+}
+.admin-security-summary strong{
+  color:#0B2D26;
+  font-size:16px;
+  line-height:1.2;
+}
+.admin-security-summary small{
+  color:#667970;
+  font-size:9px;
+  line-height:1.45;
+}
+.security-hardening-callout{
+  padding:14px 16px;
+  border:1px solid #E8D8A8;
+  border-radius:14px;
+  background:#FFF9E8;
+}
+.security-hardening-callout strong{
+  color:#6E5518;
+  font-size:11px;
+}
+.security-hardening-callout p{
+  margin:5px 0 0;
+  color:#735E2A;
+  font-size:9px;
+  line-height:1.55;
+}
+.security-hardening-callout code{
+  padding:2px 5px;
+  border-radius:5px;
+  background:#F3E9C9;
+  color:#59420D;
+}
+.security-events-title{margin-top:4px}
+.security-event-list{
+  display:grid;
+  gap:7px;
+}
+.security-event-row{
+  display:flex;
+  align-items:flex-start;
+  justify-content:space-between;
+  gap:14px;
+  padding:11px 12px;
+  border:1px solid #E2EAE6;
+  border-radius:11px;
+  background:#FBFDFC;
+}
+.security-event-row>div{
+  min-width:0;
+  display:grid;
+  gap:3px;
+}
+.security-event-row strong{
+  color:#0B2D26;
+  font-size:10px;
+}
+.security-event-row small{
+  overflow-wrap:anywhere;
+  color:#687A71;
+  font-size:9px;
+  line-height:1.4;
+}
+.security-event-row time{
+  flex:0 0 auto;
+  color:#849089;
+  font-size:8px;
+}
+body.comfortable-view .admin-security-summary span,
+body.comfortable-view .admin-security-summary small,
+body.comfortable-view .security-hardening-callout p,
+body.comfortable-view .security-event-row strong,
+body.comfortable-view .security-event-row small{
+  font-size:.9rem;
+}
+@media(max-width:900px){
+  .admin-security-summary{grid-template-columns:repeat(2,minmax(0,1fr))}
+}
+@media(max-width:560px){
+  .admin-security-summary{grid-template-columns:1fr}
+  .security-event-row{flex-direction:column}
+}
