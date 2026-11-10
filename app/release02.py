@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import hashlib
 import hmac
+import os
 import re
 import secrets
 import sqlite3
@@ -262,6 +263,16 @@ def migrate_legacy_admin_email(db: sqlite3.Connection) -> bool:
     return True
 
 
+def production_admin_email_migration_enabled() -> bool:
+    env = os.getenv("OPYT50_ENV", "").strip().casefold()
+    public_url = os.getenv("OPYT50_PUBLIC_URL", "").strip().casefold()
+    return (
+        env in {"prod", "production"}
+        or public_url.startswith("https://stazhno.ru")
+        or public_url.startswith("https://www.stazhno.ru")
+    )
+
+
 def init_release02(path: str) -> None:
     with database(path) as db:
         db.executescript(MIGRATION)
@@ -270,7 +281,8 @@ def init_release02(path: str) -> None:
         # databases can gain them safely with CREATE TABLE/INDEX IF NOT EXISTS.
         for statement in RELEASE09_RUNTIME_DDL:
             db.execute(statement)
-        migrate_legacy_admin_email(db)
+        if production_admin_email_migration_enabled():
+            migrate_legacy_admin_email(db)
 
 
 def enqueue_notice(
