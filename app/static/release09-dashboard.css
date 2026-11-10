@@ -1497,3 +1497,48 @@ body.comfortable-view .match-method-note{
   .candidate-match-card header{align-items:flex-start;flex-direction:column}
   .alternative-job-head{flex-direction:column}
 }
+
+
+/* Admin taxonomy learning queue */
+.taxonomy-admin-center{display:grid;gap:15px}
+.taxonomy-admin-summary{
+  display:grid;
+  grid-template-columns:repeat(3,minmax(0,1fr));
+  gap:10px;
+}
+.taxonomy-admin-summary>div{
+  display:grid;
+  gap:4px;
+  min-height:78px;
+  padding:14px;
+  border:1px solid #DDE8E2;
+  border-radius:14px;
+  background:#FAFCFB;
+}
+.taxonomy-admin-summary strong{
+  color:#0B2D26;
+  font-size:23px;
+  line-height:1;
+}
+.taxonomy-admin-summary span{
+  color:#667970;
+  font-size:10px;
+  font-weight:750;
+}
+.taxonomy-admin-card{border-left:3px solid #D8E5DE}
+.taxonomy-admin-card:has(.mini-badge.warning){border-left-color:#C99A32}
+.taxonomy-admin-card header p{margin-top:4px}
+.taxonomy-admin-note{
+  margin:9px 0;
+  padding:9px 11px;
+  border-radius:10px;
+  background:#F5F8F6;
+  color:#65766E;
+  font-size:9px;
+  line-height:1.45;
+}
+body.comfortable-view .taxonomy-admin-summary span,
+body.comfortable-view .taxonomy-admin-note{font-size:.9rem}
+@media(max-width:620px){
+  .taxonomy-admin-summary{grid-template-columns:1fr}
+}
