@@ -49,6 +49,14 @@ def run_overview(page):
     # Navigation from the consolidated overview still uses the same real tabs.
     dashboard.locator("[data-tab='offers']").first.click()
     expect(dashboard).to_contain_text("Подходящие вакансии")
+    recommendation = dashboard.locator(".job-card").first
+    expect(recommendation.locator(".match-score")).to_be_visible()
+    expect(recommendation.locator(".match-score")).to_contain_text("%")
+    explanation = recommendation.locator("details.match-explanation")
+    expect(explanation).to_be_visible()
+    explanation.locator("summary").click()
+    expect(explanation.locator(".match-factor-row")).to_have_count(6)
+    expect(explanation).to_contain_text("Возраст и другие личные характеристики не используются")
     page.locator(".dashboard-tabs [data-tab='overview']").click()
     expect(dashboard.locator(".candidate-overview-grid")).to_be_visible()
 
