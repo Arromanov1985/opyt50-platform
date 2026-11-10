@@ -3,6 +3,8 @@ import os
 import subprocess
 import sys
 import tempfile
+
+import pyotp
 import time
 from pathlib import Path
 from urllib.request import urlopen
@@ -13,6 +15,7 @@ from playwright.sync_api import sync_playwright, expect
 ROOT = Path(__file__).resolve().parents[1]
 URL = "http://127.0.0.1:8769"
 HEADERS = {"X-Requested-With": "OPYT50"}
+TOTP_SECRET = pyotp.random_base32()
 
 
 def login(page, email, password="DemoPass2026!"):
@@ -109,12 +112,16 @@ def run_security(page):
         page.locator("#auth-submit").click()
     login_payload = login_response.value.json()
     assert login_payload["mfa_required"] is True
-    assert login_payload["debug_code"].isdigit()
+    assert login_payload["mfa_method"] == "totp"
+    assert login_payload["code_length"] == 6
+    assert "debug_code" not in login_payload
     expect(page.locator("#auth-mfa-panel")).to_be_visible()
     expect(page.locator("#auth-title")).to_have_text("Подтвердите вход")
+    expect(page.locator("#auth-mfa-panel")).to_contain_text("Authenticator")
     assert page.request.get(URL + "/api/me").status == 401
 
-    page.locator("#auth-mfa-code").fill(login_payload["debug_code"])
+    totp_code = pyotp.TOTP(TOTP_SECRET, digits=6, interval=30).now()
+    page.locator("#auth-mfa-code").fill(totp_code)
     with page.expect_response(lambda response: (
         response.url.endswith("/api/admin/mfa/verify") and
         response.request.method == "POST"
@@ -143,7 +150,8 @@ def main():
             OPYT50_PREVIEW_SEED_DEMO="0",
             OPYT50_COOKIE_SECURE="0",
             OPYT50_ENV="development",
-            OPYT50_ADMIN_MFA_MODE="email",
+            OPYT50_ADMIN_MFA_MODE="totp",
+            OPYT50_ADMIN_TOTP_SECRET=TOTP_SECRET,
         )
         subprocess.run(
             [sys.executable, "scripts/seed_demo.py", "--db", env["OPYT50_DB_PATH"]],
@@ -210,7 +218,7 @@ def main():
             finally:
                 log.close()
 
-    print("Browser security smoke: XSS escaping and admin MFA PASSED")
+    print("Browser security smoke: XSS escaping and admin TOTP MFA PASSED")
 
 
 if __name__ == "__main__":
