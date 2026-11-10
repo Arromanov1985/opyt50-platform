@@ -139,6 +139,26 @@ SKILL_DISPLAY = {
     "складской учет": "Складской учёт",
 }
 
+SKILL_ALIAS_DISPLAY = {
+    "1c": "1C",
+    "1c enterprise": "1C Enterprise",
+    "1с предприятие": "1С Предприятие",
+    "excel": "Excel",
+    "ms excel": "MS Excel",
+    "microsoft excel": "Microsoft Excel",
+    "crm": "CRM",
+    "crm система": "CRM-система",
+    "crm-система": "CRM-система",
+    "bitrix24": "Bitrix24",
+    "битрикс 24": "Битрикс 24",
+    "amocrm": "amoCRM",
+    "amo crm": "amoCRM",
+    "cold calls": "Cold calls",
+    "b2b продажи": "B2B продажи",
+    "продажи b2b": "Продажи B2B",
+    "b2b-продажи": "B2B-продажи",
+}
+
 
 def normalize_phrase(value: str) -> str:
     text = str(value or "").casefold().replace("ё", "е")
@@ -214,7 +234,13 @@ def taxonomy_payload() -> dict:
     skills = []
     for canonical, aliases in sorted(SKILL_ALIASES.items()):
         display = SKILL_DISPLAY.get(canonical, canonical)
-        search_aliases = sorted({display, canonical, *aliases}, key=normalize_phrase)
+        search_aliases = sorted(
+            {
+                SKILL_ALIAS_DISPLAY.get(normalize_phrase(alias), alias)
+                for alias in {display, canonical, *aliases}
+            },
+            key=normalize_phrase,
+        )
         skills.append({
             "value": display,
             "canonical": canonical,
