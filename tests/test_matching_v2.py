@@ -99,3 +99,79 @@ def test_profession_relevance_remains_a_hard_requirement():
     )
     assert match_candidate(vacancy, candidate) is None
     assert any("Другая профессия" in item for item in mismatch_reasons(vacancy, candidate))
+
+
+
+def test_regional_and_territorial_sales_titles_match_by_reviewed_taxonomy():
+    candidate = base_candidate(
+        profession="Территориальный менеджер",
+        city="Москва",
+        skills="B2B продажи, переговоры, Microsoft Excel",
+    )
+    vacancy = base_vacancy(
+        title="Региональный менеджер по продажам B2B",
+        city="Москва",
+        skills="продажи B2B, ведение переговоров, MS Excel",
+    )
+    result = match_candidate(vacancy, candidate)
+    assert result is not None
+    profession = next(f for f in result["score_breakdown"] if f["key"] == "profession")
+    skills = next(f for f in result["score_breakdown"] if f["key"] == "skills")
+    assert profession["percent"] == 95
+    assert "региональные продажи" in profession["text"]
+    assert skills["percent"] == 100
+
+
+def test_generic_manager_word_does_not_create_cross_domain_match():
+    candidate = base_candidate(
+        profession="Менеджер по персоналу",
+        city="Москва",
+        skills="Excel, собеседования",
+    )
+    vacancy = base_vacancy(
+        title="Менеджер по продажам",
+        city="Москва",
+        skills="Excel, продажи",
+    )
+    assert match_candidate(vacancy, candidate) is None
+    reasons = mismatch_reasons(vacancy, candidate)
+    assert any("Другая профессия" in reason for reason in reasons)
+
+
+def test_skill_aliases_are_normalized_without_penalizing_candidate():
+    candidate = base_candidate(skills="1C, Microsoft Excel")
+    vacancy = base_vacancy(skills="1С, MS Excel")
+    result = match_candidate(vacancy, candidate)
+    assert result is not None
+    skills = next(f for f in result["score_breakdown"] if f["key"] == "skills")
+    assert skills["percent"] == 100
+    assert "1с" in skills["text"]
+    assert "excel" in skills["text"]
+
+
+def test_specific_crm_product_satisfies_generic_crm_but_not_reverse():
+    candidate_with_bitrix = base_candidate(skills="Битрикс24")
+    generic_crm_vacancy = base_vacancy(skills="CRM")
+    result = match_candidate(generic_crm_vacancy, candidate_with_bitrix)
+    assert result is not None
+    skills = next(f for f in result["score_breakdown"] if f["key"] == "skills")
+    assert skills["percent"] == 100
+    assert any("связанному навыку" in caution for caution in result["cautions"])
+
+    candidate_with_generic_crm = base_candidate(skills="CRM")
+    bitrix_vacancy = base_vacancy(skills="Bitrix24")
+    assert match_candidate(bitrix_vacancy, candidate_with_generic_crm) is None
+
+
+def test_regional_hr_title_is_not_misclassified_as_regional_sales():
+    candidate = base_candidate(
+        profession="Региональный менеджер по персоналу",
+        city="Москва",
+        skills="подбор персонала, Excel",
+    )
+    vacancy = base_vacancy(
+        title="Региональный менеджер по продажам",
+        city="Москва",
+        skills="продажи, Excel",
+    )
+    assert match_candidate(vacancy, candidate) is None
