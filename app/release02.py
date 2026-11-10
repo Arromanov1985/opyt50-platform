@@ -1093,7 +1093,7 @@ def install_routes(app) -> None:
         user: dict = Depends(active_user),
         db: sqlite3.Connection = Depends(get_connection),
     ):
-        current_digest = user.get("token_hash")
+        current_digest = user.get("_session_token_hash")
         if not current_digest:
             raise HTTPException(401, "Текущая сессия не определена")
         result = db.execute(
