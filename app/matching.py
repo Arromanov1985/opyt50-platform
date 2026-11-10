@@ -193,8 +193,10 @@ def taxonomy_payload() -> dict:
             if not normalized or normalized in seen:
                 continue
             seen.add(normalized)
+            display_alias = alias[0].upper() + alias[1:] if alias else alias
+            display_alias = re.sub(r"\bb2b\b", "B2B", display_alias, flags=re.IGNORECASE)
             professions.append({
-                "value": alias[0].upper() + alias[1:] if alias else alias,
+                "value": display_alias,
                 "family": family_label,
                 "family_key": family_key,
             })
