@@ -1,6 +1,8 @@
 """Release 0.2 routes with durable notification outbox and optional SMTP delivery."""
 from __future__ import annotations
 
+import hashlib
+import re
 import secrets
 import sqlite3
 from datetime import datetime, timedelta, timezone
@@ -1107,6 +1109,50 @@ def install_routes(app) -> None:
         )
         db.commit()
         return {"ok": True}
+
+    @app.get("/api/admin/taxonomy")
+    def admin_taxonomy(user: dict = Depends(active_user), db: sqlite3.Connection = Depends(get_connection)):
+        allowed(user, "admin")
+        refresh_taxonomy_observations(db)
+        db.commit()
+        rows = db.execute(
+            """SELECT term_key,kind,display_value,candidate_seen,vacancy_seen,status,updated_at
+               FROM taxonomy_observations
+               ORDER BY CASE status WHEN 'pending' THEN 0 WHEN 'approved' THEN 1 ELSE 2 END,
+                        (candidate_seen + vacancy_seen) DESC, display_value ASC
+               LIMIT 500"""
+        ).fetchall()
+        return {
+            "terms": [dict(row) for row in rows],
+            "summary": {
+                "pending": sum(1 for row in rows if row["status"] == "pending"),
+                "approved": sum(1 for row in rows if row["status"] == "approved"),
+                "rejected": sum(1 for row in rows if row["status"] == "rejected"),
+            },
+        }
+
+    @app.patch("/api/admin/taxonomy/{term_key}")
+    def admin_taxonomy_status(
+        term_key: str,
+        data: TaxonomyObservationStatusIn,
+        user: dict = Depends(active_user),
+        db: sqlite3.Connection = Depends(get_connection),
+    ):
+        allowed(user, "admin")
+        row = db.execute(
+            "SELECT term_key FROM taxonomy_observations WHERE term_key=?",
+            (term_key,),
+        ).fetchone()
+        if row is None:
+            raise HTTPException(404, "Термин не найден")
+        db.execute(
+            """UPDATE taxonomy_observations
+               SET status=?,reviewed_by=?,reviewed_at=?,updated_at=?
+               WHERE term_key=?""",
+            (data.status, user["id"], utc_now_text(), utc_now_text(), term_key),
+        )
+        db.commit()
+        return {"ok": True, "status": data.status}
 
     @app.get("/api/admin/mail-preview")
     def admin_demo_mail(user: dict = Depends(active_user),
