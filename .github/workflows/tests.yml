@@ -32,3 +32,5 @@ jobs:
         run: python tests/browser_safety_smoke.py
       - name: Browser candidate overview smoke
         run: python tests/browser_candidate_overview_smoke.py
+      - name: Browser taxonomy autocomplete smoke
+        run: python tests/browser_taxonomy_smoke.py
