@@ -345,6 +345,24 @@ def issue_admin_mfa_challenge(
     return challenge_key, code
 
 
+def issue_admin_totp_challenge(
+    db: sqlite3.Connection,
+    user_id: int,
+) -> str:
+    """Create a short-lived gate proving the administrator password was verified."""
+    challenge_key = secrets.token_urlsafe(32)
+    expires = (datetime.now(timezone.utc) + timedelta(minutes=5)).isoformat()
+    db.execute("DELETE FROM admin_mfa_challenges WHERE user_id=?", (user_id,))
+    db.execute(
+        """INSERT INTO admin_mfa_challenges(
+               challenge_key,user_id,code_hash,expires_at,attempts,created_at
+           ) VALUES(?,?,?,?,0,?)""",
+        (challenge_key, user_id, "totp-v1", expires, utc_now_text()),
+    )
+    record_security_event(db, user_id, "admin_totp_challenge_issued")
+    return challenge_key
+
+
 def refresh_taxonomy_observations(db: sqlite3.Connection) -> None:
     """Aggregate anonymous profession/skill terms from current profiles and vacancies.
 
