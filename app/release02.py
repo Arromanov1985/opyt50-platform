@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import hashlib
+import hmac
 import re
 import secrets
 import sqlite3
@@ -1065,10 +1066,29 @@ def install_routes(app) -> None:
 
     @app.get("/api/account/security")
     def account_security(user: dict = Depends(active_user), db: sqlite3.Connection = Depends(get_connection)):
-        active_sessions = db.execute(
-            "SELECT COUNT(*) FROM sessions WHERE user_id=? AND expires_at>?",
-            (user["id"], datetime.now(timezone.utc).isoformat()),
-        ).fetchone()[0]
+        now_iso = datetime.now(timezone.utc).isoformat()
+        current_digest = user.get("_session_token_hash", "")
+        session_rows = db.execute(
+            """SELECT s.token_hash,s.expires_at,a.authenticated_at,a.last_seen_at
+               FROM sessions s
+               LEFT JOIN session_activity a ON a.token_hash=s.token_hash
+               WHERE s.user_id=? AND s.expires_at>?
+               ORDER BY COALESCE(a.last_seen_at,a.authenticated_at,s.expires_at) DESC""",
+            (user["id"], now_iso),
+        ).fetchall()
+        sessions = []
+        for row in session_rows:
+            token_hash_value = str(row["token_hash"])
+            public_id = hashlib.sha256(
+                ("session-public-id:" + token_hash_value).encode("utf-8")
+            ).hexdigest()[:24]
+            sessions.append({
+                "id": public_id,
+                "current": hmac.compare_digest(token_hash_value, current_digest),
+                "authenticated_at": row["authenticated_at"],
+                "last_seen_at": row["last_seen_at"],
+                "expires_at": row["expires_at"],
+            })
         email_row = db.execute(
             "SELECT email_verified FROM account_controls WHERE user_id=?",
             (user["id"],),
@@ -1082,11 +1102,51 @@ def install_routes(app) -> None:
             (user["id"],),
         ).fetchall()
         return {
-            "active_sessions": int(active_sessions),
+            "active_sessions": len(sessions),
+            "sessions": sessions,
             "email_verified": bool(email_row and email_row["email_verified"]),
             "events": [dict(row) for row in events],
             "password_min_length": 15,
         }
+
+    @app.delete("/api/account/sessions/{session_id}")
+    def revoke_session(
+        session_id: str,
+        user: dict = Depends(active_user),
+        db: sqlite3.Connection = Depends(get_connection),
+    ):
+        if not re.fullmatch(r"[0-9a-f]{24}", session_id):
+            raise HTTPException(404, "Сессия не найдена")
+        current_digest = user.get("_session_token_hash")
+        rows = db.execute(
+            "SELECT token_hash FROM sessions WHERE user_id=?",
+            (user["id"],),
+        ).fetchall()
+        target_digest = None
+        for row in rows:
+            candidate = str(row["token_hash"])
+            public_id = hashlib.sha256(
+                ("session-public-id:" + candidate).encode("utf-8")
+            ).hexdigest()[:24]
+            if hmac.compare_digest(public_id, session_id):
+                target_digest = candidate
+                break
+        if target_digest is None:
+            raise HTTPException(404, "Сессия не найдена")
+        if current_digest and hmac.compare_digest(target_digest, current_digest):
+            raise HTTPException(409, "Текущую сессию завершайте кнопкой «Выйти»")
+        result = db.execute(
+            "DELETE FROM sessions WHERE user_id=? AND token_hash=?",
+            (user["id"], target_digest),
+        )
+        revoked = max(int(result.rowcount or 0), 0)
+        if not revoked:
+            raise HTTPException(404, "Сессия уже завершена")
+        record_security_event(
+            db, user["id"], "single_session_revoked", "session_id=" + session_id
+        )
+        db.commit()
+        return {"ok": True, "revoked": 1}
 
     @app.post("/api/account/sessions/revoke-others")
     def revoke_other_sessions(
