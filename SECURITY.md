@@ -20,7 +20,7 @@ operational checklist, not a claim of bank certification.
 - Production OpenAPI/Swagger endpoints are disabled by default.
 - API responses containing account data are no-store.
 - API requests have a basic body-size guard.
-- pip-audit runs in CI and Dependabot monitors Python and GitHub Actions dependencies.
+- pip-audit, Bandit, CodeQL and the repository secret scanner run in CI; Dependabot monitors Python, GitHub Actions and Docker dependencies.
 - CodeQL scans Python and JavaScript.
 - The container runs as an unprivileged Linux user and hides the Uvicorn Server header.
 
@@ -34,12 +34,14 @@ When the project moves to stazhno.ru, change the environment value; do not hard-
 Required values:
 
 - OPYT50_ENV=production
-- OPYT50_PUBLIC_URL=https://arromanov1985-opyt50-platform-fdd8.twc1.net
+- OPYT50_PUBLIC_URL=https://stazhno.ru
 - OPYT50_COOKIE_SECURE=1
 - OPYT50_ENABLE_DOCS=0
-- OPYT50_DB_SSLMODE=require (prefer verify-full after configuring the DB provider CA)
-- OPYT50_ALLOWED_HOSTS only after listing the current Timeweb hostname plus all legitimate platform health-check hosts
+- OPYT50_DB_SSLMODE=verify-full when the provider CA/hostname configuration supports it; otherwise require is the temporary minimum
+- OPYT50_ALLOWED_HOSTS=stazhno.ru,www.stazhno.ru plus only legitimate Timeweb health/platform hostnames that actually reach the app
 - OPYT50_PREVIEW_SEED_DEMO=0
+- OPYT50_ADMIN_MFA_MODE=totp
+- OPYT50_ADMIN_TOTP_SECRET=<random Base32 secret stored only in Timeweb secret/environment UI>
 - strong, unique PostgreSQL and SMTP credentials
 
 Never run demo seeding against production.
@@ -49,7 +51,7 @@ Never run demo seeding against production.
 Application code alone cannot provide a bank security perimeter. The production
 environment still needs:
 
-1. Phishing-resistant MFA/passkeys for administrators and preferably employers.
+1. Phishing-resistant WebAuthn/passkeys/security keys for administrators (TOTP is now available and recommended as the current production baseline) and preferably employers.
 2. Managed WAF, DDoS protection and distributed rate limiting in front of App Platform.
 3. Centralized immutable security logs/SIEM with alerting for admin actions, auth abuse and anomalous access.
 4. Encrypted PostgreSQL backups, tested point-in-time restore and documented RPO/RTO.
@@ -70,3 +72,19 @@ environment still needs:
 - At least annually, and after major architecture changes: independent penetration test.
 
 Reference baseline: OWASP ASVS 5.0 plus current OWASP cheat sheets and NIST SP 800-63B authentication guidance.
+
+
+## Reporting a vulnerability
+
+Do not publish exploitable details, credentials or personal data in a public
+issue. Use GitHub's private **Report a vulnerability / Security Advisory** flow
+when available. If private reporting is not enabled, contact the repository
+owner through the established private business channel.
+
+Include the affected component, impact, prerequisites and minimal reproduction
+steps. Use fictional/test accounts. Do not perform denial-of-service, credential
+stuffing, social engineering, destructive database actions or access unrelated
+user data.
+
+Passing automated checks is not a certification and does not replace an
+independent penetration test.
