@@ -889,11 +889,13 @@ def create_app(db_path: str | None = None) -> FastAPI:
         values["skills"] = values["skills"].strip()
         values["description"] = values["description"].strip()
 
-        set_sql = ", ".join(f"{field}=?" for field in VACANCY_CONTENT_FIELDS)
-        current_sql = " AND ".join(f"{field}=?" for field in VACANCY_CONTENT_FIELDS)
         cursor = db.execute(
-            f"""UPDATE vacancies SET {set_sql}
-                WHERE id=? AND employer_id=? AND {current_sql} AND status=?""",
+            """UPDATE vacancies
+               SET title=?,city=?,salary_min=?,salary_max=?,schedule=?,employment=?,skills=?,description=?
+               WHERE id=? AND employer_id=?
+                 AND title=? AND city=? AND salary_min=? AND salary_max=?
+                 AND schedule=? AND employment=? AND skills=? AND description=?
+                 AND status=?""",
             tuple(values[field] for field in VACANCY_CONTENT_FIELDS)
             + (job_id, user["id"])
             + tuple(original[field] for field in VACANCY_CONTENT_FIELDS)
