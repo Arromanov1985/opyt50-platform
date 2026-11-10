@@ -394,11 +394,11 @@ async function renderCandidate() {
       const favorites = favoritesResult.jobs || [];
       const pendingInvitationsList = invitations.filter(item => item.status === 'sent');
       const pendingInvitations = pendingInvitationsList.length;
-      const activeApplicationsList = applications.filter(item => !['withdrawn','rejected'].includes(item.status));
+      const activeApplicationsList = applications.filter(item => ['applied','reviewing','interview'].includes(item.status));
       const activeApplications = activeApplicationsList.length;
       const unreadChanges = Number(updatesResult.unread_count || 0);
       const emailVerified = Boolean(emailResult.email_verified);
-      const profileActive = (state.user.profile || {}).is_active !== 0;
+      const profileActive = Boolean(state.user.profile) && state.user.profile.is_active !== 0;
       let nextTitle = 'Посмотрите подходящие вакансии';
       let nextText = 'Профиль уже может участвовать в подборе. Проверьте новые рекомендации.';
       let nextAction = '<button class="btn btn-primary" data-tab="offers">Открыть рекомендации →</button>';
