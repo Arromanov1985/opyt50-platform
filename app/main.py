@@ -27,7 +27,10 @@ from pydantic import BaseModel, Field, field_validator, model_validator
 
 from .db import database, init_db
 from .matching import lead_price, match_candidate, taxonomy_payload
-from .security import COOKIE_NAME, SESSION_SECONDS, issue_session, make_password_hash, token_hash, verify_password
+from .security import (
+    COOKIE_NAME, SESSION_SECONDS, issue_session, make_password_hash,
+    password_needs_rehash, token_hash, verify_password,
+)
 
 BASE = Path(__file__).resolve().parent
 DEFAULT_DB = os.getenv("OPYT50_DB_PATH", str(BASE.parent / "data" / "opyt50.db"))
@@ -44,7 +47,7 @@ class Registration(BaseModel):
     role: Literal["candidate", "employer"]
     name: str = Field(min_length=2, max_length=100)
     email: str = Field(min_length=5, max_length=254)
-    password: str = Field(min_length=10, max_length=128)
+    password: str = Field(min_length=15, max_length=128)
     phone: str = Field(default="", max_length=30)
     company_name: str = Field(default="", max_length=120)
 
@@ -64,8 +67,8 @@ class Registration(BaseModel):
 
 
 class Login(BaseModel):
-    email: str
-    password: str
+    email: str = Field(min_length=5, max_length=254)
+    password: str = Field(min_length=1, max_length=128)
 
 
 class CandidateProfile(BaseModel):
@@ -154,6 +157,22 @@ def utc_expiry() -> str:
     return (datetime.now(timezone.utc) + timedelta(seconds=SESSION_SECONDS)).isoformat()
 
 
+def production_runtime() -> bool:
+    explicit = os.getenv("OPYT50_ENV", "").strip().casefold()
+    public_url = os.getenv("OPYT50_PUBLIC_URL", "").strip().casefold()
+    return explicit in {"prod", "production"} or public_url.startswith("https://") or bool(os.getenv("DATABASE_URL", "").strip())
+
+
+def secure_cookie_enabled() -> bool:
+    explicit = os.getenv("OPYT50_COOKIE_SECURE")
+    if explicit is not None:
+        return explicit == "1"
+    return production_runtime()
+
+
+DUMMY_PASSWORD_HASH = make_password_hash("dummy-authentication-verifier-not-a-user-password")
+
+
 def get_connection(request: Request):
     with database(request.app.state.db_path) as connection:
         yield connection
@@ -211,8 +230,8 @@ def add_session(db: sqlite3.Connection, response: Response, user_id: int) -> Non
         COOKIE_NAME,
         token,
         httponly=True,
-        secure=os.getenv("OPYT50_COOKIE_SECURE", "0") == "1",
-        samesite="lax",
+        secure=secure_cookie_enabled(),
+        samesite="strict",
         max_age=SESSION_SECONDS,
         path="/",
     )
@@ -228,7 +247,15 @@ def create_app(db_path: str | None = None) -> FastAPI:
         init_release02(app.state.db_path)
         yield
 
-    app = FastAPI(title="СТАЖНО", version="0.15.0-dev", lifespan=lifespan, docs_url="/api/docs")
+    docs_enabled = os.getenv("OPYT50_ENABLE_DOCS", "0" if production_runtime() else "1") == "1"
+    app = FastAPI(
+        title="СТАЖНО",
+        version="0.15.0-dev",
+        lifespan=lifespan,
+        docs_url="/api/docs" if docs_enabled else None,
+        redoc_url="/api/redoc" if docs_enabled else None,
+        openapi_url="/api/openapi.json" if docs_enabled else None,
+    )
     app.state.db_path = db_location
     app.state.auth_attempts = defaultdict(deque)
     app.mount("/static", StaticFiles(directory=str(BASE / "static")), name="static")
@@ -260,6 +287,14 @@ def create_app(db_path: str | None = None) -> FastAPI:
                     status_code=401,
                     headers={"WWW-Authenticate": 'Basic realm="STAZHNO Preview"', "Cache-Control": "no-store"},
                 )
+        if request.url.path.startswith("/api/"):
+            content_length = request.headers.get("content-length")
+            if content_length:
+                try:
+                    if int(content_length) > 262_144:
+                        return Response(status_code=413, content="Слишком большой запрос")
+                except ValueError:
+                    return Response(status_code=400, content="Некорректный Content-Length")
         # A custom header forces cross-origin browser requests to preflight; no CORS enabled.
         if request.url.path.startswith("/api/") and request.method in {"POST", "PUT", "PATCH", "DELETE"}:
             if request.headers.get("x-requested-with") != "OPYT50":
@@ -288,12 +323,24 @@ def create_app(db_path: str | None = None) -> FastAPI:
         response.headers["X-Content-Type-Options"] = "nosniff"
         response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
         response.headers["X-Frame-Options"] = "DENY"
-        response.headers["Content-Security-Policy"] = (
+        response.headers["X-XSS-Protection"] = "0"
+        response.headers["X-Permitted-Cross-Domain-Policies"] = "none"
+        response.headers["X-DNS-Prefetch-Control"] = "off"
+        response.headers["Cross-Origin-Opener-Policy"] = "same-origin"
+        response.headers["Cross-Origin-Resource-Policy"] = "same-origin"
+        response.headers["Permissions-Policy"] = "geolocation=(), camera=(), microphone=(), payment=(), usb=()"
+        response.headers["Strict-Transport-Security"] = "max-age=31536000"
+        csp = (
             "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; "
-            "connect-src 'self'; object-src 'none'; frame-ancestors 'none'; base-uri 'self'"
+            "connect-src 'self'; object-src 'none'; frame-ancestors 'none'; base-uri 'self'; "
+            "form-action 'self'"
         )
+        if production_runtime():
+            csp += "; upgrade-insecure-requests"
+        response.headers["Content-Security-Policy"] = csp
         if request.url.path.startswith("/api/"):
             response.headers["Cache-Control"] = "no-store"
+            response.headers["Pragma"] = "no-cache"
         return response
 
     @app.get("/", include_in_schema=False)
@@ -357,12 +404,23 @@ def create_app(db_path: str | None = None) -> FastAPI:
 
     @app.post("/api/login")
     def login(data: Login, request: Request, response: Response, db: sqlite3.Connection = Depends(get_connection)):
-        row = db.execute("SELECT * FROM users WHERE email=?", (data.email.strip().casefold(),)).fetchone()
-        if row is None or not verify_password(data.password, row["password_hash"]):
+        email = data.email.strip().casefold()
+        row = db.execute("SELECT * FROM users WHERE email=?", (email,)).fetchone()
+        stored_hash = row["password_hash"] if row is not None else DUMMY_PASSWORD_HASH
+        password_ok = verify_password(data.password, stored_hash)
+        if row is None or not password_ok:
             raise HTTPException(401, "Неверный email или пароль")
         block = db.execute("SELECT status FROM account_controls WHERE user_id=?", (row["id"],)).fetchone()
         if block is not None and block["status"] == "disabled":
             raise HTTPException(403, "Аккаунт временно заблокирован")
+        if password_needs_rehash(row["password_hash"]):
+            db.execute(
+                "UPDATE users SET password_hash=? WHERE id=?",
+                (make_password_hash(data.password), row["id"]),
+            )
+        old_token = request.cookies.get(COOKIE_NAME)
+        if old_token:
+            db.execute("DELETE FROM sessions WHERE token_hash=?", (token_hash(old_token),))
         add_session(db, response, row["id"])
         return {"user": user_response(dict(row), db)}
 
@@ -372,7 +430,13 @@ def create_app(db_path: str | None = None) -> FastAPI:
         if token:
             db.execute("DELETE FROM sessions WHERE token_hash=?", (token_hash(token),))
             db.commit()  # Prevent next /api/me from seeing a deleted session.
-        response.delete_cookie(COOKIE_NAME, path="/")
+        response.delete_cookie(
+            COOKIE_NAME,
+            path="/",
+            secure=secure_cookie_enabled(),
+            httponly=True,
+            samesite="strict",
+        )
         return {"ok": True}
 
     @app.get("/api/me")
