@@ -150,6 +150,12 @@ RELEASE09_RUNTIME_DDL = (
         authenticated_at TEXT NOT NULL,
         last_seen_at TEXT NOT NULL
     )""",
+    """CREATE TABLE IF NOT EXISTS security_rate_limits (
+        rate_key TEXT PRIMARY KEY,
+        bucket_start INTEGER NOT NULL,
+        count INTEGER NOT NULL DEFAULT 0,
+        updated_at TEXT NOT NULL
+    )""",
     "CREATE INDEX IF NOT EXISTS idx_vacancy_moderation_status ON vacancy_moderation(status)",
     "CREATE INDEX IF NOT EXISTS idx_content_reports_status ON content_reports(status,created_at)",
     "CREATE INDEX IF NOT EXISTS idx_content_reports_vacancy ON content_reports(vacancy_id,status)",
@@ -158,6 +164,7 @@ RELEASE09_RUNTIME_DDL = (
     "CREATE INDEX IF NOT EXISTS idx_security_events_user ON security_events(user_id,created_at)",
     "CREATE INDEX IF NOT EXISTS idx_security_events_type ON security_events(event_type,created_at)",
     "CREATE INDEX IF NOT EXISTS idx_session_activity_last_seen ON session_activity(last_seen_at)",
+    "CREATE INDEX IF NOT EXISTS idx_security_rate_limits_updated ON security_rate_limits(updated_at)",
 )
 MIGRATION += "\n" + "\n".join(statement + ";" for statement in RELEASE09_RUNTIME_DDL)
 
