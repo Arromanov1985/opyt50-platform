@@ -121,16 +121,18 @@ function webAuthnCredentialPayload(credential) {
   return payload;
 }
 function resetMfaState() {
-  resetMfaState();
+  state.mfaChallenge = null;
+  state.mfaMethod = null;
+  state.mfaCodeLength = 8;
   state.mfaPublicKey = null;
   state.mfaTotpFallback = false;
 }
 async function completeAdminPasskeyLogin() {
-  if (!window.PublicKeyCredential || !navigator.credentials?.get) throw new Error('Этот браузер не поддерживает passkey/WebAuthn.');
-  if (!state.mfaChallenge || !state.mfaPublicKey) throw new Error('Passkey-запрос устарел. Войдите заново.');
   const btn = $('#auth-submit');
   btn.disabled = true;
   try {
+    if (!window.PublicKeyCredential || !navigator.credentials?.get) throw new Error('Этот браузер не поддерживает passkey/WebAuthn.');
+    if (!state.mfaChallenge || !state.mfaPublicKey) throw new Error('Passkey-запрос устарел. Войдите заново.');
     const credential = await navigator.credentials.get({publicKey:decodeWebAuthnOptions(state.mfaPublicKey)});
     const data = await api('/api/admin/mfa/webauthn/verify',{
       method:'POST',
@@ -197,9 +199,7 @@ async function loadPublicJobs() {
 function openAuth(mode = 'register', role = 'candidate') {
   state.mode = mode;
   state.role = role;
-  state.mfaChallenge = null;
-  state.mfaMethod = null;
-  state.mfaCodeLength = 8;
+  resetMfaState();
   $('#auth-form').reset();
   updateAuth();
   $('#auth-dialog').showModal();
