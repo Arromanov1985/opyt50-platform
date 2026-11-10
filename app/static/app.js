@@ -2,7 +2,7 @@
 'use strict';
 const $ = (selector, root = document) => root.querySelector(selector);
 const $$ = (selector, root = document) => [...root.querySelectorAll(selector)];
-const state = { user: null, mode: 'register', role: 'candidate', tab: 'overview', activeVacancy: null, editVacancy: null, employerVacancyFilter: 'all', employerApplicationsVacancyFilter: 'all' };
+const state = { user: null, mode: 'register', role: 'candidate', tab: 'overview', activeVacancy: null, editVacancy: null, employerVacancyFilter: 'all', employerApplicationsVacancyFilter: 'all', mfaChallenge: null };
 const esc = value => String(value ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const money = value => Number(value || 0).toLocaleString('ru-RU') + ' ₽';
 const formatPay = job => job.salary_min === job.salary_max ? money(job.salary_min) : `${money(job.salary_min)} — ${money(job.salary_max)}`;
@@ -90,14 +90,35 @@ async function loadPublicJobs() {
   } catch(e) { $('#public-jobs').innerHTML = '<div class="empty-state">Не удалось получить вакансии.</div>'; toast(e.message, true); }
 }
 function openAuth(mode = 'register', role = 'candidate') {
-  state.mode = mode; state.role = role; updateAuth();
+  state.mode = mode;
+  state.role = role;
+  state.mfaChallenge = null;
   $('#auth-form').reset();
+  updateAuth();
   $('#auth-dialog').showModal();
   (mode === 'register' ? $('#auth-name') : $('#auth-email')).focus();
 }
 function updateAuth() {
   const reg = state.mode === 'register';
   const employer = state.role === 'employer';
+  const mfa = Boolean(state.mfaChallenge);
+  $('.auth-fields')?.classList.toggle('hidden', mfa);
+  $('#auth-mfa-panel')?.classList.toggle('hidden', !mfa);
+  if (mfa) {
+    $('#signup-role').classList.add('hidden');
+    $('#auth-name-row').classList.add('hidden');
+    $('#auth-company-row').classList.add('hidden');
+    $('#password-hint').classList.add('hidden');
+    $('#auth-route').classList.add('hidden');
+    $('#auth-kicker').textContent = 'ДВУХФАКТОРНЫЙ ВХОД';
+    $('#auth-title').textContent = 'Подтвердите вход';
+    $('#auth-intro').textContent = 'Пароль принят. Для входа администратора нужен второй фактор.';
+    $('#auth-guidance').textContent = 'Код одноразовый и действует 5 минут.';
+    $('#auth-submit').textContent = 'Подтвердить вход →';
+    $('#auth-switch').innerHTML = '<button type="button" data-mfa-cancel>Вернуться ко входу по email и паролю</button>';
+    const message = $('#auth-message'); if (message) message.textContent = '';
+    return;
+  }
   $('#auth-kicker').textContent = reg ? 'РЕГИСТРАЦИЯ' : 'ВХОД';
   $('#auth-title').textContent = reg ? (employer ? 'Аккаунт работодателя' : 'Создать профиль') : 'Войти в аккаунт';
   $('#auth-intro').textContent = reg
@@ -141,6 +162,34 @@ async function submitAuth(event) {
     if (message) message.textContent = text;
     if (field) field.focus();
   };
+  if (state.mfaChallenge) {
+    const code = ($('#auth-mfa-code')?.value || '').trim();
+    if (!/^\d{8}$/.test(code)) {
+      showError('Введите 8 цифр из письма.', $('#auth-mfa-code'));
+      return;
+    }
+    const btn = $('#auth-submit');
+    btn.disabled = true;
+    if (message) message.textContent = '';
+    try {
+      const data = await api('/api/admin/mfa/verify', {
+        method:'POST',
+        body:JSON.stringify({challenge_id:state.mfaChallenge, code})
+      });
+      state.mfaChallenge = null;
+      $('#auth-dialog').close();
+      state.user = data.user;
+      state.tab = 'overview';
+      await showDashboard(true);
+      toast('Вход администратора подтверждён.');
+    } catch(e) {
+      showError(e.message || 'Не удалось подтвердить код.', $('#auth-mfa-code'));
+    } finally {
+      btn.disabled = false;
+    }
+    return;
+  }
+
   const email = $('#auth-email');
   const password = $('#auth-password');
   if (!email.value.trim() || !email.validity.valid) {
@@ -177,6 +226,13 @@ async function submitAuth(event) {
   if (message) message.textContent = '';
   try {
     const data = await api(state.mode === 'register' ? '/api/register' : '/api/login', {method:'POST', body:JSON.stringify(body)});
+    if (data.mfa_required) {
+      state.mfaChallenge = data.challenge_id;
+      updateAuth();
+      $('#auth-mfa-code').value = '';
+      $('#auth-mfa-code').focus();
+      return;
+    }
     $('#auth-dialog').close(); state.user = data.user;
     state.tab = state.mode === 'register'
       ? (data.user.role === 'candidate' ? 'profile' : data.user.role === 'employer' ? 'create' : 'overview')
@@ -913,7 +969,8 @@ async function start() {
   $('#auth-form').addEventListener('submit',submitAuth);
   $('#auth-dialog').addEventListener('click',e=>{
     const role = e.target.closest('[data-role]'); if(role){ state.role=role.dataset.role; updateAuth(); }
-    const mode = e.target.closest('[data-switch]'); if(mode){ state.mode=mode.dataset.switch; updateAuth(); }
+    const mode = e.target.closest('[data-switch]'); if(mode){ state.mfaChallenge=null; state.mode=mode.dataset.switch; updateAuth(); }
+    const mfaCancel = e.target.closest('[data-mfa-cancel]'); if(mfaCancel){ state.mfaChallenge=null; $('#auth-form').reset(); updateAuth(); $('#auth-email').focus(); }
   });
   $$('[data-register]').forEach(button=>button.addEventListener('click',()=>openAuth('register',button.dataset.register)));
   $('#account-open').addEventListener('click',()=>showDashboard(true));
