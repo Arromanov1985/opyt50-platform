@@ -284,7 +284,7 @@
 
     renderAdmin = async function(){
       await oldAdmin();
-      $('#account-content').insertAdjacentHTML('beforeend','<div class="panel admin-v02"><div class="item-actions"><button class="btn btn-outline" data-v02-action="admin-users">Пользователи</button><button class="btn btn-outline" data-v02-action="admin-jobs">Вакансии</button><button class="btn btn-outline" data-v02-action="admin-reports">Центр безопасности</button><button class="btn btn-outline" data-v02-action="admin-taxonomy">Словарь</button><button class="btn btn-outline" data-v02-action="admin-mail">Почтовые события</button></div><div id="admin-v02-results"></div></div>');
+      $('#account-content').insertAdjacentHTML('beforeend','<div class="panel admin-v02"><div class="item-actions"><button class="btn btn-outline" data-v02-action="admin-users">Пользователи</button><button class="btn btn-outline" data-v02-action="admin-jobs">Вакансии</button><button class="btn btn-outline" data-v02-action="admin-reports">Центр безопасности</button><button class="btn btn-outline" data-v02-action="admin-security">Безопасность</button><button class="btn btn-outline" data-v02-action="admin-taxonomy">Словарь</button><button class="btn btn-outline" data-v02-action="admin-mail">Почтовые события</button></div><div id="admin-v02-results"></div></div>');
     };
 
     async function adminView(kind){
@@ -319,6 +319,36 @@
           content=visibleReports.length?visibleReports.map(r=>`<article class="item-card safety-report-card"><header><div><span class="card-eyebrow">${r.target_type==='employer'?'РАБОТОДАТЕЛЬ':'ВАКАНСИЯ'}</span><h4>${esc(r.title)}</h4><p>${esc(r.company_name)} · ${esc(reportReasonLabels[r.reason]||r.reason)}</p></div><span class="mini-badge ${r.status==='new'?'warning':r.status==='actioned'?'':'gray'}">${esc(reportStatusLabels[r.status]||r.status)}</span></header>${r.details?`<div class="safety-report-text">${esc(r.details)}</div>`:''}<div class="safety-report-meta">Получено: ${esc(r.created_at||'—')}</div>${['new','reviewed'].includes(r.status)?`<div class="item-actions">${r.status==='new'?'<button class="btn btn-outline btn-tiny" data-v02-action="admin-report-status" data-key="'+esc(r.report_key)+'" data-status="reviewed">Взять в работу</button>':''}<button class="btn btn-outline btn-tiny" data-v02-action="admin-report-status" data-key="${esc(r.report_key)}" data-status="dismissed">Не подтверждено</button><button class="btn btn-primary btn-tiny" data-v02-action="admin-report-status" data-key="${esc(r.report_key)}" data-status="actioned">Меры приняты</button></div>`:''}</article>`).join(''):'<div class="empty-state"><strong>В этой очереди пока пусто.</strong><p>Переключите фильтр выше, чтобы посмотреть другие обращения.</p></div>';
         }
         root.innerHTML=`<div class="safety-center"><div class="split-header"><div><span class="section-kicker">БЕЗОПАСНОСТЬ И МОДЕРАЦИЯ</span><h3>Центр безопасности</h3><p class="muted">Разбирайте сигналы пользователей и возвращайте в поиск только проверенные вакансии.</p></div></div><div class="safety-summary"><button data-v02-action="admin-safety-filter" data-filter="new"><strong>${newReports.length}</strong><span>Новые жалобы</span></button><button data-v02-action="admin-safety-filter" data-filter="pending"><strong>${pendingJobs.length}</strong><span>Вакансии на проверке</span></button><button data-v02-action="admin-safety-filter" data-filter="reviewed"><strong>${reviewReports.length}</strong><span>В работе</span></button><div><strong>${resolvedReports.length}</strong><span>Обработано</span></div></div><div class="safety-filter-row">${filterButtons.map(([value,label,count])=>`<button class="btn btn-tiny ${filter===value?'btn-dark':'btn-outline'}" data-v02-action="admin-safety-filter" data-filter="${value}">${label} · ${count}</button>`).join('')}</div><div class="dashboard-list safety-list">${content}</div>${rejectedJobs.length?`<div class="safety-footnote">Отклонённых вакансий вне активной очереди: <strong>${rejectedJobs.length}</strong></div>`:''}</div>`;
+      } else if(kind==='security'){
+        const [{events},{admin_mfa_mode,admin_mfa_enabled,admin_session_minutes,password_hash,secure_cookie,production_runtime,api_docs_enabled}] = await Promise.all([
+          api('/api/admin/security-events'),
+          api('/api/admin/security-status')
+        ]);
+        const labels={
+          login_success:'Успешный вход',
+          login_password_failed:'Неверный пароль',
+          login_password_verified_mfa_required:'Пароль подтверждён · требуется 2FA',
+          login_blocked_disabled_account:'Попытка входа в заблокированный аккаунт',
+          admin_mfa_challenge_issued:'Отправлен код 2FA',
+          admin_mfa_failed:'Неверный код 2FA',
+          admin_mfa_success:'2FA подтверждена',
+          admin_mfa_expired:'Код 2FA истёк',
+          password_reset_completed:'Пароль изменён через восстановление'
+        };
+        const rows=events.length?events.map(event=>`<article class="security-event-row"><div><strong>${esc(labels[event.event_type]||event.event_type)}</strong><small>${esc(event.user_email||'Системное событие')}${event.detail?' · '+esc(event.detail):''}</small></div><time>${esc(event.created_at||'')}</time></article>`).join(''):'<div class="empty-state"><p>Security-событий пока нет.</p></div>';
+        root.innerHTML=`<div class="admin-security-center">
+          <div class="split-header"><div><span class="section-kicker">SECURITY</span><h3>Безопасность аккаунтов</h3><p class="muted">Ключевые защитные механизмы и последние события аутентификации.</p></div></div>
+          <div class="admin-security-summary">
+            <div class="${admin_mfa_enabled?'is-ok':'is-warning'}"><span>2FA администратора</span><strong>${admin_mfa_enabled?'Включена':'Не включена'}</strong><small>${admin_mfa_mode==='email'?'Одноразовый код по email':'Включите OPYT50_ADMIN_MFA_MODE=email после проверки admin email'}</small></div>
+            <div class="is-ok"><span>Админ-сессия</span><strong>${Number(admin_session_minutes)} мин</strong><small>Новый вход отзывает предыдущую админ-сессию</small></div>
+            <div class="is-ok"><span>Хэш паролей</span><strong>${esc(password_hash)}</strong><small>Старые PBKDF2 автоматически обновляются при входе</small></div>
+            <div class="${secure_cookie?'is-ok':'is-warning'}"><span>Session cookie</span><strong>${secure_cookie?'Secure + Strict':'Dev mode'}</strong><small>${production_runtime?'Production runtime':'Локальная/тестовая среда'}</small></div>
+            <div class="${api_docs_enabled?'is-warning':'is-ok'}"><span>API docs</span><strong>${api_docs_enabled?'Включены':'Выключены'}</strong><small>В production документация должна быть недоступна</small></div>
+          </div>
+          ${admin_mfa_enabled?'':`<div class="security-hardening-callout"><strong>Следующий обязательный шаг</strong><p>После того как в админ-аккаунте указан реальный доступный email и SMTP проверен, включите <code>OPYT50_ADMIN_MFA_MODE=email</code>. Пароль без второго фактора больше не создаст админ-сессию.</p></div>`}
+          <div class="split-header security-events-title"><div><span class="section-kicker">АУДИТ</span><h3>Последние security-события</h3></div><span class="mini-badge">${events.length}</span></div>
+          <div class="security-event-list">${rows}</div>
+        </div>`;
       } else if(kind==='taxonomy'){
         const {terms,summary}=await api('/api/admin/taxonomy');
         const filter=adminTaxonomyFilter;
@@ -435,6 +465,7 @@
         else if(type==='admin-users')await adminView('users');
         else if(type==='admin-jobs')await adminView('jobs');
         else if(type==='admin-reports'){adminSafetyFilter='new';await adminView('reports');}
+        else if(type==='admin-security')await adminView('security');
         else if(type==='admin-taxonomy'){adminTaxonomyFilter='pending';await adminView('taxonomy');}
         else if(type==='admin-mail')await adminView('mail');
         else if(type==='admin-employer-verification'){await req('PATCH',`/api/admin/employers/${id}/verification`,{verified:btn.dataset.verified==='true'});await adminView('users');await loadPublicJobs();toast(btn.dataset.verified==='true'?'Компания отмечена как проверенная':'Статус проверки снят');}
