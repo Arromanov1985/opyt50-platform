@@ -224,6 +224,55 @@ def session_cookie_name() -> str:
     return "__Host-stazhno_session" if secure_cookie_enabled() else COOKIE_NAME
 
 
+def _device_label(request: Request) -> str:
+    ua = request.headers.get("user-agent", "")
+    platform = request.headers.get("sec-ch-ua-platform", "").strip().strip('"')
+    if "YaBrowser/" in ua:
+        browser = "Яндекс Браузер"
+    elif "Edg/" in ua:
+        browser = "Microsoft Edge"
+    elif "OPR/" in ua:
+        browser = "Opera"
+    elif "Firefox/" in ua:
+        browser = "Firefox"
+    elif "Chrome/" in ua:
+        browser = "Chrome"
+    elif "Safari/" in ua and "Version/" in ua:
+        browser = "Safari"
+    else:
+        browser = "Браузер"
+
+    if platform:
+        os_label = platform
+    elif "Windows NT" in ua:
+        os_label = "Windows"
+    elif "Android" in ua:
+        os_label = "Android"
+    elif "iPhone" in ua or "iPad" in ua:
+        os_label = "iOS"
+    elif "Mac OS X" in ua:
+        os_label = "macOS"
+    elif "Linux" in ua:
+        os_label = "Linux"
+    else:
+        os_label = "неизвестная ОС"
+    return f"{browser} · {os_label}"
+
+
+def _device_fingerprint(user_id: int, request: Request) -> tuple[str, str]:
+    # Do not persist raw IP addresses. The fingerprint is intentionally based on
+    # browser/device hints and scoped to one account, preventing cross-user linkage.
+    parts = (
+        str(user_id),
+        request.headers.get("user-agent", "")[:512],
+        request.headers.get("sec-ch-ua", "")[:256],
+        request.headers.get("sec-ch-ua-platform", "")[:80],
+        request.headers.get("sec-ch-ua-mobile", "")[:10],
+    )
+    fingerprint = hashlib.sha256("\0".join(parts).encode("utf-8")).hexdigest()
+    return fingerprint, _device_label(request)
+
+
 def _bytes_to_base64url(value: bytes) -> str:
     return base64.urlsafe_b64encode(value).rstrip(b"=").decode("ascii")
 
@@ -547,7 +596,14 @@ def user_response(user: dict, db: sqlite3.Connection) -> dict:
     return data
 
 
-def add_session(db: sqlite3.Connection, response: Response, user_id: int) -> None:
+def add_session(
+    db: sqlite3.Connection,
+    response: Response,
+    user_id: int,
+    request: Request | None = None,
+    *,
+    security_alert: bool = False,
+) -> None:
     role_row = db.execute("SELECT role FROM users WHERE id=?", (user_id,)).fetchone()
     role = role_row["role"] if role_row is not None else ""
     lifetime = ADMIN_SESSION_SECONDS if role == "admin" else SESSION_SECONDS
@@ -563,6 +619,47 @@ def add_session(db: sqlite3.Connection, response: Response, user_id: int) -> Non
         "INSERT INTO session_activity(token_hash,authenticated_at,last_seen_at) VALUES(?,?,?)",
         (digest, now, now),
     )
+
+    if request is not None:
+        device_key, device_label = _device_fingerprint(user_id, request)
+        known_device = db.execute(
+            "SELECT 1 FROM account_devices WHERE device_key=? AND user_id=?",
+            (device_key, user_id),
+        ).fetchone() is not None
+        db.execute(
+            """INSERT INTO account_devices(
+                   device_key,user_id,label,first_seen_at,last_seen_at,login_count
+               ) VALUES(?,?,?,?,?,1)
+               ON CONFLICT(device_key) DO UPDATE SET
+                   label=excluded.label,
+                   last_seen_at=excluded.last_seen_at,
+                   login_count=account_devices.login_count+1""",
+            (device_key, user_id, device_label, now, now),
+        )
+        db.execute(
+            "INSERT INTO session_context(token_hash,device_key,device_label) VALUES(?,?,?)",
+            (digest, device_key, device_label),
+        )
+        if security_alert and not known_device:
+            from .release02 import enqueue_notice, record_security_event
+            record_security_event(
+                db,
+                user_id,
+                "new_device_login",
+                "device=" + hashlib.sha256(device_key.encode("utf-8")).hexdigest()[:16],
+            )
+            enqueue_notice(
+                db,
+                user_id,
+                "new_device_login",
+                "Новый вход в СТАЖНО",
+                (
+                    f"Зафиксирован вход с нового устройства: {device_label}.\n\n"
+                    "Если это были не вы, откройте раздел «Безопасность» в СТАЖНО, "
+                    "завершите неизвестную сессию и смените пароль."
+                ),
+            )
+
     # FastAPI yield dependencies may finalize after the response is sent.
     # Commit before issuing the session cookie, so the next /api/me sees it.
     db.commit()
@@ -750,7 +847,7 @@ def create_app(db_path: str | None = None) -> FastAPI:
         return data
 
     @app.post("/api/register", status_code=201)
-    def register(data: Registration, response: Response, db: sqlite3.Connection = Depends(get_connection)):
+    def register(data: Registration, request: Request, response: Response, db: sqlite3.Connection = Depends(get_connection)):
         try:
             cursor = db.execute(
                 "INSERT INTO users(email,password_hash,role,name,phone) VALUES(?,?,?,?,?)",
@@ -764,7 +861,7 @@ def create_app(db_path: str | None = None) -> FastAPI:
                     "INSERT INTO employer_profiles(user_id,company_name) VALUES(?,?)",
                     (user_id, data.company_name.strip()),
                 )
-            add_session(db, response, user_id)
+            add_session(db, response, user_id, request)
             from .release02 import enqueue_notice
             enqueue_notice(db, user_id, "welcome", "Добро пожаловать в СТАЖНО", "Ваш аккаунт создан. Добро пожаловать в СТАЖНО.")
         except sqlite3.IntegrityError:
@@ -870,12 +967,13 @@ def create_app(db_path: str | None = None) -> FastAPI:
         if old_token:
             db.execute("DELETE FROM sessions WHERE token_hash=?", (token_hash(old_token),))
         record_security_event(db, row["id"], "login_success")
-        add_session(db, response, row["id"])
+        add_session(db, response, row["id"], request, security_alert=True)
         return {"user": user_response(dict(row), db)}
 
     @app.post("/api/admin/mfa/verify")
     def verify_admin_mfa(
         data: AdminMfaVerify,
+        request: Request,
         response: Response,
         db: sqlite3.Connection = Depends(get_connection),
     ):
@@ -959,7 +1057,7 @@ def create_app(db_path: str | None = None) -> FastAPI:
             "phone": challenge["phone"],
             "role": challenge["role"],
         }
-        add_session(db, response, challenge["user_id"])
+        add_session(db, response, challenge["user_id"], request, security_alert=True)
         return {"user": user_response(user, db)}
 
     @app.post("/api/admin/passkeys/register/options")
@@ -1136,6 +1234,7 @@ def create_app(db_path: str | None = None) -> FastAPI:
     @app.post("/api/admin/mfa/webauthn/verify")
     def verify_admin_webauthn_mfa(
         data: AdminWebAuthnAuthenticationVerify,
+        request: Request,
         response: Response,
         db: sqlite3.Connection = Depends(get_connection),
     ):
@@ -1239,7 +1338,7 @@ def create_app(db_path: str | None = None) -> FastAPI:
             "phone": challenge["phone"],
             "role": challenge["role"],
         }
-        add_session(db, response, challenge["user_id"])
+        add_session(db, response, challenge["user_id"], request, security_alert=True)
         return {"user": user_response(user, db)}
 
     @app.post("/api/admin/mfa/webauthn/fallback-totp")
