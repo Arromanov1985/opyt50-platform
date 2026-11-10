@@ -184,7 +184,16 @@ async function submitAuth(event) {
   if (state.mfaChallenge) {
     const code = ($('#auth-mfa-code')?.value || '').trim();
     const expectedLength = state.mfaMethod === 'totp' ? 6 : 8;
-    if (!new RegExp('^\\d{' + expectedLength + '}
+    const codePattern = expectedLength === 6 ? /^\d{6}$/ : /^\d{8}$/;
+    if (!codePattern.test(code)) {
+      showError(
+        state.mfaMethod === 'totp'
+          ? 'Введите 6 цифр из приложения Authenticator.'
+          : 'Введите 8 цифр из письма.',
+        $('#auth-mfa-code')
+      );
+      return;
+    }
     const btn = $('#auth-submit');
     btn.disabled = true;
     if (message) message.textContent = '';
