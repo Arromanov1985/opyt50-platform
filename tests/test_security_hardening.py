@@ -180,13 +180,13 @@ def test_cross_site_mutations_are_rejected_by_origin_and_fetch_metadata(tmp_path
 def test_admin_login_revokes_previous_session_and_uses_short_lifetime(tmp_path):
     app = create_app(str(tmp_path / "admin-session.db"))
     password = "Administrator secure password 2026"
-    with database(app.state.db_path) as db:
-        db.execute(
-            "INSERT INTO users(role,email,name,password_hash) VALUES(?,?,?,?)",
-            ("admin", "admin-security@example.test", "Администратор", make_password_hash(password)),
-        )
+    with TestClient(app) as first:
+        with database(app.state.db_path) as db:
+            db.execute(
+                "INSERT INTO users(role,email,name,password_hash) VALUES(?,?,?,?)",
+                ("admin", "admin-security@example.test", "Администратор", make_password_hash(password)),
+            )
 
-    with TestClient(app) as first, TestClient(app) as second:
         login1 = first.post(
             "/api/login",
             headers=XHR,
@@ -196,18 +196,19 @@ def test_admin_login_revokes_previous_session_and_uses_short_lifetime(tmp_path):
         assert "max-age=1800" in "\n".join(login1.headers.get_list("set-cookie")).lower()
         assert first.get("/api/me").status_code == 200
 
-        login2 = second.post(
-            "/api/login",
-            headers=XHR,
-            json={"email": "admin-security@example.test", "password": password},
-        )
-        assert login2.status_code == 200, login2.text
-        assert second.get("/api/me").status_code == 200
-        assert first.get("/api/me").status_code == 401
+        with TestClient(app) as second:
+            login2 = second.post(
+                "/api/login",
+                headers=XHR,
+                json={"email": "admin-security@example.test", "password": password},
+            )
+            assert login2.status_code == 200, login2.text
+            assert second.get("/api/me").status_code == 200
+            assert first.get("/api/me").status_code == 401
 
-        with database(app.state.db_path) as db:
-            count = db.execute(
-                "SELECT COUNT(*) FROM sessions WHERE user_id=(SELECT id FROM users WHERE email=?)",
-                ("admin-security@example.test",),
-            ).fetchone()[0]
-            assert count == 1
+            with database(app.state.db_path) as db:
+                count = db.execute(
+                    "SELECT COUNT(*) FROM sessions WHERE user_id=(SELECT id FROM users WHERE email=?)",
+                    ("admin-security@example.test",),
+                ).fetchone()[0]
+                assert count == 1
