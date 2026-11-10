@@ -37,7 +37,7 @@ def run_security(page):
 
     login(page, "company@demo.example")
 
-    company = page.request.get(URL + "/api/employer/company").json()
+    company = page.request.get(URL + "/api/employer/company").json()["company"]
     saved = page.request.put(
         URL + "/api/employer/company",
         headers=HEADERS,
