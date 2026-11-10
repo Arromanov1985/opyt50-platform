@@ -24,6 +24,20 @@ jobs:
         run: python -m pytest -q
       - name: Compile
         run: python -m compileall -q app scripts
+      - name: Production security preflight
+        env:
+          OPYT50_ENV: production
+          OPYT50_PUBLIC_URL: https://stazhno.ru
+          OPYT50_COOKIE_SECURE: "1"
+          OPYT50_ENABLE_DOCS: "0"
+          OPYT50_PREVIEW_SEED_DEMO: "0"
+          OPYT50_ADMIN_MFA_MODE: totp
+          OPYT50_ALLOWED_HOSTS: stazhno.ru,www.stazhno.ru
+          DATABASE_URL: postgresql://ci@localhost/stazhno
+          OPYT50_DB_SSLMODE: verify-full
+        run: |
+          export OPYT50_ADMIN_TOTP_SECRET="$(python -c 'import pyotp; print(pyotp.random_base32())')"
+          python scripts/security_preflight.py
       - name: Browser JavaScript syntax
         run: |
           node --check app/static/app.js
