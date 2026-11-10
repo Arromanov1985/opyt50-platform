@@ -219,7 +219,7 @@ class PasswordRequestIn(BaseModel):
 
 
 class PasswordResetIn(EmailTokenIn):
-    password: str = Field(min_length=10, max_length=128)
+    password: str = Field(min_length=15, max_length=128)
 
 
 def issue_email_token(db: sqlite3.Connection, user_id: int, purpose: str) -> None:
