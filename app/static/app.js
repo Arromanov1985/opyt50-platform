@@ -475,7 +475,12 @@ const accountSecurityLabels = {
   other_sessions_revoked:'Другие сессии завершены',
   session_idle_expired:'Сессия завершена по неактивности',
   admin_mfa_success:'Второй фактор администратора подтверждён',
-  admin_mfa_failed:'Ошибка второго фактора администратора'
+  admin_mfa_failed:'Ошибка второго фактора администратора',
+  admin_passkey_registered:'Passkey администратора зарегистрирован',
+  admin_passkey_deleted:'Passkey администратора удалён',
+  admin_passkey_success:'Вход администратора подтверждён passkey',
+  admin_passkey_failed:'Ошибка подтверждения passkey',
+  admin_passkey_fallback_totp:'Выбран резервный код Authenticator'
 };
 function accountSecurityEventMarkup(item) {
   const label = accountSecurityLabels[item.event_type] || 'Событие безопасности';
@@ -1079,12 +1084,33 @@ function invitationEmployerMarkup(x) {
   ${activityTimelineMarkup(x)}
   ${x.contact ? `<div class="contact-card"><span>Контакт открыт (демо)</span><strong>${esc(x.contact.name)}</strong><div><a href="mailto:${esc(x.contact.email)}">${esc(x.contact.email)}</a><b>·</b><span>${esc(x.contact.phone || 'Телефон не указан')}</span></div></div>` : (x.status === 'accepted' ? `<div class="application-next-action"><span>Следующее действие</span><strong>Кандидат согласился на знакомство</strong><small>Демо-стоимость: ${money(x.price_rub)}</small></div><button class="btn btn-primary" data-action="demo-pay" data-id="${x.id}">Открыть контакт (демо) →</button>` : '<p class="muted invitation-waiting">Ожидаем решение кандидата. Контакты пока скрыты.</p>')}</article>`;
 }
+function adminPasskeyMarkup(item) {
+  const used = item.last_used_at ? `Последнее использование: ${esc(item.last_used_at)}` : `Добавлен: ${esc(item.created_at || '')}`;
+  return `<div class="admin-passkey-row">
+    <div class="admin-passkey-icon" aria-hidden="true">⌘</div>
+    <div><strong>${esc(item.label || 'Passkey администратора')}</strong><small>${used}</small><small>${item.backed_up ? 'Синхронизируемый passkey' : 'Ключ устройства / аппаратный ключ'}</small></div>
+    <button type="button" class="btn btn-outline btn-small" data-action="delete-admin-passkey" data-passkey-id="${esc(item.id)}">Удалить</button>
+  </div>`;
+}
 async function renderAdmin() {
-  $('#account-content').innerHTML = '<div class="panel"><h3>Панель управления</h3><p class="muted">Статистика работы MVP, без раскрытия персональных данных.</p><div class="stat-grid" id="admin-stats"><div class="loading">Загрузка...</div></div></div>';
+  $('#account-content').innerHTML = `<div class="admin-dashboard-stack">
+    <section class="panel"><h3>Панель управления</h3><p class="muted">Статистика работы MVP, без раскрытия персональных данных.</p><div class="stat-grid" id="admin-stats"><div class="loading">Загрузка...</div></div></section>
+    <section class="panel admin-security-panel">
+      <span class="section-kicker">БЕЗОПАСНОСТЬ АДМИНИСТРАТОРА</span>
+      <h3>Passkeys / WebAuthn</h3>
+      <p class="muted">Passkey подтверждает вход через Windows Hello, Touch ID, телефон или аппаратный FIDO2-ключ. TOTP остаётся резервным фактором.</p>
+      <div id="admin-passkeys"><div class="loading">Загрузка...</div></div>
+      <div class="admin-passkey-actions"><button type="button" class="btn btn-primary" data-action="register-admin-passkey">Добавить passkey →</button></div>
+    </section>
+  </div>`;
   try {
-    const stats = await api('/api/admin/stats');
+    const [stats, security] = await Promise.all([api('/api/admin/stats'), api('/api/account/security')]);
     const units = [['Соискатели',stats.candidates],['Работодатели',stats.employers],['Открытые вакансии',stats.open_vacancies],['Всего откликов',stats.applications_total],['Активные отклики',stats.applications_active],['Отозванные отклики',stats.applications_withdrawn],['Приглашения',stats.invitations],['Подтверждения',stats.confirmed],['Демо-знакомства',stats.demo_transactions],['Демо-оборот, ₽',stats.demo_turnover_rub]];
     $('#admin-stats').innerHTML = units.map(([title,value]) => `<div class="stat-tile"><strong>${Number(value).toLocaleString('ru-RU')}</strong><span>${esc(title)}</span></div>`).join('');
+    const passkeys = Array.isArray(security.passkeys) ? security.passkeys : [];
+    $('#admin-passkeys').innerHTML = passkeys.length
+      ? `<div class="admin-passkey-list">${passkeys.map(adminPasskeyMarkup).join('')}</div>`
+      : '<div class="empty-state">Passkey пока не зарегистрирован. До его добавления администратор продолжает входить по TOTP.</div>';
   } catch(e) { toast(e.message,true); }
 }
 function formValue(form, name) { return form.elements.namedItem(name).value.trim(); }
@@ -1181,6 +1207,19 @@ async function handleDashboardClick(event) {
   if (btn.disabled) return;
   btn.disabled = true;
   try {
+    if (action === 'register-admin-passkey') {
+      await registerAdminPasskey();
+      await renderAdmin();
+      return;
+    }
+    if (action === 'delete-admin-passkey') {
+      const passkeyId = String(btn.dataset.passkeyId || '');
+      if (!passkeyId) return;
+      await api(`/api/admin/passkeys/${encodeURIComponent(passkeyId)}`,{method:'DELETE'});
+      await renderAdmin();
+      toast('Passkey удалён.');
+      return;
+    }
     if (action === 'revoke-other-sessions') {
       const result = await api('/api/account/sessions/revoke-others',{method:'POST'});
       await renderAccountSecurity($('#dashboard-main'));
