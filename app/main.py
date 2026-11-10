@@ -385,7 +385,7 @@ def create_app(db_path: str | None = None) -> FastAPI:
                 queue.append(now)
         response = await call_next(request)
         response.headers["X-Content-Type-Options"] = "nosniff"
-        response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+        response.headers["Referrer-Policy"] = "no-referrer"
         response.headers["X-Frame-Options"] = "DENY"
         response.headers["X-XSS-Protection"] = "0"
         response.headers["X-Permitted-Cross-Domain-Policies"] = "none"
