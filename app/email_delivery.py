@@ -60,7 +60,7 @@ def send_email(to_email: str, subject: str, body: str) -> bool:
                     smtp.login(username, password)
                 smtp.send_message(message)
         return True
-    except (OSError, smtplib.SMTPException) as exc:
+    except (OSError, UnicodeError, smtplib.SMTPException) as exc:
         # Do not emit SMTP server text/tracebacks: providers may include
         # recipient addresses or other operational details in exceptions.
         logger.error("Email delivery failed (%s)", type(exc).__name__)
