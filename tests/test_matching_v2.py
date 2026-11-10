@@ -1,6 +1,6 @@
 """Tests for transparent weighted matching introduced in release 0.12."""
 
-from app.matching import evaluate_candidate, match_candidate, mismatch_reasons
+from app.matching import (PROFESSION_FAMILIES, SKILL_ALIASES, evaluate_candidate, match_candidate, mismatch_reasons, normalize_phrase)
 
 
 def base_candidate(**patch):
@@ -175,3 +175,26 @@ def test_regional_hr_title_is_not_misclassified_as_regional_sales():
         skills="продажи, Excel",
     )
     assert match_candidate(vacancy, candidate) is None
+
+
+
+def test_taxonomy_aliases_are_unique_across_groups():
+    seen_professions = {}
+    for family, data in PROFESSION_FAMILIES.items():
+        for alias in data["aliases"]:
+            normalized = normalize_phrase(alias)
+            assert normalized not in seen_professions, (
+                f"Profession alias {alias!r} belongs to both "
+                f"{seen_professions.get(normalized)!r} and {family!r}"
+            )
+            seen_professions[normalized] = family
+
+    seen_skills = {}
+    for canonical, aliases in SKILL_ALIASES.items():
+        for alias in aliases:
+            normalized = normalize_phrase(alias)
+            assert normalized not in seen_skills or seen_skills[normalized] == canonical, (
+                f"Skill alias {alias!r} belongs to both "
+                f"{seen_skills.get(normalized)!r} and {canonical!r}"
+            )
+            seen_skills[normalized] = canonical
