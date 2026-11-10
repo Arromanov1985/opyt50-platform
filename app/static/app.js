@@ -353,6 +353,25 @@ function profileMarkup(profile = {}, user = {}) {
     </div>
   </div>`;
 }
+function candidateOverviewApplicationCard(item) {
+  const statusText = workflowStatus(item, statusTitle[item.status] || item.status);
+  return `<article class="candidate-overview-item">
+    <div class="candidate-overview-item-head"><div><span class="card-eyebrow">ОТКЛИК</span><strong>${esc(item.title)}</strong><small>${esc(item.company_name)} · ${esc(item.city)}</small></div><span class="mini-badge">${esc(statusText)}</span></div>
+    ${interactionStageMarkup(item,'application')}
+    <button type="button" class="btn btn-outline btn-tiny" data-tab="applications">Открыть историю →</button>
+  </article>`;
+}
+function candidateOverviewInvitationCard(item) {
+  return `<article class="candidate-overview-item is-invitation">
+    <div class="candidate-overview-item-head"><div><span class="card-eyebrow">ПРИГЛАШЕНИЕ</span><strong>${esc(item.title)}</strong><small>${esc(item.company_name)} · ${esc(item.city)}</small></div><span class="mini-badge ${statusBadge[item.status]||''}">${esc(workflowStatus(item,statusTitle[item.status]||item.status))}</span></div>
+    ${employerPublicTrustMarkup(item)}
+    <button type="button" class="btn btn-primary btn-tiny" data-tab="invitations">Ответить на приглашение →</button>
+  </article>`;
+}
+function candidateStatusChip(ok, yes, no) {
+  return `<span class="candidate-status-chip ${ok?'is-ok':'is-pending'}"><i aria-hidden="true">${ok?'✓':'!'}</i>${esc(ok?yes:no)}</span>`;
+}
+
 async function renderCandidate() {
   const nav = [{id:'overview',label:'Обзор'},{id:'profile',label:'Мой профиль'},{id:'offers',label:'Подходящие вакансии'},{id:'invitations',label:'Приглашения'}];
   if (!nav.some(t => t.id === state.tab)) state.tab = 'overview';
@@ -360,25 +379,34 @@ async function renderCandidate() {
   const target = $('#dashboard-main');
   try {
     if (state.tab === 'overview') {
-      const [jobsResult, applicationsResult, invitationsResult, favoritesResult, updatesResult] = await Promise.all([
+      const [jobsResult, applicationsResult, invitationsResult, favoritesResult, updatesResult, emailResult] = await Promise.all([
         api('/api/candidate/jobs'),
         api('/api/candidate/applications'),
         api('/api/candidate/invitations'),
         api('/api/candidate/favorites'),
-        api('/api/candidate/vacancy-updates')
+        api('/api/candidate/vacancy-updates'),
+        api('/api/account/email/status')
       ]);
       const health = candidateProfileHealth(state.user.profile || {});
       const jobs = jobsResult.jobs || [];
       const applications = applicationsResult.applications || [];
       const invitations = invitationsResult.invitations || [];
       const favorites = favoritesResult.jobs || [];
-      const pendingInvitations = invitations.filter(item => item.status === 'sent').length;
-      const activeApplications = applications.filter(item => !['withdrawn','rejected'].includes(item.status)).length;
+      const pendingInvitationsList = invitations.filter(item => item.status === 'sent');
+      const pendingInvitations = pendingInvitationsList.length;
+      const activeApplicationsList = applications.filter(item => !['withdrawn','rejected'].includes(item.status));
+      const activeApplications = activeApplicationsList.length;
       const unreadChanges = Number(updatesResult.unread_count || 0);
+      const emailVerified = Boolean(emailResult.email_verified);
+      const profileActive = (state.user.profile || {}).is_active !== 0;
       let nextTitle = 'Посмотрите подходящие вакансии';
       let nextText = 'Профиль уже может участвовать в подборе. Проверьте новые рекомендации.';
       let nextAction = '<button class="btn btn-primary" data-tab="offers">Открыть рекомендации →</button>';
-      if (health.percent < 60) {
+      if (!emailVerified) {
+        nextTitle = 'Подтвердите email';
+        nextText = 'Это защитит доступ к аккаунту и поможет надёжно получать сервисные уведомления.';
+        nextAction = '<button class="btn btn-primary" data-tab="email">Подтвердить email →</button>';
+      } else if (health.percent < 60) {
         nextTitle = health.next;
         nextText = 'Чем полнее основные данные, тем точнее подбор вакансий.';
         nextAction = '<button class="btn btn-primary" data-tab="profile">Продолжить профиль →</button>';
@@ -386,6 +414,14 @@ async function renderCandidate() {
         nextTitle = 'Ответьте на приглашение работодателя';
         nextText = `Ожидают решения: ${pendingInvitations}. Контакты не откроются без вашего согласия.`;
         nextAction = '<button class="btn btn-primary" data-tab="invitations">Открыть приглашения →</button>';
+      } else if (unreadChanges > 0) {
+        nextTitle = 'Проверьте изменения условий';
+        nextText = `Работодатели изменили условия по ${unreadChanges} вакансии(ям), с которыми вы уже взаимодействовали.`;
+        nextAction = '<button class="btn btn-primary" data-tab="changes">Посмотреть изменения →</button>';
+      } else if (activeApplications > 0) {
+        nextTitle = 'Проверьте статус откликов';
+        nextText = `Активных откликов: ${activeApplications}. Посмотрите, на каком этапе каждый из них.`;
+        nextAction = '<button class="btn btn-primary" data-tab="applications">Открыть отклики →</button>';
       } else if (!jobs.length) {
         nextTitle = 'Расширьте поиск';
         nextText = 'Строгих совпадений пока нет — можно посмотреть все открытые вакансии.';
@@ -396,6 +432,11 @@ async function renderCandidate() {
           <span class="section-kicker">ВАШ СЛЕДУЮЩИЙ ШАГ</span>
           <div class="overview-priority"><div><h3>${esc(nextTitle)}</h3><p class="muted">${esc(nextText)}</p></div>${nextAction}</div>
           <div class="overview-health"><span>Готовность профиля</span><div class="profile-health-track"><span style="width:${health.percent}%"></span></div><strong>${health.percent}%</strong></div>
+          <div class="candidate-status-row">
+            ${candidateStatusChip(emailVerified,'Email подтверждён','Подтвердите email')}
+            ${candidateStatusChip(profileActive,'Профиль участвует в подборе','Профиль скрыт из подбора')}
+            <span class="candidate-status-chip is-private"><i aria-hidden="true">🔒</i>Контакты скрыты по умолчанию</span>
+          </div>
         </section>
         ${unreadChanges ? `<section class="overview-alert" role="status"><div><strong>Изменились условия вакансий</strong><span>Непрочитанных изменений: ${unreadChanges}</span></div><button class="btn btn-outline btn-tiny" data-tab="changes">Проверить изменения</button></section>` : ''}
         <section class="overview-stat-grid" aria-label="Сводка соискателя">
@@ -404,7 +445,18 @@ async function renderCandidate() {
           <button type="button" class="overview-stat-card" data-tab="invitations"><strong>${pendingInvitations}</strong><span>Новые приглашения</span><small>Ждут решения</small></button>
           <button type="button" class="overview-stat-card" data-tab="favorites"><strong>${favorites.length}</strong><span>Избранное</span><small>Сохранённые вакансии</small></button>
         </section>
-        ${jobs.length ? `<section class="panel overview-recommendation"><div class="split-header"><div><span class="section-kicker">ЛУЧШЕЕ СОВПАДЕНИЕ</span><h3>Начните с этой вакансии</h3></div><button class="btn btn-outline btn-tiny" data-tab="offers">Все рекомендации</button></div><div class="dashboard-list">${jobMarkup(jobs[0],true)}</div></section>` : ''}
+        <section class="candidate-overview-grid">
+          <div class="panel candidate-overview-section">
+            <div class="split-header"><div><span class="section-kicker">РЕКОМЕНДАЦИИ</span><h3>Вакансии для вас</h3><p class="muted">Сначала варианты с лучшим совпадением по вашему профилю.</p></div><button class="btn btn-outline btn-tiny" data-tab="offers">Все рекомендации</button></div>
+            <div class="candidate-mini-jobs">${jobs.length ? jobs.slice(0,2).map(job=>jobMarkup(job,true)).join('') : '<div class="empty-state"><p>Точных совпадений пока нет.</p><a class="btn btn-outline btn-tiny" href="#jobs">Посмотреть все вакансии</a></div>'}</div>
+          </div>
+          <div class="panel candidate-overview-section">
+            <div class="split-header"><div><span class="section-kicker">ОТКЛИКИ</span><h3>Сейчас в процессе</h3><p class="muted">Последние активные отклики и их текущий этап.</p></div><button class="btn btn-outline btn-tiny" data-tab="applications">Все отклики</button></div>
+            <div class="candidate-overview-list">${activeApplicationsList.length ? activeApplicationsList.slice(0,2).map(candidateOverviewApplicationCard).join('') : '<div class="empty-state"><p>Активных откликов пока нет.</p><button class="btn btn-primary btn-tiny" data-tab="offers">Выбрать вакансию →</button></div>'}</div>
+          </div>
+        </section>
+        ${pendingInvitationsList.length ? `<section class="panel candidate-overview-section candidate-invitations-preview"><div class="split-header"><div><span class="section-kicker">ТРЕБУЕТ ОТВЕТА</span><h3>Новые приглашения</h3><p class="muted">Решение за вами: контакты остаются закрытыми, пока вы не согласитесь.</p></div><button class="btn btn-outline btn-tiny" data-tab="invitations">Все приглашения</button></div><div class="candidate-overview-list">${pendingInvitationsList.slice(0,2).map(candidateOverviewInvitationCard).join('')}</div></section>` : ''}
+        ${favorites.length ? `<section class="candidate-saved-strip"><div><span class="section-kicker">СОХРАНЕНО</span><strong>${favorites.length} вакансий в избранном</strong><small>Можно вернуться к ним позже и сравнить условия.</small></div><button class="btn btn-outline btn-tiny" data-tab="favorites">Открыть сохранённые →</button></section>` : ''}
       </div>`;
     } else if (state.tab === 'profile') target.innerHTML = profileMarkup(state.user.profile, state.user);
     else if (state.tab === 'offers') {
