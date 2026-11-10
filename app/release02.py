@@ -157,6 +157,30 @@ RELEASE09_RUNTIME_DDL = (
         count INTEGER NOT NULL DEFAULT 0,
         updated_at TEXT NOT NULL
     )""",
+    """CREATE TABLE IF NOT EXISTS admin_webauthn_credentials (
+        credential_id TEXT PRIMARY KEY,
+        user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        public_key TEXT NOT NULL,
+        sign_count INTEGER NOT NULL DEFAULT 0,
+        label TEXT NOT NULL,
+        transports TEXT NOT NULL DEFAULT '',
+        credential_device_type TEXT NOT NULL DEFAULT '',
+        backed_up INTEGER NOT NULL DEFAULT 0,
+        created_at TEXT NOT NULL,
+        last_used_at TEXT
+    )""",
+    """CREATE TABLE IF NOT EXISTS admin_webauthn_challenges (
+        challenge_key TEXT PRIMARY KEY,
+        user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        kind TEXT NOT NULL CHECK(kind IN ('registration','authentication')),
+        challenge_b64 TEXT NOT NULL,
+        rp_id TEXT NOT NULL,
+        origin TEXT NOT NULL,
+        expires_at TEXT NOT NULL,
+        attempts INTEGER NOT NULL DEFAULT 0,
+        used_at TEXT,
+        created_at TEXT NOT NULL
+    )""",
     "CREATE INDEX IF NOT EXISTS idx_vacancy_moderation_status ON vacancy_moderation(status)",
     "CREATE INDEX IF NOT EXISTS idx_content_reports_status ON content_reports(status,created_at)",
     "CREATE INDEX IF NOT EXISTS idx_content_reports_vacancy ON content_reports(vacancy_id,status)",
@@ -166,6 +190,8 @@ RELEASE09_RUNTIME_DDL = (
     "CREATE INDEX IF NOT EXISTS idx_security_events_type ON security_events(event_type,created_at)",
     "CREATE INDEX IF NOT EXISTS idx_session_activity_last_seen ON session_activity(last_seen_at)",
     "CREATE INDEX IF NOT EXISTS idx_security_rate_limits_updated ON security_rate_limits(updated_at)",
+    "CREATE INDEX IF NOT EXISTS idx_admin_webauthn_user ON admin_webauthn_credentials(user_id,created_at)",
+    "CREATE INDEX IF NOT EXISTS idx_admin_webauthn_challenge_user ON admin_webauthn_challenges(user_id,expires_at)",
 )
 MIGRATION += "\n" + "\n".join(statement + ";" for statement in RELEASE09_RUNTIME_DDL)
 
@@ -1101,12 +1127,34 @@ def install_routes(app) -> None:
                LIMIT 20""",
             (user["id"],),
         ).fetchall()
+        passkeys = []
+        if user["role"] == "admin":
+            rows = db.execute(
+                """SELECT credential_id,label,credential_device_type,backed_up,created_at,last_used_at
+                   FROM admin_webauthn_credentials
+                   WHERE user_id=?
+                   ORDER BY created_at DESC""",
+                (user["id"],),
+            ).fetchall()
+            for row in rows:
+                public_id = hashlib.sha256(
+                    ("webauthn-public-id:" + str(row["credential_id"])).encode("utf-8")
+                ).hexdigest()[:24]
+                passkeys.append({
+                    "id": public_id,
+                    "label": row["label"],
+                    "device_type": row["credential_device_type"],
+                    "backed_up": bool(row["backed_up"]),
+                    "created_at": row["created_at"],
+                    "last_used_at": row["last_used_at"],
+                })
         return {
             "active_sessions": len(sessions),
             "sessions": sessions,
             "email_verified": bool(email_row and email_row["email_verified"]),
             "events": [dict(row) for row in events],
             "password_min_length": 15,
+            "passkeys": passkeys,
         }
 
     @app.delete("/api/account/sessions/{session_id}")
