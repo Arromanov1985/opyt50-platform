@@ -315,7 +315,7 @@ async function showDashboard(scroll = false) {
 function tabsMarkup(items, heading, subtitle) {
   const icons = {
     overview:'⌂',profile:'●',offers:'↗',invitations:'✉',favorites:'♡',
-    applications:'✓',changes:'↻',email:'@',vacancies:'▤',create:'＋',edit:'✎',company:'◆'
+    applications:'✓',changes:'↻',email:'@',vacancies:'▤',create:'＋',edit:'✎',company:'◆',security:'🔒'
   };
   const roleLabel = state.user?.role === 'employer' ? 'Работодатель' : state.user?.role === 'candidate' ? 'Соискатель' : 'Администратор';
   return `<aside class="panel side-panel">
@@ -459,7 +459,7 @@ function candidateStatusChip(ok, yes, no) {
 }
 
 async function renderCandidate() {
-  const nav = [{id:'overview',label:'Обзор'},{id:'profile',label:'Мой профиль'},{id:'offers',label:'Подходящие вакансии'},{id:'invitations',label:'Приглашения'}];
+  const nav = [{id:'overview',label:'Обзор'},{id:'profile',label:'Мой профиль'},{id:'offers',label:'Подходящие вакансии'},{id:'invitations',label:'Приглашения'},{id:'security',label:'Безопасность'}];
   if (!nav.some(t => t.id === state.tab)) state.tab = 'overview';
   $('#account-content').innerHTML = `<div class="dashboard-grid">${tabsMarkup(nav,'ДЛЯ СОИСКАТЕЛЯ','Ваша карьера')}<div id="dashboard-main"><div class="loading">Загрузка...</div></div></div>`;
   const target = $('#dashboard-main');
@@ -548,6 +548,8 @@ async function renderCandidate() {
     else if (state.tab === 'offers') {
       const {jobs} = await api('/api/candidate/jobs');
       target.innerHTML = `<div class="panel"><h3>Подходящие вакансии</h3><p class="muted">Алгоритм учитывает навыки, город, график и ожидания по зарплате. Совпадение — рекомендация, не решение о трудоустройстве.</p><div class="dashboard-list">${jobs.length ? jobs.map(x => jobMarkup(x,true)).join('') : '<div class="empty-state"><p>Подходящих вакансий пока нет. Можно изменить профессию, город или желаемую зарплату.</p><button type="button" class="btn btn-outline" data-tab="profile">Уточнить профиль</button> <a class="btn btn-primary" href="#jobs">Посмотреть все вакансии</a></div>'}</div></div>`;
+    } else if (state.tab === 'security') {
+      await renderAccountSecurity(target);
     } else {
       const {invitations} = await api('/api/candidate/invitations');
       target.innerHTML = `<div class="panel"><h3>Приглашения от компаний</h3><p class="muted">Откройте контакт только тем компаниям, с которыми вы хотите познакомиться.</p><div class="dashboard-list">${invitations.length ? invitations.map(invitationCandidateMarkup).join('') : '<div class="empty-state">Приглашений пока нет. Заполните профиль, и работодатели смогут найти вас.</div>'}</div></div>`;
@@ -609,7 +611,7 @@ function employerCompanyMarkup(result) {
 }
 
 async function renderEmployer() {
-  const nav = [{id:'overview',label:'Обзор'},{id:'company',label:'Компания'},{id:'vacancies',label:'Мои вакансии'},{id:'create',label:'Новая вакансия'},{id:'invitations',label:'Приглашения и контакты'}];
+  const nav = [{id:'overview',label:'Обзор'},{id:'company',label:'Компания'},{id:'vacancies',label:'Мои вакансии'},{id:'create',label:'Новая вакансия'},{id:'invitations',label:'Приглашения и контакты'},{id:'security',label:'Безопасность'}];
   if (state.tab === 'edit') nav.splice(2, 0, {id:'edit',label:'Редактирование'});
   if (!nav.some(t => t.id === state.tab)) state.tab = 'overview';
   $('#account-content').innerHTML = `<div class="dashboard-grid">${tabsMarkup(nav,'ДЛЯ КОМПАНИИ',state.user.company?.company_name || 'Работодатель')}<div id="dashboard-main"><div class="loading">Загрузка...</div></div></div>`;
@@ -677,6 +679,7 @@ async function renderEmployer() {
     } else if (state.tab === 'create') target.innerHTML = vacancyFormMarkup();
     else if (state.tab === 'edit') await loadEmployerVacancyEdit();
     else if (state.tab === 'vacancies') await loadEmployerVacancies();
+    else if (state.tab === 'security') await renderAccountSecurity(target);
     else await loadEmployerInvitations();
   } catch(e) { target.innerHTML = `<div class="panel">${esc(e.message)}</div>`; toast(e.message,true); }
 }
