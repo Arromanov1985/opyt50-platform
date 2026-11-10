@@ -23,6 +23,7 @@ from typing import Literal
 from fastapi import Depends, FastAPI, HTTPException, Request, Response
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
+from starlette.middleware.trustedhost import TrustedHostMiddleware
 from pydantic import BaseModel, Field, field_validator, model_validator
 
 from .db import database, init_db
@@ -170,6 +171,10 @@ def secure_cookie_enabled() -> bool:
     return production_runtime()
 
 
+def session_cookie_name() -> str:
+    return "__Host-stazhno_session" if secure_cookie_enabled() else COOKIE_NAME
+
+
 DUMMY_PASSWORD_HASH = make_password_hash("dummy-authentication-verifier-not-a-user-password")
 
 
@@ -179,7 +184,11 @@ def get_connection(request: Request):
 
 
 def active_user(request: Request, db: sqlite3.Connection = Depends(get_connection)) -> dict:
-    token = request.cookies.get(COOKIE_NAME)
+    token = request.cookies.get(session_cookie_name())
+    if not token and session_cookie_name() != COOKIE_NAME:
+        # Transitional fallback: old production sessions remain usable until
+        # their normal expiry, while every fresh login receives a __Host- cookie.
+        token = request.cookies.get(COOKIE_NAME)
     if not token:
         raise HTTPException(401, "Нужно войти в аккаунт")
     row = db.execute(
@@ -227,7 +236,7 @@ def add_session(db: sqlite3.Connection, response: Response, user_id: int) -> Non
     # Commit before issuing the session cookie, so the next /api/me sees it.
     db.commit()
     response.set_cookie(
-        COOKIE_NAME,
+        session_cookie_name(),
         token,
         httponly=True,
         secure=secure_cookie_enabled(),
@@ -258,6 +267,13 @@ def create_app(db_path: str | None = None) -> FastAPI:
     )
     app.state.db_path = db_location
     app.state.auth_attempts = defaultdict(deque)
+    allowed_hosts = [
+        host.strip()
+        for host in os.getenv("OPYT50_ALLOWED_HOSTS", "").split(",")
+        if host.strip()
+    ]
+    if allowed_hosts:
+        app.add_middleware(TrustedHostMiddleware, allowed_hosts=allowed_hosts)
     app.mount("/static", StaticFiles(directory=str(BASE / "static")), name="static")
 
     @app.middleware("http")
@@ -418,7 +434,10 @@ def create_app(db_path: str | None = None) -> FastAPI:
                 "UPDATE users SET password_hash=? WHERE id=?",
                 (make_password_hash(data.password), row["id"]),
             )
-        old_token = request.cookies.get(COOKIE_NAME)
+        old_token = (
+            request.cookies.get(session_cookie_name())
+            or request.cookies.get(COOKIE_NAME)
+        )
         if old_token:
             db.execute("DELETE FROM sessions WHERE token_hash=?", (token_hash(old_token),))
         add_session(db, response, row["id"])
@@ -426,17 +445,28 @@ def create_app(db_path: str | None = None) -> FastAPI:
 
     @app.post("/api/logout")
     def logout(request: Request, response: Response, db: sqlite3.Connection = Depends(get_connection)):
-        token = request.cookies.get(COOKIE_NAME)
+        token = (
+            request.cookies.get(session_cookie_name())
+            or request.cookies.get(COOKIE_NAME)
+        )
         if token:
             db.execute("DELETE FROM sessions WHERE token_hash=?", (token_hash(token),))
             db.commit()  # Prevent next /api/me from seeing a deleted session.
         response.delete_cookie(
-            COOKIE_NAME,
+            session_cookie_name(),
             path="/",
             secure=secure_cookie_enabled(),
             httponly=True,
             samesite="strict",
         )
+        if session_cookie_name() != COOKIE_NAME:
+            response.delete_cookie(
+                COOKIE_NAME,
+                path="/",
+                secure=True,
+                httponly=True,
+                samesite="lax",
+            )
         return {"ok": True}
 
     @app.get("/api/me")
