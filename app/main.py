@@ -480,7 +480,7 @@ def create_app(db_path: str | None = None) -> FastAPI:
     docs_enabled = os.getenv("OPYT50_ENABLE_DOCS", "0" if production_runtime() else "1") == "1"
     app = FastAPI(
         title="СТАЖНО",
-        version="0.20.0-dev",
+        version="0.21.0-dev",
         lifespan=lifespan,
         docs_url="/api/docs" if docs_enabled else None,
         redoc_url="/api/redoc" if docs_enabled else None,
@@ -610,7 +610,7 @@ def create_app(db_path: str | None = None) -> FastAPI:
     def health():
         if production_runtime():
             return {"status": "ok"}
-        return {"status": "ok", "version": "0.20.0-dev", "payments": "demo_only"}
+        return {"status": "ok", "version": "0.21.0-dev", "payments": "demo_only"}
 
     @app.get("/api/taxonomy")
     def taxonomy(db: sqlite3.Connection = Depends(get_connection)):
