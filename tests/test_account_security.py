@@ -164,9 +164,14 @@ def test_new_device_login_alerts_once_and_does_not_store_raw_ip(app):
             assert "127.0.0.1" not in serialized_devices
             assert "testclient" not in serialized_devices
 
-        third_login = login(third)
-        assert third_login.status_code == 200, third_login.text
-        with __import__("app.db", fromlist=["database"]).database(app.state.db_path) as db:
+        logged_out = second.post("/api/logout", headers=XHR)
+        assert logged_out.status_code == 200, logged_out.text
+        repeated_login = login(second)
+        assert repeated_login.status_code == 200, repeated_login.text
+        with database(app.state.db_path) as db:
             assert db.execute(
                 "SELECT COUNT(*) FROM email_outbox WHERE event='new_device_login'"
             ).fetchone()[0] == 1
+            assert db.execute(
+                "SELECT login_count FROM account_devices WHERE label='Firefox · Linux'"
+            ).fetchone()["login_count"] == 2
