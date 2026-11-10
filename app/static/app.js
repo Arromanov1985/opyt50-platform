@@ -480,7 +480,8 @@ const accountSecurityLabels = {
   admin_passkey_deleted:'Passkey администратора удалён',
   admin_passkey_success:'Вход администратора подтверждён passkey',
   admin_passkey_failed:'Ошибка подтверждения passkey',
-  admin_passkey_fallback_totp:'Выбран резервный код Authenticator'
+  admin_passkey_fallback_totp:'Выбран резервный код Authenticator',
+  new_device_login:'Вход с нового устройства'
 };
 function accountSecurityEventMarkup(item) {
   const label = accountSecurityLabels[item.event_type] || 'Событие безопасности';
@@ -488,8 +489,9 @@ function accountSecurityEventMarkup(item) {
 }
 function accountSecuritySessionMarkup(item) {
   const seen = item.last_seen_at || item.authenticated_at || '';
+  const device = item.device_label || 'Неизвестное устройство';
   return `<div class="account-security-session">
-    <div><strong>${item.current ? 'Этот браузер' : 'Другая активная сессия'}</strong><small>Последняя активность: ${esc(seen)}</small></div>
+    <div><strong>${item.current ? 'Этот браузер' : esc(device)}</strong><small>${item.current ? esc(device) + ' · ' : ''}Последняя активность: ${esc(seen)}</small></div>
     ${item.current ? '<span class="status success">Текущая</span>' : `<button type="button" class="btn btn-outline btn-small" data-action="revoke-session" data-session-id="${esc(item.id)}">Завершить</button>`}
   </div>`;
 }
