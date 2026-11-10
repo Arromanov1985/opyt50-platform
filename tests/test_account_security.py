@@ -4,6 +4,7 @@ from pathlib import Path
 import pytest
 from fastapi.testclient import TestClient
 
+from app.db import database
 from app.main import create_app
 
 XHR = {"X-Requested-With": "OPYT50"}
@@ -133,7 +134,7 @@ def test_new_device_login_alerts_once_and_does_not_store_raw_ip(app):
     ):
         register(first)
 
-        with app.state.db_path and __import__("app.db", fromlist=["database"]).database(app.state.db_path) as db:
+        with database(app.state.db_path) as db:
             assert db.execute(
                 "SELECT COUNT(*) FROM email_outbox WHERE event='new_device_login'"
             ).fetchone()[0] == 0
@@ -151,7 +152,7 @@ def test_new_device_login_alerts_once_and_does_not_store_raw_ip(app):
             for item in security.json()["events"]
         )
 
-        with __import__("app.db", fromlist=["database"]).database(app.state.db_path) as db:
+        with database(app.state.db_path) as db:
             notices = db.execute(
                 "SELECT subject,body FROM email_outbox WHERE event='new_device_login'"
             ).fetchall()
