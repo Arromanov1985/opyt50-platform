@@ -97,6 +97,8 @@ def run_security(page):
     assert page.evaluate("typeof window.__companyXss") == "undefined"
 
     # Administrator password alone must not create a session when MFA is enabled.
+    if page.locator("#company-dialog").get_attribute("open") is not None:
+        page.locator("#company-dialog-close").click()
     page.locator("#login-open").click()
     expect(page.locator("#auth-dialog")).to_be_visible()
     page.locator("#auth-email").fill("admin@demo.example")
