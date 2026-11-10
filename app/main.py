@@ -307,8 +307,31 @@ def create_app(db_path: str | None = None) -> FastAPI:
         return {"status": "ok", "version": "0.14.0-dev", "payments": "demo_only"}
 
     @app.get("/api/taxonomy")
-    def taxonomy():
-        return taxonomy_payload()
+    def taxonomy(db: sqlite3.Connection = Depends(get_connection)):
+        data = taxonomy_payload()
+        rows = db.execute(
+            """SELECT kind,display_value FROM taxonomy_observations
+               WHERE status='approved'
+               ORDER BY display_value ASC"""
+        ).fetchall()
+        profession_keys = {item["value"].strip().casefold() for item in data["professions"]}
+        skill_keys = {item["value"].strip().casefold() for item in data["skills"]}
+        for row in rows:
+            value = str(row["display_value"] or "").strip()
+            if not value:
+                continue
+            key = value.casefold()
+            if row["kind"] == "profession":
+                if key not in profession_keys:
+                    data["professions"].append({"value": value, "family": "", "family_key": "", "source": "approved_observation"})
+                    profession_keys.add(key)
+            else:
+                if key not in skill_keys:
+                    data["skills"].append({"value": value, "canonical": value.casefold(), "aliases": [value], "source": "approved_observation"})
+                    skill_keys.add(key)
+        data["professions"].sort(key=lambda item: item["value"].casefold())
+        data["skills"].sort(key=lambda item: item["value"].casefold())
+        return data
 
     @app.post("/api/register", status_code=201)
     def register(data: Registration, response: Response, db: sqlite3.Connection = Depends(get_connection)):
