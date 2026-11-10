@@ -26,14 +26,19 @@ operational checklist, not a claim of bank certification.
 
 ## Mandatory production environment
 
-Set and verify these in Timeweb, not in GitHub:
+Set and verify these in Timeweb, not in GitHub.
+
+Current working public origin for this stage: https://arromanov1985-opyt50-platform-fdd8.twc1.net
+When the project moves to stazhno.ru, change the environment value; do not hard-code the domain in application logic.
+
+Required values:
 
 - OPYT50_ENV=production
-- OPYT50_PUBLIC_URL=https://stazhno.ru
+- OPYT50_PUBLIC_URL=https://arromanov1985-opyt50-platform-fdd8.twc1.net
 - OPYT50_COOKIE_SECURE=1
 - OPYT50_ENABLE_DOCS=0
 - OPYT50_DB_SSLMODE=require (prefer verify-full after configuring the DB provider CA)
-- OPYT50_ALLOWED_HOSTS only after listing stazhno.ru plus all legitimate platform health-check hosts
+- OPYT50_ALLOWED_HOSTS only after listing the current Timeweb hostname plus all legitimate platform health-check hosts
 - OPYT50_PREVIEW_SEED_DEMO=0
 - strong, unique PostgreSQL and SMTP credentials
 
