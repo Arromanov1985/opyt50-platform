@@ -15,13 +15,135 @@ MATCH_WEIGHTS = {
     "location": 7,
 }
 
+# Small, explicit taxonomy. Every relationship here is reviewable and
+# deterministic; there is no embedding/model inference behind the score.
+PROFESSION_FAMILIES = {
+    "regional_sales": {
+        "label": "региональные продажи",
+        "aliases": {
+            "региональный менеджер",
+            "территориальный менеджер",
+            "менеджер по развитию региона",
+            "менеджер по развитию территории",
+            "региональный представитель",
+            "территориальный представитель",
+        },
+    },
+    "b2b_sales": {
+        "label": "B2B-продажи",
+        "aliases": {
+            "менеджер по b2b продажам",
+            "менеджер b2b",
+            "менеджер по корпоративным продажам",
+            "менеджер по оптовым продажам",
+            "менеджер по дилерским продажам",
+        },
+    },
+    "recruiting": {
+        "label": "подбор персонала",
+        "aliases": {
+            "рекрутер",
+            "специалист по подбору персонала",
+            "менеджер по подбору персонала",
+            "специалист по рекрутингу",
+        },
+    },
+    "procurement": {
+        "label": "закупки и снабжение",
+        "aliases": {
+            "менеджер по закупкам",
+            "специалист по закупкам",
+            "специалист по снабжению",
+            "менеджер по снабжению",
+            "снабженец",
+        },
+    },
+    "logistics": {
+        "label": "логистика",
+        "aliases": {
+            "логист",
+            "менеджер по логистике",
+            "специалист по логистике",
+        },
+    },
+}
+
+GENERIC_PROFESSION_WORDS = {
+    "менеджер",
+    "специалист",
+    "руководитель",
+    "директор",
+    "начальник",
+    "сотрудник",
+    "работник",
+    "ведущий",
+    "старший",
+    "младший",
+}
+
+SKILL_ALIASES = {
+    "1с": {"1с", "1c", "1с предприятие", "1c enterprise"},
+    "excel": {"excel", "ms excel", "microsoft excel"},
+    "crm": {"crm", "crm система", "crm-система"},
+    "битрикс24": {"битрикс24", "bitrix24", "битрикс 24"},
+    "amocrm": {"amocrm", "amo crm"},
+    "переговоры": {"переговоры", "ведение переговоров", "деловые переговоры"},
+    "холодные звонки": {"холодные звонки", "холодный обзвон", "cold calls"},
+    "b2b продажи": {"b2b продажи", "продажи b2b", "b2b-продажи"},
+    "складской учет": {"складской учет", "учет на складе", "складской учёт", "учёт на складе"},
+}
+
+# Candidate knowledge may satisfy a broader requested skill. Direction matters:
+# Bitrix24 proves CRM experience, but generic "CRM" does not prove Bitrix24.
+SKILL_IMPLIES = {
+    "битрикс24": {"crm"},
+    "amocrm": {"crm"},
+}
+
+
+def normalize_phrase(value: str) -> str:
+    text = str(value or "").casefold().replace("ё", "е")
+    text = re.sub(r"[^\w+#-]+", " ", text)
+    return re.sub(r"\s+", " ", text).strip()
+
 
 def words(value: str) -> set[str]:
-    return {word for word in re.findall(r"[\w-]+", str(value or "").casefold()) if len(word) > 2}
+    return {word for word in re.findall(r"[\w-]+", normalize_phrase(value)) if len(word) > 2}
 
 
-def skill_set(value: str) -> set[str]:
-    return {part.strip().casefold() for part in str(value or "").split(",") if part.strip()}
+def profession_family(value: str) -> tuple[str, str] | None:
+    normalized = normalize_phrase(value)
+    if not normalized:
+        return None
+    for key, group in PROFESSION_FAMILIES.items():
+        aliases = {normalize_phrase(alias) for alias in group["aliases"]}
+        # Allow a precise alias inside a longer title such as
+        # "Региональный менеджер по продажам B2B".
+        if any(normalized == alias or alias in normalized for alias in aliases):
+            return key, str(group["label"])
+    return None
+
+
+def _canonical_skill(value: str) -> str:
+    normalized = normalize_phrase(value)
+    for canonical, aliases in SKILL_ALIASES.items():
+        if normalized in {normalize_phrase(alias) for alias in aliases}:
+            return canonical
+    return normalized
+
+
+def skill_set(value: str, *, expand_implied: bool = False) -> set[str]:
+    parts = {
+        _canonical_skill(part)
+        for part in re.split(r"[,;\n]+", str(value or ""))
+        if normalize_phrase(part)
+    }
+    if expand_implied:
+        expanded = set(parts)
+        for skill in parts:
+            expanded.update(SKILL_IMPLIES.get(skill, set()))
+        return expanded
+    return parts
 
 
 def _text(item: Mapping, key: str, default: str = "") -> str:
@@ -82,37 +204,66 @@ def _factor(
 def _profession_factor(vacancy: Mapping, candidate: Mapping) -> dict:
     title = _text(vacancy, "title")
     profession = _text(candidate, "profession")
-    job_words = words(title)
-    profession_words = words(profession)
-    common = job_words & profession_words
-    if not common:
+    normalized_title = normalize_phrase(title)
+    normalized_profession = normalize_phrase(profession)
+
+    if normalized_title == normalized_profession:
+        return _factor("profession", 1.0, "Профессия совпадает")
+
+    vacancy_family = profession_family(title)
+    candidate_family = profession_family(profession)
+    if vacancy_family and candidate_family and vacancy_family[0] == candidate_family[0]:
         return _factor(
             "profession",
-            0,
-            "Профессия не совпадает",
-            blocker="Другая профессия: " + (title or "не указана"),
+            0.95,
+            "Эквивалентная профессия по словарю: " + vacancy_family[1],
         )
 
-    if title.casefold() == profession.casefold():
-        fit = 1.0
-        text = "Профессия совпадает"
-        caution = ""
-    else:
-        candidate_coverage = len(common) / max(1, len(profession_words))
-        vacancy_coverage = len(common) / max(1, len(job_words))
+    job_words = words(title)
+    profession_words = words(profession)
+    meaningful_job = job_words - GENERIC_PROFESSION_WORDS
+    meaningful_profession = profession_words - GENERIC_PROFESSION_WORDS
+    common = meaningful_job & meaningful_profession
+
+    if common:
+        candidate_coverage = len(common) / max(1, len(meaningful_profession))
+        vacancy_coverage = len(common) / max(1, len(meaningful_job))
         fit = min(1.0, 0.6 * candidate_coverage + 0.4 * vacancy_coverage)
-        text = "Есть совпадение по специальности"
-        caution = (
-            "Название вакансии шире вашей указанной профессии — проверьте обязанности"
-            if fit < 0.9
-            else ""
+        return _factor(
+            "profession",
+            fit,
+            "Есть совпадение по специальности: " + ", ".join(sorted(common)[:3]),
+            caution=(
+                "Название вакансии шире вашей указанной профессии — проверьте обязанности"
+                if fit < 0.9
+                else ""
+            ),
         )
-    return _factor("profession", fit, text, caution=caution)
 
+    # A profile can still say only "Менеджер" or "Специалист". Keep such a
+    # broad profile eligible for a title with the same generic role, but lower
+    # the score and explicitly ask the person to clarify the specialization.
+    shared_generic = job_words & profession_words & GENERIC_PROFESSION_WORDS
+    if shared_generic and not meaningful_profession:
+        role = sorted(shared_generic)[0]
+        return _factor(
+            "profession",
+            0.55,
+            "Совпадает общий тип роли: " + role,
+            caution="Уточните специализацию в профиле — сейчас профессия указана слишком широко",
+        )
+
+    return _factor(
+        "profession",
+        0,
+        "Профессия не совпадает",
+        blocker="Другая профессия: " + (title or "не указана"),
+    )
 
 def _skills_factor(vacancy: Mapping, candidate: Mapping) -> dict:
     requested = skill_set(_text(vacancy, "skills"))
-    present = skill_set(_text(candidate, "skills"))
+    present_direct = skill_set(_text(candidate, "skills"))
+    present = skill_set(_text(candidate, "skills"), expand_implied=True)
     if not requested:
         return _factor("skills", 1.0, "Обязательные навыки отдельно не указаны")
     common = requested & present
@@ -125,17 +276,21 @@ def _skills_factor(vacancy: Mapping, candidate: Mapping) -> dict:
         )
     fit = len(common) / len(requested)
     names = ", ".join(sorted(common)[:4])
-    caution = ""
-    if fit < 1:
-        missing = sorted(requested - common)
-        caution = "Не указаны в вашем профиле: " + ", ".join(missing[:3])
+    caution_parts = []
+    missing = sorted(requested - common)
+    if missing:
+        caution_parts.append("Не указаны в вашем профиле: " + ", ".join(missing[:3]))
+    implied = sorted(common - present_direct)
+    if implied:
+        caution_parts.append(
+            "Засчитано по связанному навыку: " + ", ".join(implied[:3])
+        )
     return _factor(
         "skills",
         fit,
         "Совпадают навыки: " + names,
-        caution=caution,
+        caution=" · ".join(caution_parts),
     )
-
 
 def _salary_factor(vacancy: Mapping, candidate: Mapping) -> dict:
     expected = _int(candidate, "salary_min")
