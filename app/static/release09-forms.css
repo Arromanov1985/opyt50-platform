@@ -383,3 +383,62 @@ body.comfortable-view .vacancy-progress-step b{font-size:1rem}
     display:grid!important;
   }
 }
+
+
+/* Administrator two-factor login */
+.auth-mfa-panel{
+  display:grid;
+  grid-template-columns:auto 1fr;
+  gap:12px 14px;
+  align-items:start;
+  padding:16px;
+  border:1px solid #D7E7DE;
+  border-radius:16px;
+  background:#F6FBF8;
+}
+.auth-mfa-panel.hidden{display:none}
+.auth-mfa-icon{
+  width:46px;
+  height:46px;
+  display:grid;
+  place-items:center;
+  border-radius:14px;
+  background:#0B2D26;
+  color:#fff;
+  font-size:11px;
+  font-weight:900;
+  letter-spacing:.04em;
+}
+.auth-mfa-panel>div:nth-child(2){
+  display:grid;
+  gap:4px;
+}
+.auth-mfa-panel strong{
+  color:#0B2D26;
+  font-size:12px;
+}
+.auth-mfa-panel p{
+  margin:0;
+  color:#60746B;
+  font-size:10px;
+  line-height:1.5;
+}
+.auth-mfa-panel .field{
+  grid-column:1/-1;
+}
+.auth-mfa-panel input{
+  font-size:22px;
+  font-weight:850;
+  letter-spacing:.18em;
+  text-align:center;
+}
+.auth-mfa-panel>small{
+  grid-column:1/-1;
+  color:#74837C;
+  font-size:9px;
+}
+body.comfortable-view .auth-mfa-panel strong,
+body.comfortable-view .auth-mfa-panel p,
+body.comfortable-view .auth-mfa-panel>small{
+  font-size:.95rem;
+}
