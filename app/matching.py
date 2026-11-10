@@ -107,6 +107,38 @@ SKILL_IMPLIES = {
     "amocrm": {"crm"},
 }
 
+PROFESSION_SUGGESTIONS = {
+    "бухгалтер",
+    "главный бухгалтер",
+    "кладовщик",
+    "старший кладовщик",
+    "водитель",
+    "водитель-экспедитор",
+    "инженер по эксплуатации",
+    "инженер по сервису",
+    "менеджер по продажам",
+    "менеджер по работе с клиентами",
+    "администратор",
+    "оператор 1С",
+    "логист",
+    "специалист по закупкам",
+    "специалист по снабжению",
+    "рекрутер",
+    "специалист по подбору персонала",
+}
+
+SKILL_DISPLAY = {
+    "1с": "1С",
+    "excel": "Excel",
+    "crm": "CRM",
+    "битрикс24": "Битрикс24",
+    "amocrm": "amoCRM",
+    "переговоры": "Переговоры",
+    "холодные звонки": "Холодные звонки",
+    "b2b продажи": "B2B продажи",
+    "складской учет": "Складской учёт",
+}
+
 
 def normalize_phrase(value: str) -> str:
     text = str(value or "").casefold().replace("ё", "е")
@@ -149,6 +181,47 @@ def skill_set(value: str, *, expand_implied: bool = False) -> set[str]:
             expanded.update(SKILL_IMPLIES.get(skill, set()))
         return expanded
     return parts
+
+
+def taxonomy_payload() -> dict:
+    professions = []
+    seen = set()
+    for family_key, data in PROFESSION_FAMILIES.items():
+        family_label = str(data["label"])
+        for alias in sorted(data["aliases"], key=lambda value: normalize_phrase(value)):
+            normalized = normalize_phrase(alias)
+            if not normalized or normalized in seen:
+                continue
+            seen.add(normalized)
+            professions.append({
+                "value": alias[0].upper() + alias[1:] if alias else alias,
+                "family": family_label,
+                "family_key": family_key,
+            })
+    for title in sorted(PROFESSION_SUGGESTIONS, key=normalize_phrase):
+        normalized = normalize_phrase(title)
+        if not normalized or normalized in seen:
+            continue
+        seen.add(normalized)
+        professions.append({
+            "value": title[0].upper() + title[1:] if title else title,
+            "family": "",
+            "family_key": "",
+        })
+
+    skills = []
+    for canonical, aliases in sorted(SKILL_ALIASES.items()):
+        display = SKILL_DISPLAY.get(canonical, canonical)
+        search_aliases = sorted({display, canonical, *aliases}, key=normalize_phrase)
+        skills.append({
+            "value": display,
+            "canonical": canonical,
+            "aliases": search_aliases,
+        })
+    return {
+        "professions": professions,
+        "skills": skills,
+    }
 
 
 def _text(item: Mapping, key: str, default: str = "") -> str:
