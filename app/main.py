@@ -192,6 +192,79 @@ def session_cookie_name() -> str:
 DUMMY_PASSWORD_HASH = make_password_hash("dummy-authentication-verifier-not-a-user-password")
 
 
+def _rate_limit_key(scope: str, subject: str, bucket_start: int) -> str:
+    payload = f"{scope}\0{subject}\0{bucket_start}".encode("utf-8")
+    return hashlib.sha256(payload).hexdigest()
+
+
+def _rate_limit_subject(*parts: str) -> str:
+    payload = "\0".join(str(part or "") for part in parts).encode("utf-8")
+    return hashlib.sha256(payload).hexdigest()
+
+
+def _rate_limit_state(
+    db: sqlite3.Connection,
+    scope: str,
+    subject: str,
+    window_seconds: int,
+) -> tuple[str, int, int]:
+    now_epoch = int(time.time())
+    bucket_start = now_epoch - (now_epoch % window_seconds)
+    return _rate_limit_key(scope, subject, bucket_start), bucket_start, now_epoch
+
+
+def consume_security_rate_limit(
+    db: sqlite3.Connection,
+    scope: str,
+    subject: str,
+    limit: int,
+    window_seconds: int,
+) -> tuple[bool, int]:
+    key, bucket_start, now_epoch = _rate_limit_state(db, scope, subject, window_seconds)
+    now_iso = datetime.now(timezone.utc).isoformat()
+    db.execute(
+        """INSERT INTO security_rate_limits(rate_key,bucket_start,count,updated_at)
+           VALUES(?,?,1,?)
+           ON CONFLICT(rate_key) DO UPDATE SET
+             count=security_rate_limits.count+1,
+             updated_at=excluded.updated_at""",
+        (key, bucket_start, now_iso),
+    )
+    row = db.execute(
+        "SELECT count FROM security_rate_limits WHERE rate_key=?",
+        (key,),
+    ).fetchone()
+    # Small fixed-window table; prune stale buckets opportunistically.
+    cutoff = (datetime.now(timezone.utc) - timedelta(days=2)).isoformat()
+    db.execute("DELETE FROM security_rate_limits WHERE updated_at<?", (cutoff,))
+    retry_after = max(1, bucket_start + window_seconds - now_epoch)
+    return int(row["count"]) <= limit, retry_after
+
+
+def security_rate_limit_count(
+    db: sqlite3.Connection,
+    scope: str,
+    subject: str,
+    window_seconds: int,
+) -> int:
+    key, _, _ = _rate_limit_state(db, scope, subject, window_seconds)
+    row = db.execute(
+        "SELECT count FROM security_rate_limits WHERE rate_key=?",
+        (key,),
+    ).fetchone()
+    return int(row["count"]) if row else 0
+
+
+def clear_security_rate_limit(
+    db: sqlite3.Connection,
+    scope: str,
+    subject: str,
+    window_seconds: int,
+) -> None:
+    key, _, _ = _rate_limit_state(db, scope, subject, window_seconds)
+    db.execute("DELETE FROM security_rate_limits WHERE rate_key=?", (key,))
+
+
 def validate_production_security() -> None:
     # Fail closed only after the operator explicitly marks the deployment as
     # production. DATABASE_URL/HTTPS alone are not sufficient evidence that
@@ -394,8 +467,8 @@ def create_app(db_path: str | None = None) -> FastAPI:
         openapi_url="/api/openapi.json" if docs_enabled else None,
     )
     app.state.db_path = db_location
-    app.state.auth_attempts = defaultdict(deque)
-    app.state.login_failures = defaultdict(deque)
+    # Authentication throttles are persisted in the shared database so they
+    # survive process restarts and work consistently across multiple instances.
     allowed_hosts = [
         host.strip()
         for host in os.getenv("OPYT50_ALLOWED_HOSTS", "").split(",")
@@ -467,14 +540,22 @@ def create_app(db_path: str | None = None) -> FastAPI:
             limit = rate_limits.get(request.url.path)
             if limit:
                 max_attempts, window_seconds = limit
-                key = (request.client.host if request.client else "unknown", request.url.path)
-                queue = request.app.state.auth_attempts[key]
-                now = time.monotonic()
-                while queue and queue[0] < now - window_seconds:
-                    queue.popleft()
-                if len(queue) >= max_attempts:
-                    return Response(status_code=429, content="Слишком много попыток. Повторите позже")
-                queue.append(now)
+                source = request.client.host if request.client else "unknown"
+                subject = _rate_limit_subject(source, request.url.path)
+                with database(request.app.state.db_path) as rate_db:
+                    permitted, retry_after = consume_security_rate_limit(
+                        rate_db,
+                        "route",
+                        subject,
+                        max_attempts,
+                        window_seconds,
+                    )
+                if not permitted:
+                    return Response(
+                        status_code=429,
+                        content="Слишком много попыток. Повторите позже",
+                        headers={"Retry-After": str(retry_after)},
+                    )
         response = await call_next(request)
         response.headers["X-Content-Type-Options"] = "nosniff"
         response.headers["Referrer-Policy"] = "no-referrer"
@@ -567,12 +648,8 @@ def create_app(db_path: str | None = None) -> FastAPI:
         email = data.email.strip().casefold()
         source = request.client.host if request.client else "unknown"
         identity = hashlib.sha256(email.encode("utf-8")).hexdigest()
-        failure_key = (source, identity)
-        failure_queue = request.app.state.login_failures[failure_key]
-        failure_now = time.monotonic()
-        while failure_queue and failure_queue[0] < failure_now - 900:
-            failure_queue.popleft()
-        if len(failure_queue) >= 10:
+        failure_subject = _rate_limit_subject(source, identity)
+        if security_rate_limit_count(db, "login-failure", failure_subject, 900) >= 10:
             raise HTTPException(
                 429,
                 "Слишком много неверных попыток входа. Повторите позже",
@@ -583,12 +660,18 @@ def create_app(db_path: str | None = None) -> FastAPI:
         stored_hash = row["password_hash"] if row is not None else DUMMY_PASSWORD_HASH
         password_ok = verify_password(data.password, stored_hash)
         if row is None or not password_ok:
-            failure_queue.append(failure_now)
+            _, retry_after = consume_security_rate_limit(
+                db, "login-failure", failure_subject, 10, 900
+            )
             if row is not None:
                 record_security_event(db, row["id"], "login_password_failed")
-                db.commit()
-            raise HTTPException(401, "Неверный email или пароль")
-        failure_queue.clear()
+            db.commit()
+            raise HTTPException(
+                401,
+                "Неверный email или пароль",
+                headers={"Retry-After": str(retry_after)},
+            )
+        clear_security_rate_limit(db, "login-failure", failure_subject, 900)
         block = db.execute("SELECT status FROM account_controls WHERE user_id=?", (row["id"],)).fetchone()
         if block is not None and block["status"] == "disabled":
             record_security_event(db, row["id"], "login_blocked_disabled_account")
