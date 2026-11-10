@@ -23,8 +23,13 @@ PROFESSION_FAMILIES = {
         "aliases": {
             "региональный менеджер",
             "территориальный менеджер",
+            "региональный менеджер по продажам",
+            "территориальный менеджер по продажам",
+            "региональный менеджер по продажам b2b",
+            "территориальный менеджер по продажам b2b",
             "менеджер по развитию региона",
             "менеджер по развитию территории",
+            "менеджер по развитию региональных продаж",
             "региональный представитель",
             "территориальный представитель",
         },
@@ -117,9 +122,7 @@ def profession_family(value: str) -> tuple[str, str] | None:
         return None
     for key, group in PROFESSION_FAMILIES.items():
         aliases = {normalize_phrase(alias) for alias in group["aliases"]}
-        # Allow a precise alias inside a longer title such as
-        # "Региональный менеджер по продажам B2B".
-        if any(normalized == alias or alias in normalized for alias in aliases):
+        if normalized in aliases:
             return key, str(group["label"])
     return None
 
