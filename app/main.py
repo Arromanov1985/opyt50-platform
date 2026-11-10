@@ -19,6 +19,7 @@ from contextlib import asynccontextmanager
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Literal
+from urllib.parse import urlsplit
 
 from fastapi import Depends, FastAPI, HTTPException, Request, Response
 from fastapi.responses import FileResponse
@@ -311,8 +312,18 @@ def create_app(db_path: str | None = None) -> FastAPI:
                         return Response(status_code=413, content="Слишком большой запрос")
                 except ValueError:
                     return Response(status_code=400, content="Некорректный Content-Length")
-        # A custom header forces cross-origin browser requests to preflight; no CORS enabled.
+        # Mutations are same-origin only. The custom header blocks ordinary
+        # cross-site forms; Fetch Metadata and Origin add defense in depth.
         if request.url.path.startswith("/api/") and request.method in {"POST", "PUT", "PATCH", "DELETE"}:
+            if request.headers.get("sec-fetch-site", "").casefold() == "cross-site":
+                return Response(status_code=403, content="Cross-site request is not allowed")
+            origin = request.headers.get("origin", "").rstrip("/")
+            public_url = os.getenv("OPYT50_PUBLIC_URL", "").strip()
+            if origin and public_url:
+                parsed = urlsplit(public_url)
+                expected_origin = f"{parsed.scheme}://{parsed.netloc}".rstrip("/")
+                if origin.casefold() != expected_origin.casefold():
+                    return Response(status_code=403, content="Request origin is not allowed")
             if request.headers.get("x-requested-with") != "OPYT50":
                 return Response(status_code=403, content="Request header is required")
         if request.method == "POST":
