@@ -1,0 +1,88 @@
+/* Profession and skill taxonomy suggestions */
+.taxonomy-field{position:relative}
+.taxonomy-suggestions{
+  position:absolute;
+  z-index:80;
+  left:0;
+  right:0;
+  top:calc(100% - 1px);
+  max-height:300px;
+  overflow:auto;
+  padding:6px;
+  border:1px solid #D8E6DF;
+  border-radius:0 0 14px 14px;
+  background:#fff;
+  box-shadow:0 16px 32px rgba(11,45,38,.13);
+}
+.taxonomy-suggestions.hidden{display:none}
+.taxonomy-option{
+  width:100%;
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:14px;
+  padding:10px 11px;
+  border:0;
+  border-radius:9px;
+  background:transparent;
+  color:#0B2D26;
+  text-align:left;
+  cursor:pointer;
+  font:inherit;
+}
+.taxonomy-option:hover,
+.taxonomy-option.is-active{background:#F0F8F4}
+.taxonomy-option strong{
+  min-width:0;
+  font-size:11px;
+  line-height:1.3;
+}
+.taxonomy-option small{
+  flex:0 0 auto;
+  max-width:45%;
+  color:#6A7D74;
+  font-size:9px;
+  line-height:1.25;
+  text-align:right;
+}
+.taxonomy-context{
+  display:none;
+  align-items:center;
+  gap:5px;
+  margin-top:6px;
+  color:#4E695C;
+  font-size:9px;
+  line-height:1.4;
+}
+.taxonomy-context.is-visible{display:flex}
+.taxonomy-context span{
+  width:16px;
+  height:16px;
+  display:inline-grid;
+  place-items:center;
+  flex:0 0 16px;
+  border-radius:50%;
+  background:#DDF7E7;
+  color:#08793A;
+  font-size:8px;
+  font-weight:900;
+}
+.taxonomy-context strong{color:#0B2D26}
+body.comfortable-view .taxonomy-option strong,
+body.comfortable-view .taxonomy-option small,
+body.comfortable-view .taxonomy-context{font-size:.9rem}
+@media(max-width:620px){
+  .taxonomy-suggestions{
+    max-height:250px;
+    border-radius:0 0 12px 12px;
+  }
+  .taxonomy-option{
+    align-items:flex-start;
+    flex-direction:column;
+    gap:3px;
+  }
+  .taxonomy-option small{
+    max-width:100%;
+    text-align:left;
+  }
+}
