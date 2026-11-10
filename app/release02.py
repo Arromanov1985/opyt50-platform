@@ -129,10 +129,29 @@ RELEASE09_RUNTIME_DDL = (
         updated_at TEXT NOT NULL,
         UNIQUE(kind,normalized_value)
     )""",
+    """CREATE TABLE IF NOT EXISTS admin_mfa_challenges (
+        challenge_key TEXT PRIMARY KEY,
+        user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        code_hash TEXT NOT NULL,
+        expires_at TEXT NOT NULL,
+        attempts INTEGER NOT NULL DEFAULT 0,
+        used_at TEXT,
+        created_at TEXT NOT NULL
+    )""",
+    """CREATE TABLE IF NOT EXISTS security_events (
+        event_key TEXT PRIMARY KEY,
+        user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+        event_type TEXT NOT NULL,
+        detail TEXT NOT NULL DEFAULT '',
+        created_at TEXT NOT NULL
+    )""",
     "CREATE INDEX IF NOT EXISTS idx_vacancy_moderation_status ON vacancy_moderation(status)",
     "CREATE INDEX IF NOT EXISTS idx_content_reports_status ON content_reports(status,created_at)",
     "CREATE INDEX IF NOT EXISTS idx_content_reports_vacancy ON content_reports(vacancy_id,status)",
     "CREATE INDEX IF NOT EXISTS idx_taxonomy_observations_status ON taxonomy_observations(status,kind,updated_at)",
+    "CREATE INDEX IF NOT EXISTS idx_admin_mfa_user ON admin_mfa_challenges(user_id,expires_at)",
+    "CREATE INDEX IF NOT EXISTS idx_security_events_user ON security_events(user_id,created_at)",
+    "CREATE INDEX IF NOT EXISTS idx_security_events_type ON security_events(event_type,created_at)",
 )
 MIGRATION += "\n" + "\n".join(statement + ";" for statement in RELEASE09_RUNTIME_DDL)
 
@@ -274,6 +293,56 @@ def redeem_token(db: sqlite3.Connection, raw: str, purpose: str) -> sqlite3.Row:
 
 def utc_now_text() -> str:
     return datetime.now(timezone.utc).replace(tzinfo=None).isoformat(sep=" ", timespec="seconds")
+
+
+def record_security_event(
+    db: sqlite3.Connection,
+    user_id: int | None,
+    event_type: str,
+    detail: str = "",
+) -> None:
+    """Store a minimal audit event without passwords, tokens, OTPs, IPs or user agents."""
+    event_key = secrets.token_urlsafe(18)
+    safe_detail = str(detail or "").replace("\n", " ").strip()[:240]
+    db.execute(
+        """INSERT INTO security_events(event_key,user_id,event_type,detail,created_at)
+           VALUES(?,?,?,?,?)""",
+        (event_key, user_id, event_type[:80], safe_detail, utc_now_text()),
+    )
+
+
+def issue_admin_mfa_challenge(
+    db: sqlite3.Connection,
+    user_id: int,
+) -> tuple[str, str]:
+    """Create one short-lived, single-use 8-digit challenge for an administrator."""
+    code = f"{secrets.randbelow(100_000_000):08d}"
+    challenge_key = secrets.token_urlsafe(32)
+    expires = (datetime.now(timezone.utc) + timedelta(minutes=5)).isoformat()
+    db.execute("DELETE FROM admin_mfa_challenges WHERE user_id=?", (user_id,))
+    db.execute(
+        """INSERT INTO admin_mfa_challenges(
+               challenge_key,user_id,code_hash,expires_at,attempts,created_at
+           ) VALUES(?,?,?,?,0,?)""",
+        (challenge_key, user_id, make_password_hash(code), expires, utc_now_text()),
+    )
+    enqueue_notice(
+        db,
+        user_id,
+        "admin_mfa",
+        "СТАЖНО — код подтверждения входа",
+        (
+            f"Код подтверждения входа администратора: {code}\n\n"
+            "Код действует 5 минут и только один раз. "
+            "Если вы не входили в СТАЖНО, смените пароль и проверьте активные сессии."
+        ),
+        stored_body=(
+            "Одноразовый код подтверждения входа администратора отправлен. "
+            "Секретный код намеренно не сохраняется."
+        ),
+    )
+    record_security_event(db, user_id, "admin_mfa_challenge_issued")
+    return challenge_key, code
 
 
 def refresh_taxonomy_observations(db: sqlite3.Connection) -> None:
@@ -995,6 +1064,7 @@ def install_routes(app) -> None:
         db.execute("UPDATE users SET password_hash=? WHERE id=?",
                    (make_password_hash(data.password), row["user_id"]))
         db.execute("DELETE FROM sessions WHERE user_id=?", (row["user_id"],))
+        record_security_event(db, row["user_id"], "password_reset_completed")
         # Commit before the HTTP response: a new dashboard request may arrive immediately.
         db.commit()
         return {"ok": True}
@@ -1174,6 +1244,21 @@ def install_routes(app) -> None:
         )
         db.commit()
         return {"ok": True, "status": data.status}
+
+    @app.get("/api/admin/security-events")
+    def admin_security_events(
+        user: dict = Depends(active_user),
+        db: sqlite3.Connection = Depends(get_connection),
+    ):
+        allowed(user, "admin")
+        rows = db.execute(
+            """SELECT s.event_key,s.user_id,s.event_type,s.detail,s.created_at,
+                      COALESCE(u.email,'') AS user_email
+               FROM security_events s
+               LEFT JOIN users u ON u.id=s.user_id
+               ORDER BY s.created_at DESC LIMIT 300"""
+        ).fetchall()
+        return {"events": [dict(row) for row in rows]}
 
     @app.get("/api/admin/mail-preview")
     def admin_demo_mail(user: dict = Depends(active_user),
