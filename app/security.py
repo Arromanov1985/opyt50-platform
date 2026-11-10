@@ -23,6 +23,7 @@ ARGON2 = PasswordHasher(
 # the next successful login; new passwords are never written with PBKDF2.
 LEGACY_PASSWORD_ROUNDS = 240_000
 SESSION_SECONDS = 7 * 24 * 60 * 60
+ADMIN_SESSION_SECONDS = 30 * 60
 COOKIE_NAME = "opyt50_session"
 
 
