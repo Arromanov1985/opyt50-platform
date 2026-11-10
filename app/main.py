@@ -26,7 +26,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field, field_validator, model_validator
 
 from .db import database, init_db
-from .matching import lead_price, match_candidate
+from .matching import lead_price, match_candidate, taxonomy_payload
 from .security import COOKIE_NAME, SESSION_SECONDS, issue_session, make_password_hash, token_hash, verify_password
 
 BASE = Path(__file__).resolve().parent
@@ -305,6 +305,10 @@ def create_app(db_path: str | None = None) -> FastAPI:
     @app.get("/api/health")
     def health():
         return {"status": "ok", "version": "0.13.0-dev", "payments": "demo_only"}
+
+    @app.get("/api/taxonomy")
+    def taxonomy():
+        return taxonomy_payload()
 
     @app.post("/api/register", status_code=201)
     def register(data: Registration, response: Response, db: sqlite3.Connection = Depends(get_connection)):
