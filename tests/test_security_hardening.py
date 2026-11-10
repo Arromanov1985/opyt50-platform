@@ -658,3 +658,63 @@ def test_authenticated_activity_refreshes_last_seen_after_touch_interval(tmp_pat
         if refreshed_dt.tzinfo is None:
             refreshed_dt = refreshed_dt.replace(tzinfo=timezone.utc)
         assert refreshed_dt > old_dt
+
+
+
+def test_login_failure_throttle_persists_across_app_instances(tmp_path):
+    db_path = str(tmp_path / "shared-throttle.db")
+    password = "Persistent throttle password 2026"
+    app1 = create_app(db_path)
+
+    with TestClient(app1) as client:
+        with database(app1.state.db_path) as db:
+            cursor = db.execute(
+                "INSERT INTO users(role,email,name,password_hash) VALUES(?,?,?,?)",
+                ("candidate", "persistent-throttle@example.test", "Кандидат", make_password_hash(password)),
+            )
+            db.execute("INSERT INTO candidate_profiles(user_id) VALUES(?)", (cursor.lastrowid,))
+
+        for _ in range(10):
+            response = client.post(
+                "/api/login",
+                headers=XHR,
+                json={"email": "persistent-throttle@example.test", "password": "wrong password"},
+            )
+            assert response.status_code == 401
+
+    # A new FastAPI instance has empty process memory but shares the database.
+    # The correct password must still be throttled until the fixed window ends.
+    app2 = create_app(db_path)
+    with TestClient(app2) as client:
+        blocked = client.post(
+            "/api/login",
+            headers=XHR,
+            json={"email": "persistent-throttle@example.test", "password": password},
+        )
+        assert blocked.status_code == 429
+        assert "retry-after" in blocked.headers
+
+
+def test_route_rate_limit_state_is_hashed_and_contains_no_raw_ip_or_email(tmp_path):
+    app = create_app(str(tmp_path / "hashed-rate-limit.db"))
+    with TestClient(app) as client:
+        for index in range(3):
+            response = client.post(
+                "/api/login",
+                headers=XHR,
+                json={
+                    "email": f"unknown-{index}@example.test",
+                    "password": "not the right password",
+                },
+            )
+            assert response.status_code == 401
+
+        with database(app.state.db_path) as db:
+            rows = db.execute(
+                "SELECT rate_key FROM security_rate_limits"
+            ).fetchall()
+        assert rows
+        serialized = "\n".join(row["rate_key"] for row in rows)
+        assert "example.test" not in serialized
+        assert "testclient" not in serialized
+        assert all(len(row["rate_key"]) == 64 for row in rows)
