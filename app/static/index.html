@@ -229,6 +229,12 @@
       <div class="field"><label for="auth-password">Пароль</label><div class="password-field-wrap"><input id="auth-password" name="password" type="password" autocomplete="current-password" required><button type="button" class="password-toggle" id="password-toggle" aria-pressed="false">Показать</button></div></div>
       <p class="form-hint hidden" id="password-hint">Не менее 15 символов.</p>
     </div>
+    <div class="auth-mfa-panel hidden" id="auth-mfa-panel">
+      <div class="auth-mfa-icon" aria-hidden="true">2FA</div>
+      <div><strong>Подтверждение входа администратора</strong><p>Мы отправили одноразовый 8-значный код на email администратора. Код действует 5 минут.</p></div>
+      <div class="field"><label for="auth-mfa-code">Код подтверждения</label><input id="auth-mfa-code" inputmode="numeric" autocomplete="one-time-code" pattern="[0-9]{8}" minlength="8" maxlength="8" placeholder="00000000"></div>
+      <small>После 5 неверных попыток код будет аннулирован.</small>
+    </div>
     <div class="auth-route" id="auth-route"><strong id="auth-route-title">После регистрации</strong><div class="auth-route-steps" id="auth-route-steps"><span><i>1</i>Аккаунт</span><span><i>2</i>Короткий профиль</span><span><i>3</i>Отклик</span></div></div>
     <p class="auth-guidance" id="auth-guidance" aria-live="polite">Профессию и опыт сможете указать после регистрации.</p>
     <button type="submit" class="btn btn-primary btn-lg btn-full" id="auth-submit">Продолжить →</button>
