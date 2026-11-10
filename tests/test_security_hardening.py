@@ -2,6 +2,7 @@
 import hashlib
 
 import pytest
+import pyotp
 
 from fastapi.testclient import TestClient
 
@@ -407,10 +408,12 @@ def test_admin_security_status_reports_hardening_without_secrets(tmp_path):
         data = status.json()
         assert data["password_hash"] == "argon2id"
         assert data["admin_session_minutes"] == 30
-        assert data["admin_mfa_mode"] in {"off", "email"}
+        assert data["admin_mfa_mode"] in {"off", "email", "totp"}
+        assert data["admin_mfa_strength"] in {"off", "email OTP", "app-based TOTP"}
         assert set(data) == {
-            "admin_mfa_mode", "admin_mfa_enabled", "admin_session_minutes",
-            "password_hash", "secure_cookie", "production_runtime", "api_docs_enabled",
+            "admin_mfa_mode", "admin_mfa_enabled", "admin_mfa_strength",
+            "admin_session_minutes", "password_hash", "secure_cookie",
+            "production_runtime", "api_docs_enabled",
         }
         assert data["password_hash"] == "argon2id"
         serialized = str(data).casefold()
@@ -431,5 +434,92 @@ def test_production_refuses_email_mfa_without_smtp(tmp_path, monkeypatch):
 
     app = create_app(str(tmp_path / "unsafe-production.db"))
     with pytest.raises(RuntimeError, match="admin email MFA requires configured SMTP"):
+        with TestClient(app):
+            pass
+
+
+
+def test_admin_totp_mfa_requires_authenticator_code_before_session(tmp_path, monkeypatch):
+    monkeypatch.setenv("OPYT50_ENV", "development")
+    monkeypatch.setenv("OPYT50_ADMIN_MFA_MODE", "totp")
+    monkeypatch.setenv("OPYT50_ADMIN_TOTP_SECRET", "JBSWY3DPEHPK3PXP")
+    monkeypatch.delenv("OPYT50_PUBLIC_URL", raising=False)
+    app = create_app(str(tmp_path / "admin-totp.db"))
+    password = "Administrator secure password 2026"
+
+    with TestClient(app) as client:
+        with database(app.state.db_path) as db:
+            db.execute(
+                "INSERT INTO users(role,email,name,password_hash) VALUES(?,?,?,?)",
+                ("admin", "totp-admin@example.test", "Администратор", make_password_hash(password)),
+            )
+
+        login = client.post(
+            "/api/login",
+            headers=XHR,
+            json={"email": "totp-admin@example.test", "password": password},
+        )
+        assert login.status_code == 200, login.text
+        payload = login.json()
+        assert payload["mfa_required"] is True
+        assert payload["mfa_method"] == "totp"
+        assert payload["code_length"] == 6
+        assert "debug_code" not in payload
+        assert "set-cookie" not in login.headers
+        assert client.get("/api/me").status_code == 401
+
+        wrong = client.post(
+            "/api/admin/mfa/verify",
+            headers=XHR,
+            json={"challenge_id": payload["challenge_id"], "code": "000000"},
+        )
+        assert wrong.status_code == 401
+        assert client.get("/api/me").status_code == 401
+
+        code = pyotp.TOTP("JBSWY3DPEHPK3PXP", digits=6, interval=30).now()
+        verified = client.post(
+            "/api/admin/mfa/verify",
+            headers=XHR,
+            json={"challenge_id": payload["challenge_id"], "code": code},
+        )
+        assert verified.status_code == 200, verified.text
+        assert verified.json()["user"]["role"] == "admin"
+        assert client.get("/api/me").status_code == 200
+
+        with database(app.state.db_path) as db:
+            events = db.execute(
+                "SELECT event_type,detail FROM security_events ORDER BY created_at"
+            ).fetchall()
+            serialized = "\n".join(str(dict(row)) for row in events)
+            assert "admin_totp_challenge_issued" in serialized
+            assert code not in serialized
+            assert "JBSWY3DPEHPK3PXP" not in serialized
+
+
+def test_production_requires_admin_mfa(tmp_path, monkeypatch):
+    monkeypatch.setenv("OPYT50_ENV", "production")
+    monkeypatch.setenv("OPYT50_PUBLIC_URL", "https://stazhno.ru")
+    monkeypatch.setenv("OPYT50_COOKIE_SECURE", "1")
+    monkeypatch.setenv("OPYT50_ENABLE_DOCS", "0")
+    monkeypatch.setenv("OPYT50_ADMIN_MFA_MODE", "off")
+    monkeypatch.delenv("DATABASE_URL", raising=False)
+
+    app = create_app(str(tmp_path / "no-admin-mfa.db"))
+    with pytest.raises(RuntimeError, match="administrator MFA must be enabled"):
+        with TestClient(app):
+            pass
+
+
+def test_production_rejects_invalid_totp_secret(tmp_path, monkeypatch):
+    monkeypatch.setenv("OPYT50_ENV", "production")
+    monkeypatch.setenv("OPYT50_PUBLIC_URL", "https://stazhno.ru")
+    monkeypatch.setenv("OPYT50_COOKIE_SECURE", "1")
+    monkeypatch.setenv("OPYT50_ENABLE_DOCS", "0")
+    monkeypatch.setenv("OPYT50_ADMIN_MFA_MODE", "totp")
+    monkeypatch.setenv("OPYT50_ADMIN_TOTP_SECRET", "not-valid-base32-secret")
+    monkeypatch.delenv("DATABASE_URL", raising=False)
+
+    app = create_app(str(tmp_path / "bad-totp.db"))
+    with pytest.raises(RuntimeError, match="TOTP secret"):
         with TestClient(app):
             pass
