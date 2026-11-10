@@ -56,16 +56,34 @@
       return badges.length ? `<div class="employer-trust-badges">${badges.join('')}</div>` : '';
     }
 
+    function matchScoreClass(score) {
+      return Number(score) >= 90 ? 'excellent' : Number(score) >= 80 ? 'high' : Number(score) >= 70 ? 'medium' : 'basic';
+    }
+    function matchBreakdownMarkup(item, compact = false) {
+      const factors = Array.isArray(item.score_breakdown) ? item.score_breakdown : [];
+      const cautions = Array.isArray(item.cautions) ? item.cautions : [];
+      if (!factors.length) return '';
+      const rows = factors.map(factor => `<div class="match-factor-row ${esc(factor.state||'good')}">
+        <div class="match-factor-head"><span>${esc(factor.label||factor.key||'Фактор')}</span><strong>${Number(factor.points||0).toLocaleString('ru-RU')} / ${Number(factor.max_points||0).toLocaleString('ru-RU')}</strong></div>
+        <div class="match-factor-track"><span style="width:${Math.max(0,Math.min(100,Number(factor.percent||0)))}%"></span></div>
+        <small>${esc(factor.text||'')}</small>
+      </div>`).join('');
+      const cautionMarkup = cautions.length ? `<div class="match-cautions"><strong>Что стоит уточнить</strong>${cautions.slice(0,compact?2:4).map(text=>`<span>! ${esc(text)}</span>`).join('')}</div>` : '';
+      return `<div class="match-breakdown ${compact?'compact':''}">${rows}${cautionMarkup}<p class="match-method-note">Оценка основана только на профессии, навыках и условиях работы. Возраст и другие личные характеристики не используются. Итог округляется до 5%.</p></div>`;
+    }
+
     jobMarkup = function(job, personalized = false) {
       const id = Number(job.id), open = job.status !== 'closed';
       const saved = favoriteVacancyIds.has(id);
       const skills = String(job.skills || '').split(',').map(s=>s.trim()).filter(Boolean).slice(0,4);
       const preview = String(job.description || '').replace(/\s+/g,' ').trim().slice(0,180);
       const score = Number(job.score || 0);
-      const scoreClass = score >= 80 ? 'high' : 'medium';
-      const reasons = Array.isArray(job.reasons) ? job.reasons : [];
+      const scoreClass = matchScoreClass(score);
+      const reasons = Array.isArray(job.strengths) ? job.strengths : (Array.isArray(job.reasons) ? job.reasons : []);
+      const cautions = Array.isArray(job.cautions) ? job.cautions : [];
+      const level = job.match_level || (score >= 90 ? 'Очень сильное совпадение' : score >= 80 ? 'Сильное совпадение' : score >= 70 ? 'Хорошее совпадение' : 'Подходит по основным условиям');
       const scoreBadge = personalized
-        ? `<span class="job-category match-score ${scoreClass}"><span class="match-score-dot"></span>${score}% совпадение</span>`
+        ? `<span class="job-category match-score ${scoreClass}"><span class="match-score-dot"></span><strong>${score}%</strong><small>${esc(level)}</small></span>`
         : `<span class="job-category">${open ? 'Открыта' : 'Закрыта'}</span>`;
       let roleActions = '';
       if (open && state.user?.role === 'candidate') {
@@ -79,7 +97,8 @@
         ${preview ? `<p class="job-preview">${esc(preview)}${String(job.description || '').replace(/\s+/g,' ').trim().length > 180 ? '…' : ''}</p>` : ''}
         ${skills.length ? `<div class="job-skill-tags">${skills.map(skill=>`<span>${esc(skill)}</span>`).join('')}</div>` : ''}
         ${personalized && reasons.length ? `<div class="match-reasons-preview">${reasons.slice(0,2).map(reason=>`<span>✓ ${esc(reason)}</span>`).join('')}</div>` : ''}
-        ${personalized ? `<details class="match-explanation"><summary>Почему эта вакансия в рекомендациях?</summary><ul>${reasons.map(reason => `<li>${esc(reason)}</li>`).join('') || '<li>Подходят основные условия вашего профиля</li>'}</ul><p class="muted">Совпадение рассчитывается по данным профиля и помогает сортировать варианты. Оно не гарантирует приглашение.</p></details>` : ''}
+        ${personalized && cautions.length ? `<div class="match-caution-preview">${cautions.slice(0,1).map(text=>`<span>! ${esc(text)}</span>`).join('')}</div>` : ''}
+        ${personalized ? `<details class="match-explanation"><summary>Как рассчитано совпадение?</summary>${matchBreakdownMarkup(job)}</details>` : ''}
         <div class="job-actions"><button class="btn btn-outline btn-tiny" data-v02-action="details" data-id="${id}">Подробнее</button>${roleActions}</div></article>`;
     };
 
@@ -173,12 +192,12 @@
             try {
               const {jobs} = await api('/api/candidate/alternative-jobs');
               if (state.tab === 'offers' && jobs.length) {
-                const markup = jobs.map(job => `<article class="item-card">
-                  <h4>${esc(job.title)}</h4>
-                  <p>${esc(job.company_name)} · ${esc(job.city)} · ${formatPay(job)}</p>
-                  <p><strong>Что не совпадает:</strong></p>
-                  <ul>${job.mismatch_reasons.map(reason => `<li>${esc(reason)}</li>`).join('')}</ul>
-                  <p class="muted">Это не персональная рекомендация. Вы самостоятельно решаете, рассматривать ли вакансию.</p>
+                const markup = jobs.map(job => `<article class="item-card alternative-job-card">
+                  <div class="alternative-job-head"><div><span class="card-eyebrow">БЛИЗКИЙ ВАРИАНТ</span><h4>${esc(job.title)}</h4><p>${esc(job.company_name)} · ${esc(job.city)} · ${formatPay(job)}</p></div><span class="near-fit-score">${Number(job.near_score||0)}%</span></div>
+                  ${Array.isArray(job.strengths)&&job.strengths.length?`<div class="match-reasons-preview">${job.strengths.slice(0,2).map(reason=>`<span>✓ ${esc(reason)}</span>`).join('')}</div>`:''}
+                  <div class="alternative-mismatches"><strong>Почему не попала в строгий подбор</strong>${job.mismatch_reasons.map(reason => `<span>× ${esc(reason)}</span>`).join('')}</div>
+                  <details class="match-explanation"><summary>Посмотреть факторы</summary>${matchBreakdownMarkup(job,true)}</details>
+                  <p class="muted">Это не строгая рекомендация: есть несовместимый фактор. Решите самостоятельно, готовы ли вы его рассматривать.</p>
                   <button type="button" class="btn btn-outline btn-tiny" data-v02-action="details" data-id="${Number(job.id)}">Подробнее</button>
                 </article>`).join('');
                 target.insertAdjacentHTML('beforeend',
