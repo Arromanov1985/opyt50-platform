@@ -178,6 +178,11 @@ def admin_mfa_mode() -> str:
     return mode if mode in {"off", "email", "totp"} else "off"
 
 
+def security_profile() -> str:
+    profile = os.getenv("OPYT50_SECURITY_PROFILE", "standard").strip().casefold()
+    return profile if profile in {"standard", "high"} else "standard"
+
+
 def secure_cookie_enabled() -> bool:
     explicit = os.getenv("OPYT50_COOKIE_SECURE")
     if explicit is not None:
@@ -293,6 +298,21 @@ def validate_production_security() -> None:
         if not smtp_tls:
             errors.append("SMTP must use TLS")
     mfa_mode = admin_mfa_mode()
+    profile = security_profile()
+    if profile == "high":
+        if mfa_mode != "totp":
+            errors.append("high security profile requires TOTP administrator MFA")
+        hosts = [
+            host.strip()
+            for host in os.getenv("OPYT50_ALLOWED_HOSTS", "").split(",")
+            if host.strip()
+        ]
+        if not hosts:
+            errors.append("high security profile requires a Host allowlist")
+        if not os.getenv("DATABASE_URL", "").strip():
+            errors.append("high security profile requires shared PostgreSQL")
+        elif os.getenv("OPYT50_DB_SSLMODE", "").strip().casefold() != "verify-full":
+            errors.append("high security profile requires PostgreSQL TLS verify-full")
     if mfa_mode == "off":
         errors.append("administrator MFA must be enabled in production")
     elif mfa_mode == "email":
@@ -846,6 +866,7 @@ def create_app(db_path: str | None = None) -> FastAPI:
     def admin_security_status(user: dict = Depends(active_user)):
         allowed(user, "admin")
         return {
+            "security_profile": security_profile(),
             "admin_mfa_mode": admin_mfa_mode(),
             "admin_mfa_enabled": admin_mfa_mode() != "off",
             "admin_mfa_strength": "app-based TOTP" if admin_mfa_mode() == "totp" else ("email OTP" if admin_mfa_mode() == "email" else "off"),
