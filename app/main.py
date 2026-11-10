@@ -190,7 +190,10 @@ DUMMY_PASSWORD_HASH = make_password_hash("dummy-authentication-verifier-not-a-us
 
 
 def validate_production_security() -> None:
-    if not production_runtime():
+    # Fail closed only after the operator explicitly marks the deployment as
+    # production. DATABASE_URL/HTTPS alone are not sufficient evidence that
+    # all newly introduced security environment variables have been configured.
+    if os.getenv("OPYT50_ENV", "").strip().casefold() not in {"prod", "production"}:
         return
     errors = []
     public_url = os.getenv("OPYT50_PUBLIC_URL", "").strip()
