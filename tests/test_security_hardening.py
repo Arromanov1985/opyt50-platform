@@ -141,3 +141,36 @@ def test_trusted_host_allowlist_rejects_forged_host(tmp_path, monkeypatch):
         assert client.get("/api/health").status_code == 200
     with TestClient(app, base_url="https://evil.example") as attacker:
         assert attacker.get("/api/health").status_code == 400
+
+
+
+def test_cross_site_mutations_are_rejected_by_origin_and_fetch_metadata(tmp_path, monkeypatch):
+    monkeypatch.setenv("OPYT50_PUBLIC_URL", "https://stazhno.ru")
+    app = create_app(str(tmp_path / "origin.db"))
+    body = {
+        "role": "candidate",
+        "name": "Пользователь",
+        "email": "origin@example.test",
+        "password": "long secure password 2026",
+    }
+    with TestClient(app, base_url="https://stazhno.ru") as client:
+        wrong_origin = client.post(
+            "/api/register",
+            headers={**XHR, "Origin": "https://evil.example"},
+            json=body,
+        )
+        assert wrong_origin.status_code == 403
+
+        cross_site = client.post(
+            "/api/register",
+            headers={**XHR, "Sec-Fetch-Site": "cross-site"},
+            json=body,
+        )
+        assert cross_site.status_code == 403
+
+        same_origin = client.post(
+            "/api/register",
+            headers={**XHR, "Origin": "https://stazhno.ru", "Sec-Fetch-Site": "same-origin"},
+            json=body,
+        )
+        assert same_origin.status_code == 201, same_origin.text
