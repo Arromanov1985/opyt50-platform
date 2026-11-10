@@ -270,6 +270,11 @@ def run_browser(page):
     expect(page.locator("#employer-matches .candidate-match-card")).to_be_visible()
     expect(page.locator("#employer-matches")).to_contain_text("Согласие получено")
     expect(page.locator("#employer-matches")).to_contain_text("%")
+    employer_match = page.locator("#employer-matches .candidate-match-card").first
+    expect(employer_match.locator(".candidate-match-explanation")).to_be_visible()
+    employer_match.locator(".candidate-match-explanation summary").click()
+    expect(employer_match.locator(".match-factor-row")).to_have_count(6)
+    expect(employer_match).to_contain_text("Возраст не используется")
     page.locator(".dashboard-tabs [data-tab='invitations']").click()
     expect(page.locator("#dashboard-main")).to_contain_text("Согласие получено")
     page.once("dialog", lambda dialog: dialog.accept())
