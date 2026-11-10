@@ -442,7 +442,8 @@ def test_production_refuses_email_mfa_without_smtp(tmp_path, monkeypatch):
 def test_admin_totp_mfa_requires_authenticator_code_before_session(tmp_path, monkeypatch):
     monkeypatch.setenv("OPYT50_ENV", "development")
     monkeypatch.setenv("OPYT50_ADMIN_MFA_MODE", "totp")
-    monkeypatch.setenv("OPYT50_ADMIN_TOTP_SECRET", "JBSWY3DPEHPK3PXP")
+    totp_secret = pyotp.random_base32()
+    monkeypatch.setenv("OPYT50_ADMIN_TOTP_SECRET", totp_secret)
     monkeypatch.delenv("OPYT50_PUBLIC_URL", raising=False)
     app = create_app(str(tmp_path / "admin-totp.db"))
     password = "Administrator secure password 2026"
@@ -476,7 +477,7 @@ def test_admin_totp_mfa_requires_authenticator_code_before_session(tmp_path, mon
         assert wrong.status_code == 401
         assert client.get("/api/me").status_code == 401
 
-        code = pyotp.TOTP("JBSWY3DPEHPK3PXP", digits=6, interval=30).now()
+        code = pyotp.TOTP(totp_secret, digits=6, interval=30).now()
         verified = client.post(
             "/api/admin/mfa/verify",
             headers=XHR,
@@ -493,7 +494,7 @@ def test_admin_totp_mfa_requires_authenticator_code_before_session(tmp_path, mon
             serialized = "\n".join(str(dict(row)) for row in events)
             assert "admin_totp_challenge_issued" in serialized
             assert code not in serialized
-            assert "JBSWY3DPEHPK3PXP" not in serialized
+            assert totp_secret not in serialized
 
 
 def test_production_requires_admin_mfa(tmp_path, monkeypatch):
