@@ -40,8 +40,8 @@ Required values:
 - OPYT50_DB_SSLMODE=verify-full when the provider CA/hostname configuration supports it; otherwise require is the temporary minimum
 - OPYT50_ALLOWED_HOSTS=stazhno.ru,www.stazhno.ru plus only legitimate Timeweb health/platform hostnames that actually reach the app
 - OPYT50_PREVIEW_SEED_DEMO=0
-- OPYT50_ADMIN_MFA_MODE=totp
-- OPYT50_ADMIN_TOTP_SECRET=<random Base32 secret stored only in Timeweb secret/environment UI>
+- OPYT50_ADMIN_MFA_MODE=hybrid after at least one administrator passkey is enrolled; keep `totp` during initial enrollment
+- OPYT50_ADMIN_TOTP_SECRET=<random Base32 secret stored only in Timeweb secret/environment UI; retained as hybrid fallback>
 - strong, unique PostgreSQL and SMTP credentials
 
 Never run demo seeding against production.
@@ -51,7 +51,7 @@ Never run demo seeding against production.
 Application code alone cannot provide a bank security perimeter. The production
 environment still needs:
 
-1. Phishing-resistant WebAuthn/passkeys/security keys for administrators (TOTP is now available and recommended as the current production baseline) and preferably employers.
+1. Extend phishing-resistant WebAuthn/passkeys beyond the administrator account to privileged employer/support roles. Administrator passkeys are implemented with TOTP fallback; production must enroll and test at least two independent authenticators before switching to hybrid mode.
 2. Managed WAF, DDoS protection and distributed rate limiting in front of App Platform.
 3. Centralized immutable security logs/SIEM with alerting for admin actions, auth abuse and anomalous access.
 4. Encrypted PostgreSQL backups, tested point-in-time restore and documented RPO/RTO.

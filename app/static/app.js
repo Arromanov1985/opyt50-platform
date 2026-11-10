@@ -2,7 +2,7 @@
 'use strict';
 const $ = (selector, root = document) => root.querySelector(selector);
 const $$ = (selector, root = document) => [...root.querySelectorAll(selector)];
-const state = { user: null, mode: 'register', role: 'candidate', tab: 'overview', activeVacancy: null, editVacancy: null, employerVacancyFilter: 'all', employerApplicationsVacancyFilter: 'all', mfaChallenge: null, mfaMethod: null, mfaCodeLength: 8 };
+const state = { user: null, mode: 'register', role: 'candidate', tab: 'overview', activeVacancy: null, editVacancy: null, employerVacancyFilter: 'all', employerApplicationsVacancyFilter: 'all', mfaChallenge: null, mfaMethod: null, mfaCodeLength: 8, mfaPublicKey: null, mfaTotpFallback: false };
 const esc = value => String(value ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const money = value => Number(value || 0).toLocaleString('ru-RU') + ' ₽';
 const formatPay = job => job.salary_min === job.salary_max ? money(job.salary_min) : `${money(job.salary_min)} — ${money(job.salary_max)}`;
@@ -74,6 +74,113 @@ async function api(path, options = {}) {
   }
   return data;
 }
+function base64urlToBuffer(value) {
+  const text = String(value || '');
+  const padded = text.replace(/-/g,'+').replace(/_/g,'/') + '='.repeat((4 - (text.length % 4)) % 4);
+  const binary = atob(padded);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i += 1) bytes[i] = binary.charCodeAt(i);
+  return bytes.buffer;
+}
+function bufferToBase64url(value) {
+  const bytes = new Uint8Array(value || new ArrayBuffer(0));
+  let binary = '';
+  for (let i = 0; i < bytes.length; i += 1) binary += String.fromCharCode(bytes[i]);
+  return btoa(binary).replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,'');
+}
+function decodeWebAuthnOptions(raw) {
+  const options = JSON.parse(JSON.stringify(raw || {}));
+  options.challenge = base64urlToBuffer(options.challenge);
+  if (options.user?.id) options.user.id = base64urlToBuffer(options.user.id);
+  if (Array.isArray(options.excludeCredentials)) {
+    options.excludeCredentials = options.excludeCredentials.map(item => ({...item,id:base64urlToBuffer(item.id)}));
+  }
+  if (Array.isArray(options.allowCredentials)) {
+    options.allowCredentials = options.allowCredentials.map(item => ({...item,id:base64urlToBuffer(item.id)}));
+  }
+  return options;
+}
+function webAuthnCredentialPayload(credential) {
+  const response = credential.response || {};
+  const payload = {
+    id: credential.id,
+    rawId: bufferToBase64url(credential.rawId),
+    type: credential.type,
+    authenticatorAttachment: credential.authenticatorAttachment || null,
+    clientExtensionResults: credential.getClientExtensionResults ? credential.getClientExtensionResults() : {},
+    response: {clientDataJSON: bufferToBase64url(response.clientDataJSON)}
+  };
+  if (response.attestationObject) {
+    payload.response.attestationObject = bufferToBase64url(response.attestationObject);
+    payload.response.transports = response.getTransports ? response.getTransports() : [];
+  } else {
+    payload.response.authenticatorData = bufferToBase64url(response.authenticatorData);
+    payload.response.signature = bufferToBase64url(response.signature);
+    payload.response.userHandle = response.userHandle ? bufferToBase64url(response.userHandle) : null;
+  }
+  return payload;
+}
+function resetMfaState() {
+  state.mfaChallenge = null;
+  state.mfaMethod = null;
+  state.mfaCodeLength = 8;
+  state.mfaPublicKey = null;
+  state.mfaTotpFallback = false;
+}
+async function completeAdminPasskeyLogin() {
+  const btn = $('#auth-submit');
+  btn.disabled = true;
+  try {
+    if (!window.PublicKeyCredential || !navigator.credentials?.get) throw new Error('Этот браузер не поддерживает passkey/WebAuthn.');
+    if (!state.mfaChallenge || !state.mfaPublicKey) throw new Error('Passkey-запрос устарел. Войдите заново.');
+    const credential = await navigator.credentials.get({publicKey:decodeWebAuthnOptions(state.mfaPublicKey)});
+    const data = await api('/api/admin/mfa/webauthn/verify',{
+      method:'POST',
+      body:JSON.stringify({challenge_id:state.mfaChallenge,credential:webAuthnCredentialPayload(credential)})
+    });
+    resetMfaState();
+    $('#auth-dialog').close();
+    state.user = data.user;
+    state.tab = 'overview';
+    await showDashboard(true);
+    toast('Вход администратора подтверждён passkey.');
+  } catch(e) {
+    const message = e?.name === 'NotAllowedError'
+      ? 'Подтверждение passkey отменено или не завершено.'
+      : (e.message || 'Не удалось подтвердить passkey.');
+    $('#auth-message').textContent = message;
+  } finally {
+    btn.disabled = false;
+  }
+}
+async function switchAdminMfaToTotp() {
+  if (!state.mfaChallenge) return;
+  const data = await api('/api/admin/mfa/webauthn/fallback-totp',{
+    method:'POST',
+    body:JSON.stringify({challenge_id:state.mfaChallenge})
+  });
+  state.mfaChallenge = data.challenge_id;
+  state.mfaMethod = 'totp';
+  state.mfaCodeLength = 6;
+  state.mfaPublicKey = null;
+  state.mfaTotpFallback = false;
+  updateAuth();
+  $('#auth-mfa-code')?.focus();
+}
+async function registerAdminPasskey() {
+  if (!window.PublicKeyCredential || !navigator.credentials?.create) throw new Error('Этот браузер не поддерживает passkey/WebAuthn.');
+  const start = await api('/api/admin/passkeys/register/options',{method:'POST'});
+  const credential = await navigator.credentials.create({publicKey:decodeWebAuthnOptions(start.public_key)});
+  await api('/api/admin/passkeys/register/verify',{
+    method:'POST',
+    body:JSON.stringify({
+      challenge_id:start.challenge_id,
+      credential:webAuthnCredentialPayload(credential),
+      label:'Passkey администратора'
+    })
+  });
+  toast('Passkey администратора зарегистрирован.');
+}
 function optList(values, value = '') { return values.map(v => `<option value="${esc(v)}" ${v === value ? 'selected' : ''}>${esc(v)}</option>`).join(''); }
 const schedules = ['Любой','Полный день','Сменный','Гибкий','Удалённо'];
 const employment = ['Любая','Полная','Частичная','Проектная'];
@@ -92,9 +199,7 @@ async function loadPublicJobs() {
 function openAuth(mode = 'register', role = 'candidate') {
   state.mode = mode;
   state.role = role;
-  state.mfaChallenge = null;
-  state.mfaMethod = null;
-  state.mfaCodeLength = 8;
+  resetMfaState();
   $('#auth-form').reset();
   updateAuth();
   $('#auth-dialog').showModal();
@@ -113,27 +218,40 @@ function updateAuth() {
     $('#password-hint').classList.add('hidden');
     $('#auth-route').classList.add('hidden');
     const totp = state.mfaMethod === 'totp';
-    $('#auth-kicker').textContent = 'ДВУХФАКТОРНЫЙ ВХОД';
+    const passkey = state.mfaMethod === 'webauthn';
+    $('#auth-kicker').textContent = passkey ? 'PASSKEY' : 'ДВУХФАКТОРНЫЙ ВХОД';
     $('#auth-title').textContent = 'Подтвердите вход';
-    $('#auth-intro').textContent = totp
-      ? 'Пароль принят. Введите код из приложения Authenticator.'
-      : 'Пароль принят. Для входа администратора нужен второй фактор.';
-    $('#auth-guidance').textContent = totp
-      ? 'Введите текущий 6-значный код. Он меняется примерно каждые 30 секунд.'
-      : 'Код одноразовый и действует 5 минут.';
+    $('#auth-intro').textContent = passkey
+      ? 'Пароль принят. Подтвердите вход через Windows Hello, Touch ID, телефон или аппаратный ключ.'
+      : totp
+        ? 'Пароль принят. Введите код из приложения Authenticator.'
+        : 'Пароль принят. Для входа администратора нужен второй фактор.';
+    $('#auth-guidance').textContent = passkey
+      ? 'Passkey привязан к домену СТАЖНО и не передаёт биометрию на сервер.'
+      : totp
+        ? 'Введите текущий 6-значный код. Он меняется примерно каждые 30 секунд.'
+        : 'Код одноразовый и действует 5 минут.';
     const mfaText = $('#auth-mfa-text');
-    if (mfaText) mfaText.textContent = totp
-      ? 'Откройте приложение Authenticator и введите текущий 6-значный код.'
-      : 'Мы отправили одноразовый 8-значный код на email администратора. Код действует 5 минут.';
+    if (mfaText) mfaText.textContent = passkey
+      ? 'Нажмите кнопку ниже и подтвердите вход на своём устройстве.'
+      : totp
+        ? 'Откройте приложение Authenticator и введите текущий 6-значный код.'
+        : 'Мы отправили одноразовый 8-значный код на email администратора. Код действует 5 минут.';
+    $('#auth-mfa-code-field')?.classList.toggle('hidden', passkey);
+    $('#auth-mfa-totp-fallback')?.classList.toggle('hidden', !(passkey && state.mfaTotpFallback));
+    const mfaNote = $('#auth-mfa-note');
+    if (mfaNote) mfaNote.textContent = passkey
+      ? 'Приватный ключ остаётся на вашем устройстве.'
+      : 'После 5 неверных попыток код будет аннулирован.';
     const mfaCode = $('#auth-mfa-code');
-    if (mfaCode) {
+    if (mfaCode && !passkey) {
       const length = totp ? 6 : 8;
       mfaCode.minLength = length;
       mfaCode.maxLength = length;
       mfaCode.pattern = '[0-9]{' + length + '}';
       mfaCode.placeholder = totp ? '000000' : '00000000';
     }
-    $('#auth-submit').textContent = 'Подтвердить вход →';
+    $('#auth-submit').textContent = passkey ? 'Подтвердить passkey →' : 'Подтвердить вход →';
     $('#auth-switch').innerHTML = '<button type="button" data-mfa-cancel>Вернуться ко входу по email и паролю</button>';
     const message = $('#auth-message'); if (message) message.textContent = '';
     return;
@@ -182,6 +300,10 @@ async function submitAuth(event) {
     if (field) field.focus();
   };
   if (state.mfaChallenge) {
+    if (state.mfaMethod === 'webauthn') {
+      await completeAdminPasskeyLogin();
+      return;
+    }
     const code = ($('#auth-mfa-code')?.value || '').trim();
     const expectedLength = state.mfaMethod === 'totp' ? 6 : 8;
     const codePattern = expectedLength === 6 ? /^\d{6}$/ : /^\d{8}$/;
@@ -202,9 +324,7 @@ async function submitAuth(event) {
         method:'POST',
         body:JSON.stringify({challenge_id:state.mfaChallenge, code})
       });
-      state.mfaChallenge = null;
-      state.mfaMethod = null;
-      state.mfaCodeLength = 8;
+      resetMfaState();
       $('#auth-dialog').close();
       state.user = data.user;
       state.tab = 'overview';
@@ -258,9 +378,12 @@ async function submitAuth(event) {
       state.mfaChallenge = data.challenge_id;
       state.mfaMethod = data.mfa_method || 'email';
       state.mfaCodeLength = Number(data.code_length || (state.mfaMethod === 'totp' ? 6 : 8));
+      state.mfaPublicKey = data.public_key || null;
+      state.mfaTotpFallback = Boolean(data.totp_fallback);
       updateAuth();
       $('#auth-mfa-code').value = '';
-      $('#auth-mfa-code').focus();
+      if (state.mfaMethod === 'webauthn') $('#auth-submit').focus();
+      else $('#auth-mfa-code').focus();
       return;
     }
     $('#auth-dialog').close(); state.user = data.user;
@@ -352,7 +475,12 @@ const accountSecurityLabels = {
   other_sessions_revoked:'Другие сессии завершены',
   session_idle_expired:'Сессия завершена по неактивности',
   admin_mfa_success:'Второй фактор администратора подтверждён',
-  admin_mfa_failed:'Ошибка второго фактора администратора'
+  admin_mfa_failed:'Ошибка второго фактора администратора',
+  admin_passkey_registered:'Passkey администратора зарегистрирован',
+  admin_passkey_deleted:'Passkey администратора удалён',
+  admin_passkey_success:'Вход администратора подтверждён passkey',
+  admin_passkey_failed:'Ошибка подтверждения passkey',
+  admin_passkey_fallback_totp:'Выбран резервный код Authenticator'
 };
 function accountSecurityEventMarkup(item) {
   const label = accountSecurityLabels[item.event_type] || 'Событие безопасности';
@@ -956,12 +1084,33 @@ function invitationEmployerMarkup(x) {
   ${activityTimelineMarkup(x)}
   ${x.contact ? `<div class="contact-card"><span>Контакт открыт (демо)</span><strong>${esc(x.contact.name)}</strong><div><a href="mailto:${esc(x.contact.email)}">${esc(x.contact.email)}</a><b>·</b><span>${esc(x.contact.phone || 'Телефон не указан')}</span></div></div>` : (x.status === 'accepted' ? `<div class="application-next-action"><span>Следующее действие</span><strong>Кандидат согласился на знакомство</strong><small>Демо-стоимость: ${money(x.price_rub)}</small></div><button class="btn btn-primary" data-action="demo-pay" data-id="${x.id}">Открыть контакт (демо) →</button>` : '<p class="muted invitation-waiting">Ожидаем решение кандидата. Контакты пока скрыты.</p>')}</article>`;
 }
+function adminPasskeyMarkup(item) {
+  const used = item.last_used_at ? `Последнее использование: ${esc(item.last_used_at)}` : `Добавлен: ${esc(item.created_at || '')}`;
+  return `<div class="admin-passkey-row">
+    <div class="admin-passkey-icon" aria-hidden="true">⌘</div>
+    <div><strong>${esc(item.label || 'Passkey администратора')}</strong><small>${used}</small><small>${item.backed_up ? 'Синхронизируемый passkey' : 'Ключ устройства / аппаратный ключ'}</small></div>
+    <button type="button" class="btn btn-outline btn-small" data-action="delete-admin-passkey" data-passkey-id="${esc(item.id)}">Удалить</button>
+  </div>`;
+}
 async function renderAdmin() {
-  $('#account-content').innerHTML = '<div class="panel"><h3>Панель управления</h3><p class="muted">Статистика работы MVP, без раскрытия персональных данных.</p><div class="stat-grid" id="admin-stats"><div class="loading">Загрузка...</div></div></div>';
+  $('#account-content').innerHTML = `<div class="admin-dashboard-stack">
+    <section class="panel"><h3>Панель управления</h3><p class="muted">Статистика работы MVP, без раскрытия персональных данных.</p><div class="stat-grid" id="admin-stats"><div class="loading">Загрузка...</div></div></section>
+    <section class="panel admin-security-panel">
+      <span class="section-kicker">БЕЗОПАСНОСТЬ АДМИНИСТРАТОРА</span>
+      <h3>Passkeys / WebAuthn</h3>
+      <p class="muted">Passkey подтверждает вход через Windows Hello, Touch ID, телефон или аппаратный FIDO2-ключ. TOTP остаётся резервным фактором.</p>
+      <div id="admin-passkeys"><div class="loading">Загрузка...</div></div>
+      <div class="admin-passkey-actions"><button type="button" class="btn btn-primary" data-action="register-admin-passkey">Добавить passkey →</button></div>
+    </section>
+  </div>`;
   try {
-    const stats = await api('/api/admin/stats');
+    const [stats, security] = await Promise.all([api('/api/admin/stats'), api('/api/account/security')]);
     const units = [['Соискатели',stats.candidates],['Работодатели',stats.employers],['Открытые вакансии',stats.open_vacancies],['Всего откликов',stats.applications_total],['Активные отклики',stats.applications_active],['Отозванные отклики',stats.applications_withdrawn],['Приглашения',stats.invitations],['Подтверждения',stats.confirmed],['Демо-знакомства',stats.demo_transactions],['Демо-оборот, ₽',stats.demo_turnover_rub]];
     $('#admin-stats').innerHTML = units.map(([title,value]) => `<div class="stat-tile"><strong>${Number(value).toLocaleString('ru-RU')}</strong><span>${esc(title)}</span></div>`).join('');
+    const passkeys = Array.isArray(security.passkeys) ? security.passkeys : [];
+    $('#admin-passkeys').innerHTML = passkeys.length
+      ? `<div class="admin-passkey-list">${passkeys.map(adminPasskeyMarkup).join('')}</div>`
+      : '<div class="empty-state">Passkey пока не зарегистрирован. До его добавления администратор продолжает входить по TOTP.</div>';
   } catch(e) { toast(e.message,true); }
 }
 function formValue(form, name) { return form.elements.namedItem(name).value.trim(); }
@@ -1058,6 +1207,19 @@ async function handleDashboardClick(event) {
   if (btn.disabled) return;
   btn.disabled = true;
   try {
+    if (action === 'register-admin-passkey') {
+      await registerAdminPasskey();
+      await renderAdmin();
+      return;
+    }
+    if (action === 'delete-admin-passkey') {
+      const passkeyId = String(btn.dataset.passkeyId || '');
+      if (!passkeyId) return;
+      await api(`/api/admin/passkeys/${encodeURIComponent(passkeyId)}`,{method:'DELETE'});
+      await renderAdmin();
+      toast('Passkey удалён.');
+      return;
+    }
     if (action === 'revoke-other-sessions') {
       const result = await api('/api/account/sessions/revoke-others',{method:'POST'});
       await renderAccountSecurity($('#dashboard-main'));
@@ -1111,10 +1273,16 @@ async function start() {
   $('#modal-close').addEventListener('click',()=>$('#auth-dialog').close());
   $('#auth-dialog').addEventListener('click',e=>{ if(e.target === $('#auth-dialog')) $('#auth-dialog').close(); });
   $('#auth-form').addEventListener('submit',submitAuth);
-  $('#auth-dialog').addEventListener('click',e=>{
+  $('#auth-dialog').addEventListener('click',async e=>{
     const role = e.target.closest('[data-role]'); if(role){ state.role=role.dataset.role; updateAuth(); }
-    const mode = e.target.closest('[data-switch]'); if(mode){ state.mfaChallenge=null; state.mode=mode.dataset.switch; updateAuth(); }
-    const mfaCancel = e.target.closest('[data-mfa-cancel]'); if(mfaCancel){ state.mfaChallenge=null; $('#auth-form').reset(); updateAuth(); $('#auth-email').focus(); }
+    const mode = e.target.closest('[data-switch]'); if(mode){ resetMfaState(); state.mode=mode.dataset.switch; updateAuth(); }
+    const mfaCancel = e.target.closest('[data-mfa-cancel]'); if(mfaCancel){ resetMfaState(); $('#auth-form').reset(); updateAuth(); $('#auth-email').focus(); }
+    const fallback = e.target.closest('[data-mfa-totp-fallback]');
+    if (fallback) {
+      fallback.disabled = true;
+      try { await switchAdminMfaToTotp(); } catch(e2) { $('#auth-message').textContent = e2.message; }
+      finally { if (fallback.isConnected) fallback.disabled = false; }
+    }
   });
   $$('[data-register]').forEach(button=>button.addEventListener('click',()=>openAuth('register',button.dataset.register)));
   $('#account-open').addEventListener('click',()=>showDashboard(true));

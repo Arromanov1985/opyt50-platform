@@ -34,7 +34,7 @@ jobs:
           OPYT50_COOKIE_SECURE: "1"
           OPYT50_ENABLE_DOCS: "0"
           OPYT50_PREVIEW_SEED_DEMO: "0"
-          OPYT50_ADMIN_MFA_MODE: totp
+          OPYT50_ADMIN_MFA_MODE: hybrid
           OPYT50_ALLOWED_HOSTS: stazhno.ru,www.stazhno.ru
           DATABASE_URL: postgresql://ci@localhost/stazhno
           OPYT50_DB_SSLMODE: verify-full

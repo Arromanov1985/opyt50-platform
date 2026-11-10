@@ -5,3 +5,5 @@ pydantic>=2.0,<3.0
 argon2-cffi>=23.1,<26
 
 pyotp>=2.9,<3
+
+webauthn>=3.0.1,<4
