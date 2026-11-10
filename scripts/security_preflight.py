@@ -14,7 +14,7 @@ from urllib.parse import urlsplit
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
-from app.main import admin_mfa_mode, secure_cookie_enabled  # noqa: E402
+from app.main import admin_mfa_mode, secure_cookie_enabled, security_profile  # noqa: E402
 
 
 def assess() -> dict:
@@ -38,6 +38,7 @@ def assess() -> dict:
         or os.getenv("OPYT50_SMTP_STARTTLS", "1") == "1"
     )
     mfa = admin_mfa_mode()
+    profile = security_profile()
 
     if env not in {"prod", "production"}:
         errors.append("runtime mode is not production")
@@ -52,7 +53,10 @@ def assess() -> dict:
     if mfa == "off":
         errors.append("administrator MFA is disabled")
     elif mfa == "email":
-        warnings.append("administrator MFA uses email OTP; TOTP/passkey is stronger")
+        if profile == "high":
+            errors.append("high security profile requires TOTP administrator MFA")
+        else:
+            warnings.append("administrator MFA uses email OTP; TOTP/passkey is stronger")
     elif mfa == "totp":
         secret = os.getenv("OPYT50_ADMIN_TOTP_SECRET", "").strip()
         if len(secret) < 32:
@@ -73,9 +77,18 @@ def assess() -> dict:
         if db_sslmode not in {"require", "verify-ca", "verify-full"}:
             errors.append("PostgreSQL TLS is not enforced")
         elif db_sslmode != "verify-full":
-            warnings.append("PostgreSQL TLS does not verify the server hostname")
+            if profile == "high":
+                errors.append("high security profile requires PostgreSQL TLS verify-full")
+            else:
+                warnings.append("PostgreSQL TLS does not verify the server hostname")
     else:
-        warnings.append("DATABASE_URL is not configured")
+        if profile == "high":
+            errors.append("high security profile requires shared PostgreSQL")
+        else:
+            warnings.append("DATABASE_URL is not configured")
+
+    if profile == "high" and not hosts:
+        errors.append("high security profile requires Host allowlist")
 
     if smtp_configured and not smtp_tls:
         errors.append("SMTP TLS is disabled")
@@ -86,6 +99,7 @@ def assess() -> dict:
         "secure_cookie": secure_cookie_enabled(),
         "docs_disabled": not docs_enabled,
         "demo_seed_disabled": not demo_seed,
+        "security_profile": profile,
         "admin_mfa": mfa,
         "host_allowlist_configured": bool(hosts),
         "database_configured": db_configured,
