@@ -259,18 +259,24 @@ def _device_label(request: Request) -> str:
     return f"{browser} · {os_label}"
 
 
-def _device_fingerprint(user_id: int, request: Request) -> tuple[str, str]:
-    # Do not persist raw IP addresses. The fingerprint is intentionally based on
-    # browser/device hints and scoped to one account, preventing cross-user linkage.
-    parts = (
-        str(user_id),
-        request.headers.get("user-agent", "")[:512],
-        request.headers.get("sec-ch-ua", "")[:256],
-        request.headers.get("sec-ch-ua-platform", "")[:80],
-        request.headers.get("sec-ch-ua-mobile", "")[:10],
-    )
-    fingerprint = hashlib.sha256("\0".join(parts).encode("utf-8")).hexdigest()
-    return fingerprint, _device_label(request)
+def device_cookie_name() -> str:
+    return "__Host-stazhno_device" if secure_cookie_enabled() else "stazhno_device"
+
+
+def _device_identity(
+    user_id: int,
+    request: Request,
+) -> tuple[str, str, str]:
+    # A random HttpOnly device cookie is more stable than User-Agent fingerprinting.
+    # Only an account-scoped SHA-256 digest is persisted, so the database cannot
+    # recover the cookie or correlate the same browser across different accounts.
+    device_token = request.cookies.get(device_cookie_name(), "")
+    if not (20 <= len(device_token) <= 200):
+        device_token = secrets.token_urlsafe(32)
+    fingerprint = hashlib.sha256(
+        f"{user_id}\0{device_token}".encode("utf-8")
+    ).hexdigest()
+    return fingerprint, _device_label(request), device_token
 
 
 def _bytes_to_base64url(value: bytes) -> str:
@@ -621,7 +627,7 @@ def add_session(
     )
 
     if request is not None:
-        device_key, device_label = _device_fingerprint(user_id, request)
+        device_key, device_label, device_token = _device_identity(user_id, request)
         known_device = db.execute(
             "SELECT 1 FROM account_devices WHERE device_key=? AND user_id=?",
             (device_key, user_id),
@@ -672,6 +678,16 @@ def add_session(
         max_age=lifetime,
         path="/",
     )
+    if request is not None:
+        response.set_cookie(
+            device_cookie_name(),
+            device_token,
+            httponly=True,
+            secure=secure_cookie_enabled(),
+            samesite="strict",
+            max_age=365 * 24 * 60 * 60,
+            path="/",
+        )
 
 def create_app(db_path: str | None = None) -> FastAPI:
     db_location = db_path or DEFAULT_DB
