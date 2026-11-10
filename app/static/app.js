@@ -113,7 +113,7 @@ function updateAuth() {
   $('#auth-name').required = reg;
   $('#auth-company').required = reg && employer;
   $('#auth-password').type = 'password';
-  $('#auth-password').minLength = reg ? 10 : 1;
+  $('#auth-password').minLength = reg ? 15 : 1;
   $('#auth-password').autocomplete = reg ? 'new-password' : 'current-password';
   const passwordToggle = $('#password-toggle');
   if (passwordToggle) { passwordToggle.textContent = 'Показать'; passwordToggle.setAttribute('aria-pressed','false'); }
@@ -160,8 +160,8 @@ async function submitAuth(event) {
         return;
       }
     }
-    if (password.value.length < 10) {
-      showError('Для регистрации нужен пароль не короче 10 символов.', password);
+    if (password.value.length < 15) {
+      showError('Для регистрации нужен пароль не короче 15 символов.', password);
       return;
     }
   } else if (!password.value) {
