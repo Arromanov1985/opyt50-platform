@@ -9,12 +9,36 @@ updates:
     labels:
       - "security"
       - "dependencies"
+    groups:
+      runtime-security:
+        patterns:
+          - "fastapi"
+          - "uvicorn"
+          - "pydantic"
+          - "argon2-cffi"
+          - "pyotp"
+          - "psycopg*"
+      security-tooling:
+        patterns:
+          - "pip-audit"
+          - "bandit"
+
   - package-ecosystem: "github-actions"
     directory: "/"
     schedule:
       interval: "weekly"
       day: "monday"
     open-pull-requests-limit: 5
+    labels:
+      - "security"
+      - "dependencies"
+
+  - package-ecosystem: "docker"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    open-pull-requests-limit: 3
     labels:
       - "security"
       - "dependencies"
