@@ -130,7 +130,6 @@ def test_new_device_login_alerts_once_and_does_not_store_raw_ip(app):
     with (
         TestClient(app, headers=browser_a) as first,
         TestClient(app, headers=browser_b) as second,
-        TestClient(app, headers=browser_b) as third,
     ):
         register(first)
 
