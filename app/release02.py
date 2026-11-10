@@ -9,7 +9,7 @@ import sqlite3
 from datetime import datetime, timedelta, timezone
 from typing import Literal
 
-from fastapi import Depends, HTTPException, Response
+from fastapi import Depends, HTTPException, Request, Response
 from pydantic import BaseModel, Field, field_validator
 
 from .db import database
@@ -151,6 +151,19 @@ RELEASE09_RUNTIME_DDL = (
         authenticated_at TEXT NOT NULL,
         last_seen_at TEXT NOT NULL
     )""",
+    """CREATE TABLE IF NOT EXISTS account_devices (
+        device_key TEXT PRIMARY KEY,
+        user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        label TEXT NOT NULL,
+        first_seen_at TEXT NOT NULL,
+        last_seen_at TEXT NOT NULL,
+        login_count INTEGER NOT NULL DEFAULT 1
+    )""",
+    """CREATE TABLE IF NOT EXISTS session_context (
+        token_hash TEXT PRIMARY KEY REFERENCES sessions(token_hash) ON DELETE CASCADE,
+        device_key TEXT REFERENCES account_devices(device_key) ON DELETE SET NULL,
+        device_label TEXT NOT NULL DEFAULT 'Неизвестное устройство'
+    )""",
     """CREATE TABLE IF NOT EXISTS security_rate_limits (
         rate_key TEXT PRIMARY KEY,
         bucket_start INTEGER NOT NULL,
@@ -189,6 +202,8 @@ RELEASE09_RUNTIME_DDL = (
     "CREATE INDEX IF NOT EXISTS idx_security_events_user ON security_events(user_id,created_at)",
     "CREATE INDEX IF NOT EXISTS idx_security_events_type ON security_events(event_type,created_at)",
     "CREATE INDEX IF NOT EXISTS idx_session_activity_last_seen ON session_activity(last_seen_at)",
+    "CREATE INDEX IF NOT EXISTS idx_account_devices_user ON account_devices(user_id,last_seen_at)",
+    "CREATE INDEX IF NOT EXISTS idx_session_context_device ON session_context(device_key)",
     "CREATE INDEX IF NOT EXISTS idx_security_rate_limits_updated ON security_rate_limits(updated_at)",
     "CREATE INDEX IF NOT EXISTS idx_admin_webauthn_user ON admin_webauthn_credentials(user_id,created_at)",
     "CREATE INDEX IF NOT EXISTS idx_admin_webauthn_challenge_user ON admin_webauthn_challenges(user_id,expires_at)",
@@ -1095,9 +1110,11 @@ def install_routes(app) -> None:
         now_iso = datetime.now(timezone.utc).isoformat()
         current_digest = user.get("_session_token_hash", "")
         session_rows = db.execute(
-            """SELECT s.token_hash,s.expires_at,a.authenticated_at,a.last_seen_at
+            """SELECT s.token_hash,s.expires_at,a.authenticated_at,a.last_seen_at,
+                      COALESCE(c.device_label,'Неизвестное устройство') AS device_label
                FROM sessions s
                LEFT JOIN session_activity a ON a.token_hash=s.token_hash
+               LEFT JOIN session_context c ON c.token_hash=s.token_hash
                WHERE s.user_id=? AND s.expires_at>?
                ORDER BY COALESCE(a.last_seen_at,a.authenticated_at,s.expires_at) DESC""",
             (user["id"], now_iso),
@@ -1114,6 +1131,7 @@ def install_routes(app) -> None:
                 "authenticated_at": row["authenticated_at"],
                 "last_seen_at": row["last_seen_at"],
                 "expires_at": row["expires_at"],
+                "device_label": row["device_label"],
             })
         email_row = db.execute(
             "SELECT email_verified FROM account_controls WHERE user_id=?",
@@ -1218,6 +1236,7 @@ def install_routes(app) -> None:
     @app.post("/api/account/password/change")
     def change_password(
         data: PasswordChangeIn,
+        request: Request,
         response: Response,
         user: dict = Depends(active_user),
         db: sqlite3.Connection = Depends(get_connection),
@@ -1254,7 +1273,7 @@ def install_routes(app) -> None:
         record_security_event(db, user["id"], "password_changed_all_sessions_revoked")
         # add_session commits the password update/audit event and rotates the
         # browser to a fresh opaque session token.
-        add_session(db, response, user["id"])
+        add_session(db, response, user["id"], request)
         return {"ok": True}
 
     @app.get("/api/account/email/status")

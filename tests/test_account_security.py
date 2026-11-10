@@ -4,6 +4,7 @@ from pathlib import Path
 import pytest
 from fastapi.testclient import TestClient
 
+from app.db import database
 from app.main import create_app
 
 XHR = {"X-Requested-With": "OPYT50"}
@@ -116,3 +117,61 @@ def test_password_change_requires_current_password_and_rate_limits_failures(app)
         )
         assert limited.status_code == 429
         assert limited.headers.get("retry-after")
+
+
+def test_new_device_login_alerts_once_and_does_not_store_raw_ip(app):
+    browser_a = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/152.0 YaBrowser/26.10.0.0",
+    }
+    browser_b = {
+        "User-Agent": "Mozilla/5.0 (X11; Linux x86_64) Firefox/145.0",
+    }
+
+    with (
+        TestClient(app, headers=browser_a) as first,
+        TestClient(app, headers=browser_b) as second,
+    ):
+        register(first)
+
+        with database(app.state.db_path) as db:
+            assert db.execute(
+                "SELECT COUNT(*) FROM email_outbox WHERE event='new_device_login'"
+            ).fetchone()[0] == 0
+
+        second_login = login(second)
+        assert second_login.status_code == 200, second_login.text
+
+        security = second.get("/api/account/security")
+        assert security.status_code == 200, security.text
+        labels = {item["device_label"] for item in security.json()["sessions"]}
+        assert "Яндекс Браузер · Windows" in labels
+        assert "Firefox · Linux" in labels
+        assert any(
+            item["event_type"] == "new_device_login"
+            for item in security.json()["events"]
+        )
+
+        with database(app.state.db_path) as db:
+            notices = db.execute(
+                "SELECT subject,body FROM email_outbox WHERE event='new_device_login'"
+            ).fetchall()
+            assert len(notices) == 1
+            assert "Firefox · Linux" in notices[0]["body"]
+            serialized_devices = "\n".join(
+                str(dict(row))
+                for row in db.execute("SELECT * FROM account_devices").fetchall()
+            )
+            assert "127.0.0.1" not in serialized_devices
+            assert "testclient" not in serialized_devices
+
+        logged_out = second.post("/api/logout", headers=XHR)
+        assert logged_out.status_code == 200, logged_out.text
+        repeated_login = login(second)
+        assert repeated_login.status_code == 200, repeated_login.text
+        with database(app.state.db_path) as db:
+            assert db.execute(
+                "SELECT COUNT(*) FROM email_outbox WHERE event='new_device_login'"
+            ).fetchone()[0] == 1
+            assert db.execute(
+                "SELECT login_count FROM account_devices WHERE label='Firefox · Linux'"
+            ).fetchone()["login_count"] == 2

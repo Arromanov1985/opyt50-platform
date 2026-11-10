@@ -11,6 +11,7 @@ operational checklist, not a claim of bank certification.
 - Passwords are stored with Argon2id. Legacy PBKDF2 hashes are upgraded after a successful login.
 - Login performs a dummy password verification for unknown email addresses to reduce account-enumeration timing differences.
 - Password reset revokes every session for the account.
+- New-device login alerts use a random HttpOnly device cookie; only an account-scoped hash is stored. Raw IP addresses are not persisted for device recognition.
 - Disabling an account revokes its sessions.
 - Reset/verification tokens are single-use, stored only as hashes, and are not persisted in email_outbox bodies.
 - State-changing API calls require a same-origin custom request header; CORS is not enabled.
