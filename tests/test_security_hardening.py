@@ -408,8 +408,15 @@ def test_admin_security_status_reports_hardening_without_secrets(tmp_path):
         assert data["password_hash"] == "argon2id"
         assert data["admin_session_minutes"] == 30
         assert data["admin_mfa_mode"] in {"off", "email"}
-        assert "password" not in str(data).casefold()
-        assert "token" not in str(data).casefold()
+        assert set(data) == {
+            "admin_mfa_mode", "admin_mfa_enabled", "admin_session_minutes",
+            "password_hash", "secure_cookie", "production_runtime", "api_docs_enabled",
+        }
+        assert data["password_hash"] == "argon2id"
+        serialized = str(data).casefold()
+        assert "token_hash" not in serialized
+        assert "secret" not in serialized
+        assert "credential" not in serialized
 
 
 def test_production_refuses_email_mfa_without_smtp(tmp_path, monkeypatch):
