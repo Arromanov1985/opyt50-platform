@@ -5,6 +5,7 @@ only the SQL patterns used by the current routes; it is not a general SQL transl
 """
 from __future__ import annotations
 
+import os
 import re
 import sqlite3
 from contextlib import contextmanager
@@ -89,7 +90,15 @@ def _translate(sql: str) -> tuple[str, str | None]:
 
 class PostgresCompatConnection:
     def __init__(self, dsn: str):
-        self._connection = psycopg.connect(dsn, connect_timeout=10, autocommit=False, row_factory=hybrid_row)
+        connect_kwargs = {
+            "connect_timeout": 10,
+            "autocommit": False,
+            "row_factory": hybrid_row,
+        }
+        sslmode = os.getenv("OPYT50_DB_SSLMODE", "").strip()
+        if sslmode:
+            connect_kwargs["sslmode"] = sslmode
+        self._connection = psycopg.connect(dsn, **connect_kwargs)
         self._last_changes = 0
 
     def execute(self, sql: str, params=()):
