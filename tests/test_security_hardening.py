@@ -412,11 +412,12 @@ def test_admin_security_status_reports_hardening_without_secrets(tmp_path):
         assert data["admin_mfa_mode"] in {"off", "email", "totp"}
         assert data["admin_mfa_strength"] in {"off", "email OTP", "app-based TOTP"}
         assert set(data) == {
-            "admin_mfa_mode", "admin_mfa_enabled", "admin_mfa_strength",
-            "admin_session_minutes", "admin_idle_minutes", "user_idle_hours",
-            "password_hash", "secure_cookie", "production_runtime",
-            "api_docs_enabled",
+            "security_profile", "admin_mfa_mode", "admin_mfa_enabled",
+            "admin_mfa_strength", "admin_session_minutes", "admin_idle_minutes",
+            "user_idle_hours", "password_hash", "secure_cookie",
+            "production_runtime", "api_docs_enabled",
         }
+        assert data["security_profile"] in {"standard", "high"}
         assert data["admin_idle_minutes"] == 15
         assert data["user_idle_hours"] == 12
         assert data["password_hash"] == "argon2id"
@@ -718,3 +719,59 @@ def test_route_rate_limit_state_is_hashed_and_contains_no_raw_ip_or_email(tmp_pa
         assert "example.test" not in serialized
         assert "testclient" not in serialized
         assert all(len(row["rate_key"]) == 64 for row in rows)
+
+
+
+def test_high_security_profile_rejects_email_admin_mfa(tmp_path, monkeypatch):
+    monkeypatch.setenv("OPYT50_ENV", "production")
+    monkeypatch.setenv("OPYT50_SECURITY_PROFILE", "high")
+    monkeypatch.setenv("OPYT50_PUBLIC_URL", "https://stazhno.ru")
+    monkeypatch.setenv("OPYT50_COOKIE_SECURE", "1")
+    monkeypatch.setenv("OPYT50_ENABLE_DOCS", "0")
+    monkeypatch.setenv("OPYT50_ADMIN_MFA_MODE", "email")
+    monkeypatch.setenv("OPYT50_SMTP_HOST", "smtp.example.test")
+    monkeypatch.setenv("OPYT50_MAIL_FROM", "noreply@example.test")
+    monkeypatch.setenv("OPYT50_ALLOWED_HOSTS", "stazhno.ru")
+    monkeypatch.setenv("DATABASE_URL", "postgresql://ci@localhost/stazhno")
+    monkeypatch.setenv("OPYT50_DB_SSLMODE", "verify-full")
+
+    app = create_app(str(tmp_path / "high-email-mfa.db"))
+    with pytest.raises(RuntimeError, match="requires TOTP"):
+        with TestClient(app):
+            pass
+
+
+def test_high_security_profile_requires_host_allowlist(tmp_path, monkeypatch):
+    monkeypatch.setenv("OPYT50_ENV", "production")
+    monkeypatch.setenv("OPYT50_SECURITY_PROFILE", "high")
+    monkeypatch.setenv("OPYT50_PUBLIC_URL", "https://stazhno.ru")
+    monkeypatch.setenv("OPYT50_COOKIE_SECURE", "1")
+    monkeypatch.setenv("OPYT50_ENABLE_DOCS", "0")
+    monkeypatch.setenv("OPYT50_ADMIN_MFA_MODE", "totp")
+    monkeypatch.setenv("OPYT50_ADMIN_TOTP_SECRET", pyotp.random_base32())
+    monkeypatch.delenv("OPYT50_ALLOWED_HOSTS", raising=False)
+    monkeypatch.setenv("DATABASE_URL", "postgresql://ci@localhost/stazhno")
+    monkeypatch.setenv("OPYT50_DB_SSLMODE", "verify-full")
+
+    app = create_app(str(tmp_path / "high-hosts.db"))
+    with pytest.raises(RuntimeError, match="Host allowlist"):
+        with TestClient(app):
+            pass
+
+
+def test_high_security_profile_requires_verify_full_database_tls(tmp_path, monkeypatch):
+    monkeypatch.setenv("OPYT50_ENV", "production")
+    monkeypatch.setenv("OPYT50_SECURITY_PROFILE", "high")
+    monkeypatch.setenv("OPYT50_PUBLIC_URL", "https://stazhno.ru")
+    monkeypatch.setenv("OPYT50_COOKIE_SECURE", "1")
+    monkeypatch.setenv("OPYT50_ENABLE_DOCS", "0")
+    monkeypatch.setenv("OPYT50_ADMIN_MFA_MODE", "totp")
+    monkeypatch.setenv("OPYT50_ADMIN_TOTP_SECRET", pyotp.random_base32())
+    monkeypatch.setenv("OPYT50_ALLOWED_HOSTS", "stazhno.ru")
+    monkeypatch.setenv("DATABASE_URL", "postgresql://ci@localhost/stazhno")
+    monkeypatch.setenv("OPYT50_DB_SSLMODE", "require")
+
+    app = create_app(str(tmp_path / "high-db-tls.db"))
+    with pytest.raises(RuntimeError, match="verify-full"):
+        with TestClient(app):
+            pass
