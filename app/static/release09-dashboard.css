@@ -1752,3 +1752,39 @@ body.comfortable-view .account-security-event small{
   .account-security-form .auth-message,
   .account-security-form .btn{grid-column:1}
 }
+
+
+/* Account security: active sessions */
+.account-security-session-list {
+  display: grid;
+  gap: 10px;
+}
+.account-security-session {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 14px 16px;
+  border: 1px solid var(--line, #e2e8f0);
+  border-radius: 14px;
+  background: #fff;
+}
+.account-security-session > div {
+  display: grid;
+  gap: 4px;
+}
+.account-security-session small {
+  color: var(--muted, #64748b);
+}
+.account-security-session .status.success {
+  white-space: nowrap;
+}
+@media (max-width: 700px) {
+  .account-security-session {
+    align-items: stretch;
+    flex-direction: column;
+  }
+  .account-security-session .btn {
+    width: 100%;
+  }
+}
