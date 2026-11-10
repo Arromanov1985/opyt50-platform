@@ -411,7 +411,11 @@ def active_user(request: Request, db: sqlite3.Connection = Depends(get_connectio
     control = db.execute("SELECT status FROM account_controls WHERE user_id=?", (row["id"],)).fetchone()
     if control is not None and control["status"] == "disabled":
         raise HTTPException(403, "Аккаунт временно заблокирован")
-    return {key: row[key] for key in ("id", "email", "name", "phone", "role")}
+    user = {key: row[key] for key in ("id", "email", "name", "phone", "role")}
+    # Internal-only identifier for server-side session controls. user_response()
+    # deliberately serializes an explicit safe subset and never exposes this.
+    user["_session_token_hash"] = digest
+    return user
 
 def allowed(user: dict, role: str) -> None:
     if user["role"] != role:
