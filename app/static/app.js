@@ -343,6 +343,55 @@ function candidateProfileHealth(profile = {}) {
     : 'Профиль готов к подбору';
   return {percent, next};
 }
+const accountSecurityLabels = {
+  login_success:'Вход в аккаунт',
+  login_failed:'Неудачная попытка входа',
+  password_reset_completed:'Пароль восстановлен',
+  password_change_failed:'Неверный текущий пароль при смене',
+  password_changed_all_sessions_revoked:'Пароль изменён, старые сессии завершены',
+  other_sessions_revoked:'Другие сессии завершены',
+  session_idle_expired:'Сессия завершена по неактивности',
+  admin_mfa_success:'Второй фактор администратора подтверждён',
+  admin_mfa_failed:'Ошибка второго фактора администратора'
+};
+function accountSecurityEventMarkup(item) {
+  const label = accountSecurityLabels[item.event_type] || 'Событие безопасности';
+  return `<div class="account-security-event"><span class="account-security-event-dot" aria-hidden="true"></span><div><strong>${esc(label)}</strong><small>${esc(item.created_at || '')}</small></div></div>`;
+}
+async function renderAccountSecurity(target) {
+  const data = await api('/api/account/security');
+  const events = Array.isArray(data.events) ? data.events : [];
+  target.innerHTML = `<div class="account-security-stack">
+    <section class="panel account-security-hero">
+      <span class="section-kicker">БЕЗОПАСНОСТЬ АККАУНТА</span>
+      <h3>Контроль доступа</h3>
+      <p class="muted">Смена пароля завершает все старые сессии. Другие устройства можно отключить отдельно, не выходя из текущего браузера.</p>
+      <div class="account-security-summary">
+        <div><strong>${Number(data.active_sessions || 0)}</strong><span>активных сессий</span></div>
+        <div><strong>${data.email_verified ? '✓' : '!'}</strong><span>${data.email_verified ? 'Email подтверждён' : 'Email не подтверждён'}</span></div>
+        <div><strong>15+</strong><span>минимум символов пароля</span></div>
+      </div>
+      <button type="button" class="btn btn-outline" data-action="revoke-other-sessions">Завершить все другие сессии</button>
+    </section>
+    <section class="panel account-security-password">
+      <span class="section-kicker">ПАРОЛЬ</span>
+      <h3>Сменить пароль</h3>
+      <p class="muted">Нужен текущий пароль. После успешной смены этот браузер получит новую сессию, а остальные устройства потеряют доступ.</p>
+      <form id="security-password-form" class="account-security-form">
+        <div class="field"><label for="security-current-password">Текущий пароль</label><input id="security-current-password" name="current_password" type="password" autocomplete="current-password" maxlength="128" required></div>
+        <div class="field"><label for="security-new-password">Новый пароль</label><input id="security-new-password" name="new_password" type="password" autocomplete="new-password" minlength="15" maxlength="128" required><small class="field-help">Не менее 15 символов. Лучше использовать длинную уникальную фразу.</small></div>
+        <div class="field"><label for="security-new-password-confirm">Повторите новый пароль</label><input id="security-new-password-confirm" name="new_password_confirm" type="password" autocomplete="new-password" minlength="15" maxlength="128" required></div>
+        <p class="auth-message" id="security-password-message" role="alert" aria-live="polite"></p>
+        <button type="submit" class="btn btn-primary">Сменить пароль и завершить старые сессии →</button>
+      </form>
+    </section>
+    <section class="panel account-security-events">
+      <span class="section-kicker">ЖУРНАЛ</span>
+      <h3>Последние события безопасности</h3>
+      <div class="account-security-event-list">${events.length ? events.map(accountSecurityEventMarkup).join('') : '<div class="empty-state">Событий безопасности пока нет.</div>'}</div>
+    </section>
+  </div>`;
+}
 function profileMarkup(profile = {}, user = {}) {
   const health = candidateProfileHealth(profile);
   // Additional details stay optional; open them explicitly when the candidate is ready.
