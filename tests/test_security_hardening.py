@@ -813,7 +813,7 @@ def test_admin_can_send_smtp_test_email_to_own_address(tmp_path, monkeypatch):
             event = db.execute(
                 """SELECT detail FROM security_events
                    WHERE event_type='admin_smtp_test_email'
-                   ORDER BY id DESC LIMIT 1"""
+                   ORDER BY created_at DESC LIMIT 1"""
             ).fetchone()
             assert event is not None
             assert event["detail"] == "sent=1"
