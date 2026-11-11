@@ -180,3 +180,45 @@ def test_hybrid_passkey_login_can_fall_back_to_totp(tmp_path: Path, monkeypatch)
             )
             assert verified.status_code == 200, verified.text
             assert second.get("/api/me").status_code == 200
+
+
+
+def test_passkey_add_and_delete_create_security_notices(tmp_path: Path, monkeypatch):
+    monkeypatch.setenv("OPYT50_ENV", "development")
+    monkeypatch.setenv("OPYT50_ADMIN_MFA_MODE", "off")
+    monkeypatch.delenv("OPYT50_PUBLIC_URL", raising=False)
+    app = create_app(str(tmp_path / "admin-passkey-notices.db"))
+
+    with TestClient(app) as client:
+        create_admin(app)
+        assert login(client).status_code == 200
+        register_fake_passkey(client, monkeypatch)
+
+        with database(app.state.db_path) as db:
+            added = db.execute(
+                """SELECT subject,body FROM email_outbox
+                   WHERE event='security_admin_passkey_registered'
+                   ORDER BY id DESC LIMIT 1"""
+            ).fetchone()
+            assert added is not None
+            assert added["subject"] == "СТАЖНО — добавлен новый passkey"
+            assert "Windows Hello" in added["body"]
+
+        security = client.get("/api/account/security")
+        assert security.status_code == 200, security.text
+        passkey_id = security.json()["passkeys"][0]["id"]
+        deleted = client.delete(
+            f"/api/admin/passkeys/{passkey_id}",
+            headers=XHR,
+        )
+        assert deleted.status_code == 200, deleted.text
+
+        with database(app.state.db_path) as db:
+            removed = db.execute(
+                """SELECT subject,body FROM email_outbox
+                   WHERE event='security_admin_passkey_deleted'
+                   ORDER BY id DESC LIMIT 1"""
+            ).fetchone()
+            assert removed is not None
+            assert removed["subject"] == "СТАЖНО — passkey удалён"
+            assert "Windows Hello" in removed["body"]
