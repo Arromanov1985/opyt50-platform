@@ -31,6 +31,9 @@ class FakeSMTP:
     def send_message(self, message: EmailMessage):
         self.message = message
 
+    def noop(self):
+        return (250, b"OK")
+
 
 def configure(monkeypatch):
     monkeypatch.setenv("OPYT50_SMTP_HOST", "smtp.example.invalid")
@@ -88,3 +91,37 @@ def test_non_ascii_smtp_password_fails_closed(monkeypatch):
 
     monkeypatch.setattr(email_delivery.smtplib, "SMTP", EncodingSMTP)
     assert email_delivery.send_email("user@example.invalid", "Subject", "Body") is False
+
+
+def test_smtp_healthcheck_succeeds_without_sending_mail(monkeypatch):
+    FakeSMTP.instances.clear()
+    configure(monkeypatch)
+    monkeypatch.setattr(email_delivery.smtplib, "SMTP", FakeSMTP)
+
+    result = email_delivery.smtp_healthcheck()
+    assert result["ok"] is True
+    assert result["status"] == "ok"
+    assert result["tls_mode"] == "starttls"
+    smtp = FakeSMTP.instances[-1]
+    assert smtp.login_args == ("mailer", "secret")
+    assert smtp.message is None
+
+
+def test_smtp_healthcheck_reports_authentication_failure(monkeypatch):
+    configure(monkeypatch)
+
+    class AuthFailSMTP(FakeSMTP):
+        def login(self, username, password):
+            raise email_delivery.smtplib.SMTPAuthenticationError(
+                535,
+                b"Incorrect authentication data",
+            )
+
+    monkeypatch.setattr(email_delivery.smtplib, "SMTP", AuthFailSMTP)
+    result = email_delivery.smtp_healthcheck()
+    assert result == {
+        "ok": False,
+        "configured": True,
+        "status": "authentication_failed",
+        "tls_mode": "starttls",
+    }
