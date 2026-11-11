@@ -92,6 +92,16 @@ def test_password_change_rotates_current_session_and_revokes_all_others(app):
         event_types = [item["event_type"] for item in security.json()["events"]]
         assert "password_changed_all_sessions_revoked" in event_types
 
+        with database(app.state.db_path) as db:
+            notice = db.execute(
+                """SELECT subject,body FROM email_outbox
+                   WHERE event='security_password_changed'
+                   ORDER BY id DESC LIMIT 1"""
+            ).fetchone()
+            assert notice is not None
+            assert notice["subject"] == "СТАЖНО — пароль изменён"
+            assert "Все ранее активные сессии были завершены" in notice["body"]
+
 
 def test_password_change_requires_current_password_and_rate_limits_failures(app):
     with TestClient(app) as client:
