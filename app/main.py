@@ -1236,7 +1236,7 @@ def create_app(db_path: str | None = None) -> FastAPI:
         if not re.fullmatch(r"[0-9a-f]{24}", passkey_id):
             raise HTTPException(404, "Passkey не найден")
         rows = db.execute(
-            "SELECT credential_id FROM admin_webauthn_credentials WHERE user_id=?",
+            "SELECT credential_id,label FROM admin_webauthn_credentials WHERE user_id=?",
             (user["id"],),
         ).fetchall()
         target = None
