@@ -556,8 +556,10 @@ def test_account_email_links_use_public_origin(app, monkeypatch):
         response = post(c, "/api/account/email/request")
         assert response.status_code == 200
         assert "token" not in response.text.lower()
-        assert delivered[-1].startswith(
-            "Ссылка для подтверждения email: https://example.invalid/?account_action=verify&token="
+        assert "Подтвердите ваш email для работы в СТАЖНО." in delivered[-1]
+        assert (
+            "https://example.invalid/?account_action=verify&token="
+            in delivered[-1]
         )
         with database(app.state.db_path) as db:
             body = db.execute(
