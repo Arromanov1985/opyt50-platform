@@ -1990,6 +1990,12 @@ def create_app(db_path: str | None = None) -> FastAPI:
             "demo_turnover_rub": count("SELECT COALESCE(SUM(amount_rub),0) FROM demo_transactions"),
         }
 
+    @app.post("/api/admin/smtp/check")
+    def admin_smtp_check(user: dict = Depends(active_user)):
+        allowed(user, "admin")
+        from .email_delivery import smtp_healthcheck
+        return smtp_healthcheck()
+
     from .release02 import install_routes
     install_routes(app)
     return app
