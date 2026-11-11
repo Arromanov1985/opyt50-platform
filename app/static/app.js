@@ -474,6 +474,7 @@ const accountSecurityLabels = {
   password_change_failed:'Неверный текущий пароль при смене',
   password_changed_all_sessions_revoked:'Пароль изменён, старые сессии завершены',
   other_sessions_revoked:'Другие сессии завершены',
+  pending_auth_challenges_revoked:'Незавершённые проверки входа аннулированы',
   session_idle_expired:'Сессия завершена по неактивности',
   admin_mfa_success:'Второй фактор администратора подтверждён',
   admin_mfa_failed:'Ошибка второго фактора администратора',

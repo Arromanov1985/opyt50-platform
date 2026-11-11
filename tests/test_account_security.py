@@ -69,6 +69,34 @@ def test_password_change_rotates_current_session_and_revokes_all_others(app):
         register(first)
         assert login(second).status_code == 200
 
+        with database(app.state.db_path) as db:
+            user_id = db.execute(
+                "SELECT id FROM users WHERE email=?",
+                ("security-user@example.test",),
+            ).fetchone()["id"]
+            db.execute(
+                """INSERT INTO admin_mfa_challenges(
+                       challenge_key,user_id,code_hash,expires_at,attempts,created_at
+                   ) VALUES(?,?,?,?,0,?)""",
+                ("pending-mfa-password-change", user_id, "totp-v1", "2099-01-01T00:00:00+00:00", "2026-01-01 00:00:00"),
+            )
+            db.execute(
+                """INSERT INTO admin_webauthn_challenges(
+                       challenge_key,user_id,kind,challenge_b64,rp_id,origin,
+                       expires_at,attempts,created_at
+                   ) VALUES(?,?,?,?,?,?,?,0,?)""",
+                (
+                    "pending-webauthn-password-change",
+                    user_id,
+                    "authentication",
+                    "AA",
+                    "testserver",
+                    "https://testserver",
+                    "2099-01-01T00:00:00+00:00",
+                    "2026-01-01 00:00:00",
+                ),
+            )
+
         changed = first.post(
             "/api/account/password/change",
             headers=XHR,
@@ -91,8 +119,17 @@ def test_password_change_rotates_current_session_and_revokes_all_others(app):
         assert security.status_code == 200
         event_types = [item["event_type"] for item in security.json()["events"]]
         assert "password_changed_all_sessions_revoked" in event_types
+        assert "pending_auth_challenges_revoked" in event_types
 
         with database(app.state.db_path) as db:
+            assert db.execute(
+                "SELECT COUNT(*) FROM admin_mfa_challenges WHERE user_id=?",
+                (user_id,),
+            ).fetchone()[0] == 0
+            assert db.execute(
+                "SELECT COUNT(*) FROM admin_webauthn_challenges WHERE user_id=?",
+                (user_id,),
+            ).fetchone()[0] == 0
             notice = db.execute(
                 """SELECT subject,body FROM email_outbox
                    WHERE event='security_password_changed'

@@ -452,6 +452,27 @@ def record_security_event(
     )
 
 
+def revoke_pending_auth_challenges(db: sqlite3.Connection, user_id: int) -> int:
+    """Invalidate unfinished administrator second-factor/WebAuthn challenges."""
+    mfa = db.execute(
+        "DELETE FROM admin_mfa_challenges WHERE user_id=?",
+        (user_id,),
+    )
+    webauthn = db.execute(
+        "DELETE FROM admin_webauthn_challenges WHERE user_id=?",
+        (user_id,),
+    )
+    revoked = max(int(mfa.rowcount or 0), 0) + max(int(webauthn.rowcount or 0), 0)
+    if revoked:
+        record_security_event(
+            db,
+            user_id,
+            "pending_auth_challenges_revoked",
+            f"count={revoked}",
+        )
+    return revoked
+
+
 def issue_admin_mfa_challenge(
     db: sqlite3.Connection,
     user_id: int,
@@ -1350,6 +1371,7 @@ def install_routes(app) -> None:
             (make_password_hash(data.new_password), user["id"]),
         )
         db.execute("DELETE FROM sessions WHERE user_id=?", (user["id"],))
+        revoke_pending_auth_challenges(db, user["id"])
         clear_security_rate_limit(db, "password_change", subject, 900)
         record_security_event(db, user["id"], "password_changed_all_sessions_revoked")
         enqueue_notice(
@@ -1412,6 +1434,7 @@ def install_routes(app) -> None:
             (row["user_id"],),
         )
         db.execute("DELETE FROM sessions WHERE user_id=?", (row["user_id"],))
+        revoke_pending_auth_challenges(db, row["user_id"])
         record_security_event(db, row["user_id"], "password_reset_completed")
         record_security_event(db, row["user_id"], "email_verified_via_password_reset")
         enqueue_notice(

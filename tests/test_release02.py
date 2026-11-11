@@ -128,6 +128,28 @@ def test_demo_mail_verification_reset_and_one_time_tokens(app, monkeypatch):
             assert row["subject"]=="СТАЖНО — восстановление пароля"
             assert "token=" not in stored
             assert db.execute("SELECT COUNT(*) FROM email_outbox WHERE event='welcome'").fetchone()[0]==1
+            db.execute(
+                """INSERT INTO admin_mfa_challenges(
+                       challenge_key,user_id,code_hash,expires_at,attempts,created_at
+                   ) VALUES(?,?,?,?,0,?)""",
+                ("pending-mfa-reset", uid, "totp-v1", "2099-01-01T00:00:00+00:00", "2026-01-01 00:00:00"),
+            )
+            db.execute(
+                """INSERT INTO admin_webauthn_challenges(
+                       challenge_key,user_id,kind,challenge_b64,rp_id,origin,
+                       expires_at,attempts,created_at
+                   ) VALUES(?,?,?,?,?,?,?,0,?)""",
+                (
+                    "pending-webauthn-reset",
+                    uid,
+                    "authentication",
+                    "AA",
+                    "testserver",
+                    "https://testserver",
+                    "2099-01-01T00:00:00+00:00",
+                    "2026-01-01 00:00:00",
+                ),
+            )
         assert post(c,"/api/account/password/reset",{"token":reset,"password":"DifferentPass2026!"}).status_code==200
         with database(app.state.db_path) as db:
             assert db.execute(
@@ -137,6 +159,19 @@ def test_demo_mail_verification_reset_and_one_time_tokens(app, monkeypatch):
             assert db.execute(
                 """SELECT COUNT(*) FROM security_events
                    WHERE user_id=? AND event_type='email_verified_via_password_reset'""",
+                (uid,),
+            ).fetchone()[0] == 1
+            assert db.execute(
+                "SELECT COUNT(*) FROM admin_mfa_challenges WHERE user_id=?",
+                (uid,),
+            ).fetchone()[0] == 0
+            assert db.execute(
+                "SELECT COUNT(*) FROM admin_webauthn_challenges WHERE user_id=?",
+                (uid,),
+            ).fetchone()[0] == 0
+            assert db.execute(
+                """SELECT COUNT(*) FROM security_events
+                   WHERE user_id=? AND event_type='pending_auth_challenges_revoked'""",
                 (uid,),
             ).fetchone()[0] == 1
             notice=db.execute(
