@@ -852,14 +852,6 @@ def test_admin_security_overview_is_safe_and_operational(tmp_path, monkeypatch):
     password = "Administrator secure password 2026"
 
     with TestClient(app, base_url="https://testserver") as client:
-        monkeypatch.setenv(
-            "OPYT50_PUBLIC_URL",
-            "https://arromanov1985-opyt50-platform-fdd8.twc1.net",
-        )
-        monkeypatch.setenv("OPYT50_ADMIN_MFA_MODE", "email")
-        monkeypatch.setenv("OPYT50_DB_SSLMODE", "require")
-        monkeypatch.setenv("OPYT50_SMTP_HOST", "smtp.example.test")
-        monkeypatch.setenv("OPYT50_MAIL_FROM", "noreply@example.test")
         with database(app.state.db_path) as db:
             cursor = db.execute(
                 "INSERT INTO users(role,email,name,password_hash) VALUES(?,?,?,?)",
@@ -889,6 +881,18 @@ def test_admin_security_overview_is_safe_and_operational(tmp_path, monkeypatch):
             json={"email": "overview-admin@example.test", "password": password},
         )
         assert login.status_code == 200, login.text
+
+        # Flip the runtime indicators only after the authenticated session exists:
+        # the overview must report them without forcing this regression test through
+        # a second-factor or a real SMTP connection.
+        monkeypatch.setenv(
+            "OPYT50_PUBLIC_URL",
+            "https://arromanov1985-opyt50-platform-fdd8.twc1.net",
+        )
+        monkeypatch.setenv("OPYT50_ADMIN_MFA_MODE", "email")
+        monkeypatch.setenv("OPYT50_DB_SSLMODE", "require")
+        monkeypatch.setenv("OPYT50_SMTP_HOST", "smtp.example.test")
+        monkeypatch.setenv("OPYT50_MAIL_FROM", "noreply@example.test")
 
         response = client.get("/api/admin/security-overview")
         assert response.status_code == 200, response.text
