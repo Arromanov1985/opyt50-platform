@@ -129,6 +129,13 @@ def test_demo_mail_verification_reset_and_one_time_tokens(app, monkeypatch):
             assert "token=" not in stored
             assert db.execute("SELECT COUNT(*) FROM email_outbox WHERE event='welcome'").fetchone()[0]==1
         assert post(c,"/api/account/password/reset",{"token":reset,"password":"DifferentPass2026!"}).status_code==200
+        with database(app.state.db_path) as db:
+            notice=db.execute(
+                "SELECT subject,body FROM email_outbox WHERE event='security_password_reset' ORDER BY id DESC LIMIT 1"
+            ).fetchone()
+            assert notice is not None
+            assert notice["subject"]=="СТАЖНО — пароль восстановлен"
+            assert "Все ранее активные сессии завершены" in notice["body"]
         assert post(c,"/api/account/password/reset",{"token":reset,"password":"DifferentPass2026!"}).status_code==400
         assert c.get("/api/me").status_code==401
         assert post(c,"/api/login",{"email":"user@demo.example","password":"StrongPass2026!"}).status_code==401
