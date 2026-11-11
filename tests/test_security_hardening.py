@@ -846,18 +846,20 @@ def test_smtp_test_email_reports_delivery_failure_without_leaking_secret(tmp_pat
 
 def test_admin_security_overview_is_safe_and_operational(tmp_path, monkeypatch):
     monkeypatch.setenv("OPYT50_ENV", "development")
-    monkeypatch.setenv(
-        "OPYT50_PUBLIC_URL",
-        "https://arromanov1985-opyt50-platform-fdd8.twc1.net",
-    )
-    monkeypatch.setenv("OPYT50_ADMIN_MFA_MODE", "email")
-    monkeypatch.setenv("OPYT50_DB_SSLMODE", "require")
-    monkeypatch.setenv("OPYT50_SMTP_HOST", "smtp.example.test")
-    monkeypatch.setenv("OPYT50_MAIL_FROM", "noreply@example.test")
+    monkeypatch.delenv("OPYT50_PUBLIC_URL", raising=False)
+    monkeypatch.setenv("OPYT50_ADMIN_MFA_MODE", "off")
     app = create_app(str(tmp_path / "security-overview.db"))
     password = "Administrator secure password 2026"
 
-    with TestClient(app) as client:
+    with TestClient(app, base_url="https://testserver") as client:
+        monkeypatch.setenv(
+            "OPYT50_PUBLIC_URL",
+            "https://arromanov1985-opyt50-platform-fdd8.twc1.net",
+        )
+        monkeypatch.setenv("OPYT50_ADMIN_MFA_MODE", "email")
+        monkeypatch.setenv("OPYT50_DB_SSLMODE", "require")
+        monkeypatch.setenv("OPYT50_SMTP_HOST", "smtp.example.test")
+        monkeypatch.setenv("OPYT50_MAIL_FROM", "noreply@example.test")
         with database(app.state.db_path) as db:
             cursor = db.execute(
                 "INSERT INTO users(role,email,name,password_hash) VALUES(?,?,?,?)",
