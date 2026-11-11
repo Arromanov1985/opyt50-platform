@@ -470,6 +470,7 @@ const accountSecurityLabels = {
   login_success:'Вход в аккаунт',
   login_failed:'Неудачная попытка входа',
   password_reset_completed:'Пароль восстановлен',
+  email_verified_via_password_reset:'Email подтверждён через восстановление пароля',
   password_change_failed:'Неверный текущий пароль при смене',
   password_changed_all_sessions_revoked:'Пароль изменён, старые сессии завершены',
   other_sessions_revoked:'Другие сессии завершены',

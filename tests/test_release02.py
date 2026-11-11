@@ -130,6 +130,15 @@ def test_demo_mail_verification_reset_and_one_time_tokens(app, monkeypatch):
             assert db.execute("SELECT COUNT(*) FROM email_outbox WHERE event='welcome'").fetchone()[0]==1
         assert post(c,"/api/account/password/reset",{"token":reset,"password":"DifferentPass2026!"}).status_code==200
         with database(app.state.db_path) as db:
+            assert db.execute(
+                "SELECT email_verified FROM account_controls WHERE user_id=?",
+                (uid,),
+            ).fetchone()["email_verified"] == 1
+            assert db.execute(
+                """SELECT COUNT(*) FROM security_events
+                   WHERE user_id=? AND event_type='email_verified_via_password_reset'""",
+                (uid,),
+            ).fetchone()[0] == 1
             notice=db.execute(
                 "SELECT subject,body FROM email_outbox WHERE event='security_password_reset' ORDER BY id DESC LIMIT 1"
             ).fetchone()
