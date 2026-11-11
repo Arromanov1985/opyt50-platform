@@ -111,7 +111,9 @@ def test_demo_mail_verification_reset_and_one_time_tokens(app, monkeypatch):
         sent=delivered[-1]
         token=re.search(r"token=([A-Za-z0-9_-]+)",sent).group(1)
         with database(app.state.db_path) as db:
-            stored=db.execute("SELECT body FROM email_outbox WHERE event='account_verify' ORDER BY id DESC").fetchone()["body"]
+            row=db.execute("SELECT subject,body FROM email_outbox WHERE event='account_verify' ORDER BY id DESC").fetchone()
+            stored=row["body"]
+            assert row["subject"]=="СТАЖНО — подтверждение email"
             assert "token=" not in stored
         assert post(c,"/api/account/email/confirm",{"token":token}).status_code==200
         assert post(c,"/api/account/email/confirm",{"token":token}).status_code==400
@@ -121,7 +123,9 @@ def test_demo_mail_verification_reset_and_one_time_tokens(app, monkeypatch):
         sent=delivered[-1]
         reset=re.search(r"token=([A-Za-z0-9_-]+)",sent).group(1)
         with database(app.state.db_path) as db:
-            stored=db.execute("SELECT body FROM email_outbox WHERE event='account_reset' ORDER BY id DESC").fetchone()["body"]
+            row=db.execute("SELECT subject,body FROM email_outbox WHERE event='account_reset' ORDER BY id DESC").fetchone()
+            stored=row["body"]
+            assert row["subject"]=="СТАЖНО — восстановление пароля"
             assert "token=" not in stored
             assert db.execute("SELECT COUNT(*) FROM email_outbox WHERE event='welcome'").fetchone()[0]==1
         assert post(c,"/api/account/password/reset",{"token":reset,"password":"DifferentPass2026!"}).status_code==200
