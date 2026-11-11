@@ -1105,6 +1105,13 @@ async function renderAdmin() {
       <div id="admin-passkeys"><div class="loading">Загрузка...</div></div>
       <div class="admin-passkey-actions"><button type="button" class="btn btn-primary" data-action="register-admin-passkey">Добавить passkey →</button></div>
     </section>
+    <section class="panel admin-security-panel">
+      <span class="section-kicker">ПОЧТА И ВОССТАНОВЛЕНИЕ</span>
+      <h3>SMTP</h3>
+      <p class="muted">Проверка соединения, TLS и авторизации без отправки письма и без раскрытия пароля.</p>
+      <div id="admin-smtp-status" class="empty-state">SMTP ещё не проверялся.</div>
+      <div class="admin-passkey-actions"><button type="button" class="btn btn-outline" data-action="check-smtp">Проверить SMTP →</button></div>
+    </section>
   </div>`;
   try {
     const [stats, security] = await Promise.all([api('/api/admin/stats'), api('/api/account/security')]);
@@ -1210,6 +1217,25 @@ async function handleDashboardClick(event) {
   if (btn.disabled) return;
   btn.disabled = true;
   try {
+    if (action === 'check-smtp') {
+      const target = $('#admin-smtp-status');
+      if (target) target.innerHTML = '<div class="loading">Проверяем SMTP...</div>';
+      const result = await api('/api/admin/smtp/check',{method:'POST'});
+      const messages = {
+        ok:'SMTP работает: TLS и авторизация успешны.',
+        not_configured:'SMTP не настроен в переменных окружения.',
+        invalid_port:'В SMTP-порту указано некорректное значение.',
+        authentication_failed:'SMTP-сервер доступен, но логин или пароль отклонён.',
+        tls_or_connect_failed:'Не удалось установить защищённое соединение с SMTP.',
+        connection_failed:'SMTP недоступен или соединение завершилось ошибкой.'
+      };
+      if (target) {
+        const text = messages[result.status] || 'Неизвестный результат SMTP-проверки.';
+        target.innerHTML = `<strong>${result.ok ? '✓ SMTP готов' : 'SMTP требует внимания'}</strong><p>${esc(text)}</p>`;
+      }
+      toast(result.ok ? 'SMTP-проверка успешно пройдена.' : (messages[result.status] || 'SMTP-проверка не пройдена.'), !result.ok);
+      return;
+    }
     if (action === 'register-admin-passkey') {
       await registerAdminPasskey();
       await renderAdmin();
