@@ -89,3 +89,15 @@ user data.
 
 Passing automated checks is not a certification and does not replace an
 independent penetration test.
+
+
+## Public origin during domain cutover
+
+Until the custom domain is attached to the same production deployment, keep:
+
+`OPYT50_PUBLIC_URL=https://arromanov1985-opyt50-platform-fdd8.twc1.net`
+
+Do not switch `OPYT50_PUBLIC_URL` to `https://stazhno.ru` early. This value is used in
+password-reset/verification links and as the WebAuthn RP/origin binding. Register new
+administrator passkeys only after the final custom domain is live, otherwise those
+credentials will be tied to the temporary Timeweb hostname.
