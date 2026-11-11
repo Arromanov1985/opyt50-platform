@@ -993,7 +993,7 @@ def create_app(db_path: str | None = None) -> FastAPI:
         response: Response,
         db: sqlite3.Connection = Depends(get_connection),
     ):
-        from .release02 import record_security_event
+        from .release02 import enqueue_notice, record_security_event
 
         challenge = db.execute(
             """SELECT c.challenge_key,c.user_id,c.code_hash,c.expires_at,c.attempts,c.used_at,
@@ -1085,7 +1085,7 @@ def create_app(db_path: str | None = None) -> FastAPI:
         allowed(user, "admin")
         origin, rp_id = _webauthn_context(request)
         existing = db.execute(
-            "SELECT credential_id FROM admin_webauthn_credentials WHERE user_id=?",
+            "SELECT credential_id,label FROM admin_webauthn_credentials WHERE user_id=?",
             (user["id"],),
         ).fetchall()
         user_handle = hashlib.sha256(
@@ -1210,6 +1210,17 @@ def create_app(db_path: str | None = None) -> FastAPI:
             db, user["id"], "admin_passkey_registered",
             "credential=" + hashlib.sha256(credential_id.encode("utf-8")).hexdigest()[:16],
         )
+        enqueue_notice(
+            db,
+            user["id"],
+            "security_admin_passkey_registered",
+            "СТАЖНО — добавлен новый passkey",
+            (
+                f"Для администратора СТАЖНО зарегистрирован новый passkey: {data.label.strip()}.\n\n"
+                "Если это были не вы, немедленно войдите в админ-панель, удалите неизвестный "
+                "passkey, смените пароль и завершите другие активные сессии."
+            ),
+        )
         db.commit()
         return {"ok": True}
 
@@ -1220,7 +1231,7 @@ def create_app(db_path: str | None = None) -> FastAPI:
         db: sqlite3.Connection = Depends(get_connection),
     ):
         allowed(user, "admin")
-        from .release02 import record_security_event
+        from .release02 import enqueue_notice, record_security_event
 
         if not re.fullmatch(r"[0-9a-f]{24}", passkey_id):
             raise HTTPException(404, "Passkey не найден")
@@ -1229,6 +1240,7 @@ def create_app(db_path: str | None = None) -> FastAPI:
             (user["id"],),
         ).fetchall()
         target = None
+        target_label = "Passkey администратора"
         for row in rows:
             credential_id = str(row["credential_id"])
             public_id = hashlib.sha256(
@@ -1236,6 +1248,7 @@ def create_app(db_path: str | None = None) -> FastAPI:
             ).hexdigest()[:24]
             if secrets.compare_digest(public_id, passkey_id):
                 target = credential_id
+                target_label = str(row["label"] or target_label)
                 break
         if target is None:
             raise HTTPException(404, "Passkey не найден")
@@ -1244,6 +1257,17 @@ def create_app(db_path: str | None = None) -> FastAPI:
             (user["id"], target),
         )
         record_security_event(db, user["id"], "admin_passkey_deleted")
+        enqueue_notice(
+            db,
+            user["id"],
+            "security_admin_passkey_deleted",
+            "СТАЖНО — passkey удалён",
+            (
+                f"Из учётной записи администратора СТАЖНО удалён passkey: {target_label}.\n\n"
+                "Если это были не вы, немедленно смените пароль, проверьте оставшиеся passkeys "
+                "и завершите другие активные сессии."
+            ),
+        )
         db.commit()
         return {"ok": True}
 
