@@ -865,7 +865,6 @@ def test_admin_security_overview_is_safe_and_operational(tmp_path, monkeypatch):
             now = datetime.now(timezone.utc).replace(tzinfo=None).isoformat(sep=" ", timespec="seconds")
             for event_type in (
                 "login_password_failed",
-                "new_device_login",
                 "password_reset_completed",
                 "admin_passkey_registered",
             ):
