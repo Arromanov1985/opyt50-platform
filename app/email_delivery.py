@@ -65,3 +65,73 @@ def send_email(to_email: str, subject: str, body: str) -> bool:
         # recipient addresses or other operational details in exceptions.
         logger.error("Email delivery failed (%s)", type(exc).__name__)
         return False
+
+
+def smtp_healthcheck() -> dict[str, object]:
+    """Validate SMTP transport and credentials without sending a message.
+
+    The result is intentionally coarse and never includes credentials, provider
+    response text, recipient addresses, or server exception details.
+    """
+    host = os.getenv("OPYT50_SMTP_HOST", "").strip()
+    sender = os.getenv("OPYT50_MAIL_FROM", "").strip()
+    username = os.getenv("OPYT50_SMTP_USER", "").strip()
+    password = os.getenv("OPYT50_SMTP_PASSWORD", "")
+    if not host or not sender:
+        return {"ok": False, "configured": False, "status": "not_configured"}
+
+    try:
+        port = int(os.getenv("OPYT50_SMTP_PORT", "587"))
+    except ValueError:
+        return {"ok": False, "configured": True, "status": "invalid_port"}
+
+    use_ssl = os.getenv("OPYT50_SMTP_SSL", "0") == "1"
+    use_starttls = os.getenv("OPYT50_SMTP_STARTTLS", "1") == "1"
+    tls_mode = "ssl" if use_ssl else ("starttls" if use_starttls else "none")
+
+    try:
+        if use_ssl:
+            with smtplib.SMTP_SSL(
+                host,
+                port,
+                timeout=10,
+                context=ssl.create_default_context(),
+            ) as smtp:
+                if username:
+                    smtp.login(username, password)
+                smtp.noop()
+        else:
+            with smtplib.SMTP(host, port, timeout=10) as smtp:
+                if use_starttls:
+                    smtp.starttls(context=ssl.create_default_context())
+                if username:
+                    smtp.login(username, password)
+                smtp.noop()
+        return {
+            "ok": True,
+            "configured": True,
+            "status": "ok",
+            "tls_mode": tls_mode,
+            "authenticated": bool(username),
+        }
+    except smtplib.SMTPAuthenticationError:
+        return {
+            "ok": False,
+            "configured": True,
+            "status": "authentication_failed",
+            "tls_mode": tls_mode,
+        }
+    except (ssl.SSLError, smtplib.SMTPConnectError):
+        return {
+            "ok": False,
+            "configured": True,
+            "status": "tls_or_connect_failed",
+            "tls_mode": tls_mode,
+        }
+    except (OSError, UnicodeError, smtplib.SMTPException):
+        return {
+            "ok": False,
+            "configured": True,
+            "status": "connection_failed",
+            "tls_mode": tls_mode,
+        }
