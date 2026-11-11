@@ -389,15 +389,32 @@ def issue_email_token(db: sqlite3.Connection, user_id: int, purpose: str) -> Non
     link = public_url + path if public_url else path
     ttl = "30 минут" if purpose == "reset" else "24 часа"
     action = "восстановления пароля" if purpose == "reset" else "подтверждения email"
+    subject = (
+        "СТАЖНО — восстановление пароля"
+        if purpose == "reset"
+        else "СТАЖНО — подтверждение email"
+    )
+    intro = (
+        "Вы запросили восстановление пароля в СТАЖНО."
+        if purpose == "reset"
+        else "Подтвердите ваш email для работы в СТАЖНО."
+    )
+    button_hint = (
+        "Откройте ссылку ниже и задайте новый пароль:"
+        if purpose == "reset"
+        else "Откройте ссылку ниже, чтобы подтвердить email:"
+    )
     message = (
-        f"Ссылка для {action}: {link}\n\nСрок действия ссылки: {ttl}. "
+        f"{intro}\n\n"
+        f"{button_hint}\n{link}\n\n"
+        f"Ссылка действует {ttl}.\n"
         "Если вы не запрашивали это действие, просто проигнорируйте письмо."
     )
     enqueue_notice(
         db,
         user_id,
         f"account_{purpose}",
-        "СТАЖНО — подтверждение",
+        subject,
         message,
         stored_body=(
             f"Ссылка для {action} отправлена пользователю. "
