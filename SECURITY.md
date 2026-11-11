@@ -35,11 +35,11 @@ When the project moves to stazhno.ru, change the environment value; do not hard-
 Required values:
 
 - OPYT50_ENV=production
-- OPYT50_PUBLIC_URL=https://stazhno.ru
+- OPYT50_PUBLIC_URL=https://arromanov1985-opyt50-platform-fdd8.twc1.net
 - OPYT50_COOKIE_SECURE=1
 - OPYT50_ENABLE_DOCS=0
 - OPYT50_DB_SSLMODE=verify-full when the provider CA/hostname configuration supports it; otherwise require is the temporary minimum
-- OPYT50_ALLOWED_HOSTS=stazhno.ru,www.stazhno.ru plus only legitimate Timeweb health/platform hostnames that actually reach the app
+- OPYT50_ALLOWED_HOSTS=arromanov1985-opyt50-platform-fdd8.twc1.net plus only legitimate Timeweb health/platform hostnames that actually reach the app
 - OPYT50_PREVIEW_SEED_DEMO=0
 - OPYT50_ADMIN_MFA_MODE=hybrid after at least one administrator passkey is enrolled; keep `totp` during initial enrollment
 - OPYT50_ADMIN_TOTP_SECRET=<random Base32 secret stored only in Timeweb secret/environment UI; retained as hybrid fallback>

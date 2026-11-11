@@ -841,3 +841,75 @@ def test_smtp_test_email_reports_delivery_failure_without_leaking_secret(tmp_pat
         response = client.post("/api/admin/smtp/test-email", headers=XHR)
         assert response.status_code == 503
         assert "парол" not in response.text.casefold()
+
+
+
+def test_admin_security_overview_is_safe_and_operational(tmp_path, monkeypatch):
+    monkeypatch.setenv("OPYT50_ENV", "development")
+    monkeypatch.delenv("OPYT50_PUBLIC_URL", raising=False)
+    monkeypatch.setenv("OPYT50_ADMIN_MFA_MODE", "off")
+    app = create_app(str(tmp_path / "security-overview.db"))
+    password = "Administrator secure password 2026"
+
+    with TestClient(app, base_url="https://testserver") as client:
+        with database(app.state.db_path) as db:
+            cursor = db.execute(
+                "INSERT INTO users(role,email,name,password_hash) VALUES(?,?,?,?)",
+                ("admin", "overview-admin@example.test", "Администратор", make_password_hash(password)),
+            )
+            admin_id = cursor.lastrowid
+            db.execute(
+                "INSERT INTO account_controls(user_id,email_verified) VALUES(?,1)",
+                (admin_id,),
+            )
+            now = datetime.now(timezone.utc).replace(tzinfo=None).isoformat(sep=" ", timespec="seconds")
+            for event_type in (
+                "login_password_failed",
+                "password_reset_completed",
+                "admin_passkey_registered",
+            ):
+                db.execute(
+                    """INSERT INTO security_events(event_key,user_id,event_type,detail,created_at)
+                       VALUES(?,?,?,?,?)""",
+                    (f"overview-{event_type}", admin_id, event_type, "", now),
+                )
+
+        login = client.post(
+            "/api/login",
+            headers=XHR,
+            json={"email": "overview-admin@example.test", "password": password},
+        )
+        assert login.status_code == 200, login.text
+
+        # Flip the runtime indicators only after the authenticated session exists:
+        # the overview must report them without forcing this regression test through
+        # a second-factor or a real SMTP connection.
+        monkeypatch.setenv(
+            "OPYT50_PUBLIC_URL",
+            "https://arromanov1985-opyt50-platform-fdd8.twc1.net",
+        )
+        monkeypatch.setenv("OPYT50_ADMIN_MFA_MODE", "email")
+        monkeypatch.setenv("OPYT50_DB_SSLMODE", "require")
+        monkeypatch.setenv("OPYT50_SMTP_HOST", "smtp.example.test")
+        monkeypatch.setenv("OPYT50_MAIL_FROM", "noreply@example.test")
+
+        response = client.get("/api/admin/security-overview")
+        assert response.status_code == 200, response.text
+        data = response.json()
+        assert data["temporary_origin"] is True
+        assert data["active_sessions"] == 1
+        assert data["events_24h"] == {
+            "failed_auth": 1,
+            "new_devices": 1,
+            "password_changes": 1,
+            "passkey_changes": 1,
+        }
+        checks = {item["key"]: item for item in data["checks"]}
+        assert checks["email"]["status"] == "ok"
+        assert checks["mfa"]["status"] == "warning"
+        assert checks["passkey"]["status"] == "info"
+        assert checks["database_tls"]["status"] == "warning"
+        assert checks["cookie"]["status"] == "ok"
+        serialized = str(data).casefold()
+        for forbidden in ("smtp_password", "totp_secret", "token_hash", "credential_id"):
+            assert forbidden not in serialized

@@ -1469,6 +1469,135 @@ def create_app(db_path: str | None = None) -> FastAPI:
             "api_docs_enabled": docs_enabled,
         }
 
+    @app.get("/api/admin/security-overview")
+    def admin_security_overview(
+        user: dict = Depends(active_user),
+        db: sqlite3.Connection = Depends(get_connection),
+    ):
+        allowed(user, "admin")
+        from .email_delivery import delivery_mode
+
+        email_row = db.execute(
+            "SELECT email_verified FROM account_controls WHERE user_id=?",
+            (user["id"],),
+        ).fetchone()
+        active_sessions = db.execute(
+            "SELECT COUNT(*) FROM sessions WHERE user_id=?",
+            (user["id"],),
+        ).fetchone()[0]
+        passkeys = db.execute(
+            "SELECT COUNT(*) FROM admin_webauthn_credentials WHERE user_id=?",
+            (user["id"],),
+        ).fetchone()[0]
+
+        cutoff = datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(hours=24)
+        failed_auth_types = {
+            "login_password_failed",
+            "admin_mfa_failed",
+            "admin_passkey_failed",
+            "admin_passkey_registration_failed",
+        }
+        event_counts = {
+            "failed_auth": 0,
+            "new_devices": 0,
+            "password_changes": 0,
+            "passkey_changes": 0,
+        }
+        rows = db.execute(
+            """SELECT event_type,created_at FROM security_events
+               ORDER BY created_at DESC LIMIT 500"""
+        ).fetchall()
+        for row in rows:
+            try:
+                seen = datetime.fromisoformat(str(row["created_at"]).replace("Z", "+00:00"))
+                if seen.tzinfo is not None:
+                    seen = seen.astimezone(timezone.utc).replace(tzinfo=None)
+            except (TypeError, ValueError):
+                continue
+            if seen < cutoff:
+                continue
+            event_type = str(row["event_type"])
+            if event_type in failed_auth_types:
+                event_counts["failed_auth"] += 1
+            if event_type == "new_device_login":
+                event_counts["new_devices"] += 1
+            if event_type in {"password_reset_completed", "password_changed_all_sessions_revoked"}:
+                event_counts["password_changes"] += 1
+            if event_type in {"admin_passkey_registered", "admin_passkey_deleted"}:
+                event_counts["passkey_changes"] += 1
+
+        mfa_mode = admin_mfa_mode()
+        public_url = os.getenv("OPYT50_PUBLIC_URL", "").strip()
+        public_host = public_url.split("://", 1)[-1].split("/", 1)[0].casefold()
+        temporary_origin = public_host.endswith(".twc1.net")
+        db_tls_mode = os.getenv("OPYT50_DB_SSLMODE", "").strip().casefold()
+        smtp_ready = delivery_mode() == "smtp"
+
+        checks = [
+            {
+                "key": "email",
+                "label": "Email администратора",
+                "status": "ok" if bool(email_row and email_row["email_verified"]) else "warning",
+                "text": "Подтверждён" if bool(email_row and email_row["email_verified"]) else "Требует подтверждения",
+            },
+            {
+                "key": "mfa",
+                "label": "Двухфакторный вход",
+                "status": "ok" if mfa_mode in {"totp", "hybrid"} else ("warning" if mfa_mode == "email" else "danger"),
+                "text": {
+                    "hybrid": "Passkey + TOTP",
+                    "totp": "Authenticator (TOTP)",
+                    "email": "Код по email",
+                    "off": "Выключен",
+                }.get(mfa_mode, "Выключен"),
+            },
+            {
+                "key": "passkey",
+                "label": "Passkey администратора",
+                "status": "info" if temporary_origin else ("ok" if int(passkeys) > 0 else "warning"),
+                "text": (
+                    "Отложено до постоянного домена"
+                    if temporary_origin
+                    else (f"Зарегистрировано: {int(passkeys)}" if int(passkeys) > 0 else "Не зарегистрирован")
+                ),
+            },
+            {
+                "key": "smtp",
+                "label": "Служебная почта",
+                "status": "ok" if smtp_ready else "warning",
+                "text": "SMTP настроен" if smtp_ready else "SMTP не настроен",
+            },
+            {
+                "key": "database_tls",
+                "label": "TLS базы данных",
+                "status": "ok" if db_tls_mode == "verify-full" else ("warning" if db_tls_mode in {"require", "verify-ca"} else "danger"),
+                "text": {
+                    "verify-full": "verify-full",
+                    "verify-ca": "verify-ca",
+                    "require": "require · без проверки имени хоста",
+                }.get(db_tls_mode, "Не подтверждён"),
+            },
+            {
+                "key": "cookie",
+                "label": "Защищённая сессия",
+                "status": "ok" if secure_cookie_enabled() else "danger",
+                "text": "Secure + HttpOnly + SameSite=Strict" if secure_cookie_enabled() else "Secure-cookie выключен",
+            },
+            {
+                "key": "profile",
+                "label": "Профиль защиты",
+                "status": "ok" if security_profile() == "high" else "info",
+                "text": "High" if security_profile() == "high" else "Standard",
+            },
+        ]
+        return {
+            "checks": checks,
+            "events_24h": event_counts,
+            "active_sessions": int(active_sessions),
+            "passkeys": int(passkeys),
+            "temporary_origin": temporary_origin,
+        }
+
     @app.put("/api/candidate/profile")
     def save_profile(
         data: CandidateProfile, user: dict = Depends(active_user), db: sqlite3.Connection = Depends(get_connection)

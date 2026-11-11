@@ -1096,9 +1096,26 @@ function adminPasskeyMarkup(item) {
     <button type="button" class="btn btn-outline btn-small" data-action="delete-admin-passkey" data-passkey-id="${esc(item.id)}">Удалить</button>
   </div>`;
 }
+function adminSecurityCheckMarkup(item) {
+  const status = ['ok','warning','danger','info'].includes(item.status) ? item.status : 'info';
+  const icon = status === 'ok' ? '✓' : status === 'danger' ? '!' : status === 'warning' ? '!' : 'i';
+  return `<div class="admin-security-check ${status}">
+    <span class="admin-security-check-icon" aria-hidden="true">${icon}</span>
+    <div><strong>${esc(item.label || '')}</strong><small>${esc(item.text || '')}</small></div>
+  </div>`;
+}
+function adminSecurityEventStat(label, value) {
+  return `<div class="admin-security-event-stat"><strong>${Number(value || 0).toLocaleString('ru-RU')}</strong><span>${esc(label)}</span></div>`;
+}
 async function renderAdmin() {
   $('#account-content').innerHTML = `<div class="admin-dashboard-stack">
     <section class="panel"><h3>Панель управления</h3><p class="muted">Статистика работы MVP, без раскрытия персональных данных.</p><div class="stat-grid" id="admin-stats"><div class="loading">Загрузка...</div></div></section>
+    <section class="panel admin-security-panel admin-security-ops">
+      <div class="split-header"><div><span class="section-kicker">КОНТУР БЕЗОПАСНОСТИ</span><h3>Состояние защиты</h3><p class="muted">Сводка ключевых настроек и событий за последние 24 часа. Секреты и токены здесь никогда не отображаются.</p></div><span class="mini-badge" id="admin-security-summary">Проверяем…</span></div>
+      <div id="admin-security-checks" class="admin-security-check-grid"><div class="loading">Проверяем настройки...</div></div>
+      <div id="admin-security-events-24h" class="admin-security-event-stats"></div>
+      <p class="muted admin-security-origin-note" id="admin-security-origin-note"></p>
+    </section>
     <section class="panel admin-security-panel">
       <span class="section-kicker">БЕЗОПАСНОСТЬ АДМИНИСТРАТОРА</span>
       <h3>Passkeys / WebAuthn</h3>
@@ -1118,9 +1135,36 @@ async function renderAdmin() {
     </section>
   </div>`;
   try {
-    const [stats, security] = await Promise.all([api('/api/admin/stats'), api('/api/account/security')]);
+    const [stats, security, securityOverview] = await Promise.all([
+      api('/api/admin/stats'),
+      api('/api/account/security'),
+      api('/api/admin/security-overview')
+    ]);
     const units = [['Соискатели',stats.candidates],['Работодатели',stats.employers],['Открытые вакансии',stats.open_vacancies],['Всего откликов',stats.applications_total],['Активные отклики',stats.applications_active],['Отозванные отклики',stats.applications_withdrawn],['Приглашения',stats.invitations],['Подтверждения',stats.confirmed],['Демо-знакомства',stats.demo_transactions],['Демо-оборот, ₽',stats.demo_turnover_rub]];
     $('#admin-stats').innerHTML = units.map(([title,value]) => `<div class="stat-tile"><strong>${Number(value).toLocaleString('ru-RU')}</strong><span>${esc(title)}</span></div>`).join('');
+    const checks = Array.isArray(securityOverview.checks) ? securityOverview.checks : [];
+    const dangerCount = checks.filter(item => item.status === 'danger').length;
+    const warningCount = checks.filter(item => item.status === 'warning').length;
+    $('#admin-security-checks').innerHTML = checks.length
+      ? checks.map(adminSecurityCheckMarkup).join('')
+      : '<div class="empty-state">Не удалось получить состояние защиты.</div>';
+    $('#admin-security-summary').textContent = dangerCount
+      ? `Требует действий: ${dangerCount}`
+      : warningCount
+        ? `Есть рекомендации: ${warningCount}`
+        : 'Критичных замечаний нет';
+    const e24 = securityOverview.events_24h || {};
+    $('#admin-security-events-24h').innerHTML = [
+      adminSecurityEventStat('Неудачные входы',e24.failed_auth),
+      adminSecurityEventStat('Новые устройства',e24.new_devices),
+      adminSecurityEventStat('Изменения пароля',e24.password_changes),
+      adminSecurityEventStat('Изменения passkey',e24.passkey_changes),
+      adminSecurityEventStat('Активные сессии',securityOverview.active_sessions)
+    ].join('');
+    $('#admin-security-origin-note').textContent = securityOverview.temporary_origin
+      ? 'Passkey на временном домене специально не считается обязательным. Зарегистрируем его после перехода на постоянный домен.'
+      : '';
+
     const passkeys = Array.isArray(security.passkeys) ? security.passkeys : [];
     $('#admin-passkeys').innerHTML = passkeys.length
       ? `<div class="admin-passkey-list">${passkeys.map(adminPasskeyMarkup).join('')}</div>`
