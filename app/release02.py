@@ -1406,8 +1406,14 @@ def install_routes(app) -> None:
         row = redeem_token(db, data.token, "reset")
         db.execute("UPDATE users SET password_hash=? WHERE id=?",
                    (make_password_hash(data.password), row["user_id"]))
+        db.execute(
+            """INSERT INTO account_controls(user_id,email_verified) VALUES(?,1)
+               ON CONFLICT(user_id) DO UPDATE SET email_verified=1""",
+            (row["user_id"],),
+        )
         db.execute("DELETE FROM sessions WHERE user_id=?", (row["user_id"],))
         record_security_event(db, row["user_id"], "password_reset_completed")
+        record_security_event(db, row["user_id"], "email_verified_via_password_reset")
         enqueue_notice(
             db,
             row["user_id"],
