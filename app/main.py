@@ -1125,7 +1125,7 @@ def create_app(db_path: str | None = None) -> FastAPI:
         db: sqlite3.Connection = Depends(get_connection),
     ):
         allowed(user, "admin")
-        from .release02 import record_security_event
+        from .release02 import enqueue_notice, record_security_event
 
         challenge = db.execute(
             """SELECT * FROM admin_webauthn_challenges
