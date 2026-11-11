@@ -1352,6 +1352,18 @@ def install_routes(app) -> None:
         db.execute("DELETE FROM sessions WHERE user_id=?", (user["id"],))
         clear_security_rate_limit(db, "password_change", subject, 900)
         record_security_event(db, user["id"], "password_changed_all_sessions_revoked")
+        enqueue_notice(
+            db,
+            user["id"],
+            "security_password_changed",
+            "СТАЖНО — пароль изменён",
+            (
+                "Пароль вашей учётной записи СТАЖНО был изменён.\n\n"
+                "Все ранее активные сессии были завершены.\n\n"
+                "Если это были не вы, немедленно восстановите пароль через страницу входа "
+                "и проверьте активные сессии в разделе «Безопасность»."
+            ),
+        )
         # add_session commits the password update/audit event and rotates the
         # browser to a fresh opaque session token.
         add_session(db, response, user["id"], request)
@@ -1396,6 +1408,18 @@ def install_routes(app) -> None:
                    (make_password_hash(data.password), row["user_id"]))
         db.execute("DELETE FROM sessions WHERE user_id=?", (row["user_id"],))
         record_security_event(db, row["user_id"], "password_reset_completed")
+        enqueue_notice(
+            db,
+            row["user_id"],
+            "security_password_reset",
+            "СТАЖНО — пароль восстановлен",
+            (
+                "Пароль вашей учётной записи СТАЖНО был восстановлен по одноразовой ссылке.\n\n"
+                "Все ранее активные сессии завершены.\n\n"
+                "Если это были не вы, снова восстановите пароль через страницу входа "
+                "и обратитесь к администратору платформы."
+            ),
+        )
         # Commit before the HTTP response: a new dashboard request may arrive immediately.
         db.commit()
         return {"ok": True}
