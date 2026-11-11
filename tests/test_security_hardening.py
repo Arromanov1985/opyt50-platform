@@ -775,3 +775,69 @@ def test_high_security_profile_requires_verify_full_database_tls(tmp_path, monke
     with pytest.raises(RuntimeError, match="verify-full"):
         with TestClient(app):
             pass
+
+
+def test_admin_can_send_smtp_test_email_to_own_address(tmp_path, monkeypatch):
+    app = create_app(str(tmp_path / "smtp-test-email.db"))
+    password = "Administrator secure password 2026"
+    captured = {}
+
+    def fake_send_email(recipient, subject, body):
+        captured["recipient"] = recipient
+        captured["subject"] = subject
+        captured["body"] = body
+        return True
+
+    monkeypatch.setattr("app.email_delivery.send_email", fake_send_email)
+
+    with TestClient(app) as client:
+        with database(app.state.db_path) as db:
+            db.execute(
+                "INSERT INTO users(role,email,name,password_hash) VALUES(?,?,?,?)",
+                ("admin", "admin@stazhno.ru", "Администратор", make_password_hash(password)),
+            )
+
+        login = client.post(
+            "/api/login",
+            headers=XHR,
+            json={"email": "admin@stazhno.ru", "password": password},
+        )
+        assert login.status_code == 200, login.text
+
+        response = client.post("/api/admin/smtp/test-email", headers=XHR)
+        assert response.status_code == 200, response.text
+        assert captured["recipient"] == "admin@stazhno.ru"
+        assert captured["subject"] == "Проверка почты СТАЖНО"
+
+        with database(app.state.db_path) as db:
+            event = db.execute(
+                """SELECT detail FROM security_events
+                   WHERE event_type='admin_smtp_test_email'
+                   ORDER BY created_at DESC LIMIT 1"""
+            ).fetchone()
+            assert event is not None
+            assert event["detail"] == "sent=1"
+
+
+def test_smtp_test_email_reports_delivery_failure_without_leaking_secret(tmp_path, monkeypatch):
+    app = create_app(str(tmp_path / "smtp-test-email-fail.db"))
+    password = "Administrator secure password 2026"
+    monkeypatch.setattr("app.email_delivery.send_email", lambda *args, **kwargs: False)
+
+    with TestClient(app) as client:
+        with database(app.state.db_path) as db:
+            db.execute(
+                "INSERT INTO users(role,email,name,password_hash) VALUES(?,?,?,?)",
+                ("admin", "admin@stazhno.ru", "Администратор", make_password_hash(password)),
+            )
+
+        login = client.post(
+            "/api/login",
+            headers=XHR,
+            json={"email": "admin@stazhno.ru", "password": password},
+        )
+        assert login.status_code == 200, login.text
+
+        response = client.post("/api/admin/smtp/test-email", headers=XHR)
+        assert response.status_code == 503
+        assert "парол" not in response.text.casefold()

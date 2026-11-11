@@ -1996,6 +1996,40 @@ def create_app(db_path: str | None = None) -> FastAPI:
         from .email_delivery import smtp_healthcheck
         return smtp_healthcheck()
 
+    @app.post("/api/admin/smtp/test-email")
+    def admin_smtp_test_email(
+        user: dict = Depends(active_user),
+        db: sqlite3.Connection = Depends(get_connection),
+    ):
+        allowed(user, "admin")
+        from .email_delivery import send_email
+        from .release02 import record_security_event
+
+        recipient = str(user.get("email") or "").strip()
+        if not recipient:
+            raise HTTPException(400, "У администратора не указан email")
+
+        sent = send_email(
+            recipient,
+            "Проверка почты СТАЖНО",
+            (
+                "Это тестовое письмо из административной панели СТАЖНО.\n\n"
+                "SMTP-соединение, авторизация и фактическая отправка письма "
+                "успешно выполнены приложением.\n\n"
+                "Если вы получили это письмо, канал служебной почты работает."
+            ),
+        )
+        record_security_event(
+            db,
+            user["id"],
+            "admin_smtp_test_email",
+            "sent=1" if sent else "sent=0",
+        )
+        db.commit()
+        if not sent:
+            raise HTTPException(503, "SMTP принял соединение, но отправка письма не завершилась")
+        return {"ok": True}
+
     from .release02 import install_routes
     install_routes(app)
     return app

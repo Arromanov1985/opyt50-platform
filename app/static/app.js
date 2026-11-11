@@ -1110,7 +1110,10 @@ async function renderAdmin() {
       <h3>SMTP</h3>
       <p class="muted">Проверка соединения, TLS и авторизации без отправки письма и без раскрытия пароля.</p>
       <div id="admin-smtp-status" class="empty-state">SMTP ещё не проверялся.</div>
-      <div class="admin-passkey-actions"><button type="button" class="btn btn-outline" data-action="check-smtp">Проверить SMTP →</button></div>
+      <div class="admin-passkey-actions">
+        <button type="button" class="btn btn-outline" data-action="check-smtp">Проверить SMTP →</button>
+        <button type="button" class="btn btn-outline" data-action="send-smtp-test-email">Отправить тестовое письмо →</button>
+      </div>
     </section>
   </div>`;
   try {
@@ -1234,6 +1237,16 @@ async function handleDashboardClick(event) {
         target.innerHTML = `<strong>${result.ok ? '✓ SMTP готов' : 'SMTP требует внимания'}</strong><p>${esc(text)}</p>`;
       }
       toast(result.ok ? 'SMTP-проверка успешно пройдена.' : (messages[result.status] || 'SMTP-проверка не пройдена.'), !result.ok);
+      return;
+    }
+    if (action === 'send-smtp-test-email') {
+      btn.disabled = true;
+      try {
+        await api('/api/admin/smtp/test-email',{method:'POST'});
+        toast('Тестовое письмо отправлено на email администратора.');
+      } finally {
+        if (btn.isConnected) btn.disabled = false;
+      }
       return;
     }
     if (action === 'register-admin-passkey') {
