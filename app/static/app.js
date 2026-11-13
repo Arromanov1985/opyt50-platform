@@ -969,12 +969,14 @@ async function loadEmployerVacancyEdit() {
   $('#dashboard-main').innerHTML = vacancyFormMarkup(job);
 }
 async function loadEmployerVacancies() {
-  const [jobsResult, applicationsResult] = await Promise.all([
+  const [jobsResult, applicationsResult, invitationsResult] = await Promise.all([
     api('/api/employer/vacancies'),
-    api('/api/employer/applications')
+    api('/api/employer/applications'),
+    api('/api/employer/invitations')
   ]);
   const jobs = jobsResult.jobs || [];
   const applications = applicationsResult.applications || [];
+  const invitations = invitationsResult.invitations || [];
   const applicationsByJob = new Map();
   for (const a of applications) {
     const id = Number(a.vacancy_id);
@@ -983,19 +985,24 @@ async function loadEmployerVacancies() {
     stats.total += 1;
     if (a.status === 'interview' || a.invitation_id) stats.interested += 1;
     if (!a.invitation_id && ['applied','reviewing','interview'].includes(a.status)) stats.attention += 1;
-    if (a.invitation_status === 'accepted' && !a.contact_shared) stats.ready += 1;
-    if (a.invitation_status === 'sent' && !a.contact_shared) stats.waiting += 1;
+  }
+  for (const invitation of invitations) {
+    const id = Number(invitation.vacancy_id);
+    if (!applicationsByJob.has(id)) applicationsByJob.set(id, {total: 0, interested: 0, attention: 0, ready: 0, waiting: 0});
+    const stats = applicationsByJob.get(id);
+    if (invitation.status === 'accepted' && !invitation.contact_shared) stats.ready += 1;
+    if (invitation.status === 'sent' && !invitation.contact_shared) stats.waiting += 1;
   }
   const view = $('#dashboard-main');
   const openCount = jobs.filter(job => job.status === 'open').length;
   const closedCount = jobs.length - openCount;
   const filter = ['all', 'open', 'closed'].includes(state.employerVacancyFilter) ? state.employerVacancyFilter : 'all';
   const visibleJobs = filter === 'all' ? jobs : jobs.filter(job => job.status === filter);
-  const interestedCount = applications.filter(a => a.status === 'interview' || a.invitation_id).length;
-  const introducedCount = applications.filter(a => a.contact_shared).length;
+  const invitationCount = invitations.length;
+  const introducedCount = invitations.filter(item => item.contact_shared).length;
   const actionableApplications = applications.filter(a => !a.invitation_id && ['applied','reviewing','interview'].includes(a.status));
-  const readyIntroductions = applications.filter(a => a.invitation_status === 'accepted' && !a.contact_shared);
-  const waitingIntroductions = applications.filter(a => a.invitation_status === 'sent' && !a.contact_shared);
+  const readyIntroductions = invitations.filter(item => item.status === 'accepted' && !item.contact_shared);
+  const waitingIntroductions = invitations.filter(item => item.status === 'sent' && !item.contact_shared);
   const firstOpenJob = jobs.find(job => job.status === 'open');
   const firstActionableApplication = actionableApplications[0];
   let nextAction = '<div class="employer-next"><div><span>Следующий шаг</span><strong>Создайте первую вакансию</strong><small>После публикации можно получать отклики и запускать подбор.</small></div><button class="btn btn-primary btn-tiny" data-action="new-job">Создать вакансию →</button></div>';
@@ -1010,7 +1017,7 @@ async function loadEmployerVacancies() {
   } else if (jobs.length) {
     nextAction = '<div class="employer-next employer-next-ok"><div><span>Воронка под контролем</span><strong>Продолжайте работу с вакансиями</strong><small>Статусы и следующие действия собраны в одном кабинете.</small></div></div>';
   }
-  view.innerHTML = `<div class="panel">${nextAction}<div class="split-header"><div><h3>Мои вакансии</h3><p class="muted">После размещения получите список обезличенных профилей.</p></div><button class="btn btn-primary btn-tiny" data-action="new-job">+ Добавить</button></div><div class="stat-grid" aria-label="Статистика вакансий"><div class="stat-tile"><strong>${jobs.length}</strong><span>Всего вакансий</span></div><div class="stat-tile"><strong>${openCount}</strong><span>Открыты</span></div><div class="stat-tile"><strong>${closedCount}</strong><span>Закрыты</span></div></div><div class="stat-grid" aria-label="Воронка подбора"><div class="stat-tile"><strong>${applications.length}</strong><span>Отклики</span></div><div class="stat-tile"><strong>${interestedCount}</strong><span>Заинтересованные</span></div><div class="stat-tile"><strong>${introducedCount}</strong><span>Знакомства (демо)</span></div></div><div class="item-actions" role="group" aria-label="Фильтр вакансий"><button type="button" class="btn btn-tiny ${filter === 'all' ? 'btn-dark' : 'btn-outline'}" data-action="filter-employer-jobs" data-filter="all" aria-pressed="${filter === 'all'}">Все (${jobs.length})</button><button type="button" class="btn btn-tiny ${filter === 'open' ? 'btn-dark' : 'btn-outline'}" data-action="filter-employer-jobs" data-filter="open" aria-pressed="${filter === 'open'}">Открытые (${openCount})</button><button type="button" class="btn btn-tiny ${filter === 'closed' ? 'btn-dark' : 'btn-outline'}" data-action="filter-employer-jobs" data-filter="closed" aria-pressed="${filter === 'closed'}">Закрытые (${closedCount})</button></div><div class="dashboard-list">${visibleJobs.length ? visibleJobs.map(job => jobEmployerMarkup(job, applicationsByJob.get(Number(job.id)))).join('') : '<div class="empty-state">В выбранной категории вакансий нет.</div>'}</div></div><div id="employer-matches" class="hidden"></div>`;
+  view.innerHTML = `<div class="panel">${nextAction}<div class="split-header"><div><h3>Мои вакансии</h3><p class="muted">После размещения получите список обезличенных профилей.</p></div><button class="btn btn-primary btn-tiny" data-action="new-job">+ Добавить</button></div><div class="stat-grid" aria-label="Статистика вакансий"><div class="stat-tile"><strong>${jobs.length}</strong><span>Всего вакансий</span></div><div class="stat-tile"><strong>${openCount}</strong><span>Открыты</span></div><div class="stat-tile"><strong>${closedCount}</strong><span>Закрыты</span></div></div><div class="stat-grid" aria-label="Воронка подбора"><div class="stat-tile"><strong>${applications.length}</strong><span>Отклики</span></div><div class="stat-tile"><strong>${invitationCount}</strong><span>Запросы на знакомство</span></div><div class="stat-tile"><strong>${introducedCount}</strong><span>Открытые контакты</span></div></div><div class="item-actions" role="group" aria-label="Фильтр вакансий"><button type="button" class="btn btn-tiny ${filter === 'all' ? 'btn-dark' : 'btn-outline'}" data-action="filter-employer-jobs" data-filter="all" aria-pressed="${filter === 'all'}">Все (${jobs.length})</button><button type="button" class="btn btn-tiny ${filter === 'open' ? 'btn-dark' : 'btn-outline'}" data-action="filter-employer-jobs" data-filter="open" aria-pressed="${filter === 'open'}">Открытые (${openCount})</button><button type="button" class="btn btn-tiny ${filter === 'closed' ? 'btn-dark' : 'btn-outline'}" data-action="filter-employer-jobs" data-filter="closed" aria-pressed="${filter === 'closed'}">Закрытые (${closedCount})</button></div><div class="dashboard-list">${visibleJobs.length ? visibleJobs.map(job => jobEmployerMarkup(job, applicationsByJob.get(Number(job.id)))).join('') : '<div class="empty-state">В выбранной категории вакансий нет.</div>'}</div></div><div id="employer-matches" class="hidden"></div>`;
   if (state.activeVacancy && jobs.some(j=>j.id===state.activeVacancy)) await loadMatches(state.activeVacancy);
 }
 function vacancyQuality(job = {}) {
