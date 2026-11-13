@@ -49,7 +49,10 @@ function interactionStageMarkup(x, kind='application') {
   const introduced = x.introduction_stage === 'introduced' || x.contact_shared;
   const consented = x.introduction_stage === 'consented' || x.status === 'accepted';
   const awaiting = x.introduction_stage === 'awaiting_consent' || x.invitation_status === 'sent' || x.status === 'interview';
-  const finalOutcome = ['hired','rejected'].includes(x.application_status) || ['hired','rejected'].includes(x.status);
+  const finalOutcome =
+    ['hired','rejected','withdrawn'].includes(x.application_status) ||
+    ['hired','rejected','withdrawn'].includes(x.status) ||
+    (kind === 'invitation' && x.status === 'declined');
   const reviewing = ['reviewing','interview'].includes(x.status) || awaiting || consented || introduced;
   const applied = Boolean(x.application_id || x.vacancy_id || ['applied','reviewing','interview','withdrawn','rejected','hired'].includes(x.status));
   const steps = kind === 'invitation'
