@@ -301,7 +301,7 @@
       attention:'Требуют внимания',
       consent:'Ждём решения кандидата',
       ready:'Есть согласие',
-      introduced:'Знакомство состоялось',
+      introduced:'Ждут итога',
       closed:'Завершённые'
     };
     const employerApplicationPriority = {
