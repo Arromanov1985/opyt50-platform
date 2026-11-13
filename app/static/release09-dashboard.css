@@ -2202,7 +2202,7 @@ body.comfortable-view .employer-invitation-card .interaction-note span{
     flex-direction:column;
   }
 }
-@media(max-width:390px){
+@media(max-width:340px){
   .employer-invitation-stage-filter{grid-template-columns:1fr}
 }
 
@@ -2308,7 +2308,7 @@ body.comfortable-view .candidate-introduction-note span{font-size:.92rem}
     width:100%;
   }
 }
-@media(max-width:390px){
+@media(max-width:340px){
   .candidate-introduction-stage-filter{grid-template-columns:1fr}
 }
 
