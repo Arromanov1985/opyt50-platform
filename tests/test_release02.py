@@ -577,6 +577,12 @@ def test_unified_status_timeline_consent_and_terminal_guards(app):
             assert db.execute(
                 "SELECT COUNT(*) FROM email_outbox WHERE event='contact_opened'"
             ).fetchone()[0] == 1
+            outcome_notice = db.execute(
+                "SELECT subject,body FROM email_outbox WHERE event='application_status' ORDER BY id DESC LIMIT 1"
+            ).fetchone()
+            assert outcome_notice["subject"] == "Итог знакомства — СТАЖНО"
+            assert "без продолжения" in outcome_notice["body"]
+            assert "rejected" not in outcome_notice["body"]
             assert db.execute("SELECT COUNT(*) FROM invitations WHERE vacancy_id=? AND candidate_id=?",
                               (jid, cid)).fetchone()[0] == 1
 
