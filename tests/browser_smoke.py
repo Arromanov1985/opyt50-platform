@@ -411,6 +411,28 @@ def run_browser(page):
     expect(page.locator("#dashboard-main")).to_contain_text("Знакомство состоялось (демо)")
     expect(page.locator("#dashboard-main")).to_contain_text("Принят")
     expect(page.locator("#dashboard-main [data-v02-action='application-status']")).to_have_count(0)
+
+    # Final employer outcome flow must remain usable on a narrow phone viewport.
+    page.set_viewport_size({"width": 390, "height": 844})
+    employer_mobile_section = page.locator("[data-dashboard-tab-select]")
+    expect(employer_mobile_section).to_be_visible()
+    expect(page.locator(".dashboard-tabs")).to_be_hidden()
+    employer_mobile_section.select_option("invitations")
+    expect(page.locator("#dashboard-main")).to_contain_text("Кандидат принят")
+    expect(page.locator("#dashboard-main")).to_contain_text("КОНТАКТ СОХРАНЁН · ДЕМО")
+    assert page.evaluate("""() => {
+      const element = document.querySelector('#dashboard-main');
+      return element.scrollWidth <= element.clientWidth + 3;
+    }"""), "Completed introduction must fit mobile width"
+    employer_mobile_section = page.locator("[data-dashboard-tab-select]")
+    employer_mobile_section.select_option("vacancies")
+    mobile_vacancy = page.locator("#dashboard-main .employer-vacancy-card").filter(has_text="Кладовщик")
+    expect(mobile_vacancy.locator(".vacancy-pipeline-mini > span")).to_have_count(4)
+    assert page.evaluate("""() => {
+      const element = document.querySelector('#dashboard-main');
+      return element.scrollWidth <= element.clientWidth + 3;
+    }"""), "Employer vacancy outcome analytics must fit mobile width"
+    page.set_viewport_size({"width": 1280, "height": 800})
     page.locator("#logout").click()
 
     login(page, "kladovshik@demo.example")
