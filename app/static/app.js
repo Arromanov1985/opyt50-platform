@@ -2,7 +2,7 @@
 'use strict';
 const $ = (selector, root = document) => root.querySelector(selector);
 const $$ = (selector, root = document) => [...root.querySelectorAll(selector)];
-const state = { user: null, mode: 'register', role: 'candidate', tab: 'overview', activeVacancy: null, editVacancy: null, employerVacancyFilter: 'all', employerApplicationsVacancyFilter: 'all', employerInvitationsFilter: 'all', mfaChallenge: null, mfaMethod: null, mfaCodeLength: 8, mfaPublicKey: null, mfaTotpFallback: false };
+const state = { user: null, mode: 'register', role: 'candidate', tab: 'overview', activeVacancy: null, editVacancy: null, employerVacancyFilter: 'all', employerApplicationsVacancyFilter: 'all', employerApplicationsStatusFilter: 'all', employerInvitationsFilter: 'all', mfaChallenge: null, mfaMethod: null, mfaCodeLength: 8, mfaPublicKey: null, mfaTotpFallback: false };
 const esc = value => String(value ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const money = value => Number(value || 0).toLocaleString('ru-RU') + ' ₽';
 const formatPay = job => job.salary_min === job.salary_max ? money(job.salary_min) : `${money(job.salary_min)} — ${money(job.salary_max)}`;
@@ -807,7 +807,7 @@ function employerCompanyMarkup(result) {
 }
 
 async function renderEmployer() {
-  const nav = [{id:'overview',label:'Обзор'},{id:'company',label:'Компания'},{id:'vacancies',label:'Мои вакансии'},{id:'create',label:'Новая вакансия'},{id:'invitations',label:'Приглашения и контакты'},{id:'security',label:'Безопасность'}];
+  const nav = [{id:'overview',label:'Обзор'},{id:'company',label:'Компания'},{id:'vacancies',label:'Мои вакансии'},{id:'create',label:'Новая вакансия'},{id:'applications',label:'Отклики'},{id:'invitations',label:'Знакомства и контакты'},{id:'security',label:'Безопасность'}];
   if (state.tab === 'edit') nav.splice(2, 0, {id:'edit',label:'Редактирование'});
   if (!nav.some(t => t.id === state.tab)) state.tab = 'overview';
   $('#account-content').innerHTML = `<div class="dashboard-grid">${tabsMarkup(nav,'ДЛЯ КОМПАНИИ',state.user.company?.company_name || 'Работодатель')}<div id="dashboard-main"><div class="loading">Загрузка...</div></div></div>`;
@@ -825,7 +825,9 @@ async function renderEmployer() {
       const invitations = invitationsResult.invitations || [];
       const companyTrust = companyResult.trust || {};
       const openJobs = jobs.filter(job => job.status === 'open');
-      const waitingApplications = applications.filter(item => ['applied','reviewing'].includes(item.status));
+      const actionableApplications = applications.filter(item =>
+        !item.invitation_id && ['applied','reviewing','interview'].includes(item.status)
+      );
       const acceptedInvitations = invitations.filter(item => item.status === 'accepted' && !item.contact_shared);
       const openedContacts = invitations.filter(item => item.contact_shared).length;
       let nextTitle = 'Создайте первую вакансию';
@@ -834,10 +836,10 @@ async function renderEmployer() {
       if (acceptedInvitations.length) {
         nextTitle = 'Есть согласие кандидата';
         nextText = `Можно продолжить знакомство по ${acceptedInvitations.length} кандидатам.`;
-        nextAction = '<button class="btn btn-primary" data-tab="invitations">Продолжить знакомства →</button>';
-      } else if (waitingApplications.length) {
+        nextAction = '<button class="btn btn-primary" data-action="open-employer-invitations" data-filter="action">Продолжить знакомство →</button>';
+      } else if (actionableApplications.length) {
         nextTitle = 'Разберите новые отклики';
-        nextText = `Требуют внимания: ${waitingApplications.length}.`;
+        nextText = `Требуют внимания: ${actionableApplications.length}.`;
         nextAction = '<button class="btn btn-primary" data-tab="applications">Открыть отклики →</button>';
       } else if (openJobs.length) {
         nextTitle = 'Запустите подбор по открытой вакансии';
@@ -855,9 +857,9 @@ async function renderEmployer() {
         </section>
         <section class="overview-stat-grid employer-overview-stats" aria-label="Сводка работодателя">
           <button type="button" class="overview-stat-card" data-tab="vacancies"><strong>${openJobs.length}</strong><span>Открытые вакансии</span><small>Сейчас в работе</small></button>
-          <button type="button" class="overview-stat-card" data-tab="applications"><strong>${waitingApplications.length}</strong><span>Отклики требуют внимания</span><small>Новые и на рассмотрении</small></button>
-          <button type="button" class="overview-stat-card" data-tab="invitations"><strong>${acceptedInvitations.length}</strong><span>Согласия кандидатов</span><small>Можно продолжить знакомство</small></button>
-          <button type="button" class="overview-stat-card" data-tab="invitations"><strong>${openedContacts}</strong><span>Открытые контакты</span><small>Завершённые знакомства</small></button>
+          <button type="button" class="overview-stat-card" data-tab="applications"><strong>${actionableApplications.length}</strong><span>Отклики требуют внимания</span><small>Нужен ваш следующий шаг</small></button>
+          <button type="button" class="overview-stat-card" data-action="open-employer-invitations" data-filter="action"><strong>${acceptedInvitations.length}</strong><span>Есть согласие</span><small>Можно открыть контакт</small></button>
+          <button type="button" class="overview-stat-card" data-action="open-employer-invitations" data-filter="introduced"><strong>${openedContacts}</strong><span>Открытые контакты</span><small>Знакомство состоялось</small></button>
         </section>
         <section class="panel overview-funnel">
           <div class="split-header"><div><span class="section-kicker">ВОРОНКА</span><h3>От вакансии до знакомства</h3></div><button class="btn btn-outline btn-tiny" data-tab="vacancies">Управлять вакансиями</button></div>
@@ -975,10 +977,13 @@ async function loadEmployerVacancies() {
   const applicationsByJob = new Map();
   for (const a of applications) {
     const id = Number(a.vacancy_id);
-    if (!applicationsByJob.has(id)) applicationsByJob.set(id, {total: 0, interested: 0});
+    if (!applicationsByJob.has(id)) applicationsByJob.set(id, {total: 0, interested: 0, attention: 0, ready: 0, waiting: 0});
     const stats = applicationsByJob.get(id);
     stats.total += 1;
     if (a.status === 'interview' || a.invitation_id) stats.interested += 1;
+    if (!a.invitation_id && ['applied','reviewing','interview'].includes(a.status)) stats.attention += 1;
+    if (a.invitation_status === 'accepted' && !a.contact_shared) stats.ready += 1;
+    if (a.invitation_status === 'sent' && !a.contact_shared) stats.waiting += 1;
   }
   const view = $('#dashboard-main');
   const openCount = jobs.filter(job => job.status === 'open').length;
@@ -987,15 +992,20 @@ async function loadEmployerVacancies() {
   const visibleJobs = filter === 'all' ? jobs : jobs.filter(job => job.status === filter);
   const interestedCount = applications.filter(a => a.status === 'interview' || a.invitation_id).length;
   const introducedCount = applications.filter(a => a.contact_shared).length;
+  const actionableApplications = applications.filter(a => !a.invitation_id && ['applied','reviewing','interview'].includes(a.status));
+  const readyIntroductions = applications.filter(a => a.invitation_status === 'accepted' && !a.contact_shared);
+  const waitingIntroductions = applications.filter(a => a.invitation_status === 'sent' && !a.contact_shared);
   const firstOpenJob = jobs.find(job => job.status === 'open');
-  const firstApplication = applications[0];
+  const firstActionableApplication = actionableApplications[0];
   let nextAction = '<div class="employer-next"><div><span>Следующий шаг</span><strong>Создайте первую вакансию</strong><small>После публикации можно получать отклики и запускать подбор.</small></div><button class="btn btn-primary btn-tiny" data-action="new-job">Создать вакансию →</button></div>';
-  if (jobs.length && applications.length === 0 && firstOpenJob) {
+  if (readyIntroductions.length) {
+    nextAction = `<div class="employer-next"><div><span>Требует внимания</span><strong>Есть согласие кандидата</strong><small>Можно открыть контакт по ${readyIntroductions.length} знакомству(ам).</small></div><button class="btn btn-primary btn-tiny" data-action="open-employer-invitations" data-filter="action">Продолжить знакомство →</button></div>`;
+  } else if (actionableApplications.length && firstActionableApplication) {
+    nextAction = `<div class="employer-next"><div><span>Требует внимания</span><strong>Разберите новые отклики</strong><small>Нужен ваш следующий шаг по ${actionableApplications.length} отклику(ам).</small></div><button class="btn btn-primary btn-tiny" data-action="vacancy-applications" data-id="${Number(firstActionableApplication.vacancy_id)}">Открыть отклики →</button></div>`;
+  } else if (jobs.length && applications.length === 0 && firstOpenJob) {
     nextAction = `<div class="employer-next"><div><span>Следующий шаг</span><strong>Запустите подбор кандидатов</strong><small>Открытая вакансия уже есть — посмотрите подходящие профили.</small></div><button class="btn btn-dark btn-tiny" data-action="matches" data-id="${Number(firstOpenJob.id)}">Подобрать кандидатов →</button></div>`;
-  } else if (applications.length && interestedCount === 0 && firstApplication) {
-    nextAction = `<div class="employer-next"><div><span>Требует внимания</span><strong>Разберите новые отклики</strong><small>Сейчас в воронке ${applications.length} откликов.</small></div><button class="btn btn-primary btn-tiny" data-action="vacancy-applications" data-id="${Number(firstApplication.vacancy_id)}">Открыть отклики →</button></div>`;
-  } else if (interestedCount > introducedCount) {
-    nextAction = `<div class="employer-next"><div><span>Следующий шаг</span><strong>Продолжите знакомства</strong><small>Есть кандидаты, по которым процесс ещё не завершён.</small></div><button class="btn btn-primary btn-tiny" data-tab="invitations">Открыть приглашения →</button></div>`;
+  } else if (waitingIntroductions.length) {
+    nextAction = `<div class="employer-next employer-next-ok"><div><span>Сейчас действий нет</span><strong>Ждём решения кандидата</strong><small>Запрос отправлен по ${waitingIntroductions.length} знакомству(ам). Повторно отправлять его не нужно.</small></div><button class="btn btn-outline btn-tiny" data-action="open-employer-invitations" data-filter="waiting">Посмотреть ожидание →</button></div>`;
   } else if (jobs.length) {
     nextAction = '<div class="employer-next employer-next-ok"><div><span>Воронка под контролем</span><strong>Продолжайте работу с вакансиями</strong><small>Статусы и следующие действия собраны в одном кабинете.</small></div></div>';
   }
@@ -1019,16 +1029,17 @@ function vacancyQuality(job = {}) {
   const percent = Math.round(passed / checks.length * 100);
   return {percent,suggestions:checks.filter(([ok])=>!ok).map(([,text])=>text)};
 }
-function jobEmployerMarkup(x, stats = {total: 0, interested: 0}) {
-  const needsAttention = x.status === 'open' && stats.total > 0;
-  const nextLabel = needsAttention ? 'Есть новые отклики' : (x.status === 'open' ? 'Ищем кандидатов' : 'Вакансия закрыта');
+function jobEmployerMarkup(x, stats = {total: 0, interested: 0, attention: 0, ready: 0, waiting: 0}) {
+  const hasReadyIntroduction = x.status === 'open' && stats.ready > 0;
+  const needsAttention = x.status === 'open' && stats.attention > 0;
+  const nextLabel = hasReadyIntroduction ? 'Есть согласие кандидата' : needsAttention ? 'Есть отклики для разбора' : stats.waiting > 0 ? 'Ждём решения кандидата' : (x.status === 'open' ? 'Ищем кандидатов' : 'Вакансия закрыта');
   const quality = vacancyQuality(x);
   const qualityClass = quality.percent >= 88 ? 'high' : quality.percent >= 63 ? 'medium' : 'low';
   return `<article class="item-card employer-vacancy-card ${needsAttention ? 'needs-attention' : ''}">
     <header><div><span class="card-eyebrow">${esc(nextLabel)}</span><h4>${esc(x.title)}</h4><p>${esc(x.city)} · ${formatPay(x)} · ${esc(x.schedule)}</p><div class="vacancy-moderation-state ${esc(x.moderation_status||'approved')}"><strong>${x.moderation_status==='pending'?'На проверке':x.moderation_status==='rejected'?'Отклонена модератором':'Опубликована'}</strong>${x.moderation_reason?`<small>${esc(x.moderation_reason)}</small>`:''}</div></div><span class="mini-badge ${x.status === 'open' ? '' : 'gray'}">${x.status === 'open' ? 'Открыта' : 'Закрыта'}</span></header>
-    <div class="vacancy-pipeline-mini"><span><strong>${stats.total}</strong><small>Отклики</small></span><span><strong>${stats.interested}</strong><small>Заинтересованы</small></span><span><strong>${Math.max(0,stats.total-stats.interested)}</strong><small>На рассмотрении</small></span></div>
+    <div class="vacancy-pipeline-mini"><span><strong>${stats.total}</strong><small>Отклики</small></span><span><strong>${stats.attention}</strong><small>Нужно разобрать</small></span><span><strong>${stats.ready}</strong><small>Есть согласие</small></span></div>
     <div class="vacancy-quality ${qualityClass}"><div class="vacancy-quality-head"><span>Качество объявления</span><strong>${quality.percent}%</strong></div><div class="vacancy-quality-track"><span style="width:${quality.percent}%"></span></div>${quality.suggestions.length?`<p>${esc(quality.suggestions.slice(0,2).join(' · '))}</p>`:'<p>Основные условия заполнены хорошо.</p>'}</div>
-    <div class="employer-vacancy-primary">${needsAttention ? `<button type="button" class="btn btn-primary" data-action="vacancy-applications-primary" data-id="${x.id}">Разобрать отклики →</button>` : `<button class="btn btn-dark" data-action="matches-primary" data-id="${x.id}" ${x.status === 'closed' ? 'disabled':''}>Подобрать кандидатов →</button>`}</div>
+    <div class="employer-vacancy-primary">${hasReadyIntroduction ? '<button type="button" class="btn btn-primary" data-action="open-employer-invitations" data-filter="action">Продолжить знакомство →</button>' : needsAttention ? `<button type="button" class="btn btn-primary" data-action="vacancy-applications-primary" data-id="${x.id}">Разобрать отклики →</button>` : `<button class="btn btn-dark" data-action="matches-primary" data-id="${x.id}" ${x.status === 'closed' ? 'disabled':''}>Подобрать кандидатов →</button>`}</div>
     <div class="item-actions employer-vacancy-secondary"><button type="button" class="btn btn-outline btn-tiny" data-action="vacancy-applications" data-id="${x.id}">Отклики</button><button class="btn btn-outline btn-tiny" data-action="matches" data-id="${x.id}" ${x.status === 'closed' ? 'disabled':''}>Подбор</button><button class="btn btn-outline btn-tiny" data-action="edit-job" data-id="${x.id}">Редактировать</button><button class="btn btn-outline btn-tiny" data-action="job-status" data-id="${x.id}" data-status="${x.status === 'open' ? 'closed' : 'open'}">${x.status === 'open' ? 'Закрыть' : 'Открыть'}</button></div>
   </article>`;
 }
@@ -1315,7 +1326,19 @@ async function handleDashboardSubmit(event) {
 }
 async function handleDashboardClick(event) {
   const tab = event.target.closest('[data-tab]');
-  if (tab) { state.tab = tab.dataset.tab; state.activeVacancy = null; await showDashboard(); return; }
+  if (tab) {
+    if (state.user?.role === 'employer' && tab.dataset.tab === 'applications') {
+      state.employerApplicationsVacancyFilter = 'all';
+      state.employerApplicationsStatusFilter = 'all';
+    }
+    if (state.user?.role === 'employer' && tab.dataset.tab === 'invitations') {
+      state.employerInvitationsFilter = 'all';
+    }
+    state.tab = tab.dataset.tab;
+    state.activeVacancy = null;
+    await showDashboard();
+    return;
+  }
   const btn = event.target.closest('[data-action]'); if (!btn) return;
   const action = btn.dataset.action, id = Number(btn.dataset.id);
   if (btn.disabled) return;
@@ -1396,6 +1419,14 @@ async function handleDashboardClick(event) {
       if (!Object.hasOwn(employerInvitationFilterLabels,btn.dataset.filter)) return;
       state.employerInvitationsFilter = btn.dataset.filter;
       await loadEmployerInvitations();
+      return;
+    }
+    if (action === 'open-employer-invitations') {
+      const filter = Object.hasOwn(employerInvitationFilterLabels,btn.dataset.filter) ? btn.dataset.filter : 'all';
+      state.employerInvitationsFilter = filter;
+      state.tab = 'invitations';
+      state.activeVacancy = null;
+      await showDashboard();
       return;
     }
     if (action === 'new-job') { state.editVacancy=null; state.tab='create'; await showDashboard(); }
