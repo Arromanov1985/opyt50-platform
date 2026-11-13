@@ -25,8 +25,9 @@ function workflowStatus(x, fallback='') {
 }
 function candidateWorkflowStatus(x, fallback='') {
   const stage = x.introduction_stage;
-  if (x.status==='hired' || x.application_status==='hired') return 'Принят';
-  if (x.status==='rejected' || x.application_status==='rejected') return 'Получен отказ';
+  const shared = stage==='introduced' || x.contact_shared;
+  if (x.status==='hired' || x.application_status==='hired') return shared ? 'Компания выбрала вас' : 'Принят';
+  if (x.status==='rejected' || x.application_status==='rejected') return shared ? 'Не договорились' : 'Получен отказ';
   if (stage==='introduced' || x.contact_shared) return 'Знакомство состоялось';
   if (stage==='consented' || x.invitation_status==='accepted') return 'Согласие отправлено';
   if (stage==='awaiting_consent' || x.invitation_status==='sent') return 'Требует вашего ответа';
