@@ -346,6 +346,9 @@ def run_browser(page):
     expect(page.locator("#dashboard-main")).to_contain_text("КОНТАКТ ОТКРЫТ · ДЕМО")
     expect(page.locator("#dashboard-main")).to_contain_text("Знакомство состоялось")
     expect(page.locator("#dashboard-main")).to_contain_text("Следующий шаг — свяжитесь с кандидатом")
+    expect(page.locator("#dashboard-main .invitation-vacancy-context")).to_contain_text("Кладовщик")
+    expect(page.locator("#dashboard-main .invitation-last-activity")).to_contain_text("Последнее действие")
+    expect(page.locator("#dashboard-main .invitation-last-activity")).to_contain_text("Знакомство состоялось")
     page.locator(".dashboard-tabs [data-tab='overview']").click()
     expect(page.locator("#dashboard-main")).to_contain_text("Зафиксируйте итог знакомства")
     expect(page.locator("#dashboard-main .overview-stat-card").filter(has_text="Ждут итога").locator("strong")).to_have_text("1")
@@ -421,6 +424,7 @@ def run_browser(page):
     employer_mobile_section.select_option("invitations")
     expect(page.locator("#dashboard-main")).to_contain_text("Кандидат принят")
     expect(page.locator("#dashboard-main")).to_contain_text("КОНТАКТ СОХРАНЁН · ДЕМО")
+    expect(page.locator("#dashboard-main .invitation-last-activity")).to_be_visible()
     assert page.evaluate("""() => {
       const element = document.querySelector('#dashboard-main');
       return element.scrollWidth <= element.clientWidth + 3;
