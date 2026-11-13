@@ -558,6 +558,7 @@ def test_unified_status_timeline_consent_and_terminal_guards(app):
         employer_intro = employer.get("/api/employer/invitations").json()["invitations"][0]
         assert candidate_intro["application_status"] == "rejected"
         assert employer_intro["application_status"] == "rejected"
+        assert employer_intro["contact"]["email"] == "candidate@demo.example"
         assert candidate_intro["timeline"][-1]["event"] == "rejected"
         assert employer_intro["timeline"][-1]["event"] == "rejected"
         rejected_events = len([event for event in employer_intro["timeline"] if event["event"] == "rejected"])
