@@ -1579,13 +1579,16 @@ function handleDashboardInput(event) {
     state.employerInvitationsQuery = String(employerSearch.value || '');
     clearTimeout(employerInvitationSearchTimer);
     employerInvitationSearchTimer = setTimeout(async () => {
-      await loadEmployerInvitations();
-      const nextSearch = document.querySelector('#dashboard-main [data-employer-introduction-search]');
-      if (nextSearch) {
-        nextSearch.focus();
-        const end = nextSearch.value.length;
-        nextSearch.setSelectionRange?.(end,end);
-      }
+      if (state.user?.role !== 'employer' || state.tab !== 'invitations') return;
+      try {
+        await loadEmployerInvitations();
+        const nextSearch = document.querySelector('#dashboard-main [data-employer-introduction-search]');
+        if (nextSearch) {
+          nextSearch.focus();
+          const end = nextSearch.value.length;
+          nextSearch.setSelectionRange?.(end,end);
+        }
+      } catch(e) { toast(e.message,true); }
     }, 180);
     return;
   }
@@ -1594,13 +1597,16 @@ function handleDashboardInput(event) {
   state.candidateInvitationsQuery = String(candidateSearch.value || '');
   clearTimeout(candidateInvitationSearchTimer);
   candidateInvitationSearchTimer = setTimeout(async () => {
-    await loadCandidateInvitations();
-    const nextSearch = document.querySelector('#dashboard-main [data-candidate-introduction-search]');
-    if (nextSearch) {
-      nextSearch.focus();
-      const end = nextSearch.value.length;
-      nextSearch.setSelectionRange?.(end,end);
-    }
+    if (state.user?.role !== 'candidate' || state.tab !== 'invitations') return;
+    try {
+      await loadCandidateInvitations();
+      const nextSearch = document.querySelector('#dashboard-main [data-candidate-introduction-search]');
+      if (nextSearch) {
+        nextSearch.focus();
+        const end = nextSearch.value.length;
+        nextSearch.setSelectionRange?.(end,end);
+      }
+    } catch(e) { toast(e.message,true); }
   }, 180);
 }
 async function handleDashboardChange(event) {
