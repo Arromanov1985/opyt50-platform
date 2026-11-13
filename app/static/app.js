@@ -2,7 +2,7 @@
 'use strict';
 const $ = (selector, root = document) => root.querySelector(selector);
 const $$ = (selector, root = document) => [...root.querySelectorAll(selector)];
-const state = { user: null, mode: 'register', role: 'candidate', tab: 'overview', activeVacancy: null, editVacancy: null, employerVacancyFilter: 'all', employerApplicationsVacancyFilter: 'all', employerApplicationsStatusFilter: 'all', employerInvitationsFilter: 'all', mfaChallenge: null, mfaMethod: null, mfaCodeLength: 8, mfaPublicKey: null, mfaTotpFallback: false };
+const state = { user: null, mode: 'register', role: 'candidate', tab: 'overview', activeVacancy: null, editVacancy: null, employerVacancyFilter: 'all', employerApplicationsVacancyFilter: 'all', employerApplicationsStatusFilter: 'all', employerInvitationsFilter: 'all', candidateInvitationsFilter: 'all', mfaChallenge: null, mfaMethod: null, mfaCodeLength: 8, mfaPublicKey: null, mfaTotpFallback: false };
 const esc = value => String(value ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const money = value => Number(value || 0).toLocaleString('ru-RU') + ' ₽';
 const formatPay = job => job.salary_min === job.salary_max ? money(job.salary_min) : `${money(job.salary_min)} — ${money(job.salary_max)}`;
@@ -655,7 +655,7 @@ function candidateStatusChip(ok, yes, no) {
 }
 
 async function renderCandidate() {
-  const nav = [{id:'overview',label:'Обзор'},{id:'profile',label:'Мой профиль'},{id:'offers',label:'Подходящие вакансии'},{id:'invitations',label:'Приглашения'},{id:'security',label:'Безопасность'}];
+  const nav = [{id:'overview',label:'Обзор'},{id:'profile',label:'Мой профиль'},{id:'offers',label:'Подходящие вакансии'},{id:'applications',label:'Отклики'},{id:'invitations',label:'Знакомства'},{id:'favorites',label:'Сохранённые'},{id:'changes',label:'Изменения'},{id:'email',label:'Email и доступ'},{id:'security',label:'Безопасность'}];
   if (!nav.some(t => t.id === state.tab)) state.tab = 'overview';
   $('#account-content').innerHTML = `<div class="dashboard-grid">${tabsMarkup(nav,'ДЛЯ СОИСКАТЕЛЯ','Ваша карьера')}<div id="dashboard-main"><div class="loading">Загрузка...</div></div></div>`;
   const target = $('#dashboard-main');
@@ -676,7 +676,7 @@ async function renderCandidate() {
       const favorites = favoritesResult.jobs || [];
       const pendingInvitationsList = invitations.filter(item => item.status === 'sent');
       const pendingInvitations = pendingInvitationsList.length;
-      const activeApplicationsList = applications.filter(item => ['applied','reviewing','interview'].includes(item.status));
+      const activeApplicationsList = applications.filter(item => ['applied','reviewing','interview'].includes(item.status) && !item.contact_shared && item.invitation_status !== 'declined');
       const activeApplications = activeApplicationsList.length;
       const unreadChanges = Number(updatesResult.unread_count || 0);
       const emailVerified = Boolean(emailResult.email_verified);
@@ -695,7 +695,7 @@ async function renderCandidate() {
       } else if (pendingInvitations > 0) {
         nextTitle = 'Ответьте на приглашение работодателя';
         nextText = `Ожидают решения: ${pendingInvitations}. Контакты не откроются без вашего согласия.`;
-        nextAction = '<button class="btn btn-primary" data-tab="invitations">Открыть приглашения →</button>';
+        nextAction = '<button class="btn btn-primary" data-action="open-candidate-invitations" data-filter="decision">Ответить →</button>';
       } else if (unreadChanges > 0) {
         nextTitle = 'Проверьте изменения условий';
         nextText = `Работодатели изменили условия по ${unreadChanges} вакансии(ям), с которыми вы уже взаимодействовали.`;
@@ -724,7 +724,7 @@ async function renderCandidate() {
         <section class="overview-stat-grid" aria-label="Сводка соискателя">
           <button type="button" class="overview-stat-card" data-tab="offers"><strong>${jobs.length}</strong><span>Подходящие вакансии</span><small>По вашему профилю</small></button>
           <button type="button" class="overview-stat-card" data-tab="applications"><strong>${activeApplications}</strong><span>Активные отклики</span><small>В процессе</small></button>
-          <button type="button" class="overview-stat-card" data-tab="invitations"><strong>${pendingInvitations}</strong><span>Новые приглашения</span><small>Ждут решения</small></button>
+          <button type="button" class="overview-stat-card" data-action="open-candidate-invitations" data-filter="decision"><strong>${pendingInvitations}</strong><span>Требуют ответа</span><small>Новые знакомства</small></button>
           <button type="button" class="overview-stat-card" data-tab="favorites"><strong>${favorites.length}</strong><span>Избранное</span><small>Сохранённые вакансии</small></button>
         </section>
         <section class="candidate-overview-grid">
@@ -737,7 +737,7 @@ async function renderCandidate() {
             <div class="candidate-overview-list">${activeApplicationsList.length ? activeApplicationsList.slice(0,2).map(candidateOverviewApplicationCard).join('') : '<div class="empty-state"><p>Активных откликов пока нет.</p><button class="btn btn-primary btn-tiny" data-tab="offers">Выбрать вакансию →</button></div>'}</div>
           </div>
         </section>
-        ${pendingInvitationsList.length ? `<section class="panel candidate-overview-section candidate-invitations-preview"><div class="split-header"><div><span class="section-kicker">ТРЕБУЕТ ОТВЕТА</span><h3>Новые приглашения</h3><p class="muted">Решение за вами: контакты остаются закрытыми, пока вы не согласитесь.</p></div><button class="btn btn-outline btn-tiny" data-tab="invitations">Все приглашения</button></div><div class="candidate-overview-list">${pendingInvitationsList.slice(0,2).map(candidateOverviewInvitationCard).join('')}</div></section>` : ''}
+        ${pendingInvitationsList.length ? `<section class="panel candidate-overview-section candidate-invitations-preview"><div class="split-header"><div><span class="section-kicker">ТРЕБУЕТ ОТВЕТА</span><h3>Новые приглашения</h3><p class="muted">Решение за вами: контакты остаются закрытыми, пока вы не согласитесь.</p></div><button class="btn btn-outline btn-tiny" data-tab="invitations">Все знакомства</button></div><div class="candidate-overview-list">${pendingInvitationsList.slice(0,2).map(candidateOverviewInvitationCard).join('')}</div></section>` : ''}
         ${favorites.length ? `<section class="candidate-saved-strip"><div><span class="section-kicker">СОХРАНЕНО</span><strong>${favorites.length} вакансий в избранном</strong><small>Можно вернуться к ним позже и сравнить условия.</small></div><button class="btn btn-outline btn-tiny" data-tab="favorites">Открыть сохранённые →</button></section>` : ''}
       </div>`;
     } else if (state.tab === 'profile') target.innerHTML = profileMarkup(state.user.profile, state.user);
@@ -748,16 +748,75 @@ async function renderCandidate() {
       await renderAccountSecurity(target);
     } else {
       const {invitations} = await api('/api/candidate/invitations');
-      target.innerHTML = `<div class="panel"><h3>Приглашения от компаний</h3><p class="muted">Откройте контакт только тем компаниям, с которыми вы хотите познакомиться.</p><div class="dashboard-list">${invitations.length ? invitations.map(invitationCandidateMarkup).join('') : '<div class="empty-state">Приглашений пока нет. Заполните профиль, и работодатели смогут найти вас.</div>'}</div></div>`;
+      const selected = Object.hasOwn(candidateInvitationFilterLabels,state.candidateInvitationsFilter)
+        ? state.candidateInvitationsFilter
+        : 'all';
+      state.candidateInvitationsFilter = selected;
+      const counts = {decision:0,waiting:0,introduced:0,closed:0};
+      invitations.forEach(item => { counts[candidateInvitationBucket(item)] += 1; });
+      const ordered = [...invitations].sort((a,b) => {
+        const priority = {decision:0,waiting:1,introduced:2,closed:3};
+        const diff = priority[candidateInvitationBucket(a)] - priority[candidateInvitationBucket(b)];
+        return diff || Number(b.id||0)-Number(a.id||0);
+      });
+      const shown = selected === 'all' ? ordered : ordered.filter(item => candidateInvitationBucket(item) === selected);
+      const filters = [
+        ['all',invitations.length],
+        ['decision',counts.decision],
+        ['waiting',counts.waiting],
+        ['introduced',counts.introduced],
+        ['closed',counts.closed]
+      ].map(([value,count]) => `<button type="button" class="btn btn-tiny ${selected===value?'btn-dark':'btn-outline'}" data-action="filter-candidate-invitations" data-filter="${value}" aria-pressed="${selected===value}">${esc(candidateInvitationFilterLabels[value])} · ${Number(count)}</button>`).join('');
+      const empty = invitations.length
+        ? '<div class="empty-state empty-state-action"><span class="empty-state-icon" aria-hidden="true">⌕</span><strong>В этом этапе знакомств нет</strong><p>Выберите другой этап или покажите все знакомства.</p><button class="btn btn-outline" data-action="filter-candidate-invitations" data-filter="all">Показать все</button></div>'
+        : '<div class="empty-state"><strong>Знакомств пока нет.</strong><p>Заполните профиль, откликайтесь на вакансии — работодатели смогут предложить знакомство.</p></div>';
+      target.innerHTML = `<div class="panel candidate-introduction-center">
+        <div class="split-header"><div><span class="section-kicker">ЗНАКОМСТВА</span><h3>Знакомства с компаниями</h3><p class="muted">Здесь собраны запросы на знакомство и их дальнейший статус. Имя и контакты не передаются без вашего явного согласия.</p></div></div>
+        <div class="candidate-introduction-stage-filter" role="group" aria-label="Фильтр знакомств по этапу">${filters}</div>
+        <div class="candidate-introduction-result-line"><span role="status">Показываем <strong>${shown.length}</strong> из <strong>${invitations.length}</strong>${selected==='all'&&counts.decision?' · сначала знакомства, где нужен ваш ответ':''}</span>${selected!=='all'?'<button type="button" class="link-button" data-action="filter-candidate-invitations" data-filter="all">Сбросить фильтр</button>':''}</div>
+        <div class="dashboard-list">${shown.length ? shown.map(invitationCandidateMarkup).join('') : empty}</div>
+      </div>`;
     }
   } catch(e) { target.innerHTML = `<div class="panel">${esc(e.message)}</div>`; toast(e.message,true); }
 }
+const candidateInvitationFilterLabels = {
+  all:'Все',
+  decision:'Требуют ответа',
+  waiting:'Ждём работодателя',
+  introduced:'Знакомство состоялось',
+  closed:'Завершённые'
+};
+function candidateInvitationBucket(x) {
+  if (x.contact_shared) return 'introduced';
+  if (x.status === 'sent') return 'decision';
+  if (x.status === 'accepted') return 'waiting';
+  return 'closed';
+}
+function candidateInvitationStageLabel(x) {
+  const bucket = candidateInvitationBucket(x);
+  if (bucket === 'decision') return 'Требует ответа';
+  if (bucket === 'waiting') return 'Согласие отправлено';
+  if (bucket === 'introduced') return 'Знакомство состоялось';
+  if (x.status === 'declined') return 'Вы отказались';
+  return workflowStatus(x,statusTitle[x.status] || x.status);
+}
 function invitationCandidateMarkup(x) {
-  return `<article class="item-card invitation-card"><header><div><span class="card-eyebrow">ПРИГЛАШЕНИЕ</span><h4>${esc(x.title)}</h4><p>${esc(x.company_name)} · ${esc(x.city)} · ${formatPay(x)}</p>${employerPublicTrustMarkup(x)}</div><span class="mini-badge ${statusBadge[x.status]}">${esc(workflowStatus(x,statusTitle[x.status]))}</span></header>
+  const bucket = candidateInvitationBucket(x);
+  let action = '';
+  if (bucket === 'decision') {
+    action = `<div class="consent-box"><strong>Хотите познакомиться с компанией?</strong><p>Имя и контакты не будут переданы, пока вы явно не согласитесь.</p><label class="checks"><input type="checkbox" id="consent-${x.id}"> Да, я разрешаю открыть мои имя и контакты этой компании после подтверждения знакомства</label></div><div class="item-actions invitation-actions"><button class="btn btn-primary" data-action="accept" data-id="${x.id}">Да, интересно →</button><button class="btn btn-outline" data-action="decline" data-id="${x.id}">Нет, спасибо</button></div>`;
+  } else if (bucket === 'waiting') {
+    action = '<div class="candidate-introduction-note is-waiting"><strong>Согласие отправлено</strong><span>Теперь ждём работодателя. Повторно подтверждать знакомство или передавать контакты не нужно.</span></div>';
+  } else if (bucket === 'introduced') {
+    action = '<div class="info-box contact-opened-note"><strong>✓ Знакомство состоялось</strong><span>Работодатель открыл контакт после вашего согласия. Дополнительных действий на СТАЖНО не требуется.</span></div>';
+  } else if (x.status === 'declined') {
+    action = '<div class="candidate-introduction-note is-closed"><strong>Вы отказались от знакомства</strong><span>Контакты этой компании не переданы. Дополнительных действий нет.</span></div>';
+  }
+  return `<article class="item-card invitation-card candidate-introduction-card is-${bucket}"><header><div><span class="card-eyebrow">ЗНАКОМСТВО</span><h4>${esc(x.title)}</h4><p>${esc(x.company_name)} · ${esc(x.city)} · ${formatPay(x)}</p>${employerPublicTrustMarkup(x)}</div><span class="mini-badge ${bucket==='closed'?'gray':''}">${esc(candidateInvitationStageLabel(x))}</span></header>
    ${interactionStageMarkup(x,'invitation')}
    <p class="invitation-description">${esc(x.description || 'Подробности на собеседовании.')}</p>
    ${activityTimelineMarkup(x)}
-   ${x.status === 'sent' ? `<div class="consent-box"><strong>Хотите познакомиться с компанией?</strong><p>Имя и контакты не будут переданы, пока вы явно не согласитесь.</p><label class="checks"><input type="checkbox" id="consent-${x.id}"> Да, я разрешаю открыть мои имя и контакты этой компании после подтверждения знакомства</label></div><div class="item-actions invitation-actions"><button class="btn btn-primary" data-action="accept" data-id="${x.id}">Да, интересно →</button><button class="btn btn-outline" data-action="decline" data-id="${x.id}">Нет, спасибо</button></div>` : (x.contact_shared ? '<div class="info-box contact-opened-note"><strong>✓ Знакомство состоялось</strong><span>Контакты открыты работодателю в демонстрационном режиме.</span></div>' : '')}</article>`;
+   ${action}</article>`;
 }
 function employerPublicTrustMarkup(item = {}) {
   const badges = [];
@@ -1342,6 +1401,9 @@ async function handleDashboardClick(event) {
     if (state.user?.role === 'employer' && tab.dataset.tab === 'invitations') {
       state.employerInvitationsFilter = 'all';
     }
+    if (state.user?.role === 'candidate' && tab.dataset.tab === 'invitations') {
+      state.candidateInvitationsFilter = 'all';
+    }
     state.tab = tab.dataset.tab;
     state.activeVacancy = null;
     await showDashboard();
@@ -1408,6 +1470,20 @@ async function handleDashboardClick(event) {
       toast('Сессия завершена.');
       return;
     }
+    if (action === 'filter-candidate-invitations') {
+      if (!Object.hasOwn(candidateInvitationFilterLabels,btn.dataset.filter)) return;
+      state.candidateInvitationsFilter = btn.dataset.filter;
+      await renderCandidate();
+      return;
+    }
+    if (action === 'open-candidate-invitations') {
+      const filter = Object.hasOwn(candidateInvitationFilterLabels,btn.dataset.filter) ? btn.dataset.filter : 'all';
+      state.candidateInvitationsFilter = filter;
+      state.tab = 'invitations';
+      state.activeVacancy = null;
+      await showDashboard();
+      return;
+    }
     if (action === 'filter-employer-jobs') {
       if (!['all', 'open', 'closed'].includes(btn.dataset.filter)) return;
       state.employerVacancyFilter = btn.dataset.filter;
@@ -1446,7 +1522,10 @@ async function handleDashboardClick(event) {
     if (action === 'accept' || action === 'decline') {
       const consent = $(`#consent-${id}`);
       if (action === 'accept' && !consent.checked) { throw new Error('Подтвердите согласие на передачу контакта.'); }
-      await api(`/api/candidate/invitations/${id}/respond`,{method:'POST',body:JSON.stringify({decision:action === 'accept' ? 'accepted':'declined',share_consent:action === 'accept' && consent.checked})}); await showDashboard(); toast('Ответ работодателю сохранён.');
+      await api(`/api/candidate/invitations/${id}/respond`,{method:'POST',body:JSON.stringify({decision:action === 'accept' ? 'accepted':'declined',share_consent:action === 'accept' && consent.checked})});
+      state.candidateInvitationsFilter = action === 'accept' ? 'waiting' : 'closed';
+      await showDashboard();
+      toast('Ответ работодателю сохранён.');
     }
     if (action === 'demo-pay') {
       if (!confirm('Это тестовая оплата — реальные средства НЕ списываются. Открыть контакт согласившегося кандидата?')) return;
