@@ -1202,8 +1202,20 @@ def install_routes(app) -> None:
             # record the final result of the introduction.
             if not (body.status in {"hired", "rejected"} and invite["contact_shared"]):
                 raise HTTPException(409, "Знакомство уже началось. Измените его через раздел приглашений")
-        db.execute("UPDATE job_applications SET status=?,updated_at=datetime('now') WHERE id=?",
-                   (body.status, application_id))
+        db.execute(
+            "UPDATE job_applications SET status=?,updated_at=datetime('now') WHERE id=? AND status=?",
+            (body.status, application_id, item["status"]),
+        )
+        changed = db.execute("SELECT changes()").fetchone()[0] == 1
+        if not changed:
+            latest = db.execute(
+                "SELECT status FROM job_applications WHERE id=?", (application_id,)
+            ).fetchone()
+            if latest is not None and latest["status"] == body.status:
+                return {"ok": True, "status": body.status}
+            raise HTTPException(
+                409, "Статус отклика уже изменился. Обновите данные и повторите действие"
+            )
         db.execute("INSERT INTO application_events(application_id,event) VALUES(?,?)",
                    (application_id, body.status))
         if invite and invite["contact_shared"] and body.status in {"hired", "rejected"}:
