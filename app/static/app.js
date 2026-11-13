@@ -700,6 +700,10 @@ async function renderCandidate() {
       const pendingInvitationsList = invitations.filter(item => item.status === 'sent');
       const pendingInvitations = pendingInvitationsList.length;
       const waitingEmployerInvitations = invitations.filter(item => item.status === 'accepted' && !item.contact_shared);
+      const completedIntroductions = invitations
+        .filter(item => ['hired','rejected'].includes(item.application_status))
+        .sort((a,b) => invitationLastActivity(b) - invitationLastActivity(a));
+      const latestCompletedIntroduction = completedIntroductions[0] || null;
       const activeIntroductions = pendingInvitations + waitingEmployerInvitations.length;
       const introductionOverviewFilter = pendingInvitations ? 'decision' : (waitingEmployerInvitations.length ? 'waiting' : 'all');
       const activeApplicationsList = applications.filter(item =>
@@ -753,6 +757,7 @@ async function renderCandidate() {
           </div>
         </section>
         ${unreadChanges ? `<section class="overview-alert" role="status"><div><strong>Изменились условия вакансий</strong><span>Непрочитанных изменений: ${unreadChanges}</span></div><button class="btn btn-outline btn-tiny" data-tab="changes">Проверить изменения</button></section>` : ''}
+        ${latestCompletedIntroduction ? `<section class="overview-alert candidate-outcome-alert ${latestCompletedIntroduction.application_status==='hired'?'is-positive':'is-neutral'}" role="status"><div><strong>${latestCompletedIntroduction.application_status==='hired'?'Компания выбрала вас':'Знакомство завершено'}</strong><span>${latestCompletedIntroduction.application_status==='hired'?'Работодатель зафиксировал положительный итог знакомства.':'По итогам знакомства договориться не удалось.'}</span></div><button class="btn btn-outline btn-tiny" data-action="open-candidate-invitations" data-filter="closed">Посмотреть итог</button></section>` : ''}
         <section class="overview-stat-grid" aria-label="Сводка соискателя">
           <button type="button" class="overview-stat-card" data-tab="offers"><strong>${jobs.length}</strong><span>Подходящие вакансии</span><small>По вашему профилю</small></button>
           <button type="button" class="overview-stat-card" data-tab="applications"><strong>${activeApplications}</strong><span>Активные отклики</span><small>В процессе</small></button>
