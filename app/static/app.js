@@ -830,7 +830,7 @@ async function loadCandidateInvitations(target=$('#dashboard-main'), force=false
   ].map(([value,count]) => `<button type="button" class="btn btn-tiny ${selected===value?'btn-dark':'btn-outline'}" data-action="filter-candidate-invitations" data-filter="${value}" aria-pressed="${selected===value}">${esc(candidateInvitationFilterLabels[value])} · ${Number(count)}</button>`).join('');
   const empty = invitations.length
     ? (query
-      ? '<div class="empty-state empty-state-action"><span class="empty-state-icon" aria-hidden="true">⌕</span><strong>По этому запросу знакомств нет</strong><p>Измените поиск или сбросьте фильтры.</p><button class="btn btn-outline" data-action="reset-candidate-invitation-filters">Сбросить фильтры</button></div>'
+      ? '<div class="empty-state empty-state-action"><span class="empty-state-icon" aria-hidden="true">⌕</span><strong>По этому запросу знакомств нет</strong><p>Измените поиск или используйте «Сбросить фильтры» выше.</p></div>'
       : '<div class="empty-state empty-state-action"><span class="empty-state-icon" aria-hidden="true">⌕</span><strong>В этом этапе знакомств нет</strong><p>Выберите другой этап или покажите все знакомства.</p><button class="btn btn-outline" data-action="filter-candidate-invitations" data-filter="all">Показать все</button></div>')
     : '<div class="empty-state"><strong>Знакомств пока нет.</strong><p>Заполните профиль, откликайтесь на вакансии — работодатели смогут предложить знакомство.</p></div>';
   target.innerHTML = `<div class="panel candidate-introduction-center">
@@ -1334,7 +1334,7 @@ async function loadEmployerInvitations(force=false) {
   const vacancySelector = `<div class="employer-introduction-controls"><label class="employer-introduction-vacancy-filter"><span>Вакансия</span><select data-employer-introduction-vacancy-filter><option value="all">Все вакансии</option>${vacancyOptions.map(([id,title]) => `<option value="${esc(id)}" ${selectedVacancy===id?'selected':''}>${esc(title)}</option>`).join('')}</select></label><label class="employer-introduction-search"><span>Поиск</span><input type="search" value="${esc(state.employerInvitationsQuery)}" placeholder="Кандидат или вакансия" data-employer-introduction-search autocomplete="off"></label></div>`;
   const empty = invitations.length
     ? (query
-      ? '<div class="empty-state empty-state-action"><span class="empty-state-icon" aria-hidden="true">⌕</span><strong>По этому запросу знакомств нет</strong><p>Измените поиск или сбросьте фильтры.</p><button class="btn btn-outline" data-action="reset-employer-invitation-filters">Сбросить фильтры</button></div>'
+      ? '<div class="empty-state empty-state-action"><span class="empty-state-icon" aria-hidden="true">⌕</span><strong>По этому запросу знакомств нет</strong><p>Измените поиск или используйте «Сбросить фильтры» выше.</p></div>'
       : '<div class="empty-state empty-state-action"><span class="empty-state-icon" aria-hidden="true">⌕</span><strong>В этом этапе знакомств нет</strong><p>Выберите другой этап или покажите все знакомства.</p><button class="btn btn-outline" data-action="filter-employer-invitations" data-filter="all">Показать все</button></div>')
     : '<div class="empty-state"><strong>Знакомств пока нет.</strong><p>Откройте вакансию, запустите подбор и пригласите подходящего кандидата.</p><button class="btn btn-primary" data-tab="vacancies">К вакансиям →</button></div>';
   $('#dashboard-main').innerHTML = `<div class="panel invitation-center">
