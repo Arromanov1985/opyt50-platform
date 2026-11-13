@@ -1239,6 +1239,12 @@ function employerInvitationStageLabel(x) {
   if (x.status === 'declined') return 'Кандидат отказался';
   return workflowStatus(x,statusTitle[x.status] || x.status);
 }
+function invitationLastActivity(x) {
+  const timeline = Array.isArray(x.timeline) ? x.timeline : [];
+  const last = timeline.length ? timeline[timeline.length - 1]?.created_at : x.created_at;
+  const timestamp = Date.parse(String(last || '').replace(' ', 'T') + (String(last || '').includes('Z') ? '' : 'Z'));
+  return Number.isFinite(timestamp) ? timestamp : Number(x.id || 0);
+}
 async function loadEmployerInvitations() {
   const {invitations} = await api('/api/employer/invitations');
   const selected = Object.hasOwn(employerInvitationFilterLabels,state.employerInvitationsFilter)
@@ -1254,7 +1260,9 @@ async function loadEmployerInvitations() {
   };
   const ordered = [...invitations].sort((a,b) => {
     const priority = {action:0,waiting:1,introduced:2,closed:3};
-    return priority[employerInvitationBucket(a)] - priority[employerInvitationBucket(b)];
+    const bucketDiff = priority[employerInvitationBucket(a)] - priority[employerInvitationBucket(b)];
+    if (bucketDiff) return bucketDiff;
+    return invitationLastActivity(b) - invitationLastActivity(a);
   });
   const shown = selected === 'all' ? ordered : ordered.filter(item => employerInvitationBucket(item) === selected);
   const filterButtons = [
