@@ -2157,3 +2157,8 @@ body.comfortable-view .employer-invitation-card .interaction-note span{
 @media(max-width:390px){
   .employer-invitation-stage-filter{grid-template-columns:1fr}
 }
+
+@media(max-width:620px){
+  .application-review-card > .btn,
+  .employer-invitation-card > .btn{width:100%}
+}
