@@ -458,6 +458,7 @@ function tabsMarkup(items, heading, subtitle) {
   return `<aside class="panel side-panel">
     <div class="dashboard-identity"><span class="dashboard-avatar" aria-hidden="true">${esc((state.user?.name||roleLabel).trim().charAt(0).toUpperCase())}</span><div><span>${esc(roleLabel)}</span><strong>${esc(subtitle)}</strong></div></div>
     <span class="section-kicker dashboard-menu-kicker">${esc(heading)}</span>
+    <label class="dashboard-mobile-switch"><span>Раздел кабинета</span><select data-dashboard-tab-select aria-label="Раздел личного кабинета">${items.map(t => `<option value="${esc(t.id)}" ${state.tab === t.id ? 'selected' : ''}>${esc(t.label)}</option>`).join('')}</select></label>
     <nav class="dashboard-tabs" aria-label="Разделы личного кабинета">${items.map(t => `<button type="button" data-tab="${esc(t.id)}" class="${state.tab === t.id ? 'active' : ''}"><span class="dashboard-tab-icon" aria-hidden="true">${icons[t.id]||'•'}</span><span>${esc(t.label)}</span></button>`).join('')}</nav>
     <div class="dashboard-side-note"><span>Приватность</span><small>Контакты открываются только в сценарии знакомства.</small></div>
   </aside>`;
@@ -1427,6 +1428,25 @@ async function handleDashboardSubmit(event) {
     }
   }
 }
+async function handleDashboardChange(event) {
+  const select = event.target.closest('[data-dashboard-tab-select]');
+  if (!select) return;
+  const nextTab = String(select.value || '');
+  if (!nextTab || nextTab === state.tab) return;
+  if (state.user?.role === 'employer' && nextTab === 'applications') {
+    state.employerApplicationsVacancyFilter = 'all';
+    state.employerApplicationsStatusFilter = 'all';
+  }
+  if (state.user?.role === 'employer' && nextTab === 'invitations') {
+    state.employerInvitationsFilter = 'all';
+  }
+  if (state.user?.role === 'candidate' && nextTab === 'invitations') {
+    state.candidateInvitationsFilter = 'all';
+  }
+  state.tab = nextTab;
+  state.activeVacancy = null;
+  await showDashboard();
+}
 async function handleDashboardClick(event) {
   const tab = event.target.closest('[data-tab]');
   if (tab) {
@@ -1597,6 +1617,7 @@ async function start() {
   $('#jobs-filter').addEventListener('click',loadPublicJobs);
   $('#city-filter').addEventListener('keydown',e=>{if(e.key==='Enter')loadPublicJobs();});
   $('#account-content').addEventListener('click',handleDashboardClick);
+  $('#account-content').addEventListener('change',handleDashboardChange);
   $('#account-content').addEventListener('submit',handleDashboardSubmit);
   await reloadUser();
   await loadPublicJobs();
