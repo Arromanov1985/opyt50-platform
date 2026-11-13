@@ -1184,6 +1184,8 @@ def install_routes(app) -> None:
                              WHERE a.id=? AND v.employer_id=?""", (application_id, user["id"])).fetchone()
         if item is None:
             raise HTTPException(404, "Отклик не найден")
+        if item["status"] == body.status:
+            return {"ok": True, "status": body.status}
         if item["status"] in {"withdrawn", "hired", "rejected"}:
             raise HTTPException(409, "Статус этого отклика уже окончательный")
         invite = db.execute(
@@ -1196,8 +1198,6 @@ def install_routes(app) -> None:
             # record the final result of the introduction.
             if not (body.status in {"hired", "rejected"} and invite["contact_shared"]):
                 raise HTTPException(409, "Знакомство уже началось. Измените его через раздел приглашений")
-        if item["status"] == body.status:
-            return {"ok": True, "status": body.status}
         db.execute("UPDATE job_applications SET status=?,updated_at=datetime('now') WHERE id=?",
                    (body.status, application_id))
         db.execute("INSERT INTO application_events(application_id,event) VALUES(?,?)",
