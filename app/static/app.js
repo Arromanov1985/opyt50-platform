@@ -703,7 +703,9 @@ async function renderCandidate() {
       const completedIntroductions = invitations
         .filter(item => ['hired','rejected'].includes(item.application_status))
         .sort((a,b) => invitationLastActivity(b) - invitationLastActivity(a));
-      const latestCompletedIntroduction = completedIntroductions[0] || null;
+      const latestCompletedIntroduction = completedIntroductions.find(item =>
+        Date.now() - invitationLastActivity(item) <= 14 * 24 * 60 * 60 * 1000
+      ) || null;
       const activeIntroductions = pendingInvitations + waitingEmployerInvitations.length;
       const introductionOverviewFilter = pendingInvitations ? 'decision' : (waitingEmployerInvitations.length ? 'waiting' : 'all');
       const activeApplicationsList = applications.filter(item =>
