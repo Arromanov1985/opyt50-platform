@@ -335,6 +335,42 @@
   font-size:12px;
 }
 .contact-card a{color:#fff;text-decoration:underline;text-underline-offset:2px}
+.contact-card .contact-card-details{gap:8px}
+.contact-card .contact-card-next{
+  display:grid;
+  gap:3px;
+  margin-top:6px;
+  padding-top:12px;
+  border-top:1px solid #ffffff24;
+}
+.contact-card .contact-card-next strong{
+  color:#fff;
+  font-size:12px;
+}
+.contact-card .contact-card-next span{
+  color:#C9DBD2;
+  font-size:11px;
+  line-height:1.45;
+}
+.contact-card .contact-card-actions{
+  display:flex;
+  gap:8px;
+  margin-top:6px;
+}
+.contact-card .contact-card-actions .btn{
+  text-decoration:none;
+  text-underline-offset:0;
+}
+.contact-card .contact-card-actions .btn-outline{
+  color:#fff;
+  border-color:#ffffff55;
+  background:transparent;
+}
+.contact-card .contact-card-actions .btn-outline:hover{
+  border-color:#ffffff88;
+}
+body.comfortable-view .contact-card .contact-card-next strong{font-size:1rem}
+body.comfortable-view .contact-card .contact-card-next span{font-size:.92rem}
 .invitation-waiting{margin-top:12px}
 
 .account-email-panel{max-width:720px}
@@ -388,6 +424,14 @@ body.comfortable-view .application-timeline span{font-size:.9rem}
   .mini-stat-row strong{font-size:19px}
   .demo-note{align-items:flex-start;flex-direction:column;gap:3px}
   .invitation-actions .btn{width:100%}
+  .contact-card .contact-card-actions{
+    display:grid;
+    grid-template-columns:1fr;
+  }
+  .contact-card .contact-card-actions .btn{
+    width:100%;
+    min-height:44px;
+  }
 }
 @media(max-width:430px){
   .mini-stat-row{grid-template-columns:1fr}
