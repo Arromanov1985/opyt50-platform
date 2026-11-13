@@ -1601,6 +1601,10 @@ async function handleDashboardClick(event) {
     if (action === 'introduction-outcome') {
       const outcome = btn.dataset.status;
       if (!['hired','rejected'].includes(outcome)) return;
+      const question = outcome === 'hired'
+        ? 'Зафиксировать результат «Кандидат принят»? После сохранения изменить итог нельзя.'
+        : 'Зафиксировать результат «Не договорились»? После сохранения изменить итог нельзя.';
+      if (!confirm(question)) return;
       await api(`/api/employer/applications/${id}/status`,{method:'PATCH',body:JSON.stringify({status:outcome})});
       state.employerInvitationsFilter = 'closed';
       await loadEmployerInvitations();
