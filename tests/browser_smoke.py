@@ -501,6 +501,11 @@ def run_browser(page):
     expect(page.locator(".dashboard-tabs")).to_be_hidden()
     assert mobile_section.bounding_box()["height"] >= 44
     expect(page.locator("#dashboard-main .overview-stat-card")).to_have_count(4)
+    expect(page.locator("#dashboard-main .candidate-outcome-alert")).to_contain_text("Компания выбрала вас")
+    assert page.evaluate("""() => {
+      const element = document.querySelector('#dashboard-main');
+      return element.scrollWidth <= element.clientWidth + 3;
+    }"""), "Candidate final outcome alert must fit mobile width"
     mobile_section.select_option("profile")
     expect(page.locator("#profile-form")).to_be_visible()
     page.locator("[data-dashboard-tab-select]").select_option("applications")
