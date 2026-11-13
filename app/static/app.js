@@ -38,12 +38,18 @@ function candidateWorkflowStatus(x, fallback='') {
   if (x.status==='applied') return 'Отправлен';
   return fallback;
 }
+function formatActivityTimestamp(value) {
+  const text = String(value || '').trim();
+  const match = text.match(/^(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2})/);
+  if (!match) return text;
+  return `${match[3]}.${match[2]}.${match[1]} · ${match[4]}:${match[5]}`;
+}
 function activityTimelineMarkup(x) {
   const entries = Array.isArray(x.timeline) ? x.timeline : [];
   if (!entries.length) return '';
   const recent = entries.slice(-4);
   return '<details class="application-timeline" aria-label="История взаимодействия"><summary>История взаимодействия</summary>' +
-    recent.map(e=>'<span>'+esc(activityLabels[e.event]||e.event)+' · '+esc(e.created_at)+'</span>').join('')+'</details>';
+    recent.map(e=>'<span>'+esc(activityLabels[e.event]||e.event)+' · '+esc(formatActivityTimestamp(e.created_at))+'</span>').join('')+'</details>';
 }
 function interactionStageMarkup(x, kind='application') {
   const introduced = x.introduction_stage === 'introduced' || x.contact_shared;
@@ -1257,7 +1263,7 @@ function invitationLastActivityMarkup(x) {
   const last = timeline.length ? timeline[timeline.length - 1] : null;
   if (!last) return '';
   const label = activityLabels[last.event] || last.event || 'Обновление';
-  return `<div class="invitation-last-activity"><span>Последнее действие</span><strong>${esc(label)}</strong><small>${esc(last.created_at || '')}</small></div>`;
+  return `<div class="invitation-last-activity"><span>Последнее действие</span><strong>${esc(label)}</strong><small>${esc(formatActivityTimestamp(last.created_at))}</small></div>`;
 }
 async function loadEmployerInvitations() {
   const {invitations} = await api('/api/employer/invitations');
