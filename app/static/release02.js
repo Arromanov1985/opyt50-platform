@@ -26,10 +26,10 @@
     function employerIntroBadge(a) {
       if (!a.invitation_id) return '';
       if (a.contact_shared) {
-        return '<div class="interaction-note is-complete"><strong>Знакомство состоялось</strong><span>Контакт уже открыт. История и контакт доступны в разделе приглашений.</span></div><button class="btn btn-outline btn-tiny" data-v02-action="open-introductions">Открыть контакт →</button>';
+        return '<div class="interaction-note is-complete"><strong>Знакомство состоялось</strong><span>Контакт уже открыт. История и контакт доступны в разделе знакомств.</span></div><button class="btn btn-outline btn-tiny" data-v02-action="open-introductions" data-filter="introduced">Открыть контакт →</button>';
       }
       if (a.invitation_status === 'accepted') {
-        return '<div class="interaction-note is-ready"><strong>Согласие получено</strong><span>Кандидат разрешил продолжить знакомство. Следующий шаг — перейти к открытию контакта.</span></div><button class="btn btn-primary btn-tiny" data-v02-action="open-introductions">Продолжить знакомство →</button>';
+        return '<div class="interaction-note is-ready"><strong>Согласие получено</strong><span>Кандидат разрешил продолжить знакомство. Следующий шаг — открыть контакт.</span></div><button class="btn btn-primary btn-tiny" data-v02-action="open-introductions" data-filter="action">Продолжить знакомство →</button>';
       }
       if (a.invitation_status === 'sent') {
         return '<div class="interaction-note is-waiting"><strong>Запрос отправлен</strong><span>Ждём решения кандидата. Повторно отправлять запрос не нужно.</span></div>';
@@ -301,11 +301,9 @@
     renderEmployer = async function() {
       if(state.tab!=='applications'){
         await oldEmployer();
-        const nav=$('.dashboard-tabs');
-        if(nav) nav.insertAdjacentHTML('beforeend','<button type="button" data-tab="applications"><span class="dashboard-tab-icon" aria-hidden="true">✓</span><span>Отклики</span></button>');
         return;
       }
-      const nav=[{id:'overview',label:'Обзор'},{id:'company',label:'Компания'},{id:'vacancies',label:'Мои вакансии'},{id:'create',label:'Новая вакансия'},{id:'invitations',label:'Приглашения и контакты'},...employerExtra];
+      const nav=[{id:'overview',label:'Обзор'},{id:'company',label:'Компания'},{id:'vacancies',label:'Мои вакансии'},{id:'create',label:'Новая вакансия'},{id:'applications',label:'Отклики'},{id:'invitations',label:'Знакомства и контакты'},{id:'security',label:'Безопасность'}];
       $('#account-content').innerHTML=`<div class="dashboard-grid">${tabsMarkup(nav,'ДЛЯ КОМПАНИИ',state.user.company?.company_name||'Работодатель')}<div id="dashboard-main"></div></div>`;
       try {
         const {applications}=await api('/api/employer/applications');
@@ -561,7 +559,7 @@
           await showDashboard();
           toast(data.created?'Кандидату направлен запрос на знакомство (демо)':'Запрос уже существует — повторно не отправлен');
         }
-        else if(type==='open-introductions'){state.tab='invitations';await showDashboard();}
+        else if(type==='open-introductions'){state.employerInvitationsFilter=btn.dataset.filter||'all';state.tab='invitations';await showDashboard();}
         else if(type==='verify-email'){await req('POST','/api/account/email/request');toast('Письмо подтверждения отправлено, если почтовая доставка настроена');}
         else if(type==='recover'){$('#auth-dialog').close();$('#reset-dialog').showModal();}
         else if(type==='admin-users')await adminView('users');
