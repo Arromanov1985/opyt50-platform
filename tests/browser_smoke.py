@@ -349,7 +349,7 @@ def run_browser(page):
     page.locator(".dashboard-tabs [data-tab='overview']").click()
     expect(page.locator("#dashboard-main")).to_contain_text("Зафиксируйте итог знакомства")
     expect(page.locator("#dashboard-main .overview-stat-card").filter(has_text="Ждут итога").locator("strong")).to_have_text("1")
-    page.locator("#dashboard-main [data-action='open-employer-invitations'][data-filter='introduced']").click()
+    page.locator("#dashboard-main .overview-priority [data-action='open-employer-invitations'][data-filter='introduced']").click()
     expect(page.locator("#dashboard-main [data-action='filter-employer-invitations'][data-filter='introduced']")).to_have_attribute("aria-pressed", "true")
     page.locator(".dashboard-tabs [data-tab='vacancies']").click()
     expect(page.locator("#dashboard-main .employer-next")).to_contain_text("Зафиксируйте итог знакомства")
