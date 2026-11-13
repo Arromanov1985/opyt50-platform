@@ -302,6 +302,9 @@ def run_browser(page):
     expect(page.locator("#dashboard-main")).to_contain_text("Теперь ждём работодателя")
     expect(page.locator("#dashboard-main [data-action='filter-candidate-invitations'][data-filter='waiting']")).to_have_attribute("aria-pressed", "true")
     expect(page.locator("#dashboard-main [data-action='accept']")).to_have_count(0)
+    page.locator(".dashboard-tabs [data-tab='overview']").click()
+    expect(page.locator("#dashboard-main")).to_contain_text("Согласие отправлено — ждём работодателя")
+    expect(page.locator("#dashboard-main")).to_contain_text("Ждём работодателя: 1")
     page.locator("#logout").click()
 
     login(page, "company@demo.example")
