@@ -1206,8 +1206,27 @@ def install_routes(app) -> None:
                    (body.status, application_id))
         db.execute("INSERT INTO application_events(application_id,event) VALUES(?,?)",
                    (application_id, body.status))
-        enqueue_notice(db, item["candidate_id"], "application_status", "Статус отклика — СТАЖНО",
-                       f"Статус отклика на «{item['title']}» изменён на {body.status}. Откройте кабинет.")
+        if invite and invite["contact_shared"] and body.status in {"hired", "rejected"}:
+            final_subject = "Итог знакомства — СТАЖНО"
+            final_text = (
+                f"Компания отметила положительный итог знакомства по вакансии «{item['title']}». "
+                "Откройте кабинет, чтобы посмотреть статус."
+                if body.status == "hired"
+                else f"Компания завершила знакомство по вакансии «{item['title']}» без продолжения. "
+                     "Откройте кабинет, чтобы посмотреть статус."
+            )
+            enqueue_notice(db, item["candidate_id"], "application_status", final_subject, final_text)
+        else:
+            status_labels = {
+                "reviewing": "на рассмотрении",
+                "interview": "работодатель заинтересован",
+                "rejected": "получен отказ",
+                "hired": "кандидат принят",
+            }
+            enqueue_notice(
+                db, item["candidate_id"], "application_status", "Статус отклика — СТАЖНО",
+                f"Статус отклика на «{item['title']}»: {status_labels.get(body.status, body.status)}. Откройте кабинет.",
+            )
         # Commit before the HTTP response: a new dashboard request may arrive immediately.
         db.commit()
         return {"ok": True, "status": body.status}
