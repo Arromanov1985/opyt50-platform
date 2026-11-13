@@ -173,6 +173,13 @@ def test_cross_site_mutations_are_rejected_by_origin_and_fetch_metadata(tmp_path
         )
         assert cross_site.status_code == 403
 
+        missing_requested_with = client.post(
+            "/api/register",
+            headers={"Origin": "https://stazhno.ru", "Sec-Fetch-Site": "same-origin"},
+            json=body,
+        )
+        assert missing_requested_with.status_code == 403
+
         same_origin = client.post(
             "/api/register",
             headers={**XHR, "Origin": "https://stazhno.ru", "Sec-Fetch-Site": "same-origin"},
