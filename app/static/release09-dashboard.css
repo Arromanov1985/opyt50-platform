@@ -463,7 +463,7 @@ body.comfortable-view .application-timeline span{font-size:.9rem}
 }
 .vacancy-pipeline-mini{
   display:grid;
-  grid-template-columns:repeat(3,minmax(0,1fr));
+  grid-template-columns:repeat(4,minmax(0,1fr));
   gap:8px;
   margin:14px 0;
 }
@@ -2318,4 +2318,25 @@ body.comfortable-view .candidate-introduction-note span{font-size:.92rem}
 @media(max-width:900px){
   .employer-outcome-funnel .overview-funnel-steps{grid-template-columns:1fr 1fr}
   .employer-outcome-funnel .overview-funnel-steps>b{display:none}
+}
+
+.employer-outcome-summary{
+  display:grid;
+  grid-template-columns:repeat(3,minmax(0,1fr));
+  gap:10px;
+  margin-top:12px;
+}
+.employer-outcome-summary>div{
+  display:grid;
+  gap:3px;
+  padding:12px 14px;
+  border:1px solid #DDEAE3;
+  border-radius:13px;
+  background:#F8FCF9;
+}
+.employer-outcome-summary strong{font-size:20px;color:#0B2D26}
+.employer-outcome-summary span{font-size:10px;color:#61756C}
+@media(max-width:700px){
+  .employer-outcome-summary{grid-template-columns:1fr 1fr}
+  .vacancy-pipeline-mini{grid-template-columns:1fr 1fr}
 }
