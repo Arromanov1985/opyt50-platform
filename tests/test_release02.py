@@ -548,6 +548,14 @@ def test_unified_status_timeline_consent_and_terminal_guards(app):
 
         paid = post(employer, f"/api/employer/invitations/{invite_id}/demo-pay")
         assert paid.status_code == 200, paid.text
+        assert candidate.patch(
+            f"/api/employer/applications/{aid}/status",
+            json={"status": "hired"}, headers=HEADERS
+        ).status_code == 403
+        assert stranger.patch(
+            f"/api/employer/applications/{aid}/status",
+            json={"status": "hired"}, headers=HEADERS
+        ).status_code == 404
         for payload in (
             candidate.get("/api/candidate/applications").json()["applications"][0],
             employer.get("/api/employer/applications").json()["applications"][0],
