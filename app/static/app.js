@@ -935,6 +935,7 @@ async function renderEmployer() {
       const hiredIntroductions = invitations.filter(item => item.application_status === 'hired').length;
       const rejectedIntroductions = invitations.filter(item => item.application_status === 'rejected').length;
       const completedIntroductions = hiredIntroductions + rejectedIntroductions;
+      const hireConversion = completedIntroductions ? Math.round(hiredIntroductions / completedIntroductions * 100) : 0;
       let nextTitle = 'Создайте первую вакансию';
       let nextText = 'После публикации можно получать отклики и запускать подбор кандидатов.';
       let nextAction = '<button class="btn btn-primary" data-tab="create">Создать вакансию →</button>';
@@ -984,6 +985,7 @@ async function renderEmployer() {
             <div><strong>${rejectedIntroductions}</strong><span>Не договорились</span></div>
             <div><strong>${activeOpenedContacts.length}</strong><span>Ждут итога</span></div>
           </div>
+          <p class="employer-outcome-rate">Конверсия завершённых знакомств в принятие: <strong>${hireConversion}%</strong></p>
         </section>
       </div>`;
     } else if (state.tab === 'company') {
