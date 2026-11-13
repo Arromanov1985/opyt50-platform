@@ -1098,13 +1098,16 @@ async function loadEmployerVacancies() {
   const visibleJobs = filter === 'all' ? jobs : jobs.filter(job => job.status === filter);
   const invitationCount = invitations.length;
   const introducedCount = invitations.filter(item => item.contact_shared).length;
+  const activeOpenedContacts = invitations.filter(item => item.contact_shared && !['hired','rejected'].includes(item.application_status));
   const actionableApplications = applications.filter(a => !a.invitation_id && ['applied','reviewing','interview'].includes(a.status));
   const readyIntroductions = invitations.filter(item => item.status === 'accepted' && !item.contact_shared);
   const waitingIntroductions = invitations.filter(item => item.status === 'sent' && !item.contact_shared);
   const firstOpenJob = jobs.find(job => job.status === 'open');
   const firstActionableApplication = actionableApplications[0];
   let nextAction = '<div class="employer-next"><div><span>Следующий шаг</span><strong>Создайте первую вакансию</strong><small>После публикации можно получать отклики и запускать подбор.</small></div><button class="btn btn-primary btn-tiny" data-action="new-job">Создать вакансию →</button></div>';
-  if (readyIntroductions.length) {
+  if (activeOpenedContacts.length) {
+    nextAction = `<div class="employer-next"><div><span>Требует внимания</span><strong>Зафиксируйте итог знакомства</strong><small>Открытых контактов без финального решения: ${activeOpenedContacts.length}.</small></div><button class="btn btn-primary btn-tiny" data-action="open-employer-invitations" data-filter="introduced">Зафиксировать итог →</button></div>`;
+  } else if (readyIntroductions.length) {
     nextAction = `<div class="employer-next"><div><span>Требует внимания</span><strong>Есть согласие кандидата</strong><small>Можно открыть контакт по ${readyIntroductions.length} знакомству(ам).</small></div><button class="btn btn-primary btn-tiny" data-action="open-employer-invitations" data-filter="action">Продолжить знакомство →</button></div>`;
   } else if (actionableApplications.length && firstActionableApplication) {
     nextAction = `<div class="employer-next"><div><span>Требует внимания</span><strong>Разберите новые отклики</strong><small>Нужен ваш следующий шаг по ${actionableApplications.length} отклику(ам).</small></div><button class="btn btn-primary btn-tiny" data-action="vacancy-applications" data-id="${Number(firstActionableApplication.vacancy_id)}">Открыть отклики →</button></div>`;
