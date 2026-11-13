@@ -933,6 +933,8 @@ async function renderEmployer() {
       const consentedInvitations = invitations.filter(item => item.status === 'accepted' || item.contact_shared).length;
       const openedContacts = invitations.filter(item => item.contact_shared).length;
       const hiredIntroductions = invitations.filter(item => item.application_status === 'hired').length;
+      const rejectedIntroductions = invitations.filter(item => item.application_status === 'rejected').length;
+      const completedIntroductions = hiredIntroductions + rejectedIntroductions;
       let nextTitle = 'Создайте первую вакансию';
       let nextText = 'После публикации можно получать отклики и запускать подбор кандидатов.';
       let nextAction = '<button class="btn btn-primary" data-tab="create">Создать вакансию →</button>';
@@ -975,7 +977,12 @@ async function renderEmployer() {
             <div><strong>${applications.length}</strong><span>Отклики</span></div><b>→</b>
             <div><strong>${consentedInvitations}</strong><span>Согласия</span></div><b>→</b>
             <div><strong>${openedContacts}</strong><span>Контакты</span></div><b>→</b>
+            <div><strong>${completedIntroductions}</strong><span>Итоги</span></div>
+          </div>
+          <div class="employer-outcome-summary" aria-label="Результаты знакомств">
             <div><strong>${hiredIntroductions}</strong><span>Приняты</span></div>
+            <div><strong>${rejectedIntroductions}</strong><span>Не договорились</span></div>
+            <div><strong>${activeOpenedContacts.length}</strong><span>Ждут итога</span></div>
           </div>
         </section>
       </div>`;
@@ -1087,7 +1094,7 @@ async function loadEmployerVacancies() {
   const applicationsByJob = new Map();
   for (const a of applications) {
     const id = Number(a.vacancy_id);
-    if (!applicationsByJob.has(id)) applicationsByJob.set(id, {total: 0, interested: 0, attention: 0, ready: 0, waiting: 0, outcome: 0, completed: 0});
+    if (!applicationsByJob.has(id)) applicationsByJob.set(id, {total: 0, interested: 0, attention: 0, ready: 0, waiting: 0, outcome: 0, hired: 0, rejected: 0});
     const stats = applicationsByJob.get(id);
     stats.total += 1;
     if (a.status === 'interview' || a.invitation_id) stats.interested += 1;
@@ -1095,11 +1102,12 @@ async function loadEmployerVacancies() {
   }
   for (const invitation of invitations) {
     const id = Number(invitation.vacancy_id);
-    if (!applicationsByJob.has(id)) applicationsByJob.set(id, {total: 0, interested: 0, attention: 0, ready: 0, waiting: 0, outcome: 0, completed: 0});
+    if (!applicationsByJob.has(id)) applicationsByJob.set(id, {total: 0, interested: 0, attention: 0, ready: 0, waiting: 0, outcome: 0, hired: 0, rejected: 0});
     const stats = applicationsByJob.get(id);
     if (invitation.status === 'accepted' && !invitation.contact_shared) stats.ready += 1;
     if (invitation.status === 'sent' && !invitation.contact_shared) stats.waiting += 1;
-    if (invitation.application_id && invitation.contact_shared && ['hired','rejected'].includes(invitation.application_status)) stats.completed += 1;
+    if (invitation.application_id && invitation.contact_shared && invitation.application_status === 'hired') stats.hired += 1;
+    else if (invitation.application_id && invitation.contact_shared && invitation.application_status === 'rejected') stats.rejected += 1;
     else if (invitation.application_id && invitation.contact_shared) stats.outcome += 1;
   }
   const view = $('#dashboard-main');
@@ -1149,7 +1157,7 @@ function vacancyQuality(job = {}) {
   const percent = Math.round(passed / checks.length * 100);
   return {percent,suggestions:checks.filter(([ok])=>!ok).map(([,text])=>text)};
 }
-function jobEmployerMarkup(x, stats = {total: 0, interested: 0, attention: 0, ready: 0, waiting: 0, outcome: 0, completed: 0}) {
+function jobEmployerMarkup(x, stats = {total: 0, interested: 0, attention: 0, ready: 0, waiting: 0, outcome: 0, hired: 0, rejected: 0}) {
   const needsOutcome = stats.outcome > 0;
   const hasReadyIntroduction = x.status === 'open' && stats.ready > 0;
   const needsAttention = x.status === 'open' && stats.attention > 0;
@@ -1158,7 +1166,7 @@ function jobEmployerMarkup(x, stats = {total: 0, interested: 0, attention: 0, re
   const qualityClass = quality.percent >= 88 ? 'high' : quality.percent >= 63 ? 'medium' : 'low';
   return `<article class="item-card employer-vacancy-card ${(needsAttention || hasReadyIntroduction || needsOutcome) ? 'needs-attention' : ''}">
     <header><div><span class="card-eyebrow">${esc(nextLabel)}</span><h4>${esc(x.title)}</h4><p>${esc(x.city)} · ${formatPay(x)} · ${esc(x.schedule)}</p><div class="vacancy-moderation-state ${esc(x.moderation_status||'approved')}"><strong>${x.moderation_status==='pending'?'На проверке':x.moderation_status==='rejected'?'Отклонена модератором':'Опубликована'}</strong>${x.moderation_reason?`<small>${esc(x.moderation_reason)}</small>`:''}</div></div><span class="mini-badge ${x.status === 'open' ? '' : 'gray'}">${x.status === 'open' ? 'Открыта' : 'Закрыта'}</span></header>
-    <div class="vacancy-pipeline-mini"><span><strong>${stats.total}</strong><small>Отклики</small></span><span><strong>${stats.attention}</strong><small>Нужно разобрать</small></span><span><strong>${stats.outcome}</strong><small>Ждут итога</small></span></div>
+    <div class="vacancy-pipeline-mini"><span><strong>${stats.total}</strong><small>Отклики</small></span><span><strong>${stats.outcome}</strong><small>Ждут итога</small></span><span><strong>${stats.hired}</strong><small>Приняты</small></span><span><strong>${stats.rejected}</strong><small>Не договорились</small></span></div>
     <div class="vacancy-quality ${qualityClass}"><div class="vacancy-quality-head"><span>Качество объявления</span><strong>${quality.percent}%</strong></div><div class="vacancy-quality-track"><span style="width:${quality.percent}%"></span></div>${quality.suggestions.length?`<p>${esc(quality.suggestions.slice(0,2).join(' · '))}</p>`:'<p>Основные условия заполнены хорошо.</p>'}</div>
     <div class="employer-vacancy-primary">${needsOutcome ? '<button type="button" class="btn btn-primary" data-action="open-employer-invitations" data-filter="introduced">Зафиксировать итог →</button>' : hasReadyIntroduction ? '<button type="button" class="btn btn-primary" data-action="open-employer-invitations" data-filter="action">Продолжить знакомство →</button>' : needsAttention ? `<button type="button" class="btn btn-primary" data-action="vacancy-applications-primary" data-id="${x.id}">Разобрать отклики →</button>` : `<button class="btn btn-dark" data-action="matches-primary" data-id="${x.id}" ${x.status === 'closed' ? 'disabled':''}>Подобрать кандидатов →</button>`}</div>
     <div class="item-actions employer-vacancy-secondary"><button type="button" class="btn btn-outline btn-tiny" data-action="vacancy-applications" data-id="${x.id}">Отклики</button><button class="btn btn-outline btn-tiny" data-action="matches" data-id="${x.id}" ${x.status === 'closed' ? 'disabled':''}>Подбор</button><button class="btn btn-outline btn-tiny" data-action="edit-job" data-id="${x.id}">Редактировать</button><button class="btn btn-outline btn-tiny" data-action="job-status" data-id="${x.id}" data-status="${x.status === 'open' ? 'closed' : 'open'}">${x.status === 'open' ? 'Закрыть' : 'Открыть'}</button></div>
