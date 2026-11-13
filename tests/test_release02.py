@@ -654,6 +654,34 @@ def test_proactive_invitation_has_unified_history_without_application(app):
         assert employer_opened["timeline"][-1]["event"] == "contact_opened"
 
 
+def test_candidate_interaction_ownership_guards(app):
+    with TestClient(app) as candidate, TestClient(app) as other_candidate, TestClient(app) as employer:
+        cid = register(candidate, "owner-candidate@demo.example")
+        register(other_candidate, "other-candidate@demo.example")
+        register(employer, "ownership-employer@demo.example", "employer")
+        profile(candidate)
+        profile(other_candidate)
+        jid = vacancy(employer)
+
+        submitted = post(candidate, "/api/candidate/applications", {"vacancy_id": jid})
+        assert submitted.status_code == 201, submitted.text
+        aid = submitted.json()["id"]
+
+        interested = post(employer, f"/api/employer/applications/{aid}/interest")
+        assert interested.status_code == 200, interested.text
+        invitation_id = interested.json()["invitation_id"]
+
+        assert other_candidate.get("/api/candidate/invitations").json()["invitations"] == []
+        assert post(other_candidate, f"/api/candidate/invitations/{invitation_id}/respond", {
+            "decision": "accepted", "share_consent": True
+        }).status_code == 404
+        assert post(other_candidate, f"/api/candidate/applications/{aid}/withdraw").status_code == 404
+
+        owner_item = candidate.get("/api/candidate/invitations").json()["invitations"][0]
+        assert owner_item["id"] == invitation_id
+        assert owner_item["status"] == "sent"
+
+
 def test_declined_invitation_notice_is_human_readable(app):
     with TestClient(app) as candidate, TestClient(app) as employer:
         cid = register(candidate, "decline-candidate@demo.example")
