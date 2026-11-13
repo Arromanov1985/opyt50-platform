@@ -2,7 +2,7 @@
 'use strict';
 const $ = (selector, root = document) => root.querySelector(selector);
 const $$ = (selector, root = document) => [...root.querySelectorAll(selector)];
-const state = { user: null, mode: 'register', role: 'candidate', tab: 'overview', activeVacancy: null, editVacancy: null, employerVacancyFilter: 'all', employerApplicationsVacancyFilter: 'all', employerApplicationsStatusFilter: 'all', employerInvitationsFilter: 'all', employerInvitationsVacancyFilter: 'all', candidateInvitationsFilter: 'all', mfaChallenge: null, mfaMethod: null, mfaCodeLength: 8, mfaPublicKey: null, mfaTotpFallback: false };
+const state = { user: null, mode: 'register', role: 'candidate', tab: 'overview', activeVacancy: null, editVacancy: null, employerVacancyFilter: 'all', employerApplicationsVacancyFilter: 'all', employerApplicationsStatusFilter: 'all', employerInvitationsFilter: 'all', employerInvitationsVacancyFilter: 'all', employerInvitationsQuery: '', candidateInvitationsFilter: 'all', mfaChallenge: null, mfaMethod: null, mfaCodeLength: 8, mfaPublicKey: null, mfaTotpFallback: false };
 const esc = value => String(value ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const money = value => Number(value || 0).toLocaleString('ru-RU') + ' ₽';
 const formatPay = job => job.salary_min === job.salary_max ? money(job.salary_min) : `${money(job.salary_min)} — ${money(job.salary_max)}`;
@@ -1280,14 +1280,24 @@ async function loadEmployerInvitations() {
   const vacancyScoped = selectedVacancy === 'all'
     ? invitations
     : invitations.filter(item => String(item.vacancy_id) === selectedVacancy);
+  const query = String(state.employerInvitationsQuery || '').trim().toLocaleLowerCase('ru-RU');
+  const searchScoped = query
+    ? vacancyScoped.filter(item => {
+        const visibleCandidateName = item.contact?.name || '';
+        const haystack = [item.candidate_profession, item.vacancy_title, visibleCandidateName]
+          .map(value => String(value || '').toLocaleLowerCase('ru-RU'))
+          .join(' ');
+        return haystack.includes(query);
+      })
+    : vacancyScoped;
   const counts = {action:0,waiting:0,introduced:0,closed:0};
-  vacancyScoped.forEach(item => { counts[employerInvitationBucket(item)] += 1; });
+  searchScoped.forEach(item => { counts[employerInvitationBucket(item)] += 1; });
   const completedResults = {
-    hired: vacancyScoped.filter(item => item.application_status === 'hired').length,
-    rejected: vacancyScoped.filter(item => item.application_status === 'rejected').length,
-    other: vacancyScoped.filter(item => employerInvitationBucket(item) === 'closed' && !['hired','rejected'].includes(item.application_status)).length
+    hired: searchScoped.filter(item => item.application_status === 'hired').length,
+    rejected: searchScoped.filter(item => item.application_status === 'rejected').length,
+    other: searchScoped.filter(item => employerInvitationBucket(item) === 'closed' && !['hired','rejected'].includes(item.application_status)).length
   };
-  const ordered = [...vacancyScoped].sort((a,b) => {
+  const ordered = [...searchScoped].sort((a,b) => {
     const priority = {introduced:0,action:1,waiting:2,closed:3};
     const bucketDiff = priority[employerInvitationBucket(a)] - priority[employerInvitationBucket(b)];
     if (bucketDiff) return bucketDiff;
@@ -1295,20 +1305,22 @@ async function loadEmployerInvitations() {
   });
   const shown = selected === 'all' ? ordered : ordered.filter(item => employerInvitationBucket(item) === selected);
   const filterButtons = [
-    ['all',vacancyScoped.length],
+    ['all',searchScoped.length],
     ['action',counts.action],
     ['waiting',counts.waiting],
     ['introduced',counts.introduced],
     ['closed',counts.closed]
   ].map(([value,count]) => `<button type="button" class="btn btn-tiny ${selected===value?'btn-dark':'btn-outline'}" data-action="filter-employer-invitations" data-filter="${value}" aria-pressed="${selected===value}">${esc(employerInvitationFilterLabels[value])} · ${Number(count)}</button>`).join('');
-  const vacancySelector = `<label class="employer-introduction-vacancy-filter"><span>Вакансия</span><select data-employer-introduction-vacancy-filter><option value="all">Все вакансии</option>${vacancyOptions.map(([id,title]) => `<option value="${esc(id)}" ${selectedVacancy===id?'selected':''}>${esc(title)}</option>`).join('')}</select></label>`;
+  const vacancySelector = `<div class="employer-introduction-controls"><label class="employer-introduction-vacancy-filter"><span>Вакансия</span><select data-employer-introduction-vacancy-filter><option value="all">Все вакансии</option>${vacancyOptions.map(([id,title]) => `<option value="${esc(id)}" ${selectedVacancy===id?'selected':''}>${esc(title)}</option>`).join('')}</select></label><label class="employer-introduction-search"><span>Поиск</span><input type="search" value="${esc(state.employerInvitationsQuery)}" placeholder="Кандидат или вакансия" data-employer-introduction-search autocomplete="off"></label></div>`;
   const empty = invitations.length
-    ? '<div class="empty-state empty-state-action"><span class="empty-state-icon" aria-hidden="true">⌕</span><strong>В этом этапе знакомств нет</strong><p>Выберите другой этап или покажите все знакомства.</p><button class="btn btn-outline" data-action="filter-employer-invitations" data-filter="all">Показать все</button></div>'
+    ? (query
+      ? '<div class="empty-state empty-state-action"><span class="empty-state-icon" aria-hidden="true">⌕</span><strong>По этому запросу знакомств нет</strong><p>Измените поиск или сбросьте фильтры.</p><button class="btn btn-outline" data-action="reset-employer-invitation-filters">Сбросить фильтры</button></div>'
+      : '<div class="empty-state empty-state-action"><span class="empty-state-icon" aria-hidden="true">⌕</span><strong>В этом этапе знакомств нет</strong><p>Выберите другой этап или покажите все знакомства.</p><button class="btn btn-outline" data-action="filter-employer-invitations" data-filter="all">Показать все</button></div>')
     : '<div class="empty-state"><strong>Знакомств пока нет.</strong><p>Откройте вакансию, запустите подбор и пригласите подходящего кандидата.</p><button class="btn btn-primary" data-tab="vacancies">К вакансиям →</button></div>';
   $('#dashboard-main').innerHTML = `<div class="panel invitation-center">
     <div class="split-header"><div><span class="section-kicker">ЗНАКОМСТВА</span><h3>Знакомства и контакты</h3><p class="muted">Здесь продолжается работа после отклика: сначала показываем знакомства, где нужен ваш следующий шаг. Контакты открываются только после согласия кандидата.</p></div>${vacancySelector}</div>
     <div class="employer-invitation-stage-filter" role="group" aria-label="Фильтр знакомств по этапу">${filterButtons}</div>
-    <div class="employer-invitation-result-line"><span role="status">Показываем <strong>${shown.length}</strong> из <strong>${vacancyScoped.length}</strong>${selected==='all'&&vacancyScoped.length>1?' · сначала знакомства, где нужно ваше действие':''}</span>${selected!=='all'||selectedVacancy!=='all'?'<button type="button" class="link-button" data-action="reset-employer-invitation-filters">Сбросить фильтры</button>':''}</div>
+    <div class="employer-invitation-result-line"><span role="status">Показываем <strong>${shown.length}</strong> из <strong>${searchScoped.length}</strong>${selected==='all'&&searchScoped.length>1?' · сначала знакомства, где нужно ваше действие':''}</span>${selected!=='all'||selectedVacancy!=='all'||query?'<button type="button" class="link-button" data-action="reset-employer-invitation-filters">Сбросить фильтры</button>':''}</div>
     ${counts.closed ? `<div class="completed-introduction-summary" aria-label="Итоги завершённых знакомств"><span><strong>${completedResults.hired}</strong> Приняты</span><span><strong>${completedResults.rejected}</strong> Не договорились</span>${completedResults.other ? `<span><strong>${completedResults.other}</strong> Другие завершённые</span>` : ''}</div>` : ''}
     ${counts.action ? '<div class="demo-note"><strong>Тестовый режим</strong><span>Открытие контакта имитирует оплату и не списывает деньги.</span></div>' : ''}
     <div class="dashboard-list">${shown.length ? shown.map(invitationEmployerMarkup).join('') : empty}</div>
