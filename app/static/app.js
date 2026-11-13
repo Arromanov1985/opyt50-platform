@@ -2,7 +2,7 @@
 'use strict';
 const $ = (selector, root = document) => root.querySelector(selector);
 const $$ = (selector, root = document) => [...root.querySelectorAll(selector)];
-const state = { user: null, mode: 'register', role: 'candidate', tab: 'overview', activeVacancy: null, editVacancy: null, employerVacancyFilter: 'all', employerApplicationsVacancyFilter: 'all', employerApplicationsStatusFilter: 'all', employerInvitationsFilter: 'all', employerInvitationsVacancyFilter: 'all', employerInvitationsQuery: '', employerInvitationsData: null, candidateInvitationsFilter: 'all', mfaChallenge: null, mfaMethod: null, mfaCodeLength: 8, mfaPublicKey: null, mfaTotpFallback: false };
+const state = { user: null, mode: 'register', role: 'candidate', tab: 'overview', activeVacancy: null, editVacancy: null, employerVacancyFilter: 'all', employerApplicationsVacancyFilter: 'all', employerApplicationsStatusFilter: 'all', employerInvitationsFilter: 'all', employerInvitationsVacancyFilter: 'all', employerInvitationsQuery: '', employerInvitationsData: null, candidateInvitationsFilter: 'all', candidateInvitationsQuery: '', candidateInvitationsData: null, mfaChallenge: null, mfaMethod: null, mfaCodeLength: 8, mfaPublicKey: null, mfaTotpFallback: false };
 const esc = value => String(value ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const money = value => Number(value || 0).toLocaleString('ru-RU') + ' ₽';
 const formatPay = job => job.salary_min === job.salary_max ? money(job.salary_min) : `${money(job.salary_min)} — ${money(job.salary_max)}`;
@@ -792,37 +792,53 @@ async function renderCandidate() {
     } else if (state.tab === 'security') {
       await renderAccountSecurity(target);
     } else {
-      const {invitations} = await api('/api/candidate/invitations');
-      const selected = Object.hasOwn(candidateInvitationFilterLabels,state.candidateInvitationsFilter)
-        ? state.candidateInvitationsFilter
-        : 'all';
-      state.candidateInvitationsFilter = selected;
-      const counts = {decision:0,waiting:0,introduced:0,closed:0};
-      invitations.forEach(item => { counts[candidateInvitationBucket(item)] += 1; });
-      const ordered = [...invitations].sort((a,b) => {
-        const priority = {decision:0,waiting:1,introduced:2,closed:3};
-        const diff = priority[candidateInvitationBucket(a)] - priority[candidateInvitationBucket(b)];
-        return diff || invitationLastActivity(b) - invitationLastActivity(a);
-      });
-      const shown = selected === 'all' ? ordered : ordered.filter(item => candidateInvitationBucket(item) === selected);
-      const filters = [
-        ['all',invitations.length],
-        ['decision',counts.decision],
-        ['waiting',counts.waiting],
-        ['introduced',counts.introduced],
-        ['closed',counts.closed]
-      ].map(([value,count]) => `<button type="button" class="btn btn-tiny ${selected===value?'btn-dark':'btn-outline'}" data-action="filter-candidate-invitations" data-filter="${value}" aria-pressed="${selected===value}">${esc(candidateInvitationFilterLabels[value])} · ${Number(count)}</button>`).join('');
-      const empty = invitations.length
-        ? '<div class="empty-state empty-state-action"><span class="empty-state-icon" aria-hidden="true">⌕</span><strong>В этом этапе знакомств нет</strong><p>Выберите другой этап или покажите все знакомства.</p><button class="btn btn-outline" data-action="filter-candidate-invitations" data-filter="all">Показать все</button></div>'
-        : '<div class="empty-state"><strong>Знакомств пока нет.</strong><p>Заполните профиль, откликайтесь на вакансии — работодатели смогут предложить знакомство.</p></div>';
-      target.innerHTML = `<div class="panel candidate-introduction-center">
-        <div class="split-header"><div><span class="section-kicker">ЗНАКОМСТВА</span><h3>Знакомства с компаниями</h3><p class="muted">Здесь собраны запросы на знакомство и их дальнейший статус. Имя и контакты не передаются без вашего явного согласия.</p></div></div>
-        <div class="candidate-introduction-stage-filter" role="group" aria-label="Фильтр знакомств по этапу">${filters}</div>
-        <div class="candidate-introduction-result-line"><span role="status">Показываем <strong>${shown.length}</strong> из <strong>${invitations.length}</strong>${selected==='all'&&counts.decision?' · сначала знакомства, где нужен ваш ответ':''}</span>${selected!=='all'?'<button type="button" class="link-button" data-action="filter-candidate-invitations" data-filter="all">Сбросить фильтр</button>':''}</div>
-        <div class="dashboard-list">${shown.length ? shown.map(invitationCandidateMarkup).join('') : empty}</div>
-      </div>`;
+      await loadCandidateInvitations(target,true);
     }
   } catch(e) { target.innerHTML = `<div class="panel">${esc(e.message)}</div>`; toast(e.message,true); }
+}
+async function loadCandidateInvitations(target=$('#dashboard-main'), force=false) {
+  if (force || !Array.isArray(state.candidateInvitationsData)) {
+    const result = await api('/api/candidate/invitations');
+    state.candidateInvitationsData = result.invitations || [];
+  }
+  const invitations = state.candidateInvitationsData;
+  const selected = Object.hasOwn(candidateInvitationFilterLabels,state.candidateInvitationsFilter)
+    ? state.candidateInvitationsFilter
+    : 'all';
+  state.candidateInvitationsFilter = selected;
+  const query = String(state.candidateInvitationsQuery || '').trim().toLocaleLowerCase('ru-RU');
+  const searchScoped = query
+    ? invitations.filter(item => [item.company_name,item.title,item.city]
+        .map(value => String(value || '').toLocaleLowerCase('ru-RU'))
+        .join(' ')
+        .includes(query))
+    : invitations;
+  const counts = {decision:0,waiting:0,introduced:0,closed:0};
+  searchScoped.forEach(item => { counts[candidateInvitationBucket(item)] += 1; });
+  const ordered = [...searchScoped].sort((a,b) => {
+    const priority = {decision:0,waiting:1,introduced:2,closed:3};
+    const diff = priority[candidateInvitationBucket(a)] - priority[candidateInvitationBucket(b)];
+    return diff || invitationLastActivity(b) - invitationLastActivity(a);
+  });
+  const shown = selected === 'all' ? ordered : ordered.filter(item => candidateInvitationBucket(item) === selected);
+  const filters = [
+    ['all',searchScoped.length],
+    ['decision',counts.decision],
+    ['waiting',counts.waiting],
+    ['introduced',counts.introduced],
+    ['closed',counts.closed]
+  ].map(([value,count]) => `<button type="button" class="btn btn-tiny ${selected===value?'btn-dark':'btn-outline'}" data-action="filter-candidate-invitations" data-filter="${value}" aria-pressed="${selected===value}">${esc(candidateInvitationFilterLabels[value])} · ${Number(count)}</button>`).join('');
+  const empty = invitations.length
+    ? (query
+      ? '<div class="empty-state empty-state-action"><span class="empty-state-icon" aria-hidden="true">⌕</span><strong>По этому запросу знакомств нет</strong><p>Измените поиск или сбросьте фильтры.</p><button class="btn btn-outline" data-action="reset-candidate-invitation-filters">Сбросить фильтры</button></div>'
+      : '<div class="empty-state empty-state-action"><span class="empty-state-icon" aria-hidden="true">⌕</span><strong>В этом этапе знакомств нет</strong><p>Выберите другой этап или покажите все знакомства.</p><button class="btn btn-outline" data-action="filter-candidate-invitations" data-filter="all">Показать все</button></div>')
+    : '<div class="empty-state"><strong>Знакомств пока нет.</strong><p>Заполните профиль, откликайтесь на вакансии — работодатели смогут предложить знакомство.</p></div>';
+  target.innerHTML = `<div class="panel candidate-introduction-center">
+    <div class="split-header"><div><span class="section-kicker">ЗНАКОМСТВА</span><h3>Знакомства с компаниями</h3><p class="muted">Здесь собраны запросы на знакомство и их дальнейший статус. Имя и контакты не передаются без вашего явного согласия.</p></div><label class="candidate-introduction-search"><span>Поиск</span><input type="search" value="${esc(state.candidateInvitationsQuery)}" placeholder="Компания, вакансия или город" data-candidate-introduction-search autocomplete="off"></label></div>
+    <div class="candidate-introduction-stage-filter" role="group" aria-label="Фильтр знакомств по этапу">${filters}</div>
+    <div class="candidate-introduction-result-line"><span role="status">Показываем <strong>${shown.length}</strong> из <strong>${searchScoped.length}</strong>${selected==='all'&&counts.decision?' · сначала знакомства, где нужен ваш ответ':''}</span>${selected!=='all'||query?'<button type="button" class="link-button" data-action="reset-candidate-invitation-filters">Сбросить фильтры</button>':''}</div>
+    <div class="dashboard-list">${shown.length ? shown.map(invitationCandidateMarkup).join('') : empty}</div>
+  </div>`;
 }
 const candidateInvitationFilterLabels = {
   all:'Все',
