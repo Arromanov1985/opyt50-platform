@@ -921,7 +921,7 @@ async function renderEmployer() {
       );
       const acceptedInvitations = invitations.filter(item => item.status === 'accepted' && !item.contact_shared);
       const activeOpenedContacts = invitations.filter(item =>
-        item.contact_shared && !['hired','rejected'].includes(item.application_status)
+        item.application_id && item.contact_shared && !['hired','rejected'].includes(item.application_status)
       );
       const consentedInvitations = invitations.filter(item => item.status === 'accepted' || item.contact_shared).length;
       const openedContacts = invitations.filter(item => item.contact_shared).length;
@@ -1090,8 +1090,8 @@ async function loadEmployerVacancies() {
     const stats = applicationsByJob.get(id);
     if (invitation.status === 'accepted' && !invitation.contact_shared) stats.ready += 1;
     if (invitation.status === 'sent' && !invitation.contact_shared) stats.waiting += 1;
-    if (invitation.contact_shared && ['hired','rejected'].includes(invitation.application_status)) stats.completed += 1;
-    else if (invitation.contact_shared) stats.outcome += 1;
+    if (invitation.application_id && invitation.contact_shared && ['hired','rejected'].includes(invitation.application_status)) stats.completed += 1;
+    else if (invitation.application_id && invitation.contact_shared) stats.outcome += 1;
   }
   const view = $('#dashboard-main');
   const openCount = jobs.filter(job => job.status === 'open').length;
@@ -1100,7 +1100,7 @@ async function loadEmployerVacancies() {
   const visibleJobs = filter === 'all' ? jobs : jobs.filter(job => job.status === filter);
   const invitationCount = invitations.length;
   const introducedCount = invitations.filter(item => item.contact_shared).length;
-  const activeOpenedContacts = invitations.filter(item => item.contact_shared && !['hired','rejected'].includes(item.application_status));
+  const activeOpenedContacts = invitations.filter(item => item.application_id && item.contact_shared && !['hired','rejected'].includes(item.application_status));
   const actionableApplications = applications.filter(a => !a.invitation_id && ['applied','reviewing','interview'].includes(a.status));
   const readyIntroductions = invitations.filter(item => item.status === 'accepted' && !item.contact_shared);
   const waitingIntroductions = invitations.filter(item => item.status === 'sent' && !item.contact_shared);
