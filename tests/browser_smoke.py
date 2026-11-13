@@ -390,6 +390,7 @@ def run_browser(page):
     expect(intro_search).to_be_focused()
     intro_search.fill("точно-нет-такого-кандидата")
     expect(page.locator("#dashboard-main")).to_contain_text("По этому запросу знакомств нет")
+    expect(page.locator("#dashboard-main [data-action='reset-employer-invitation-filters']")).to_have_count(1)
     page.locator("#dashboard-main [data-action='reset-employer-invitation-filters']").click()
     expect(page.locator("#dashboard-main [data-employer-introduction-search]")).to_have_value("")
     expect(page.locator("#dashboard-main [data-employer-introduction-vacancy-filter]")).to_have_value("all")
@@ -462,7 +463,7 @@ def run_browser(page):
     expect(page.locator("#dashboard-main .invitation-last-activity")).to_be_visible()
     assert page.evaluate("""() => {
       const grid = document.querySelector('.employer-invitation-stage-filter');
-      return grid && getComputedStyle(grid).gridTemplateColumns.trim().split(/\s+/).length === 2;
+      return grid && getComputedStyle(grid).gridTemplateColumns.trim().split(/\\s+/).length === 2;
     }"""), "Employer introduction filters should remain two columns at 390px"
     assert page.evaluate("""() => {
       const element = document.querySelector('#dashboard-main');
@@ -505,6 +506,7 @@ def run_browser(page):
     expect(candidate_intro_search).to_be_focused()
     candidate_intro_search.fill("точно-нет-такой-компании")
     expect(page.locator("#dashboard-main")).to_contain_text("По этому запросу знакомств нет")
+    expect(page.locator("#dashboard-main [data-action='reset-candidate-invitation-filters']")).to_have_count(1)
     page.locator("#dashboard-main [data-action='reset-candidate-invitation-filters']").click()
     expect(page.locator("#dashboard-main [data-candidate-introduction-search]")).to_have_value("")
     expect(page.locator("#dashboard-main [data-action='filter-candidate-invitations'][data-filter='all']")).to_have_attribute("aria-pressed", "true")
@@ -514,7 +516,7 @@ def run_browser(page):
     expect(page.locator("#dashboard-main [data-candidate-introduction-search]")).to_be_visible()
     assert page.evaluate("""() => {
       const grid = document.querySelector('.candidate-introduction-stage-filter');
-      return grid && getComputedStyle(grid).gridTemplateColumns.trim().split(/\s+/).length === 2;
+      return grid && getComputedStyle(grid).gridTemplateColumns.trim().split(/\\s+/).length === 2;
     }"""), "Candidate introduction filters should remain two columns at 390px"
     assert page.evaluate("""() => {
       const element = document.querySelector('#dashboard-main');
