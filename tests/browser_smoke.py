@@ -351,6 +351,7 @@ def run_browser(page):
     introduced_filter = page.locator("#dashboard-main [data-action='filter-employer-invitations'][data-filter='introduced']")
     expect(introduced_filter).to_have_attribute("aria-pressed", "true")
     expect(page.locator("#dashboard-main")).to_contain_text("История взаимодействия")
+    page.once("dialog", lambda dialog: dialog.accept())
     page.locator("#dashboard-main [data-action='introduction-outcome'][data-status='hired']").click()
     expect(page.locator("#dashboard-main [data-action='filter-employer-invitations'][data-filter='closed']")).to_have_attribute("aria-pressed", "true")
     expect(page.locator("#dashboard-main")).to_contain_text("Кандидат принят")
