@@ -2311,3 +2311,11 @@ body.comfortable-view .candidate-introduction-note span{font-size:.92rem}
 @media(max-width:390px){
   .candidate-introduction-stage-filter{grid-template-columns:1fr}
 }
+
+.employer-outcome-funnel .overview-funnel-steps{
+  grid-template-columns:1fr auto 1fr auto 1fr auto 1fr auto 1fr;
+}
+@media(max-width:900px){
+  .employer-outcome-funnel .overview-funnel-steps{grid-template-columns:1fr 1fr}
+  .employer-outcome-funnel .overview-funnel-steps>b{display:none}
+}
