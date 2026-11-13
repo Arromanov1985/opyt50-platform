@@ -2060,8 +2060,15 @@ def create_app(db_path: str | None = None) -> FastAPI:
         )
         from .release02 import enqueue_notice
         employer = db.execute("SELECT employer_id FROM invitations WHERE id=?", (invitation_id,)).fetchone()
-        enqueue_notice(db, employer["employer_id"], "invitation_response", "Ответ кандидата — СТАЖНО",
-                       f"Кандидат ответил на приглашение: {data.decision}. Откройте кабинет.")
+        decision_text = (
+            "Кандидат согласился на знакомство. Откройте кабинет, чтобы продолжить."
+            if data.decision == "accepted"
+            else "Кандидат отказался от знакомства. Откройте кабинет, чтобы посмотреть статус."
+        )
+        enqueue_notice(
+            db, employer["employer_id"], "invitation_response", "Ответ кандидата — СТАЖНО",
+            decision_text,
+        )
         # Commit before the HTTP response: a new dashboard request may arrive immediately.
         db.commit()
         return {"ok": True}
