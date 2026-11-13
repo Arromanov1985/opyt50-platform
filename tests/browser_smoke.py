@@ -349,6 +349,8 @@ def run_browser(page):
     expect(page.locator("#dashboard-main .invitation-vacancy-context")).to_contain_text("Кладовщик")
     expect(page.locator("#dashboard-main .invitation-last-activity")).to_contain_text("Последнее действие")
     expect(page.locator("#dashboard-main .invitation-last-activity")).to_contain_text("Знакомство состоялось")
+    last_activity_time = page.locator("#dashboard-main .invitation-last-activity small").inner_text()
+    assert re.search(r"\d{2}\.\d{2}\.\d{4} · \d{2}:\d{2}", last_activity_time), last_activity_time
     page.locator(".dashboard-tabs [data-tab='overview']").click()
     expect(page.locator("#dashboard-main")).to_contain_text("Зафиксируйте итог знакомства")
     expect(page.locator("#dashboard-main .overview-stat-card").filter(has_text="Ждут итога").locator("strong")).to_have_text("1")
