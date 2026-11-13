@@ -1191,9 +1191,10 @@ def install_routes(app) -> None:
             (item["vacancy_id"], item["candidate_id"]),
         ).fetchone()
         if invite and (invite["status"] in ("sent", "accepted") or invite["contact_shared"]):
-            # Once an introduction has begun, application review cannot
-            # contradict consent. A hire may be recorded after contact unlock.
-            if not (body.status == "hired" and invite["contact_shared"]):
+            # Once an introduction has begun, ordinary review statuses cannot
+            # contradict consent. After contact unlock the employer may only
+            # record the final result of the introduction.
+            if not (body.status in {"hired", "rejected"} and invite["contact_shared"]):
                 raise HTTPException(409, "Знакомство уже началось. Измените его через раздел приглашений")
         if item["status"] == body.status:
             return {"ok": True, "status": body.status}
