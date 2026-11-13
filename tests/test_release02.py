@@ -560,6 +560,14 @@ def test_unified_status_timeline_consent_and_terminal_guards(app):
         assert employer_intro["application_status"] == "rejected"
         assert candidate_intro["timeline"][-1]["event"] == "rejected"
         assert employer_intro["timeline"][-1]["event"] == "rejected"
+        rejected_events = len([event for event in employer_intro["timeline"] if event["event"] == "rejected"])
+        # Safe retry: the same terminal result is idempotent and creates no duplicate event.
+        repeated = employer.patch(
+            f"/api/employer/applications/{aid}/status", json={"status": "rejected"}, headers=HEADERS
+        )
+        assert repeated.status_code == 200, repeated.text
+        repeated_intro = employer.get("/api/employer/invitations").json()["invitations"][0]
+        assert len([event for event in repeated_intro["timeline"] if event["event"] == "rejected"]) == rejected_events
         # Terminal outcome is immutable: it cannot be flipped after it is recorded.
         assert employer.patch(
             f"/api/employer/applications/{aid}/status", json={"status": "hired"}, headers=HEADERS
