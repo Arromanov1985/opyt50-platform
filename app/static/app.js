@@ -55,13 +55,14 @@ function interactionStageMarkup(x, kind='application') {
     (kind === 'invitation' && x.status === 'declined');
   const reviewing = ['reviewing','interview'].includes(x.status) || awaiting || consented || introduced;
   const applied = Boolean(x.application_id || x.vacancy_id || ['applied','reviewing','interview','withdrawn','rejected','hired'].includes(x.status));
+  const invitationSteps = [
+    ['Приглашение', true],
+    ['Согласие', consented || introduced],
+    ['Контакт', introduced]
+  ];
+  if (x.application_id || x.status === 'declined') invitationSteps.push(['Итог', finalOutcome]);
   const steps = kind === 'invitation'
-    ? [
-        ['Приглашение', true],
-        ['Согласие', consented || introduced],
-        ['Контакт', introduced],
-        ['Итог', finalOutcome]
-      ]
+    ? invitationSteps
     : [
         ['Отклик', applied],
         ['Рассмотрение', reviewing],
