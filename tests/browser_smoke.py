@@ -293,7 +293,7 @@ def run_browser(page):
     expect(page.locator(".dashboard-tabs [data-tab='security']")).to_be_visible()
     page.locator("#dashboard-main [data-v02-action='open-introductions']").click()
     expect(page.locator("#dashboard-main")).to_contain_text("Знакомства с компаниями")
-    expect(page.locator("#dashboard-main [data-action='filter-candidate-invitations']")).to_have_count(5)
+    expect(page.locator("#dashboard-main .candidate-introduction-stage-filter [data-action='filter-candidate-invitations']")).to_have_count(5)
     expect(page.locator("#dashboard-main [data-action='filter-candidate-invitations'][data-filter='decision']")).to_have_attribute("aria-pressed", "true")
     expect(page.locator("#dashboard-main")).to_contain_text("Требует ответа")
     page.locator("#dashboard-main [id^='consent-']").check()
