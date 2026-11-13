@@ -305,10 +305,10 @@
       closed:'Завершённые'
     };
     const employerApplicationPriority = {
-      ready:0,
-      attention:1,
-      consent:2,
-      introduced:3,
+      introduced:0,
+      ready:1,
+      attention:2,
+      consent:3,
       closed:4
     };
     function sortEmployerApplications(items) {
