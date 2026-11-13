@@ -2,7 +2,7 @@
 'use strict';
 const $ = (selector, root = document) => root.querySelector(selector);
 const $$ = (selector, root = document) => [...root.querySelectorAll(selector)];
-const state = { user: null, mode: 'register', role: 'candidate', tab: 'overview', activeVacancy: null, editVacancy: null, employerVacancyFilter: 'all', employerApplicationsVacancyFilter: 'all', mfaChallenge: null, mfaMethod: null, mfaCodeLength: 8, mfaPublicKey: null, mfaTotpFallback: false };
+const state = { user: null, mode: 'register', role: 'candidate', tab: 'overview', activeVacancy: null, editVacancy: null, employerVacancyFilter: 'all', employerApplicationsVacancyFilter: 'all', employerInvitationsFilter: 'all', mfaChallenge: null, mfaMethod: null, mfaCodeLength: 8, mfaPublicKey: null, mfaTotpFallback: false };
 const esc = value => String(value ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const money = value => Number(value || 0).toLocaleString('ru-RU') + ' ₽';
 const formatPay = job => job.salary_min === job.salary_max ? money(job.salary_min) : `${money(job.salary_min)} — ${money(job.salary_max)}`;
@@ -1073,21 +1073,76 @@ async function loadMatches(jobId) {
     }).join('') : '<div class="empty-state"><strong>Точных совпадений пока нет.</strong><p>Попробуйте расширить график, город или зарплатный диапазон вакансии.</p></div>'}</div></div>`;
   } catch(e) { target.innerHTML = `<div class="panel">${esc(e.message)}</div>`; toast(e.message,true); }
 }
+const employerInvitationFilterLabels = {
+  all:'Все',
+  action:'Есть согласие',
+  waiting:'Ждём решения',
+  introduced:'Знакомство состоялось',
+  closed:'Завершённые'
+};
+function employerInvitationBucket(x) {
+  if (x.contact_shared || x.contact) return 'introduced';
+  if (x.status === 'accepted') return 'action';
+  if (x.status === 'sent') return 'waiting';
+  return 'closed';
+}
+function employerInvitationStageLabel(x) {
+  const bucket = employerInvitationBucket(x);
+  if (bucket === 'introduced') return 'Знакомство состоялось';
+  if (bucket === 'action') return 'Есть согласие';
+  if (bucket === 'waiting') return 'Ждём решения кандидата';
+  if (x.status === 'declined') return 'Кандидат отказался';
+  return workflowStatus(x,statusTitle[x.status] || x.status);
+}
 async function loadEmployerInvitations() {
   const {invitations} = await api('/api/employer/invitations');
-  const waiting = invitations.filter(x=>x.status==='sent').length;
-  const accepted = invitations.filter(x=>x.status==='accepted' && !x.contact_shared).length;
-  const opened = invitations.filter(x=>x.contact_shared).length;
-  $('#dashboard-main').innerHTML = `<div class="panel invitation-center"><div class="split-header"><div><span class="section-kicker">ЗНАКОМСТВА</span><h3>Приглашения и контакты</h3><p class="muted">Здесь виден путь от приглашения до открытого контакта. Контакты появляются только после согласия кандидата.</p></div></div>
-    <div class="mini-stat-row"><div><strong>${waiting}</strong><span>Ждут ответа</span></div><div><strong>${accepted}</strong><span>Есть согласие</span></div><div><strong>${opened}</strong><span>Контакты открыты</span></div></div>
-    <div class="demo-note"><strong>Тестовый режим</strong><span>Открытие контакта сейчас имитирует оплату и не списывает деньги.</span></div>
-    <div class="dashboard-list">${invitations.length ? invitations.map(invitationEmployerMarkup).join('') : '<div class="empty-state"><strong>Приглашений пока нет.</strong><p>Откройте вакансию, запустите подбор и пригласите подходящего кандидата.</p><button class="btn btn-primary" data-tab="vacancies">К вакансиям →</button></div>'}</div></div>`;
+  const selected = Object.hasOwn(employerInvitationFilterLabels,state.employerInvitationsFilter)
+    ? state.employerInvitationsFilter
+    : 'all';
+  state.employerInvitationsFilter = selected;
+  const counts = {action:0,waiting:0,introduced:0,closed:0};
+  invitations.forEach(item => { counts[employerInvitationBucket(item)] += 1; });
+  const ordered = [...invitations].sort((a,b) => {
+    const priority = {action:0,waiting:1,introduced:2,closed:3};
+    return priority[employerInvitationBucket(a)] - priority[employerInvitationBucket(b)];
+  });
+  const shown = selected === 'all' ? ordered : ordered.filter(item => employerInvitationBucket(item) === selected);
+  const filterButtons = [
+    ['all',invitations.length],
+    ['action',counts.action],
+    ['waiting',counts.waiting],
+    ['introduced',counts.introduced],
+    ['closed',counts.closed]
+  ].map(([value,count]) => `<button type="button" class="btn btn-tiny ${selected===value?'btn-dark':'btn-outline'}" data-action="filter-employer-invitations" data-filter="${value}" aria-pressed="${selected===value}">${esc(employerInvitationFilterLabels[value])} · ${Number(count)}</button>`).join('');
+  const empty = invitations.length
+    ? '<div class="empty-state empty-state-action"><span class="empty-state-icon" aria-hidden="true">⌕</span><strong>В этом этапе знакомств нет</strong><p>Выберите другой этап или покажите все знакомства.</p><button class="btn btn-outline" data-action="filter-employer-invitations" data-filter="all">Показать все</button></div>'
+    : '<div class="empty-state"><strong>Приглашений пока нет.</strong><p>Откройте вакансию, запустите подбор и пригласите подходящего кандидата.</p><button class="btn btn-primary" data-tab="vacancies">К вакансиям →</button></div>';
+  $('#dashboard-main').innerHTML = `<div class="panel invitation-center">
+    <div class="split-header"><div><span class="section-kicker">ЗНАКОМСТВА</span><h3>Приглашения и контакты</h3><p class="muted">Продолжение воронки откликов: сначала показываем знакомства, где нужен ваш следующий шаг. Контакты открываются только после согласия кандидата.</p></div></div>
+    <div class="employer-invitation-stage-filter" role="group" aria-label="Фильтр знакомств по этапу">${filterButtons}</div>
+    <div class="employer-invitation-result-line"><span role="status">Показываем <strong>${shown.length}</strong> из <strong>${invitations.length}</strong>${selected==='all'&&invitations.length>1?' · сначала знакомства, где нужно ваше действие':''}</span>${selected!=='all'?'<button type="button" class="link-button" data-action="filter-employer-invitations" data-filter="all">Сбросить фильтр</button>':''}</div>
+    ${counts.action ? '<div class="demo-note"><strong>Тестовый режим</strong><span>Открытие контакта имитирует оплату и не списывает деньги.</span></div>' : ''}
+    <div class="dashboard-list">${shown.length ? shown.map(invitationEmployerMarkup).join('') : empty}</div>
+  </div>`;
 }
 function invitationEmployerMarkup(x) {
-  return `<article class="item-card invitation-card employer-invitation-card"><header><div><span class="card-eyebrow">ЗНАКОМСТВО</span><h4>${esc(x.candidate_profession)}</h4><p>${esc(x.vacancy_title)} · кандидат #${x.candidate_id}</p></div><span class="mini-badge ${statusBadge[x.status]}">${esc(workflowStatus(x,statusTitle[x.status]))}</span></header>
+  const bucket = employerInvitationBucket(x);
+  let next = '';
+  if (bucket === 'introduced' && x.contact) {
+    next = `<div class="contact-card"><span>КОНТАКТ ОТКРЫТ · ДЕМО</span><strong>${esc(x.contact.name)}</strong><div><a href="mailto:${esc(x.contact.email)}">${esc(x.contact.email)}</a><b>·</b><span>${esc(x.contact.phone || 'Телефон не указан')}</span></div></div>`;
+  } else if (bucket === 'action') {
+    next = `<div class="application-next-action"><span>Следующее действие</span><strong>Открыть контакт кандидата</strong><small>Согласие уже получено · демо-стоимость: ${money(x.price_rub)}</small></div><button class="btn btn-primary" data-action="demo-pay" data-id="${x.id}">Открыть контакт (демо) →</button>`;
+  } else if (bucket === 'waiting') {
+    next = '<div class="interaction-note is-waiting"><strong>Ждём решения кандидата</strong><span>Запрос уже отправлен. Повторных действий от работодателя сейчас не требуется.</span></div>';
+  } else if (x.status === 'declined') {
+    next = '<div class="interaction-note is-closed"><strong>Кандидат отказался от знакомства</strong><span>Знакомство завершено. Повторных действий по этому приглашению нет.</span></div>';
+  } else {
+    next = '<div class="interaction-note is-closed"><strong>Знакомство завершено</strong><span>Дополнительных действий не требуется.</span></div>';
+  }
+  return `<article class="item-card invitation-card employer-invitation-card is-${bucket}"><header><div><span class="card-eyebrow">ЗНАКОМСТВО</span><h4>${esc(x.candidate_profession)}</h4><p>${esc(x.vacancy_title)}</p></div><span class="mini-badge ${bucket==='closed'?'gray':''}">${esc(employerInvitationStageLabel(x))}</span></header>
   ${interactionStageMarkup(x,'invitation')}
   ${activityTimelineMarkup(x)}
-  ${x.contact ? `<div class="contact-card"><span>Контакт открыт (демо)</span><strong>${esc(x.contact.name)}</strong><div><a href="mailto:${esc(x.contact.email)}">${esc(x.contact.email)}</a><b>·</b><span>${esc(x.contact.phone || 'Телефон не указан')}</span></div></div>` : (x.status === 'accepted' ? `<div class="application-next-action"><span>Следующее действие</span><strong>Кандидат согласился на знакомство</strong><small>Демо-стоимость: ${money(x.price_rub)}</small></div><button class="btn btn-primary" data-action="demo-pay" data-id="${x.id}">Открыть контакт (демо) →</button>` : '<p class="muted invitation-waiting">Ожидаем решение кандидата. Контакты пока скрыты.</p>')}</article>`;
+  ${next}</article>`;
 }
 function adminPasskeyMarkup(item) {
   const used = item.last_used_at ? `Последнее использование: ${esc(item.last_used_at)}` : `Добавлен: ${esc(item.created_at || '')}`;
@@ -1337,12 +1392,18 @@ async function handleDashboardClick(event) {
       await showDashboard();
       return;
     }
+    if (action === 'filter-employer-invitations') {
+      if (!Object.hasOwn(employerInvitationFilterLabels,btn.dataset.filter)) return;
+      state.employerInvitationsFilter = btn.dataset.filter;
+      await loadEmployerInvitations();
+      return;
+    }
     if (action === 'new-job') { state.editVacancy=null; state.tab='create'; await showDashboard(); }
     if (action === 'edit-job') { state.editVacancy=id; state.activeVacancy=null; state.tab='edit'; await showDashboard(); }
     if (action === 'cancel-job-edit') { state.editVacancy=null; state.tab='vacancies'; await showDashboard(); }
     if (action === 'matches' || action === 'matches-primary') { await loadMatches(id); }
     if (action === 'job-status') { await api(`/api/employer/vacancies/${id}/status`,{method:'PATCH',body:JSON.stringify({status:btn.dataset.status})}); await showDashboard(); toast('Статус вакансии обновлён.'); }
-    if (action === 'invite') { await api('/api/employer/invitations',{method:'POST',body:JSON.stringify({vacancy_id:Number(btn.dataset.job),candidate_id:id})}); toast('Приглашение отправлено.'); state.tab='invitations'; await showDashboard(); }
+    if (action === 'invite') { await api('/api/employer/invitations',{method:'POST',body:JSON.stringify({vacancy_id:Number(btn.dataset.job),candidate_id:id})}); toast('Приглашение отправлено.'); state.employerInvitationsFilter='waiting'; state.tab='invitations'; await showDashboard(); }
     if (action === 'accept' || action === 'decline') {
       const consent = $(`#consent-${id}`);
       if (action === 'accept' && !consent.checked) { throw new Error('Подтвердите согласие на передачу контакта.'); }
@@ -1350,7 +1411,10 @@ async function handleDashboardClick(event) {
     }
     if (action === 'demo-pay') {
       if (!confirm('Это тестовая оплата — реальные средства НЕ списываются. Открыть контакт согласившегося кандидата?')) return;
-      const result = await api(`/api/employer/invitations/${id}/demo-pay`,{method:'POST'}); await showDashboard(); toast(`Демо-платёж ${money(result.amount_rub)} проведён без списания средств.`);
+      const result = await api(`/api/employer/invitations/${id}/demo-pay`,{method:'POST'});
+      state.employerInvitationsFilter = 'introduced';
+      await showDashboard();
+      toast(`Демо-платёж ${money(result.amount_rub)} проведён без списания средств.`);
     }
   } catch(e) { toast(e.message,true); } finally { if (btn.isConnected) btn.disabled = false; }
 }
