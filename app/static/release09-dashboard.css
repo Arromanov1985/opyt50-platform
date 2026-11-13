@@ -2162,3 +2162,104 @@ body.comfortable-view .employer-invitation-card .interaction-note span{
   .application-review-card > .btn,
   .employer-invitation-card > .btn{width:100%}
 }
+
+
+/* Release 0.5: candidate introductions work queue */
+.candidate-introduction-stage-filter{
+  display:flex;
+  flex-wrap:wrap;
+  gap:7px;
+  margin:0 0 10px;
+}
+.candidate-introduction-stage-filter .btn{
+  margin:0;
+  min-height:36px;
+}
+.candidate-introduction-result-line{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:12px;
+  min-height:34px;
+  padding:7px 0 12px;
+  margin-bottom:12px;
+  border-bottom:1px solid #EDF3EF;
+  color:#60746B;
+  font-size:12px;
+}
+.candidate-introduction-result-line strong{color:#0B2D26}
+.candidate-introduction-card{
+  position:relative;
+  overflow:hidden;
+}
+.candidate-introduction-card.is-decision{
+  border-color:#A9E4BD;
+  box-shadow:0 12px 32px #00C8530d;
+}
+.candidate-introduction-card.is-decision:before{
+  content:"";
+  position:absolute;
+  left:0;
+  top:0;
+  bottom:0;
+  width:4px;
+  background:#00C853;
+}
+.candidate-introduction-card.is-waiting{
+  background:#FCFDFC;
+}
+.candidate-introduction-card.is-closed{
+  opacity:.88;
+}
+.candidate-introduction-note{
+  display:grid;
+  gap:3px;
+  margin-top:12px;
+  padding:12px 14px;
+  border:1px solid #DDEAE3;
+  border-radius:13px;
+  line-height:1.4;
+}
+.candidate-introduction-note strong{
+  color:#0B2D26;
+  font-size:12px;
+}
+.candidate-introduction-note span{
+  color:#60746B;
+  font-size:11px;
+}
+.candidate-introduction-note.is-waiting{
+  background:#F8FAF9;
+  border-color:#DDE5E0;
+}
+.candidate-introduction-note.is-closed{
+  background:#F7F8F7;
+  border-color:#E1E5E2;
+}
+.candidate-introduction-note.is-closed strong,
+.candidate-introduction-note.is-closed span{
+  color:#68766F;
+}
+body.comfortable-view .candidate-introduction-note strong{font-size:1rem}
+body.comfortable-view .candidate-introduction-note span{font-size:.92rem}
+@media(max-width:620px){
+  .candidate-introduction-stage-filter{
+    display:grid;
+    grid-template-columns:1fr 1fr;
+  }
+  .candidate-introduction-stage-filter .btn{
+    width:100%;
+    white-space:normal;
+    line-height:1.25;
+  }
+  .candidate-introduction-result-line{
+    align-items:flex-start;
+    flex-direction:column;
+  }
+  .candidate-introduction-card .invitation-actions .btn{
+    width:100%;
+  }
+}
+@media(max-width:390px){
+  .candidate-introduction-stage-filter{grid-template-columns:1fr}
+}
