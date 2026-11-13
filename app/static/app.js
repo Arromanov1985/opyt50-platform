@@ -690,7 +690,12 @@ async function renderCandidate() {
       const favorites = favoritesResult.jobs || [];
       const pendingInvitationsList = invitations.filter(item => item.status === 'sent');
       const pendingInvitations = pendingInvitationsList.length;
-      const activeApplicationsList = applications.filter(item => ['applied','reviewing','interview'].includes(item.status) && !item.contact_shared && item.invitation_status !== 'declined');
+      const waitingEmployerInvitations = invitations.filter(item => item.status === 'accepted' && !item.contact_shared);
+      const activeIntroductions = pendingInvitations + waitingEmployerInvitations.length;
+      const introductionOverviewFilter = pendingInvitations ? 'decision' : (waitingEmployerInvitations.length ? 'waiting' : 'all');
+      const activeApplicationsList = applications.filter(item =>
+        ['applied','reviewing','interview'].includes(item.status) && !item.invitation_id
+      );
       const activeApplications = activeApplicationsList.length;
       const unreadChanges = Number(updatesResult.unread_count || 0);
       const emailVerified = Boolean(emailResult.email_verified);
@@ -714,6 +719,10 @@ async function renderCandidate() {
         nextTitle = 'Проверьте изменения условий';
         nextText = `Работодатели изменили условия по ${unreadChanges} вакансии(ям), с которыми вы уже взаимодействовали.`;
         nextAction = '<button class="btn btn-primary" data-tab="changes">Посмотреть изменения →</button>';
+      } else if (waitingEmployerInvitations.length > 0) {
+        nextTitle = 'Согласие отправлено — ждём работодателя';
+        nextText = `Знакомств в ожидании продолжения: ${waitingEmployerInvitations.length}. Повторно подтверждать согласие не нужно.`;
+        nextAction = '<button class="btn btn-outline" data-action="open-candidate-invitations" data-filter="waiting">Посмотреть статус →</button>';
       } else if (activeApplications > 0) {
         nextTitle = 'Проверьте статус откликов';
         nextText = `Активных откликов: ${activeApplications}. Посмотрите, на каком этапе каждый из них.`;
@@ -738,7 +747,7 @@ async function renderCandidate() {
         <section class="overview-stat-grid" aria-label="Сводка соискателя">
           <button type="button" class="overview-stat-card" data-tab="offers"><strong>${jobs.length}</strong><span>Подходящие вакансии</span><small>По вашему профилю</small></button>
           <button type="button" class="overview-stat-card" data-tab="applications"><strong>${activeApplications}</strong><span>Активные отклики</span><small>В процессе</small></button>
-          <button type="button" class="overview-stat-card" data-action="open-candidate-invitations" data-filter="decision"><strong>${pendingInvitations}</strong><span>Требуют ответа</span><small>Новые знакомства</small></button>
+          <button type="button" class="overview-stat-card" data-action="open-candidate-invitations" data-filter="${introductionOverviewFilter}"><strong>${activeIntroductions}</strong><span>Знакомства</span><small>${pendingInvitations ? `Требуют ответа: ${pendingInvitations}` : waitingEmployerInvitations.length ? `Ждём работодателя: ${waitingEmployerInvitations.length}` : 'Новых действий нет'}</small></button>
           <button type="button" class="overview-stat-card" data-tab="favorites"><strong>${favorites.length}</strong><span>Избранное</span><small>Сохранённые вакансии</small></button>
         </section>
         <section class="candidate-overview-grid">
