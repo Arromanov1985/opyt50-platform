@@ -31,10 +31,10 @@ function candidateWorkflowStatus(x, fallback='') {
   if (stage==='declined' || x.invitation_status==='declined') return 'Вы отказались от знакомства';
   if (x.status==='reviewing') return 'На рассмотрении';
   if (x.status==='interview') return 'Работодатель заинтересован';
-  if (x.status==='rejected') return 'Работодатель отказал';
+  if (x.status==='rejected') return 'Получен отказ';
   if (x.status==='hired') return 'Принят';
-  if (x.status==='withdrawn') return 'Отклик отозван';
-  if (x.status==='applied') return 'Отклик отправлен';
+  if (x.status==='withdrawn') return 'Отозван';
+  if (x.status==='applied') return 'Отправлен';
   return fallback;
 }
 function activityTimelineMarkup(x) {
