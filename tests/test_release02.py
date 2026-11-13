@@ -513,6 +513,13 @@ def test_unified_status_timeline_consent_and_terminal_guards(app):
         assert post(candidate, f"/api/candidate/invitations/{invite_id}/respond", {
             "decision": "accepted", "share_consent": True
         }).status_code == 200
+        with database(app.state.db_path) as db:
+            response_notice = db.execute(
+                "SELECT subject,body FROM email_outbox WHERE event='invitation_response' ORDER BY id DESC LIMIT 1"
+            ).fetchone()
+            assert response_notice["subject"] == "Ответ кандидата — СТАЖНО"
+            assert "согласился на знакомство" in response_notice["body"]
+            assert "accepted" not in response_notice["body"]
         after_consent = employer.get("/api/employer/applications").json()["applications"][0]
         assert after_consent["introduction_stage"] == "consented"
         assert "invitation_accepted" in [event["event"] for event in after_consent["timeline"]]
