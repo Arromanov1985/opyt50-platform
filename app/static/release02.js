@@ -9,7 +9,7 @@
       if (!a.invitation_id) return '';
       const label = a.contact_shared ? 'Знакомство состоялось (демо)' : (introductionLabel[a.invitation_status] || 'Запрос отправлен');
       return '<div class="interaction-note">Знакомство: ' + esc(label) + '</div>' +
-        (a.invitation_status === 'sent' ? '<button class="btn btn-outline btn-tiny" data-v02-action="open-introductions">Ответить на запрос компании</button>' : '');
+        (a.invitation_status === 'sent' ? '<button class="btn btn-primary btn-tiny" data-v02-action="open-introductions" data-filter="decision">Ответить на запрос компании →</button>' : '');
     }
     function employerApplicationStageLabel(a) {
       if (a.contact_shared) return 'Знакомство состоялось';
@@ -234,11 +234,9 @@
             }
           }
         }
-        const nav=$('.dashboard-tabs');
-        if (nav) { const icons={favorites:'♡',applications:'✓',changes:'↻',email:'@'}; nav.insertAdjacentHTML('beforeend',candidateExtra.map(t=>`<button type="button" data-tab="${t.id}"><span class="dashboard-tab-icon" aria-hidden="true">${icons[t.id]||'•'}</span><span>${t.label}</span></button>`).join('')); }
         return;
       }
-      const nav = [{id:'overview',label:'Обзор'},{id:'profile',label:'Мой профиль'},{id:'offers',label:'Подходящие вакансии'},{id:'invitations',label:'Приглашения'},...candidateExtra];
+      const nav = [{id:'overview',label:'Обзор'},{id:'profile',label:'Мой профиль'},{id:'offers',label:'Подходящие вакансии'},{id:'applications',label:'Отклики'},{id:'invitations',label:'Знакомства'},{id:'favorites',label:'Сохранённые'},{id:'changes',label:'Изменения'},{id:'email',label:'Email и доступ'},{id:'security',label:'Безопасность'}];
       $('#account-content').innerHTML=`<div class="dashboard-grid">${tabsMarkup(nav,'ДЛЯ СОИСКАТЕЛЯ','Ваша карьера')}<div id="dashboard-main"><div class="loading">Загрузка...</div></div></div>`;
       try {
         if(state.tab==='favorites'){
@@ -559,7 +557,12 @@
           await showDashboard();
           toast(data.created?'Кандидату направлен запрос на знакомство (демо)':'Запрос уже существует — повторно не отправлен');
         }
-        else if(type==='open-introductions'){state.employerInvitationsFilter=btn.dataset.filter||'all';state.tab='invitations';await showDashboard();}
+        else if(type==='open-introductions'){
+          if(state.user?.role==='candidate') state.candidateInvitationsFilter=btn.dataset.filter||'decision';
+          else state.employerInvitationsFilter=btn.dataset.filter||'all';
+          state.tab='invitations';
+          await showDashboard();
+        }
         else if(type==='verify-email'){await req('POST','/api/account/email/request');toast('Письмо подтверждения отправлено, если почтовая доставка настроена');}
         else if(type==='recover'){$('#auth-dialog').close();$('#reset-dialog').showModal();}
         else if(type==='admin-users')await adminView('users');
