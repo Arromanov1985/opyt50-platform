@@ -286,6 +286,7 @@ def run_browser(page):
     page.locator("#logout").click()
 
     login(page, "kladovshik@demo.example")
+    expect(page.locator("#dashboard-main")).to_contain_text("Требует вашего ответа")
     page.locator(".dashboard-tabs [data-tab='applications']").click()
     expect(page.locator("#dashboard-main")).to_contain_text("Требует вашего ответа")
     expect(page.locator("#dashboard-main")).to_contain_text("Работодатель предлагает знакомство")
