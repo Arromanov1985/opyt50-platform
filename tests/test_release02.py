@@ -540,6 +540,11 @@ def test_unified_status_timeline_consent_and_terminal_guards(app):
         # Before demo unlock, the candidate's name/email/phone stay absent
         # from every employer application and invitation response.
         assert not employer.get("/api/employer/invitations").json()["invitations"][0].get("contact")
+        # Ownership guard: another employer cannot unlock this contact, and a candidate
+        # cannot call the employer-only endpoint.
+        assert post(stranger, f"/api/employer/invitations/{invite_id}/demo-pay").status_code == 404
+        assert post(candidate, f"/api/employer/invitations/{invite_id}/demo-pay").status_code == 403
+        assert not employer.get("/api/employer/invitations").json()["invitations"][0].get("contact")
 
         paid = post(employer, f"/api/employer/invitations/{invite_id}/demo-pay")
         assert paid.status_code == 200, paid.text
