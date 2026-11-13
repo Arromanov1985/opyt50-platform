@@ -497,7 +497,21 @@ def run_browser(page):
     expect(page.locator("#dashboard-main [data-action='filter-candidate-invitations'][data-filter='closed']")).to_have_attribute("aria-pressed", "true")
     expect(page.locator("#dashboard-main")).to_contain_text("Компания выбрала вас")
     expect(page.locator("#dashboard-main")).to_contain_text("Дальнейшие договорённости проходят напрямую с компанией")
+    candidate_intro_search = page.locator("#dashboard-main [data-candidate-introduction-search]")
+    expect(candidate_intro_search).to_be_visible()
+    candidate_intro_search.fill("клад")
+    expect(page.locator("#dashboard-main .candidate-introduction-card")).to_have_count(1)
+    expect(page.locator("#dashboard-main .candidate-introduction-card")).to_contain_text("Кладовщик")
+    expect(candidate_intro_search).to_be_focused()
+    candidate_intro_search.fill("точно-нет-такой-компании")
+    expect(page.locator("#dashboard-main")).to_contain_text("По этому запросу знакомств нет")
+    page.locator("#dashboard-main [data-action='reset-candidate-invitation-filters']").click()
+    expect(page.locator("#dashboard-main [data-candidate-introduction-search]")).to_have_value("")
+    expect(page.locator("#dashboard-main [data-action='filter-candidate-invitations'][data-filter='all']")).to_have_attribute("aria-pressed", "true")
+    page.locator("#dashboard-main [data-action='filter-candidate-invitations'][data-filter='closed']").click()
+    expect(page.locator("#dashboard-main")).to_contain_text("Компания выбрала вас")
     page.set_viewport_size({"width": 390, "height": 844})
+    expect(page.locator("#dashboard-main [data-candidate-introduction-search]")).to_be_visible()
     assert page.evaluate("""() => {
       const grid = document.querySelector('.candidate-introduction-stage-filter');
       return grid && getComputedStyle(grid).gridTemplateColumns.trim().split(/\s+/).length === 2;
