@@ -1276,6 +1276,24 @@ function invitationEmployerMarkup(x) {
       ${contactActions ? `<div class="contact-card-actions">${contactActions}</div>` : ''}
       ${x.application_id ? `<div class="contact-card-actions introduction-outcome-actions"><button class="btn btn-primary btn-tiny" data-action="introduction-outcome" data-id="${Number(x.application_id)}" data-status="hired">Принять кандидата</button><button class="btn btn-outline btn-tiny" data-action="introduction-outcome" data-id="${Number(x.application_id)}" data-status="rejected">Не договорились</button></div>` : '<div class="interaction-note is-waiting"><strong>Прямое приглашение</strong><span>Это знакомство началось без отклика кандидата, поэтому итог отклика здесь не фиксируется. Контакт и история знакомства остаются доступны.</span></div>'}
     </div>`;
+  } else if (bucket === 'closed' && x.contact && ['hired','rejected'].includes(x.application_status)) {
+    const email = String(x.contact.email || '').trim();
+    const phone = String(x.contact.phone || '').trim();
+    const phoneHref = phone.replace(/[^+\d]/g,'');
+    const contactActions = [
+      email ? `<a class="btn btn-primary btn-tiny" href="mailto:${encodeURIComponent(email)}">Написать кандидату →</a>` : '',
+      phoneHref ? `<a class="btn btn-outline btn-tiny" href="tel:${esc(phoneHref)}">Позвонить</a>` : ''
+    ].filter(Boolean).join('');
+    const outcomeNote = x.application_status === 'hired'
+      ? '<div class="interaction-note is-complete"><strong>Кандидат принят</strong><span>Положительный итог знакомства зафиксирован.</span></div>'
+      : '<div class="interaction-note is-closed"><strong>Не договорились</strong><span>Знакомство завершено без продолжения.</span></div>';
+    next = `${outcomeNote}<div class="contact-card contact-card-completed">
+      <span>КОНТАКТ СОХРАНЁН · ДЕМО</span>
+      <strong>${esc(x.contact.name)}</strong>
+      <div class="contact-card-details">${email ? `<a href="mailto:${encodeURIComponent(email)}">${esc(email)}</a>` : '<span>Email не указан</span>'}<b>·</b><span>${esc(phone || 'Телефон не указан')}</span></div>
+      <div class="contact-card-next"><strong>Контакт остаётся доступен в истории</strong><span>Финальный результат уже зафиксирован, менять его повторно не нужно.</span></div>
+      ${contactActions ? `<div class="contact-card-actions">${contactActions}</div>` : ''}
+    </div>`;
   } else if (bucket === 'action') {
     next = `<div class="application-next-action"><span>Следующее действие</span><strong>Открыть контакт кандидата</strong><small>Согласие уже получено · демо-стоимость: ${money(x.price_rub)}</small></div><button class="btn btn-primary" data-action="demo-pay" data-id="${x.id}">Открыть контакт (демо) →</button>`;
   } else if (bucket === 'waiting') {
