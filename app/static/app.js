@@ -931,6 +931,7 @@ async function renderEmployer() {
       );
       const consentedInvitations = invitations.filter(item => item.status === 'accepted' || item.contact_shared).length;
       const openedContacts = invitations.filter(item => item.contact_shared).length;
+      const hiredIntroductions = invitations.filter(item => item.application_status === 'hired').length;
       let nextTitle = 'Создайте первую вакансию';
       let nextText = 'После публикации можно получать отклики и запускать подбор кандидатов.';
       let nextAction = '<button class="btn btn-primary" data-tab="create">Создать вакансию →</button>';
@@ -966,13 +967,14 @@ async function renderEmployer() {
           <button type="button" class="overview-stat-card" data-action="open-employer-invitations" data-filter="action"><strong>${acceptedInvitations.length}</strong><span>Есть согласие</span><small>Можно открыть контакт</small></button>
           <button type="button" class="overview-stat-card" data-action="open-employer-invitations" data-filter="introduced"><strong>${activeOpenedContacts.length}</strong><span>Ждут итога</span><small>Контакт уже открыт</small></button>
         </section>
-        <section class="panel overview-funnel">
-          <div class="split-header"><div><span class="section-kicker">ВОРОНКА</span><h3>От вакансии до знакомства</h3></div><button class="btn btn-outline btn-tiny" data-tab="vacancies">Управлять вакансиями</button></div>
+        <section class="panel overview-funnel employer-outcome-funnel">
+          <div class="split-header"><div><span class="section-kicker">ВОРОНКА</span><h3>От вакансии до результата</h3></div><button class="btn btn-outline btn-tiny" data-tab="vacancies">Управлять вакансиями</button></div>
           <div class="overview-funnel-steps">
             <div><strong>${jobs.length}</strong><span>Вакансии</span></div><b>→</b>
             <div><strong>${applications.length}</strong><span>Отклики</span></div><b>→</b>
             <div><strong>${consentedInvitations}</strong><span>Согласия</span></div><b>→</b>
-            <div><strong>${openedContacts}</strong><span>Контакты</span></div>
+            <div><strong>${openedContacts}</strong><span>Контакты</span></div><b>→</b>
+            <div><strong>${hiredIntroductions}</strong><span>Приняты</span></div>
           </div>
         </section>
       </div>`;
