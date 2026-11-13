@@ -1949,3 +1949,107 @@ body.comfortable-view .account-security-event small{
     grid-template-columns: 1fr 1fr;
   }
 }
+
+
+/* Release 0.5: employer application work queue */
+.employer-application-toolbar{
+  display:grid;
+  grid-template-columns:minmax(220px,320px) minmax(0,1fr);
+  gap:14px;
+  align-items:end;
+  margin:18px 0 12px;
+}
+.employer-application-vacancy-filter .field{margin:0}
+.employer-application-stage-filter{
+  display:flex;
+  flex-wrap:wrap;
+  gap:7px;
+  align-items:center;
+}
+.employer-application-stage-filter .btn{
+  margin:0;
+  min-height:36px;
+}
+.employer-application-result-line{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:12px;
+  min-height:34px;
+  padding:7px 0 10px;
+  border-bottom:1px solid #EDF3EF;
+  color:#60746B;
+  font-size:12px;
+}
+.employer-application-result-line strong{color:#0B2D26}
+@media(max-width:820px){
+  .employer-application-toolbar{grid-template-columns:1fr}
+}
+@media(max-width:620px){
+  .employer-application-stage-filter{
+    display:grid;
+    grid-template-columns:1fr 1fr;
+  }
+  .employer-application-stage-filter .btn{
+    width:100%;
+    white-space:normal;
+    line-height:1.25;
+  }
+  .employer-application-result-line{
+    align-items:flex-start;
+    flex-direction:column;
+  }
+}
+@media(max-width:390px){
+  .employer-application-stage-filter{grid-template-columns:1fr}
+}
+
+
+/* Release 0.5: clear employer introduction states */
+.application-review-card .interaction-note{
+  display:grid;
+  gap:3px;
+  margin-top:12px;
+  padding:12px 14px;
+  border:1px solid #DDEAE3;
+  border-radius:13px;
+  line-height:1.4;
+}
+.application-review-card .interaction-note strong{
+  color:#0B2D26;
+  font-size:12px;
+}
+.application-review-card .interaction-note span{
+  color:#60746B;
+  font-size:11px;
+}
+.application-review-card .interaction-note.is-waiting{
+  background:#F8FAF9;
+  border-color:#DDE5E0;
+}
+.application-review-card .interaction-note.is-ready{
+  background:#EEFAF2;
+  border-color:#BFE5CC;
+}
+.application-review-card .interaction-note.is-ready strong{color:#08793A}
+.application-review-card .interaction-note.is-complete{
+  background:#F3FAF6;
+  border-color:#CFE6D8;
+}
+.application-review-card .interaction-note.is-closed{
+  background:#F7F8F7;
+  border-color:#E1E5E2;
+}
+.application-review-card .interaction-note.is-closed strong,
+.application-review-card .interaction-note.is-closed span{
+  color:#68766F;
+}
+.application-review-card .interaction-note + .btn{
+  margin-top:8px;
+}
+body.comfortable-view .application-review-card .interaction-note strong{
+  font-size:1rem;
+}
+body.comfortable-view .application-review-card .interaction-note span{
+  font-size:.92rem;
+}
