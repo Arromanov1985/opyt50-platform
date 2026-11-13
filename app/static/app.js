@@ -1250,6 +1250,13 @@ function invitationLastActivity(x) {
   const timestamp = Date.parse(String(last || '').replace(' ', 'T') + (String(last || '').includes('Z') ? '' : 'Z'));
   return Number.isFinite(timestamp) ? timestamp : Number(x.id || 0);
 }
+function invitationLastActivityMarkup(x) {
+  const timeline = Array.isArray(x.timeline) ? x.timeline : [];
+  const last = timeline.length ? timeline[timeline.length - 1] : null;
+  if (!last) return '';
+  const label = activityLabels[last.event] || last.event || 'Обновление';
+  return `<div class="invitation-last-activity"><span>Последнее действие</span><strong>${esc(label)}</strong><small>${esc(last.created_at || '')}</small></div>`;
+}
 async function loadEmployerInvitations() {
   const {invitations} = await api('/api/employer/invitations');
   const selected = Object.hasOwn(employerInvitationFilterLabels,state.employerInvitationsFilter)
@@ -1339,8 +1346,9 @@ function invitationEmployerMarkup(x) {
   } else {
     next = '<div class="interaction-note is-closed"><strong>Знакомство завершено</strong><span>Дополнительных действий не требуется.</span></div>';
   }
-  return `<article class="item-card invitation-card employer-invitation-card is-${bucket}"><header><div><span class="card-eyebrow">ЗНАКОМСТВО</span><h4>${esc(x.candidate_profession)}</h4><p>${esc(x.vacancy_title)}</p></div><span class="mini-badge ${bucket==='closed'?'gray':''}">${esc(employerInvitationStageLabel(x))}</span></header>
+  return `<article class="item-card invitation-card employer-invitation-card is-${bucket}"><header><div><span class="card-eyebrow">ЗНАКОМСТВО</span><h4>${esc(x.candidate_profession)}</h4><p class="invitation-vacancy-context">Вакансия: <strong>${esc(x.vacancy_title)}</strong></p></div><span class="mini-badge ${bucket==='closed'?'gray':''}">${esc(employerInvitationStageLabel(x))}</span></header>
   ${interactionStageMarkup(x,'invitation')}
+  ${invitationLastActivityMarkup(x)}
   ${activityTimelineMarkup(x)}
   ${next}</article>`;
 }
