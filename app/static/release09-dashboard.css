@@ -2411,6 +2411,9 @@ body.comfortable-view .candidate-introduction-note span{font-size:.92rem}
   color:#7A8B83;
 }
 .employer-introduction-vacancy-filter select{
+  width:100%;
+  max-width:100%;
+  min-width:0;
   min-height:40px;
   padding:8px 34px 8px 11px;
   border:1px solid #D9E5DF;
@@ -2420,5 +2423,7 @@ body.comfortable-view .candidate-introduction-note span{font-size:.92rem}
   font:inherit;
 }
 @media(max-width:700px){
-  .employer-introduction-vacancy-filter{width:100%;min-width:0}
+  .invitation-center>.split-header{align-items:stretch;flex-direction:column}
+  .invitation-center>.split-header>div{min-width:0}
+  .employer-introduction-vacancy-filter{width:100%;max-width:100%;min-width:0}
 }
