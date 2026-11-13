@@ -2472,3 +2472,36 @@ body.comfortable-view .candidate-introduction-note span{font-size:.92rem}
 @media(max-width:700px){
   .employer-introduction-controls{grid-template-columns:1fr}
 }
+
+.candidate-introduction-search{
+  display:grid;
+  gap:5px;
+  min-width:min(320px,36vw);
+}
+.candidate-introduction-search>span{
+  font-size:9px;
+  font-weight:800;
+  letter-spacing:.08em;
+  text-transform:uppercase;
+  color:#7A8B83;
+}
+.candidate-introduction-search input{
+  width:100%;
+  min-width:0;
+  min-height:40px;
+  padding:8px 11px;
+  border:1px solid #D9E5DF;
+  border-radius:11px;
+  background:#fff;
+  color:#0B2D26;
+  font:inherit;
+}
+.candidate-introduction-search input:focus{
+  outline:2px solid #CBE8D7;
+  outline-offset:1px;
+  border-color:#9ACDB0;
+}
+@media(max-width:700px){
+  .candidate-introduction-center>.split-header{align-items:stretch;flex-direction:column}
+  .candidate-introduction-search{width:100%;min-width:0}
+}
