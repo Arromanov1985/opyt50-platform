@@ -2,7 +2,7 @@
 'use strict';
 const $ = (selector, root = document) => root.querySelector(selector);
 const $$ = (selector, root = document) => [...root.querySelectorAll(selector)];
-const state = { user: null, mode: 'register', role: 'candidate', tab: 'overview', activeVacancy: null, editVacancy: null, employerVacancyFilter: 'all', employerApplicationsVacancyFilter: 'all', employerApplicationsStatusFilter: 'all', employerInvitationsFilter: 'all', employerInvitationsVacancyFilter: 'all', employerInvitationsQuery: '', candidateInvitationsFilter: 'all', mfaChallenge: null, mfaMethod: null, mfaCodeLength: 8, mfaPublicKey: null, mfaTotpFallback: false };
+const state = { user: null, mode: 'register', role: 'candidate', tab: 'overview', activeVacancy: null, editVacancy: null, employerVacancyFilter: 'all', employerApplicationsVacancyFilter: 'all', employerApplicationsStatusFilter: 'all', employerInvitationsFilter: 'all', employerInvitationsVacancyFilter: 'all', employerInvitationsQuery: '', employerInvitationsData: null, candidateInvitationsFilter: 'all', mfaChallenge: null, mfaMethod: null, mfaCodeLength: 8, mfaPublicKey: null, mfaTotpFallback: false };
 const esc = value => String(value ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const money = value => Number(value || 0).toLocaleString('ru-RU') + ' ₽';
 const formatPay = job => job.salary_min === job.salary_max ? money(job.salary_min) : `${money(job.salary_min)} — ${money(job.salary_max)}`;
@@ -1008,7 +1008,7 @@ async function renderEmployer() {
     else if (state.tab === 'edit') await loadEmployerVacancyEdit();
     else if (state.tab === 'vacancies') await loadEmployerVacancies();
     else if (state.tab === 'security') await renderAccountSecurity(target);
-    else await loadEmployerInvitations();
+    else await loadEmployerInvitations(true);
   } catch(e) { target.innerHTML = `<div class="panel">${esc(e.message)}</div>`; toast(e.message,true); }
 }
 function vacancyFormMarkup(job = null) {
@@ -1265,8 +1265,12 @@ function invitationLastActivityMarkup(x) {
   const label = activityLabels[last.event] || last.event || 'Обновление';
   return `<div class="invitation-last-activity"><span>Последнее действие</span><strong>${esc(label)}</strong><small>${esc(formatActivityTimestamp(last.created_at))}</small></div>`;
 }
-async function loadEmployerInvitations() {
-  const {invitations} = await api('/api/employer/invitations');
+async function loadEmployerInvitations(force=false) {
+  if (force || !Array.isArray(state.employerInvitationsData)) {
+    const result = await api('/api/employer/invitations');
+    state.employerInvitationsData = result.invitations || [];
+  }
+  const invitations = state.employerInvitationsData;
   const selected = Object.hasOwn(employerInvitationFilterLabels,state.employerInvitationsFilter)
     ? state.employerInvitationsFilter
     : 'all';
@@ -1570,6 +1574,8 @@ async function handleDashboardChange(event) {
   if (state.user?.role === 'employer' && nextTab === 'invitations') {
     state.employerInvitationsFilter = 'all';
     state.employerInvitationsVacancyFilter = 'all';
+    state.employerInvitationsQuery = '';
+    state.employerInvitationsData = null;
   }
   if (state.user?.role === 'candidate' && nextTab === 'invitations') {
     state.candidateInvitationsFilter = 'all';
@@ -1588,6 +1594,8 @@ async function handleDashboardClick(event) {
     if (state.user?.role === 'employer' && tab.dataset.tab === 'invitations') {
       state.employerInvitationsFilter = 'all';
       state.employerInvitationsVacancyFilter = 'all';
+      state.employerInvitationsQuery = '';
+      state.employerInvitationsData = null;
     }
     if (state.user?.role === 'candidate' && tab.dataset.tab === 'invitations') {
       state.candidateInvitationsFilter = 'all';
@@ -1696,6 +1704,7 @@ async function handleDashboardClick(event) {
     if (action === 'reset-employer-invitation-filters') {
       state.employerInvitationsFilter = 'all';
       state.employerInvitationsVacancyFilter = 'all';
+      state.employerInvitationsQuery = '';
       await loadEmployerInvitations();
       return;
     }
@@ -1703,6 +1712,8 @@ async function handleDashboardClick(event) {
       const filter = Object.hasOwn(employerInvitationFilterLabels,btn.dataset.filter) ? btn.dataset.filter : 'all';
       state.employerInvitationsFilter = filter;
       state.employerInvitationsVacancyFilter = btn.dataset.vacancyId ? String(btn.dataset.vacancyId) : 'all';
+      state.employerInvitationsQuery = '';
+      state.employerInvitationsData = null;
       state.tab = 'invitations';
       state.activeVacancy = null;
       await showDashboard();
@@ -1731,7 +1742,7 @@ async function handleDashboardClick(event) {
       if (!confirm(question)) return;
       await api(`/api/employer/applications/${id}/status`,{method:'PATCH',body:JSON.stringify({status:outcome})});
       state.employerInvitationsFilter = 'closed';
-      await loadEmployerInvitations();
+      await loadEmployerInvitations(true);
       const completedCard = document.querySelector(`#dashboard-main .employer-invitation-card[data-application-id="${Number(id)}"]`);
       if (completedCard) {
         completedCard.setAttribute('tabindex','-1');
