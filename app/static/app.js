@@ -1245,6 +1245,11 @@ async function loadEmployerInvitations() {
   state.employerInvitationsFilter = selected;
   const counts = {action:0,waiting:0,introduced:0,closed:0};
   invitations.forEach(item => { counts[employerInvitationBucket(item)] += 1; });
+  const completedResults = {
+    hired: invitations.filter(item => item.application_status === 'hired').length,
+    rejected: invitations.filter(item => item.application_status === 'rejected').length,
+    other: invitations.filter(item => employerInvitationBucket(item) === 'closed' && !['hired','rejected'].includes(item.application_status)).length
+  };
   const ordered = [...invitations].sort((a,b) => {
     const priority = {action:0,waiting:1,introduced:2,closed:3};
     return priority[employerInvitationBucket(a)] - priority[employerInvitationBucket(b)];
@@ -1264,6 +1269,7 @@ async function loadEmployerInvitations() {
     <div class="split-header"><div><span class="section-kicker">ЗНАКОМСТВА</span><h3>Знакомства и контакты</h3><p class="muted">Здесь продолжается работа после отклика: сначала показываем знакомства, где нужен ваш следующий шаг. Контакты открываются только после согласия кандидата.</p></div></div>
     <div class="employer-invitation-stage-filter" role="group" aria-label="Фильтр знакомств по этапу">${filterButtons}</div>
     <div class="employer-invitation-result-line"><span role="status">Показываем <strong>${shown.length}</strong> из <strong>${invitations.length}</strong>${selected==='all'&&invitations.length>1?' · сначала знакомства, где нужно ваше действие':''}</span>${selected!=='all'?'<button type="button" class="link-button" data-action="filter-employer-invitations" data-filter="all">Сбросить фильтр</button>':''}</div>
+    ${counts.closed ? `<div class="completed-introduction-summary" aria-label="Итоги завершённых знакомств"><span><strong>${completedResults.hired}</strong> Приняты</span><span><strong>${completedResults.rejected}</strong> Не договорились</span>${completedResults.other ? `<span><strong>${completedResults.other}</strong> Другие завершённые</span>` : ''}</div>` : ''}
     ${counts.action ? '<div class="demo-note"><strong>Тестовый режим</strong><span>Открытие контакта имитирует оплату и не списывает деньги.</span></div>' : ''}
     <div class="dashboard-list">${shown.length ? shown.map(invitationEmployerMarkup).join('') : empty}</div>
   </div>`;
