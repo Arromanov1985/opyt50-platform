@@ -206,6 +206,9 @@
 .interaction-stage:has(>span:nth-child(3):last-child){
   grid-template-columns:repeat(3,minmax(0,1fr));
 }
+.interaction-stage:has(>span:nth-child(5):last-child){
+  grid-template-columns:repeat(5,minmax(0,1fr));
+}
 
 .application-timeline{
   margin:13px 0 0;
