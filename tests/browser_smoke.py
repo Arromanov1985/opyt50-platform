@@ -375,6 +375,8 @@ def run_browser(page):
     page.locator("#dashboard-main [data-action='introduction-outcome'][data-status='hired']").click()
     expect(page.locator("#dashboard-main [data-action='filter-employer-invitations'][data-filter='closed']")).to_have_attribute("aria-pressed", "true")
     expect(page.locator("#dashboard-main")).to_contain_text("Кандидат принят")
+    focused_completed_card = page.locator("#dashboard-main .employer-invitation-card[data-application-id]")
+    expect(focused_completed_card.first).to_be_focused()
     completed_summary = page.locator("#dashboard-main .completed-introduction-summary")
     expect(completed_summary).to_contain_text("Приняты")
     expect(completed_summary).to_contain_text("Не договорились")
