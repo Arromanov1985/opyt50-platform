@@ -313,6 +313,12 @@ def test_one_click_introduction_reuses_record_and_requires_consent(app):
         register(other, "other@demo.example", "employer")
         profile(candidate)
         jid = vacancy(employer)
+        assert post(other, "/api/employer/invitations", {
+            "candidate_id": cid, "vacancy_id": jid
+        }).status_code == 404
+        assert post(candidate, "/api/employer/invitations", {
+            "candidate_id": cid, "vacancy_id": jid
+        }).status_code == 403
 
         # An application alone must not reveal contact data.
         submitted = post(candidate, "/api/candidate/applications", {"vacancy_id": jid})
