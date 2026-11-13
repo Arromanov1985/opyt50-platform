@@ -23,6 +23,20 @@ function workflowStatus(x, fallback='') {
   if (stage==='declined') return 'Кандидат отказался';
   return fallback;
 }
+function candidateWorkflowStatus(x, fallback='') {
+  const stage = x.introduction_stage;
+  if (stage==='introduced' || x.contact_shared) return 'Знакомство состоялось';
+  if (stage==='consented' || x.invitation_status==='accepted') return 'Согласие отправлено';
+  if (stage==='awaiting_consent' || x.invitation_status==='sent') return 'Требует вашего ответа';
+  if (stage==='declined' || x.invitation_status==='declined') return 'Вы отказались от знакомства';
+  if (x.status==='reviewing') return 'На рассмотрении';
+  if (x.status==='interview') return 'Работодатель заинтересован';
+  if (x.status==='rejected') return 'Работодатель отказал';
+  if (x.status==='hired') return 'Принят';
+  if (x.status==='withdrawn') return 'Отклик отозван';
+  if (x.status==='applied') return 'Отклик отправлен';
+  return fallback;
+}
 function activityTimelineMarkup(x) {
   const entries = Array.isArray(x.timeline) ? x.timeline : [];
   if (!entries.length) return '';
@@ -636,7 +650,7 @@ function profileMarkup(profile = {}, user = {}) {
   </div>`;
 }
 function candidateOverviewApplicationCard(item) {
-  const statusText = workflowStatus(item, statusTitle[item.status] || item.status);
+  const statusText = candidateWorkflowStatus(item, statusTitle[item.status] || item.status);
   return `<article class="candidate-overview-item">
     <div class="candidate-overview-item-head"><div><span class="card-eyebrow">ОТКЛИК</span><strong>${esc(item.title)}</strong><small>${esc(item.company_name)} · ${esc(item.city)}</small></div><span class="mini-badge">${esc(statusText)}</span></div>
     ${interactionStageMarkup(item,'application')}
