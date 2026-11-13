@@ -275,6 +275,9 @@ def run_browser(page):
     page.locator("#dashboard-main [data-v02-action='reset-application-filters']").first.click()
     expect(page.locator("#employer-applications-vacancy")).to_have_value("all")
     expect(page.locator("#dashboard-main [data-v02-action='employer-application-filter'][data-filter='all']")).to_have_attribute("aria-pressed", "true")
+    page.locator(".dashboard-tabs [data-tab='vacancies']").click()
+    expect(page.locator("#dashboard-main .employer-next")).to_contain_text("Ждём решения кандидата")
+    expect(page.locator("#dashboard-main .item-card").filter(has_text="Кладовщик").locator(".card-eyebrow")).to_contain_text("Ждём решения кандидата")
     page.locator("#logout").click()
 
     login(page, "kladovshik@demo.example")
