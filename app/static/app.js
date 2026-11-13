@@ -1217,7 +1217,7 @@ const employerInvitationFilterLabels = {
   all:'Все',
   action:'Есть согласие',
   waiting:'Ждём решения',
-  introduced:'Знакомство состоялось',
+  introduced:'Ждут итога',
   closed:'Завершённые'
 };
 function employerInvitationBucket(x) {
