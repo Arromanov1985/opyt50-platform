@@ -2055,6 +2055,8 @@ body.comfortable-view .application-review-card .interaction-note span{
 }
 
 
+.application-profile-strip.is-compact{grid-template-columns:1fr}
+
 /* Release 0.5: employer invitations work queue */
 .employer-invitation-stage-filter{
   display:flex;
