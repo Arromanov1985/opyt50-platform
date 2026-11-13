@@ -404,6 +404,7 @@ def run_browser(page):
     expect(completed_rejected_stat.locator("strong")).to_have_text("0")
     page.locator(".dashboard-tabs [data-tab='applications']").click()
     expect(page.locator("#dashboard-main")).to_contain_text("Кандидат принят")
+    expect(page.locator("#dashboard-main .application-flow-legend")).to_contain_text("5. Итог")
     expect(page.locator("#dashboard-main [data-v02-action='open-introductions']")).to_contain_text("Открыть завершённое знакомство")
     expect(page.locator("#dashboard-main")).to_contain_text("Приглашение отправлено")
     expect(page.locator("#dashboard-main")).to_contain_text("Согласие получено")
