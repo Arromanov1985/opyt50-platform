@@ -340,6 +340,8 @@ def run_browser(page):
     page.locator("#dashboard-main [data-action='demo-pay']").click()
     expect(page.locator("#dashboard-main")).to_contain_text("КОНТАКТ ОТКРЫТ · ДЕМО")
     expect(page.locator("#dashboard-main")).to_contain_text("Знакомство состоялось")
+    expect(page.locator("#dashboard-main")).to_contain_text("Следующий шаг — свяжитесь с кандидатом")
+    expect(page.locator("#dashboard-main .contact-card-actions a[href^='mailto:']")).to_have_count(1)
     introduced_filter = page.locator("#dashboard-main [data-action='filter-employer-invitations'][data-filter='introduced']")
     expect(introduced_filter).to_have_attribute("aria-pressed", "true")
     expect(page.locator("#dashboard-main")).to_contain_text("История взаимодействия")
@@ -361,7 +363,8 @@ def run_browser(page):
     expect(page.locator("#dashboard-main")).to_contain_text("Знакомства с компаниями")
     expect(page.locator("#dashboard-main [data-action='filter-candidate-invitations'][data-filter='all']")).to_have_attribute("aria-pressed", "true")
     expect(page.locator("#dashboard-main")).to_contain_text("Знакомство состоялось")
-    expect(page.locator("#dashboard-main")).to_contain_text("Дополнительных действий на СТАЖНО не требуется")
+    expect(page.locator("#dashboard-main")).to_contain_text("Работодатель получил ваши контакты")
+    expect(page.locator("#dashboard-main")).to_contain_text("На СТАЖНО дополнительных действий не требуется")
     page.locator("#logout").click()
 
     # Accountant must not receive an engineer recommendation merely
