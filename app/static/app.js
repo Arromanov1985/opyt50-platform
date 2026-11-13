@@ -1010,10 +1010,10 @@ async function loadEmployerVacancies() {
     nextAction = `<div class="employer-next"><div><span>Требует внимания</span><strong>Есть согласие кандидата</strong><small>Можно открыть контакт по ${readyIntroductions.length} знакомству(ам).</small></div><button class="btn btn-primary btn-tiny" data-action="open-employer-invitations" data-filter="action">Продолжить знакомство →</button></div>`;
   } else if (actionableApplications.length && firstActionableApplication) {
     nextAction = `<div class="employer-next"><div><span>Требует внимания</span><strong>Разберите новые отклики</strong><small>Нужен ваш следующий шаг по ${actionableApplications.length} отклику(ам).</small></div><button class="btn btn-primary btn-tiny" data-action="vacancy-applications" data-id="${Number(firstActionableApplication.vacancy_id)}">Открыть отклики →</button></div>`;
-  } else if (jobs.length && applications.length === 0 && firstOpenJob) {
-    nextAction = `<div class="employer-next"><div><span>Следующий шаг</span><strong>Запустите подбор кандидатов</strong><small>Открытая вакансия уже есть — посмотрите подходящие профили.</small></div><button class="btn btn-dark btn-tiny" data-action="matches" data-id="${Number(firstOpenJob.id)}">Подобрать кандидатов →</button></div>`;
   } else if (waitingIntroductions.length) {
     nextAction = `<div class="employer-next employer-next-ok"><div><span>Сейчас действий нет</span><strong>Ждём решения кандидата</strong><small>Запрос отправлен по ${waitingIntroductions.length} знакомству(ам). Повторно отправлять его не нужно.</small></div><button class="btn btn-outline btn-tiny" data-action="open-employer-invitations" data-filter="waiting">Посмотреть ожидание →</button></div>`;
+  } else if (jobs.length && applications.length === 0 && firstOpenJob) {
+    nextAction = `<div class="employer-next"><div><span>Следующий шаг</span><strong>Запустите подбор кандидатов</strong><small>Открытая вакансия уже есть — посмотрите подходящие профили.</small></div><button class="btn btn-dark btn-tiny" data-action="matches" data-id="${Number(firstOpenJob.id)}">Подобрать кандидатов →</button></div>`;
   } else if (jobs.length) {
     nextAction = '<div class="employer-next employer-next-ok"><div><span>Воронка под контролем</span><strong>Продолжайте работу с вакансиями</strong><small>Статусы и следующие действия собраны в одном кабинете.</small></div></div>';
   }
