@@ -633,6 +633,29 @@ def test_proactive_invitation_has_unified_history_without_application(app):
         assert employer_opened["timeline"][-1]["event"] == "contact_opened"
 
 
+def test_declined_invitation_notice_is_human_readable(app):
+    with TestClient(app) as candidate, TestClient(app) as employer:
+        cid = register(candidate, "decline-candidate@demo.example")
+        register(employer, "decline-employer@demo.example", "employer")
+        profile(candidate)
+        jid = vacancy(employer)
+        invitation = post(employer, "/api/employer/invitations", {
+            "candidate_id": cid, "vacancy_id": jid
+        })
+        assert invitation.status_code == 201, invitation.text
+        declined = post(candidate, f"/api/candidate/invitations/{invitation.json()['id']}/respond", {
+            "decision": "declined", "share_consent": False
+        })
+        assert declined.status_code == 200, declined.text
+        with database(app.state.db_path) as db:
+            notice = db.execute(
+                "SELECT subject,body FROM email_outbox WHERE event='invitation_response' ORDER BY id DESC LIMIT 1"
+            ).fetchone()
+            assert notice["subject"] == "Ответ кандидата — СТАЖНО"
+            assert "отказался от знакомства" in notice["body"]
+            assert "declined" not in notice["body"]
+
+
 def test_account_email_endpoints_are_rate_limited(app):
     with TestClient(app) as c:
         register(c, "ratelimit@demo.example")
