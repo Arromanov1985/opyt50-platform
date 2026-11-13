@@ -1184,9 +1184,9 @@ def install_routes(app) -> None:
                              WHERE a.id=? AND v.employer_id=?""", (application_id, user["id"])).fetchone()
         if item is None:
             raise HTTPException(404, "Отклик не найден")
-        if item["status"] == body.status:
-            return {"ok": True, "status": body.status}
         if item["status"] in {"withdrawn", "hired", "rejected"}:
+            if item["status"] == body.status:
+                return {"ok": True, "status": body.status}
             raise HTTPException(409, "Статус этого отклика уже окончательный")
         invite = db.execute(
             "SELECT status,contact_shared FROM invitations WHERE vacancy_id=? AND candidate_id=?",
