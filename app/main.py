@@ -2021,7 +2021,7 @@ def create_app(db_path: str | None = None) -> FastAPI:
                CASE WHEN length(e.inn)>0 THEN 1 ELSE 0 END AS employer_inn_provided,
                COALESCE(ac.email_verified,0) AS employer_email_verified,
                eu.created_at AS employer_created_at,
-               a.id AS application_id
+               a.id AS application_id,a.status AS application_status
                FROM invitations i JOIN vacancies v ON i.vacancy_id=v.id
                JOIN employer_profiles e ON e.user_id=i.employer_id
                JOIN users eu ON eu.id=e.user_id
@@ -2072,7 +2072,8 @@ def create_app(db_path: str | None = None) -> FastAPI:
         rows = db.execute(
             """SELECT i.*,v.title AS vacancy_title,u.name AS candidate_name,
                u.email AS candidate_email,u.phone AS candidate_phone,
-               c.profession AS candidate_profession,a.id AS application_id
+               c.profession AS candidate_profession,a.id AS application_id,
+               a.status AS application_status
                FROM invitations i JOIN vacancies v ON v.id=i.vacancy_id
                JOIN users u ON u.id=i.candidate_id
                JOIN candidate_profiles c ON c.user_id=i.candidate_id
@@ -2086,6 +2087,7 @@ def create_app(db_path: str | None = None) -> FastAPI:
             item = {key: row[key] for key in (
                 "id", "vacancy_id", "candidate_id", "status", "price_rub",
                 "contact_shared", "vacancy_title", "candidate_profession", "created_at",
+                "application_id", "application_status",
             )}
             item["introduction_stage"] = introduction_stage(row["status"], row["contact_shared"])
             item["timeline"] = interaction_timeline(db, row["application_id"], row["id"])
