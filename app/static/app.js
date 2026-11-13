@@ -1555,6 +1555,22 @@ async function handleDashboardSubmit(event) {
     }
   }
 }
+let employerInvitationSearchTimer = null;
+function handleDashboardInput(event) {
+  const search = event.target.closest('[data-employer-introduction-search]');
+  if (!search) return;
+  state.employerInvitationsQuery = String(search.value || '');
+  clearTimeout(employerInvitationSearchTimer);
+  employerInvitationSearchTimer = setTimeout(async () => {
+    await loadEmployerInvitations();
+    const nextSearch = document.querySelector('#dashboard-main [data-employer-introduction-search]');
+    if (nextSearch) {
+      nextSearch.focus();
+      const end = nextSearch.value.length;
+      nextSearch.setSelectionRange?.(end,end);
+    }
+  }, 180);
+}
 async function handleDashboardChange(event) {
   const introductionVacancy = event.target.closest('[data-employer-introduction-vacancy-filter]');
   if (introductionVacancy) {
@@ -1786,6 +1802,7 @@ async function start() {
   $('#jobs-filter').addEventListener('click',loadPublicJobs);
   $('#city-filter').addEventListener('keydown',e=>{if(e.key==='Enter')loadPublicJobs();});
   $('#account-content').addEventListener('click',handleDashboardClick);
+  $('#account-content').addEventListener('input',handleDashboardInput);
   $('#account-content').addEventListener('change',handleDashboardChange);
   $('#account-content').addEventListener('submit',handleDashboardSubmit);
   await reloadUser();
