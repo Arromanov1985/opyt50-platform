@@ -410,12 +410,16 @@ def run_browser(page):
     expect(page.locator("#admin-v02-results")).to_be_visible()
     page.locator("#logout").click()
     login(page, "kladovshik@demo.example")
-    expect(page.locator(".dashboard-tabs")).to_be_visible()
-    assert page.locator(".dashboard-tabs [data-tab='profile']").bounding_box()["height"] >= 44
+    mobile_section = page.locator("[data-dashboard-tab-select]")
+    expect(mobile_section).to_be_visible()
+    expect(mobile_section.locator("option")).to_have_count(9)
+    expect(mobile_section).to_have_value("overview")
+    expect(page.locator(".dashboard-tabs")).to_be_hidden()
+    assert mobile_section.bounding_box()["height"] >= 44
     expect(page.locator("#dashboard-main .overview-stat-card")).to_have_count(4)
-    page.locator(".dashboard-tabs [data-tab='profile']").click()
+    mobile_section.select_option("profile")
     expect(page.locator("#profile-form")).to_be_visible()
-    page.locator(".dashboard-tabs [data-tab='applications']").click()
+    page.locator("[data-dashboard-tab-select]").select_option("applications")
     expect(page.locator("#dashboard-main")).to_contain_text("Знакомство состоялось (демо")
 
     # New employer vacancy flow runs after all candidate/admin regressions.
