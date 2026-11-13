@@ -365,6 +365,7 @@ def run_browser(page):
     expect(page.locator("#dashboard-main [data-action='introduction-outcome'][data-status='hired']")).to_be_visible()
     expect(page.locator("#dashboard-main [data-action='introduction-outcome'][data-status='rejected']")).to_be_visible()
     introduced_filter = page.locator("#dashboard-main [data-action='filter-employer-invitations'][data-filter='introduced']")
+    expect(introduced_filter).to_contain_text("Ждут итога")
     expect(introduced_filter).to_have_attribute("aria-pressed", "true")
     expect(page.locator("#dashboard-main")).to_contain_text("История взаимодействия")
     page.once("dialog", lambda dialog: dialog.accept())
