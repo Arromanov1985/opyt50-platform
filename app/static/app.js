@@ -1271,7 +1271,7 @@ async function loadEmployerInvitations() {
     other: invitations.filter(item => employerInvitationBucket(item) === 'closed' && !['hired','rejected'].includes(item.application_status)).length
   };
   const ordered = [...invitations].sort((a,b) => {
-    const priority = {action:0,waiting:1,introduced:2,closed:3};
+    const priority = {introduced:0,action:1,waiting:2,closed:3};
     const bucketDiff = priority[employerInvitationBucket(a)] - priority[employerInvitationBucket(b)];
     if (bucketDiff) return bucketDiff;
     return invitationLastActivity(b) - invitationLastActivity(a);
