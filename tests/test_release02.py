@@ -313,6 +313,12 @@ def test_one_click_introduction_reuses_record_and_requires_consent(app):
         register(other, "other@demo.example", "employer")
         profile(candidate)
         jid = vacancy(employer)
+        assert post(other, "/api/employer/invitations", {
+            "candidate_id": cid, "vacancy_id": jid
+        }).status_code == 404
+        assert post(candidate, "/api/employer/invitations", {
+            "candidate_id": cid, "vacancy_id": jid
+        }).status_code == 403
 
         # An application alone must not reveal contact data.
         submitted = post(candidate, "/api/candidate/applications", {"vacancy_id": jid})
@@ -331,6 +337,8 @@ def test_one_click_introduction_reuses_record_and_requires_consent(app):
         assert body["invitation_status"] == "sent"
         assert body["contact_shared"] is False
         invitation_id = body["invitation_id"]
+        assert other.get("/api/employer/invitations").json()["invitations"] == []
+        assert candidate.get("/api/employer/invitations").status_code == 403
         assert employer.get("/api/employer/applications").json()["applications"][0]["status"] == "interview"
         assert candidate.get("/api/candidate/applications").json()["applications"][0]["invitation_id"] == invitation_id
         assert candidate.get("/api/candidate/applications").json()["applications"][0]["invitation_status"] == "sent"
@@ -513,6 +521,13 @@ def test_unified_status_timeline_consent_and_terminal_guards(app):
         assert post(candidate, f"/api/candidate/invitations/{invite_id}/respond", {
             "decision": "accepted", "share_consent": True
         }).status_code == 200
+        with database(app.state.db_path) as db:
+            response_notice = db.execute(
+                "SELECT subject,body FROM email_outbox WHERE event='invitation_response' ORDER BY id DESC LIMIT 1"
+            ).fetchone()
+            assert response_notice["subject"] == "Ответ кандидата — СТАЖНО"
+            assert "согласился на знакомство" in response_notice["body"]
+            assert "accepted" not in response_notice["body"]
         after_consent = employer.get("/api/employer/applications").json()["applications"][0]
         assert after_consent["introduction_stage"] == "consented"
         assert "invitation_accepted" in [event["event"] for event in after_consent["timeline"]]
@@ -533,9 +548,22 @@ def test_unified_status_timeline_consent_and_terminal_guards(app):
         # Before demo unlock, the candidate's name/email/phone stay absent
         # from every employer application and invitation response.
         assert not employer.get("/api/employer/invitations").json()["invitations"][0].get("contact")
+        # Ownership guard: another employer cannot unlock this contact, and a candidate
+        # cannot call the employer-only endpoint.
+        assert post(stranger, f"/api/employer/invitations/{invite_id}/demo-pay").status_code == 404
+        assert post(candidate, f"/api/employer/invitations/{invite_id}/demo-pay").status_code == 403
+        assert not employer.get("/api/employer/invitations").json()["invitations"][0].get("contact")
 
         paid = post(employer, f"/api/employer/invitations/{invite_id}/demo-pay")
         assert paid.status_code == 200, paid.text
+        assert candidate.patch(
+            f"/api/employer/applications/{aid}/status",
+            json={"status": "hired"}, headers=HEADERS
+        ).status_code == 403
+        assert stranger.patch(
+            f"/api/employer/applications/{aid}/status",
+            json={"status": "hired"}, headers=HEADERS
+        ).status_code == 404
         for payload in (
             candidate.get("/api/candidate/applications").json()["applications"][0],
             employer.get("/api/employer/applications").json()["applications"][0],
@@ -549,14 +577,41 @@ def test_unified_status_timeline_consent_and_terminal_guards(app):
         assert final["timeline"] == employer.get("/api/employer/applications").json()["applications"][0]["timeline"]
         assert employer.get("/api/employer/invitations").json()["invitations"][0]["contact"]["email"] == "candidate@demo.example"
         assert post(employer, f"/api/employer/invitations/{invite_id}/demo-pay").status_code == 200
-        assert employer.patch(
+        rejected = employer.patch(
             f"/api/employer/applications/{aid}/status", json={"status": "rejected"}, headers=HEADERS
+        )
+        assert rejected.status_code == 200, rejected.text
+        assert rejected.json()["status"] == "rejected"
+        candidate_intro = candidate.get("/api/candidate/invitations").json()["invitations"][0]
+        employer_intro = employer.get("/api/employer/invitations").json()["invitations"][0]
+        assert candidate_intro["application_status"] == "rejected"
+        assert employer_intro["application_status"] == "rejected"
+        assert employer_intro["contact"]["email"] == "candidate@demo.example"
+        assert candidate_intro["timeline"][-1]["event"] == "rejected"
+        assert employer_intro["timeline"][-1]["event"] == "rejected"
+        rejected_events = len([event for event in employer_intro["timeline"] if event["event"] == "rejected"])
+        # Safe retry: the same terminal result is idempotent and creates no duplicate event.
+        repeated = employer.patch(
+            f"/api/employer/applications/{aid}/status", json={"status": "rejected"}, headers=HEADERS
+        )
+        assert repeated.status_code == 200, repeated.text
+        repeated_intro = employer.get("/api/employer/invitations").json()["invitations"][0]
+        assert len([event for event in repeated_intro["timeline"] if event["event"] == "rejected"]) == rejected_events
+        # Terminal outcome is immutable: it cannot be flipped after it is recorded.
+        assert employer.patch(
+            f"/api/employer/applications/{aid}/status", json={"status": "hired"}, headers=HEADERS
         ).status_code == 409
         with database(app.state.db_path) as db:
             assert db.execute("SELECT COUNT(*) FROM demo_transactions WHERE invitation_id=?", (invite_id,)).fetchone()[0] == 1
             assert db.execute(
                 "SELECT COUNT(*) FROM email_outbox WHERE event='contact_opened'"
             ).fetchone()[0] == 1
+            outcome_notice = db.execute(
+                "SELECT subject,body FROM email_outbox WHERE event='application_status' ORDER BY id DESC LIMIT 1"
+            ).fetchone()
+            assert outcome_notice["subject"] == "Итог знакомства — СТАЖНО"
+            assert "без продолжения" in outcome_notice["body"]
+            assert "rejected" not in outcome_notice["body"]
             assert db.execute("SELECT COUNT(*) FROM invitations WHERE vacancy_id=? AND candidate_id=?",
                               (jid, cid)).fetchone()[0] == 1
 
@@ -577,7 +632,77 @@ def test_proactive_invitation_has_unified_history_without_application(app):
         assert employer_item["introduction_stage"] == "awaiting_consent"
         assert employer_item["timeline"] == candidate_item["timeline"]
         assert [e["event"] for e in employer_item["timeline"]] == ["invitation_sent"]
+        assert employer_item["application_id"] is None
+        assert employer_item["application_status"] is None
+        assert candidate_item["application_id"] is None
+        assert candidate_item["application_status"] is None
         assert "contact" not in employer_item
+
+        accepted = post(candidate, f"/api/candidate/invitations/{invitation.json()['id']}/respond", {
+            "decision": "accepted", "share_consent": True
+        })
+        assert accepted.status_code == 200, accepted.text
+        opened = post(employer, f"/api/employer/invitations/{invitation.json()['id']}/demo-pay")
+        assert opened.status_code == 200, opened.text
+        employer_opened = employer.get("/api/employer/invitations").json()["invitations"][0]
+        candidate_opened = candidate.get("/api/candidate/invitations").json()["invitations"][0]
+        assert employer_opened["application_id"] is None
+        assert employer_opened["application_status"] is None
+        assert candidate_opened["application_id"] is None
+        assert candidate_opened["application_status"] is None
+        assert employer_opened["contact"]["email"] == "candidate@demo.example"
+        assert employer_opened["timeline"][-1]["event"] == "contact_opened"
+
+
+def test_candidate_interaction_ownership_guards(app):
+    with TestClient(app) as candidate, TestClient(app) as other_candidate, TestClient(app) as employer:
+        cid = register(candidate, "owner-candidate@demo.example")
+        register(other_candidate, "other-candidate@demo.example")
+        register(employer, "ownership-employer@demo.example", "employer")
+        profile(candidate)
+        profile(other_candidate)
+        jid = vacancy(employer)
+
+        submitted = post(candidate, "/api/candidate/applications", {"vacancy_id": jid})
+        assert submitted.status_code == 201, submitted.text
+        aid = submitted.json()["id"]
+
+        interested = post(employer, f"/api/employer/applications/{aid}/interest")
+        assert interested.status_code == 200, interested.text
+        invitation_id = interested.json()["invitation_id"]
+
+        assert other_candidate.get("/api/candidate/invitations").json()["invitations"] == []
+        assert post(other_candidate, f"/api/candidate/invitations/{invitation_id}/respond", {
+            "decision": "accepted", "share_consent": True
+        }).status_code == 404
+        assert post(other_candidate, f"/api/candidate/applications/{aid}/withdraw").status_code == 404
+
+        owner_item = candidate.get("/api/candidate/invitations").json()["invitations"][0]
+        assert owner_item["id"] == invitation_id
+        assert owner_item["status"] == "sent"
+
+
+def test_declined_invitation_notice_is_human_readable(app):
+    with TestClient(app) as candidate, TestClient(app) as employer:
+        cid = register(candidate, "decline-candidate@demo.example")
+        register(employer, "decline-employer@demo.example", "employer")
+        profile(candidate)
+        jid = vacancy(employer)
+        invitation = post(employer, "/api/employer/invitations", {
+            "candidate_id": cid, "vacancy_id": jid
+        })
+        assert invitation.status_code == 201, invitation.text
+        declined = post(candidate, f"/api/candidate/invitations/{invitation.json()['id']}/respond", {
+            "decision": "declined", "share_consent": False
+        })
+        assert declined.status_code == 200, declined.text
+        with database(app.state.db_path) as db:
+            notice = db.execute(
+                "SELECT subject,body FROM email_outbox WHERE event='invitation_response' ORDER BY id DESC LIMIT 1"
+            ).fetchone()
+            assert notice["subject"] == "Ответ кандидата — СТАЖНО"
+            assert "отказался от знакомства" in notice["body"]
+            assert "declined" not in notice["body"]
 
 
 def test_account_email_endpoints_are_rate_limited(app):

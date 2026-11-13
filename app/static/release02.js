@@ -7,14 +7,61 @@
     const eventLabels = {applied:'Отклик отправлен',reapplied:'Отклик отправлен повторно',withdrawn:'Отклик отозван',reviewing:'На рассмотрении',interview:'Работодатель заинтересован',rejected:'Получен отказ',hired:'Принят'};
     function applicationIntroBadge(a) {
       if (!a.invitation_id) return '';
-      const label = a.contact_shared ? 'Знакомство состоялось (демо)' : (introductionLabel[a.invitation_status] || 'Запрос отправлен');
-      return '<div class="interaction-note">Знакомство: ' + esc(label) + '</div>' +
-        (a.invitation_status === 'sent' ? '<button class="btn btn-outline btn-tiny" data-v02-action="open-introductions">Ответить на запрос компании</button>' : '');
+      if (a.contact_shared && a.status === 'hired') {
+        return '<div class="interaction-note is-complete"><strong>Компания выбрала вас</strong><span>Работодатель отметил положительный итог знакомства.</span></div><button class="btn btn-outline btn-tiny" data-v02-action="open-introductions" data-filter="closed">Открыть завершённое знакомство →</button>';
+      }
+      if (a.contact_shared && a.status === 'rejected') {
+        return '<div class="interaction-note is-closed"><strong>Не договорились</strong><span>Знакомство завершено без продолжения.</span></div><button class="btn btn-outline btn-tiny" data-v02-action="open-introductions" data-filter="closed">Открыть завершённое знакомство →</button>';
+      }
+      if (a.contact_shared) {
+        return '<div class="interaction-note is-complete"><strong>Знакомство состоялось</strong><span>Работодатель открыл контакт после вашего согласия. На СТАЖНО дополнительных действий не требуется.</span></div><button class="btn btn-outline btn-tiny" data-v02-action="open-introductions" data-filter="introduced">Открыть знакомство →</button>';
+      }
+      if (a.invitation_status === 'accepted') {
+        return '<div class="interaction-note is-waiting"><strong>Согласие отправлено</strong><span>Теперь ждём работодателя. Повторно подтверждать знакомство не нужно.</span></div><button class="btn btn-outline btn-tiny" data-v02-action="open-introductions" data-filter="waiting">Посмотреть знакомство →</button>';
+      }
+      if (a.invitation_status === 'sent') {
+        return '<div class="interaction-note is-ready"><strong>Работодатель предлагает знакомство</strong><span>Контакты останутся скрытыми, пока вы сами не согласитесь.</span></div><button class="btn btn-primary btn-tiny" data-v02-action="open-introductions" data-filter="decision">Ответить на запрос компании →</button>';
+      }
+      if (a.invitation_status === 'declined') {
+        return '<div class="interaction-note is-closed"><strong>Вы отказались от знакомства</strong><span>Контакты компании не переданы. Дополнительных действий нет.</span></div>';
+      }
+      return '';
+    }
+    function employerApplicationStageLabel(a) {
+      if (a.status === 'hired') return 'Кандидат принят';
+      if (a.status === 'rejected' && a.contact_shared) return 'Не договорились';
+      if (a.contact_shared) return 'Знакомство состоялось';
+      if (a.invitation_status === 'accepted') return 'Согласие получено';
+      if (a.invitation_status === 'sent') return 'Ждём решения кандидата';
+      if (a.invitation_status === 'declined') return 'Кандидат отказался';
+      if (a.status === 'hired') return 'Кандидат принят';
+      if (a.status === 'rejected') return 'Отказ';
+      if (a.status === 'withdrawn') return 'Отклик отозван';
+      if (a.status === 'reviewing') return 'На рассмотрении';
+      if (a.status === 'interview') return 'Интерес подтверждён';
+      return 'Новый отклик';
     }
     function employerIntroBadge(a) {
       if (!a.invitation_id) return '';
-      const label = a.contact_shared ? 'Знакомство состоялось (демо)' : (a.invitation_status==='sent' ? 'Запрос отправлен — ждём согласия кандидата' : a.invitation_status==='accepted' ? 'Согласие получено — контакт ещё закрыт' : 'Кандидат отказался от знакомства');
-      return '<div class="interaction-note">' + esc(label) + '</div><button class="btn btn-outline btn-tiny" data-v02-action="open-introductions">Открыть знакомства</button>';
+      if (a.contact_shared && a.status === 'hired') {
+        return '<div class="interaction-note is-complete"><strong>Кандидат принят</strong><span>Положительный итог знакомства зафиксирован.</span></div><button class="btn btn-outline btn-tiny" data-v02-action="open-introductions" data-filter="closed">Открыть завершённое знакомство →</button>';
+      }
+      if (a.contact_shared && a.status === 'rejected') {
+        return '<div class="interaction-note is-closed"><strong>Не договорились</strong><span>Знакомство завершено без продолжения.</span></div><button class="btn btn-outline btn-tiny" data-v02-action="open-introductions" data-filter="closed">Открыть завершённое знакомство →</button>';
+      }
+      if (a.contact_shared) {
+        return '<div class="interaction-note is-complete"><strong>Знакомство состоялось</strong><span>Контакт уже открыт. История и контакт доступны в разделе знакомств.</span></div><button class="btn btn-outline btn-tiny" data-v02-action="open-introductions" data-filter="introduced">Открыть контакт →</button>';
+      }
+      if (a.invitation_status === 'accepted') {
+        return '<div class="interaction-note is-ready"><strong>Согласие получено</strong><span>Кандидат разрешил продолжить знакомство. Следующий шаг — открыть контакт.</span></div><button class="btn btn-primary btn-tiny" data-v02-action="open-introductions" data-filter="action">Продолжить знакомство →</button>';
+      }
+      if (a.invitation_status === 'sent') {
+        return '<div class="interaction-note is-waiting"><strong>Запрос отправлен</strong><span>Ждём решения кандидата. Повторно отправлять запрос не нужно.</span></div>';
+      }
+      if (a.invitation_status === 'declined') {
+        return '<div class="interaction-note is-closed"><strong>Кандидат отказался от знакомства</strong><span>Действий не требуется. Повторный запрос по этому знакомству не отправляется.</span></div>';
+      }
+      return '<div class="interaction-note"><strong>Знакомство создано</strong><span>Проверьте текущий этап в истории взаимодействия.</span></div>';
     }
     function searchValue(id) { return document.getElementById(id)?.value?.trim() || ''; }
 
@@ -40,7 +87,7 @@
         : applicationByVacancy.get(jobId);
       if (!known) return `<button type="button" class="btn btn-primary btn-tiny" data-v02-action="apply" data-id="${jobId}">Откликнуться</button>`;
       if (known.status === 'withdrawn') return `<button type="button" class="btn btn-primary btn-tiny" data-v02-action="reapply" data-id="${jobId}">Откликнуться повторно</button>`;
-      return `<button type="button" class="btn btn-outline btn-tiny" data-v02-action="see-applications">Отклик: ${esc(workflowStatus(known,status[known.status] || known.status))} · история</button>`;
+      return `<button type="button" class="btn btn-outline btn-tiny" data-v02-action="see-applications">Отклик: ${esc(candidateWorkflowStatus(known,status[known.status] || known.status))} · история</button>`;
     }
     function employerTrustBadges(job, detailed = false) {
       const badges = [];
@@ -211,11 +258,9 @@
             }
           }
         }
-        const nav=$('.dashboard-tabs');
-        if (nav) { const icons={favorites:'♡',applications:'✓',changes:'↻',email:'@'}; nav.insertAdjacentHTML('beforeend',candidateExtra.map(t=>`<button type="button" data-tab="${t.id}"><span class="dashboard-tab-icon" aria-hidden="true">${icons[t.id]||'•'}</span><span>${t.label}</span></button>`).join('')); }
         return;
       }
-      const nav = [{id:'overview',label:'Обзор'},{id:'profile',label:'Мой профиль'},{id:'offers',label:'Подходящие вакансии'},{id:'invitations',label:'Приглашения'},...candidateExtra];
+      const nav = [{id:'overview',label:'Обзор'},{id:'profile',label:'Мой профиль'},{id:'offers',label:'Подходящие вакансии'},{id:'applications',label:'Отклики'},{id:'invitations',label:'Знакомства'},{id:'favorites',label:'Сохранённые'},{id:'changes',label:'Изменения'},{id:'email',label:'Email и доступ'},{id:'security',label:'Безопасность'}];
       $('#account-content').innerHTML=`<div class="dashboard-grid">${tabsMarkup(nav,'ДЛЯ СОИСКАТЕЛЯ','Ваша карьера')}<div id="dashboard-main"><div class="loading">Загрузка...</div></div></div>`;
       try {
         if(state.tab==='favorites'){
@@ -225,7 +270,7 @@
         if(state.tab==='applications'){
           const {applications}=await api('/api/candidate/applications');
           const updateSummary = await api('/api/candidate/vacancy-updates');
-          $('#dashboard-main').innerHTML=`<div class="panel"><div class="panel-title-row"><div><span class="section-kicker">ОТКЛИКИ</span><h3>История откликов</h3><p class="muted">Следите за этапом каждого отклика. Контакты не раскрываются работодателю автоматически.</p></div></div>${updateSummary.unread_count ? `<div class="vacancy-update-banner" role="status">По вакансиям, на которые вы откликались, есть изменения условий: ${Number(updateSummary.unread_count)}. <button type="button" class="btn btn-outline btn-tiny" data-tab="changes">Посмотреть изменения</button></div>` : ''}<div class="dashboard-list">${applications.length ? applications.map(a=>`<article class="item-card"><header><div><h4>${esc(a.title)}</h4><p>${esc(a.company_name)} · ${esc(a.city)} · ${formatPay(a)}</p></div><span class="mini-badge">${esc(workflowStatus(a,status[a.status]||a.status))}</span></header><div class="application-card-meta"><span>Отклик отправлен</span><strong>${esc(a.created_at)}</strong></div>${interactionStageMarkup(a,'application')}${activityTimelineMarkup(a)}${applicationIntroBadge(a)}${['applied','reviewing','interview'].includes(a.status) && !a.invitation_id?`<button class="btn btn-outline btn-tiny" data-v02-action="withdraw" data-id="${Number(a.id)}">Отозвать отклик</button>`:a.status==='withdrawn'?`<button class="btn btn-primary btn-tiny" data-v02-action="reapply" data-id="${Number(a.vacancy_id)}">Откликнуться повторно</button>`:''}</article>`).join(''):'<div class="empty-state empty-state-action"><span class="empty-state-icon" aria-hidden="true">↗</span><strong>Вы ещё не откликались</strong><p>Найдите подходящую вакансию и отправьте первый отклик. Контакты работодателю автоматически не передаются.</p><a class="btn btn-primary" href="#jobs">Найти вакансию →</a></div>'}</div></div>`;
+          $('#dashboard-main').innerHTML=`<div class="panel"><div class="panel-title-row"><div><span class="section-kicker">ОТКЛИКИ</span><h3>История откликов</h3><p class="muted">Следите за этапом каждого отклика. Контакты не раскрываются работодателю автоматически.</p></div></div>${updateSummary.unread_count ? `<div class="vacancy-update-banner" role="status">По вакансиям, на которые вы откликались, есть изменения условий: ${Number(updateSummary.unread_count)}. <button type="button" class="btn btn-outline btn-tiny" data-tab="changes">Посмотреть изменения</button></div>` : ''}<div class="dashboard-list">${applications.length ? applications.map(a=>`<article class="item-card"><header><div><h4>${esc(a.title)}</h4><p>${esc(a.company_name)} · ${esc(a.city)} · ${formatPay(a)}</p></div><span class="mini-badge">${esc(candidateWorkflowStatus(a,status[a.status]||a.status))}</span></header><div class="application-card-meta"><span>Отклик отправлен</span><strong>${esc(a.created_at)}</strong></div>${interactionStageMarkup(a,'application')}${activityTimelineMarkup(a)}${applicationIntroBadge(a)}${['applied','reviewing','interview'].includes(a.status) && !a.invitation_id?`<button class="btn btn-outline btn-tiny" data-v02-action="withdraw" data-id="${Number(a.id)}">Отозвать отклик</button>`:a.status==='withdrawn'?`<button class="btn btn-primary btn-tiny" data-v02-action="reapply" data-id="${Number(a.vacancy_id)}">Откликнуться повторно</button>`:''}</article>`).join(''):'<div class="empty-state empty-state-action"><span class="empty-state-icon" aria-hidden="true">↗</span><strong>Вы ещё не откликались</strong><p>Найдите подходящую вакансию и отправьте первый отклик. Контакты работодателю автоматически не передаются.</p><a class="btn btn-primary" href="#jobs">Найти вакансию →</a></div>'}</div></div>`;
         }
         if(state.tab==='changes'){
           const result=await api('/api/candidate/vacancy-updates');
@@ -243,23 +288,86 @@
       } catch(e) { $('#dashboard-main').textContent=e.message;toast(e.message,true); }
     };
 
+    function employerApplicationBucket(item) {
+      if (item.contact_shared && ['hired','rejected'].includes(item.status)) return 'closed';
+      if (item.contact_shared) return 'introduced';
+      if (item.invitation_status === 'accepted') return 'ready';
+      if (item.invitation_status === 'sent') return 'consent';
+      if (item.invitation_status === 'declined' || ['rejected','hired','withdrawn'].includes(item.status)) return 'closed';
+      return 'attention';
+    }
+    const employerApplicationFilterLabels = {
+      all:'Все',
+      attention:'Требуют внимания',
+      consent:'Ждём решения кандидата',
+      ready:'Есть согласие',
+      introduced:'Ждут итога',
+      closed:'Завершённые'
+    };
+    const employerApplicationPriority = {
+      introduced:0,
+      ready:1,
+      attention:2,
+      consent:3,
+      closed:4
+    };
+    function sortEmployerApplications(items) {
+      return [...items].sort((left,right)=>{
+        const leftBucket=employerApplicationBucket(left);
+        const rightBucket=employerApplicationBucket(right);
+        const priority=(employerApplicationPriority[leftBucket]??99)-(employerApplicationPriority[rightBucket]??99);
+        if(priority!==0)return priority;
+        return Number(right.id||0)-Number(left.id||0);
+      });
+    }
+
     renderEmployer = async function() {
       if(state.tab!=='applications'){
         await oldEmployer();
-        const nav=$('.dashboard-tabs');
-        if(nav) nav.insertAdjacentHTML('beforeend','<button type="button" data-tab="applications"><span class="dashboard-tab-icon" aria-hidden="true">✓</span><span>Отклики</span></button>');
         return;
       }
-      const nav=[{id:'overview',label:'Обзор'},{id:'company',label:'Компания'},{id:'vacancies',label:'Мои вакансии'},{id:'create',label:'Новая вакансия'},{id:'invitations',label:'Приглашения и контакты'},...employerExtra];
+      const nav=[{id:'overview',label:'Обзор'},{id:'company',label:'Компания'},{id:'vacancies',label:'Мои вакансии'},{id:'create',label:'Новая вакансия'},{id:'applications',label:'Отклики'},{id:'invitations',label:'Знакомства и контакты'},{id:'security',label:'Безопасность'}];
       $('#account-content').innerHTML=`<div class="dashboard-grid">${tabsMarkup(nav,'ДЛЯ КОМПАНИИ',state.user.company?.company_name||'Работодатель')}<div id="dashboard-main"></div></div>`;
       try {
         const {applications}=await api('/api/employer/applications');
         const {jobs}=await api('/api/employer/vacancies');
-        const selected = state.employerApplicationsVacancyFilter || 'all';
-        const shown = selected === 'all' ? applications : applications.filter(a => String(a.vacancy_id) === selected);
-        const options = jobs.map(j => `<option value="${Number(j.id)}" ${String(j.id) === selected ? 'selected' : ''}>${esc(j.title)}</option>`).join('');
+        const selectedVacancy = state.employerApplicationsVacancyFilter || 'all';
+        const selectedStatus = Object.hasOwn(employerApplicationFilterLabels,state.employerApplicationsStatusFilter)
+          ? state.employerApplicationsStatusFilter
+          : 'all';
+        state.employerApplicationsStatusFilter = selectedStatus;
+        const vacancyScoped = sortEmployerApplications(
+          selectedVacancy === 'all'
+            ? applications
+            : applications.filter(a => String(a.vacancy_id) === selectedVacancy)
+        );
+        const bucketCounts = vacancyScoped.reduce((counts,item)=>{
+          const bucket=employerApplicationBucket(item);
+          counts[bucket]=(counts[bucket]||0)+1;
+          return counts;
+        },{attention:0,consent:0,ready:0,introduced:0,closed:0});
+        const shown = selectedStatus === 'all'
+          ? vacancyScoped
+          : vacancyScoped.filter(item => employerApplicationBucket(item) === selectedStatus);
+        const options = jobs.map(j => `<option value="${Number(j.id)}" ${String(j.id) === selectedVacancy ? 'selected' : ''}>${esc(j.title)}</option>`).join('');
         const selector = `<div class="field"><label for="employer-applications-vacancy">Вакансия</label><select id="employer-applications-vacancy"><option value="all">Все вакансии</option>${options}</select></div>`;
-        $('#dashboard-main').innerHTML=`<div class="panel employer-applications-panel"><div class="split-header"><div><span class="section-kicker">ОТКЛИКИ</span><h3>Отклики соискателей</h3><p class="muted">Сначала оценивайте опыт и навыки. Имя, телефон и email остаются скрытыми до отдельного согласия кандидата.</p></div><div class="application-flow-legend" aria-label="Этапы обработки отклика"><span>1. Отклик</span><b>→</b><span>2. Рассмотрение</span><b>→</b><span>3. Согласие</span><b>→</b><span>4. Знакомство</span></div></div><div class="form-grid">${selector}</div><p class="muted" role="status">Найдено откликов: ${shown.length}</p><div class="dashboard-list">${shown.length?shown.map(a=>`<article class="item-card application-review-card"><header><div><h4>${esc(a.profession)}</h4><p>${esc(a.title)} · ${esc(a.city)} · ожидания от ${money(a.expected_salary)}</p></div><span class="mini-badge">${esc(workflowStatus(a,status[a.status]||a.status))}</span></header>${interactionStageMarkup(a,'application')}<div class="application-profile-strip"><span><small>Навыки</small><strong>${esc(a.skills||'Не указаны')}</strong></span><span><small>Этап</small><strong>${a.contact_shared?'Контакт открыт':a.invitation_status==='accepted'?'Есть согласие':a.invitation_status==='sent'?'Ждём решения кандидата':a.status==='reviewing'?'На рассмотрении':'Новый отклик'}</strong></span></div>${activityTimelineMarkup(a)}${employerIntroBadge(a)}${['applied','reviewing','interview'].includes(a.status) && !a.invitation_id?`<div class="application-next-action"><span>Следующее действие</span><strong>${a.status==='applied'?'Проверьте профиль и переведите в рассмотрение':'Решите, хотите ли начать знакомство'}</strong></div><div class="item-actions"><button class="btn btn-outline btn-tiny" data-v02-action="application-status" data-id="${Number(a.id)}" data-status="reviewing">${a.status==='applied'?'Взять в рассмотрение':'Оставить на рассмотрении'}</button><button class="btn btn-primary btn-tiny" data-v02-action="express-interest" data-id="${Number(a.id)}">Запросить согласие на знакомство →</button><button class="btn btn-outline btn-tiny" data-v02-action="application-status" data-id="${Number(a.id)}" data-status="rejected">Отказать</button></div>`:''}</article>`).join(''):'<div class="empty-state empty-state-action"><span class="empty-state-icon" aria-hidden="true">＋</span><strong>Откликов пока нет</strong><p>Можно не ждать: запустите подбор и пригласите подходящих специалистов сами.</p><button class="btn btn-primary" data-tab="vacancies">Перейти к вакансиям →</button></div>'}</div></div>`;
+        const filterButtons = [
+          ['all',vacancyScoped.length],
+          ['attention',bucketCounts.attention],
+          ['consent',bucketCounts.consent],
+          ['ready',bucketCounts.ready],
+          ['introduced',bucketCounts.introduced],
+          ['closed',bucketCounts.closed]
+        ].map(([value,count]) => `<button type="button" class="btn btn-tiny ${selectedStatus===value?'btn-dark':'btn-outline'}" data-v02-action="employer-application-filter" data-filter="${value}" aria-pressed="${selectedStatus===value}">${esc(employerApplicationFilterLabels[value])} · ${Number(count)}</button>`).join('');
+        const emptyFiltered = vacancyScoped.length
+          ? `<div class="empty-state empty-state-action"><span class="empty-state-icon" aria-hidden="true">⌕</span><strong>В этом этапе откликов нет</strong><p>Попробуйте другой этап или сбросьте фильтры, чтобы увидеть всю воронку.</p><button class="btn btn-outline" data-v02-action="reset-application-filters">Сбросить фильтры</button></div>`
+          : '<div class="empty-state empty-state-action"><span class="empty-state-icon" aria-hidden="true">＋</span><strong>Откликов пока нет</strong><p>Можно не ждать: запустите подбор и пригласите подходящих специалистов сами.</p><button class="btn btn-primary" data-tab="vacancies">Перейти к вакансиям →</button></div>';
+        $('#dashboard-main').innerHTML=`<div class="panel employer-applications-panel">
+          <div class="split-header"><div><span class="section-kicker">ОТКЛИКИ</span><h3>Отклики соискателей</h3><p class="muted">Сначала оценивайте опыт и навыки. Имя, телефон и email остаются скрытыми до отдельного согласия кандидата.</p></div><div class="application-flow-legend" aria-label="Этапы обработки отклика"><span>1. Отклик</span><b>→</b><span>2. Рассмотрение</span><b>→</b><span>3. Согласие</span><b>→</b><span>4. Знакомство</span><b>→</b><span>5. Итог</span></div></div>
+          <div class="employer-application-toolbar"><div class="employer-application-vacancy-filter">${selector}</div><div class="employer-application-stage-filter" role="group" aria-label="Фильтр откликов по этапу">${filterButtons}</div></div>
+          <div class="employer-application-result-line"><span role="status">Показываем <strong>${shown.length}</strong> из <strong>${vacancyScoped.length}</strong>${selectedStatus==='all'&&vacancyScoped.length>1?' · сначала этапы, где нужен ваш следующий шаг':''}</span>${selectedVacancy!=='all'||selectedStatus!=='all'?'<button type="button" class="link-button" data-v02-action="reset-application-filters">Сбросить фильтры</button>':''}</div>
+          <div class="dashboard-list">${shown.length?shown.map(a=>`<article class="item-card application-review-card"><header><div><h4>${esc(a.profession)}</h4><p>${esc(a.title)} · ${esc(a.city)} · ожидания от ${money(a.expected_salary)}</p></div><span class="mini-badge">${esc(employerApplicationStageLabel(a))}</span></header>${interactionStageMarkup(a,'application')}<div class="application-profile-strip is-compact"><span><small>Навыки</small><strong>${esc(a.skills||'Не указаны')}</strong></span></div>${activityTimelineMarkup(a)}${employerIntroBadge(a)}${['applied','reviewing','interview'].includes(a.status) && !a.invitation_id?`<div class="application-next-action"><span>Следующее действие</span><strong>${a.status==='applied'?'Проверьте профиль и переведите в рассмотрение':'Решите, хотите ли начать знакомство'}</strong></div><div class="item-actions"><button class="btn btn-outline btn-tiny" data-v02-action="application-status" data-id="${Number(a.id)}" data-status="reviewing">${a.status==='applied'?'Взять в рассмотрение':'Оставить на рассмотрении'}</button><button class="btn btn-primary btn-tiny" data-v02-action="express-interest" data-id="${Number(a.id)}">Запросить согласие на знакомство →</button><button class="btn btn-outline btn-tiny" data-v02-action="application-status" data-id="${Number(a.id)}" data-status="rejected">Отказать</button></div>`:''}</article>`).join(''):emptyFiltered}</div>
+        </div>`;
       } catch(e) { $('#dashboard-main').textContent=e.message;toast(e.message,true); }
     };
 
@@ -457,9 +565,29 @@
         else if(type==='reapply'){const result=await req('POST','/api/candidate/applications',{vacancy_id:id});await refreshMyApplications();await showDashboard();toast(result.reapplied?'Отклик отправлен повторно':'Отклик отправлен');}
         else if(type==='mark-vacancy-update-read'){await req('POST',`/api/candidate/vacancy-updates/${id}/read`);await showDashboard();toast('Изменение отмечено прочитанным.');}
         else if(type==='see-applications'){state.tab='applications';await showDashboard(true);}
+        else if(type==='employer-application-filter'){
+          if(!Object.hasOwn(employerApplicationFilterLabels,btn.dataset.filter))return;
+          state.employerApplicationsStatusFilter=btn.dataset.filter;
+          await renderEmployer();
+        }
+        else if(type==='reset-application-filters'){
+          state.employerApplicationsVacancyFilter='all';
+          state.employerApplicationsStatusFilter='all';
+          await renderEmployer();
+        }
         else if(type==='application-status'){await req('PATCH',`/api/employer/applications/${id}/status`,{status:btn.dataset.status});await showDashboard();toast('Статус обновлён');}
-        else if(type==='express-interest'){const data=await req('POST',`/api/employer/applications/${id}/interest`);await showDashboard();toast(data.created?'Кандидату направлен запрос на знакомство (демо)':'Запрос уже существует — повторно не отправлен');}
-        else if(type==='open-introductions'){state.tab='invitations';await showDashboard();}
+        else if(type==='express-interest'){
+          const data=await req('POST',`/api/employer/applications/${id}/interest`);
+          state.employerApplicationsStatusFilter='consent';
+          await showDashboard();
+          toast(data.created?'Кандидату направлен запрос на знакомство (демо)':'Запрос уже существует — повторно не отправлен');
+        }
+        else if(type==='open-introductions'){
+          if(state.user?.role==='candidate') state.candidateInvitationsFilter=btn.dataset.filter||'decision';
+          else state.employerInvitationsFilter=btn.dataset.filter||'all';
+          state.tab='invitations';
+          await showDashboard();
+        }
         else if(type==='verify-email'){await req('POST','/api/account/email/request');toast('Письмо подтверждения отправлено, если почтовая доставка настроена');}
         else if(type==='recover'){$('#auth-dialog').close();$('#reset-dialog').showModal();}
         else if(type==='admin-users')await adminView('users');

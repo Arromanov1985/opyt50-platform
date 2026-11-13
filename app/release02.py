@@ -666,7 +666,11 @@ def interaction_timeline(
                WHERE application_id=? ORDER BY id ASC""", (application_id,)
         ).fetchall()
         for row in rows:
-            entries.append((normalize_event_time(row["created_at"]), row["id"], {
+            # SQLite timestamps are second-resolution. Final employer outcomes
+            # are causally after contact unlock, so give them a later tie-break
+            # phase when both events happen within the same second.
+            phase = 4000000 + row["id"] if row["event"] in {"hired", "rejected"} else row["id"]
+            entries.append((normalize_event_time(row["created_at"]), phase, {
                 "event": row["event"], "created_at": normalize_event_time(row["created_at"])
             }))
     if invitation_id is not None:
@@ -1185,24 +1189,56 @@ def install_routes(app) -> None:
         if item is None:
             raise HTTPException(404, "Отклик не найден")
         if item["status"] in {"withdrawn", "hired", "rejected"}:
+            if item["status"] == body.status:
+                return {"ok": True, "status": body.status}
             raise HTTPException(409, "Статус этого отклика уже окончательный")
         invite = db.execute(
             "SELECT status,contact_shared FROM invitations WHERE vacancy_id=? AND candidate_id=?",
             (item["vacancy_id"], item["candidate_id"]),
         ).fetchone()
         if invite and (invite["status"] in ("sent", "accepted") or invite["contact_shared"]):
-            # Once an introduction has begun, application review cannot
-            # contradict consent. A hire may be recorded after contact unlock.
-            if not (body.status == "hired" and invite["contact_shared"]):
+            # Once an introduction has begun, ordinary review statuses cannot
+            # contradict consent. After contact unlock the employer may only
+            # record the final result of the introduction.
+            if not (body.status in {"hired", "rejected"} and invite["contact_shared"]):
                 raise HTTPException(409, "Знакомство уже началось. Измените его через раздел приглашений")
-        if item["status"] == body.status:
-            return {"ok": True, "status": body.status}
-        db.execute("UPDATE job_applications SET status=?,updated_at=datetime('now') WHERE id=?",
-                   (body.status, application_id))
+        db.execute(
+            "UPDATE job_applications SET status=?,updated_at=datetime('now') WHERE id=? AND status=?",
+            (body.status, application_id, item["status"]),
+        )
+        changed = db.execute("SELECT changes()").fetchone()[0] == 1
+        if not changed:
+            latest = db.execute(
+                "SELECT status FROM job_applications WHERE id=?", (application_id,)
+            ).fetchone()
+            if latest is not None and latest["status"] == body.status:
+                return {"ok": True, "status": body.status}
+            raise HTTPException(
+                409, "Статус отклика уже изменился. Обновите данные и повторите действие"
+            )
         db.execute("INSERT INTO application_events(application_id,event) VALUES(?,?)",
                    (application_id, body.status))
-        enqueue_notice(db, item["candidate_id"], "application_status", "Статус отклика — СТАЖНО",
-                       f"Статус отклика на «{item['title']}» изменён на {body.status}. Откройте кабинет.")
+        if invite and invite["contact_shared"] and body.status in {"hired", "rejected"}:
+            final_subject = "Итог знакомства — СТАЖНО"
+            final_text = (
+                f"Компания отметила положительный итог знакомства по вакансии «{item['title']}». "
+                "Откройте кабинет, чтобы посмотреть статус."
+                if body.status == "hired"
+                else f"Компания завершила знакомство по вакансии «{item['title']}» без продолжения. "
+                     "Откройте кабинет, чтобы посмотреть статус."
+            )
+            enqueue_notice(db, item["candidate_id"], "application_status", final_subject, final_text)
+        else:
+            status_labels = {
+                "reviewing": "на рассмотрении",
+                "interview": "работодатель заинтересован",
+                "rejected": "получен отказ",
+                "hired": "кандидат принят",
+            }
+            enqueue_notice(
+                db, item["candidate_id"], "application_status", "Статус отклика — СТАЖНО",
+                f"Статус отклика на «{item['title']}»: {status_labels.get(body.status, body.status)}. Откройте кабинет.",
+            )
         # Commit before the HTTP response: a new dashboard request may arrive immediately.
         db.commit()
         return {"ok": True, "status": body.status}
