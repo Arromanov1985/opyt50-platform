@@ -831,7 +831,7 @@ function invitationCandidateMarkup(x) {
   } else if (bucket === 'waiting') {
     action = '<div class="candidate-introduction-note is-waiting"><strong>Согласие отправлено</strong><span>Теперь ждём работодателя. Повторно подтверждать знакомство или передавать контакты не нужно.</span></div>';
   } else if (bucket === 'introduced') {
-    action = '<div class="info-box contact-opened-note"><strong>✓ Знакомство состоялось</strong><span>Работодатель открыл контакт после вашего согласия. Дополнительных действий на СТАЖНО не требуется.</span></div>';
+    action = '<div class="info-box contact-opened-note"><strong>✓ Знакомство состоялось</strong><span>Работодатель получил ваши контакты после вашего согласия и теперь может связаться с вами напрямую. На СТАЖНО дополнительных действий не требуется.</span></div>';
   } else if (x.status === 'declined') {
     action = '<div class="candidate-introduction-note is-closed"><strong>Вы отказались от знакомства</strong><span>Контакты этой компании не переданы. Дополнительных действий нет.</span></div>';
   }
@@ -1230,7 +1230,20 @@ function invitationEmployerMarkup(x) {
   const bucket = employerInvitationBucket(x);
   let next = '';
   if (bucket === 'introduced' && x.contact) {
-    next = `<div class="contact-card"><span>КОНТАКТ ОТКРЫТ · ДЕМО</span><strong>${esc(x.contact.name)}</strong><div><a href="mailto:${esc(x.contact.email)}">${esc(x.contact.email)}</a><b>·</b><span>${esc(x.contact.phone || 'Телефон не указан')}</span></div></div>`;
+    const email = String(x.contact.email || '').trim();
+    const phone = String(x.contact.phone || '').trim();
+    const phoneHref = phone.replace(/[^+\d]/g,'');
+    const contactActions = [
+      email ? `<a class="btn btn-primary btn-tiny" href="mailto:${encodeURIComponent(email)}">Написать кандидату →</a>` : '',
+      phoneHref ? `<a class="btn btn-outline btn-tiny" href="tel:${esc(phoneHref)}">Позвонить</a>` : ''
+    ].filter(Boolean).join('');
+    next = `<div class="contact-card">
+      <span>КОНТАКТ ОТКРЫТ · ДЕМО</span>
+      <strong>${esc(x.contact.name)}</strong>
+      <div class="contact-card-details">${email ? `<a href="mailto:${encodeURIComponent(email)}">${esc(email)}</a>` : '<span>Email не указан</span>'}<b>·</b><span>${esc(phone || 'Телефон не указан')}</span></div>
+      <div class="contact-card-next"><strong>Следующий шаг — свяжитесь с кандидатом</strong><span>Согласие уже получено. Дальнейшее общение можно продолжить напрямую вне СТАЖНО.</span></div>
+      ${contactActions ? `<div class="contact-card-actions">${contactActions}</div>` : ''}
+    </div>`;
   } else if (bucket === 'action') {
     next = `<div class="application-next-action"><span>Следующее действие</span><strong>Открыть контакт кандидата</strong><small>Согласие уже получено · демо-стоимость: ${money(x.price_rub)}</small></div><button class="btn btn-primary" data-action="demo-pay" data-id="${x.id}">Открыть контакт (демо) →</button>`;
   } else if (bucket === 'waiting') {
