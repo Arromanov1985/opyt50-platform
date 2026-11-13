@@ -789,7 +789,7 @@ async function renderCandidate() {
       const ordered = [...invitations].sort((a,b) => {
         const priority = {decision:0,waiting:1,introduced:2,closed:3};
         const diff = priority[candidateInvitationBucket(a)] - priority[candidateInvitationBucket(b)];
-        return diff || Number(b.id||0)-Number(a.id||0);
+        return diff || invitationLastActivity(b) - invitationLastActivity(a);
       });
       const shown = selected === 'all' ? ordered : ordered.filter(item => candidateInvitationBucket(item) === selected);
       const filters = [
