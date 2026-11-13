@@ -659,7 +659,7 @@ function candidateOverviewApplicationCard(item) {
 }
 function candidateOverviewInvitationCard(item) {
   return `<article class="candidate-overview-item is-invitation">
-    <div class="candidate-overview-item-head"><div><span class="card-eyebrow">ПРИГЛАШЕНИЕ</span><strong>${esc(item.title)}</strong><small>${esc(item.company_name)} · ${esc(item.city)}</small></div><span class="mini-badge ${statusBadge[item.status]||''}">${esc(workflowStatus(item,statusTitle[item.status]||item.status))}</span></div>
+    <div class="candidate-overview-item-head"><div><span class="card-eyebrow">ПРИГЛАШЕНИЕ</span><strong>${esc(item.title)}</strong><small>${esc(item.company_name)} · ${esc(item.city)}</small></div><span class="mini-badge ${statusBadge[item.status]||''}">${esc(candidateWorkflowStatus(item,statusTitle[item.status]||item.status))}</span></div>
     ${employerPublicTrustMarkup(item)}
     <button type="button" class="btn btn-primary btn-tiny" data-action="open-candidate-invitations" data-filter="decision">Ответить на приглашение →</button>
   </article>`;
