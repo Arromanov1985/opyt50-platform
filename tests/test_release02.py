@@ -603,6 +603,21 @@ def test_proactive_invitation_has_unified_history_without_application(app):
         assert candidate_item["application_status"] is None
         assert "contact" not in employer_item
 
+        accepted = post(candidate, f"/api/candidate/invitations/{invitation.json()['id']}/respond", {
+            "decision": "accepted", "share_consent": True
+        })
+        assert accepted.status_code == 200, accepted.text
+        opened = post(employer, f"/api/employer/invitations/{invitation.json()['id']}/demo-pay")
+        assert opened.status_code == 200, opened.text
+        employer_opened = employer.get("/api/employer/invitations").json()["invitations"][0]
+        candidate_opened = candidate.get("/api/candidate/invitations").json()["invitations"][0]
+        assert employer_opened["application_id"] is None
+        assert employer_opened["application_status"] is None
+        assert candidate_opened["application_id"] is None
+        assert candidate_opened["application_status"] is None
+        assert employer_opened["contact"]["email"] == "candidate@demo.example"
+        assert employer_opened["timeline"][-1]["event"] == "contact_opened"
+
 
 def test_account_email_endpoints_are_rate_limited(app):
     with TestClient(app) as c:
