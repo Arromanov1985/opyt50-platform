@@ -2366,3 +2366,14 @@ body.comfortable-view .candidate-introduction-note span{font-size:.92rem}
   font-size:10px;
 }
 .employer-outcome-rate strong{color:#0B2D26;font-size:11px}
+
+.candidate-outcome-alert{
+  border-color:#DDEAE3;
+  background:#F8FCF9;
+}
+.candidate-outcome-alert.is-positive{
+  border-color:#BFE6CB;
+  background:#F2FBF5;
+}
+.candidate-outcome-alert.is-positive strong{color:#08793A}
+.candidate-outcome-alert.is-neutral strong{color:#526A60}
