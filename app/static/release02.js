@@ -7,6 +7,12 @@
     const eventLabels = {applied:'Отклик отправлен',reapplied:'Отклик отправлен повторно',withdrawn:'Отклик отозван',reviewing:'На рассмотрении',interview:'Работодатель заинтересован',rejected:'Получен отказ',hired:'Принят'};
     function applicationIntroBadge(a) {
       if (!a.invitation_id) return '';
+      if (a.contact_shared && a.status === 'hired') {
+        return '<div class="interaction-note is-complete"><strong>Компания выбрала вас</strong><span>Работодатель отметил положительный итог знакомства.</span></div><button class="btn btn-outline btn-tiny" data-v02-action="open-introductions" data-filter="closed">Открыть завершённое знакомство →</button>';
+      }
+      if (a.contact_shared && a.status === 'rejected') {
+        return '<div class="interaction-note is-closed"><strong>Не договорились</strong><span>Знакомство завершено без продолжения.</span></div><button class="btn btn-outline btn-tiny" data-v02-action="open-introductions" data-filter="closed">Открыть завершённое знакомство →</button>';
+      }
       if (a.contact_shared) {
         return '<div class="interaction-note is-complete"><strong>Знакомство состоялось</strong><span>Работодатель открыл контакт после вашего согласия. На СТАЖНО дополнительных действий не требуется.</span></div><button class="btn btn-outline btn-tiny" data-v02-action="open-introductions" data-filter="introduced">Открыть знакомство →</button>';
       }
@@ -22,6 +28,8 @@
       return '';
     }
     function employerApplicationStageLabel(a) {
+      if (a.status === 'hired') return 'Кандидат принят';
+      if (a.status === 'rejected' && a.contact_shared) return 'Не договорились';
       if (a.contact_shared) return 'Знакомство состоялось';
       if (a.invitation_status === 'accepted') return 'Согласие получено';
       if (a.invitation_status === 'sent') return 'Ждём решения кандидата';
@@ -35,6 +43,12 @@
     }
     function employerIntroBadge(a) {
       if (!a.invitation_id) return '';
+      if (a.contact_shared && a.status === 'hired') {
+        return '<div class="interaction-note is-complete"><strong>Кандидат принят</strong><span>Положительный итог знакомства зафиксирован.</span></div><button class="btn btn-outline btn-tiny" data-v02-action="open-introductions" data-filter="closed">Открыть завершённое знакомство →</button>';
+      }
+      if (a.contact_shared && a.status === 'rejected') {
+        return '<div class="interaction-note is-closed"><strong>Не договорились</strong><span>Знакомство завершено без продолжения.</span></div><button class="btn btn-outline btn-tiny" data-v02-action="open-introductions" data-filter="closed">Открыть завершённое знакомство →</button>';
+      }
       if (a.contact_shared) {
         return '<div class="interaction-note is-complete"><strong>Знакомство состоялось</strong><span>Контакт уже открыт. История и контакт доступны в разделе знакомств.</span></div><button class="btn btn-outline btn-tiny" data-v02-action="open-introductions" data-filter="introduced">Открыть контакт →</button>';
       }
@@ -275,6 +289,7 @@
     };
 
     function employerApplicationBucket(item) {
+      if (item.contact_shared && ['hired','rejected'].includes(item.status)) return 'closed';
       if (item.contact_shared) return 'introduced';
       if (item.invitation_status === 'accepted') return 'ready';
       if (item.invitation_status === 'sent') return 'consent';
