@@ -287,8 +287,8 @@ def run_browser(page):
 
     login(page, "kladovshik@demo.example")
     page.locator(".dashboard-tabs [data-tab='applications']").click()
-    expect(page.locator("#dashboard-main")).to_contain_text("Работодатель заинтересован")
-    expect(page.locator("#dashboard-main")).to_contain_text("Ожидается ваше решение")
+    expect(page.locator("#dashboard-main")).to_contain_text("Требует вашего ответа")
+    expect(page.locator("#dashboard-main")).to_contain_text("Работодатель предлагает знакомство")
     expect(page.locator(".dashboard-tabs [data-tab='security']")).to_be_visible()
     page.locator("#dashboard-main [data-v02-action='open-introductions']").click()
     expect(page.locator("#dashboard-main")).to_contain_text("Знакомства с компаниями")
