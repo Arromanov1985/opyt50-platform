@@ -920,12 +920,19 @@ async function renderEmployer() {
         !item.invitation_id && ['applied','reviewing','interview'].includes(item.status)
       );
       const acceptedInvitations = invitations.filter(item => item.status === 'accepted' && !item.contact_shared);
+      const activeOpenedContacts = invitations.filter(item =>
+        item.contact_shared && !['hired','rejected'].includes(item.application_status)
+      );
       const consentedInvitations = invitations.filter(item => item.status === 'accepted' || item.contact_shared).length;
       const openedContacts = invitations.filter(item => item.contact_shared).length;
       let nextTitle = 'Создайте первую вакансию';
       let nextText = 'После публикации можно получать отклики и запускать подбор кандидатов.';
       let nextAction = '<button class="btn btn-primary" data-tab="create">Создать вакансию →</button>';
-      if (acceptedInvitations.length) {
+      if (activeOpenedContacts.length) {
+        nextTitle = 'Зафиксируйте итог знакомства';
+        nextText = `Открытых контактов без финального решения: ${activeOpenedContacts.length}.`;
+        nextAction = '<button class="btn btn-primary" data-action="open-employer-invitations" data-filter="introduced">Зафиксировать итог →</button>';
+      } else if (acceptedInvitations.length) {
         nextTitle = 'Есть согласие кандидата';
         nextText = `Можно продолжить знакомство по ${acceptedInvitations.length} кандидатам.`;
         nextAction = '<button class="btn btn-primary" data-action="open-employer-invitations" data-filter="action">Продолжить знакомство →</button>';
@@ -951,7 +958,7 @@ async function renderEmployer() {
           <button type="button" class="overview-stat-card" data-tab="vacancies"><strong>${openJobs.length}</strong><span>Открытые вакансии</span><small>Сейчас в работе</small></button>
           <button type="button" class="overview-stat-card" data-tab="applications"><strong>${actionableApplications.length}</strong><span>Отклики требуют внимания</span><small>Нужен ваш следующий шаг</small></button>
           <button type="button" class="overview-stat-card" data-action="open-employer-invitations" data-filter="action"><strong>${acceptedInvitations.length}</strong><span>Есть согласие</span><small>Можно открыть контакт</small></button>
-          <button type="button" class="overview-stat-card" data-action="open-employer-invitations" data-filter="introduced"><strong>${openedContacts}</strong><span>Открытые контакты</span><small>Знакомство состоялось</small></button>
+          <button type="button" class="overview-stat-card" data-action="open-employer-invitations" data-filter="introduced"><strong>${activeOpenedContacts.length}</strong><span>Ждут итога</span><small>Контакт уже открыт</small></button>
         </section>
         <section class="panel overview-funnel">
           <div class="split-header"><div><span class="section-kicker">ВОРОНКА</span><h3>От вакансии до знакомства</h3></div><button class="btn btn-outline btn-tiny" data-tab="vacancies">Управлять вакансиями</button></div>
