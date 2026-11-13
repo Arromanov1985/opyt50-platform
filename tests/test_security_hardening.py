@@ -132,9 +132,11 @@ def test_production_hides_docs_and_sets_strict_secure_cookie(tmp_path, monkeypat
         assert response.status_code == 201, response.text
         cookies = "\n".join(response.headers.get_list("set-cookie")).lower()
         assert "__host-stazhno_session=" in cookies
+        assert "__host-stazhno_device=" in cookies
         assert "secure" in cookies
         assert "httponly" in cookies
         assert "samesite=strict" in cookies
+        assert "domain=" not in cookies
 
 
 
