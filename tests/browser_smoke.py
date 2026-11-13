@@ -593,9 +593,9 @@ def run_browser(page):
     # A candidate who had already applied sees changes to the older vacancy.
     page.locator("#logout").click()
     login(page, "kladovshik@demo.example")
-    page.locator(".dashboard-tabs [data-tab='applications']").click()
+    page.locator("[data-dashboard-tab-select]").select_option("applications")
     expect(page.locator(".vacancy-update-banner")).to_be_visible()
-    page.locator(".dashboard-tabs [data-tab='changes']").click()
+    page.locator("[data-dashboard-tab-select]").select_option("changes")
     expect(page.locator(".vacancy-change-item")).to_have_count(2)
     expect(page.locator(".vacancy-changes-list").first).to_contain_text("Зарплата от")
     assert page.evaluate("""() => {
