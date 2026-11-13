@@ -49,19 +49,22 @@ function interactionStageMarkup(x, kind='application') {
   const introduced = x.introduction_stage === 'introduced' || x.contact_shared;
   const consented = x.introduction_stage === 'consented' || x.status === 'accepted';
   const awaiting = x.introduction_stage === 'awaiting_consent' || x.invitation_status === 'sent' || x.status === 'interview';
+  const finalOutcome = ['hired','rejected'].includes(x.application_status) || ['hired','rejected'].includes(x.status);
   const reviewing = ['reviewing','interview'].includes(x.status) || awaiting || consented || introduced;
   const applied = Boolean(x.application_id || x.vacancy_id || ['applied','reviewing','interview','withdrawn','rejected','hired'].includes(x.status));
   const steps = kind === 'invitation'
     ? [
         ['Приглашение', true],
         ['Согласие', consented || introduced],
-        ['Контакт', introduced]
+        ['Контакт', introduced],
+        ['Итог', finalOutcome]
       ]
     : [
         ['Отклик', applied],
         ['Рассмотрение', reviewing],
         ['Согласие', consented || introduced],
-        ['Знакомство', introduced]
+        ['Знакомство', introduced],
+        ['Итог', finalOutcome]
       ];
   const activeIndex = Math.max(0, steps.reduce((last,step,index)=>step[1]?index:last,0));
   return '<div class="interaction-stage" aria-label="Этап взаимодействия">' +
