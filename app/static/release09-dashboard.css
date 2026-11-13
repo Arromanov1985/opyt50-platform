@@ -2340,3 +2340,22 @@ body.comfortable-view .candidate-introduction-note span{font-size:.92rem}
   .employer-outcome-summary{grid-template-columns:1fr 1fr}
   .vacancy-pipeline-mini{grid-template-columns:1fr 1fr}
 }
+
+.completed-introduction-summary{
+  display:flex;
+  flex-wrap:wrap;
+  gap:8px;
+  margin:10px 0 2px;
+}
+.completed-introduction-summary span{
+  display:inline-flex;
+  align-items:center;
+  gap:5px;
+  padding:7px 10px;
+  border:1px solid #DDEAE3;
+  border-radius:999px;
+  background:#F8FCF9;
+  color:#61756C;
+  font-size:10px;
+}
+.completed-introduction-summary strong{color:#0B2D26;font-size:12px}
