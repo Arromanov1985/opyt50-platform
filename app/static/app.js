@@ -829,6 +829,7 @@ async function renderEmployer() {
         !item.invitation_id && ['applied','reviewing','interview'].includes(item.status)
       );
       const acceptedInvitations = invitations.filter(item => item.status === 'accepted' && !item.contact_shared);
+      const consentedInvitations = invitations.filter(item => item.status === 'accepted' || item.contact_shared).length;
       const openedContacts = invitations.filter(item => item.contact_shared).length;
       let nextTitle = 'Создайте первую вакансию';
       let nextText = 'После публикации можно получать отклики и запускать подбор кандидатов.';
@@ -866,8 +867,8 @@ async function renderEmployer() {
           <div class="overview-funnel-steps">
             <div><strong>${jobs.length}</strong><span>Вакансии</span></div><b>→</b>
             <div><strong>${applications.length}</strong><span>Отклики</span></div><b>→</b>
-            <div><strong>${invitations.length}</strong><span>Приглашения</span></div><b>→</b>
-            <div><strong>${openedContacts}</strong><span>Знакомства</span></div>
+            <div><strong>${consentedInvitations}</strong><span>Согласия</span></div><b>→</b>
+            <div><strong>${openedContacts}</strong><span>Контакты</span></div>
           </div>
         </section>
       </div>`;
@@ -1127,9 +1128,9 @@ async function loadEmployerInvitations() {
   ].map(([value,count]) => `<button type="button" class="btn btn-tiny ${selected===value?'btn-dark':'btn-outline'}" data-action="filter-employer-invitations" data-filter="${value}" aria-pressed="${selected===value}">${esc(employerInvitationFilterLabels[value])} · ${Number(count)}</button>`).join('');
   const empty = invitations.length
     ? '<div class="empty-state empty-state-action"><span class="empty-state-icon" aria-hidden="true">⌕</span><strong>В этом этапе знакомств нет</strong><p>Выберите другой этап или покажите все знакомства.</p><button class="btn btn-outline" data-action="filter-employer-invitations" data-filter="all">Показать все</button></div>'
-    : '<div class="empty-state"><strong>Приглашений пока нет.</strong><p>Откройте вакансию, запустите подбор и пригласите подходящего кандидата.</p><button class="btn btn-primary" data-tab="vacancies">К вакансиям →</button></div>';
+    : '<div class="empty-state"><strong>Знакомств пока нет.</strong><p>Откройте вакансию, запустите подбор и пригласите подходящего кандидата.</p><button class="btn btn-primary" data-tab="vacancies">К вакансиям →</button></div>';
   $('#dashboard-main').innerHTML = `<div class="panel invitation-center">
-    <div class="split-header"><div><span class="section-kicker">ЗНАКОМСТВА</span><h3>Приглашения и контакты</h3><p class="muted">Продолжение воронки откликов: сначала показываем знакомства, где нужен ваш следующий шаг. Контакты открываются только после согласия кандидата.</p></div></div>
+    <div class="split-header"><div><span class="section-kicker">ЗНАКОМСТВА</span><h3>Знакомства и контакты</h3><p class="muted">Здесь продолжается работа после отклика: сначала показываем знакомства, где нужен ваш следующий шаг. Контакты открываются только после согласия кандидата.</p></div></div>
     <div class="employer-invitation-stage-filter" role="group" aria-label="Фильтр знакомств по этапу">${filterButtons}</div>
     <div class="employer-invitation-result-line"><span role="status">Показываем <strong>${shown.length}</strong> из <strong>${invitations.length}</strong>${selected==='all'&&invitations.length>1?' · сначала знакомства, где нужно ваше действие':''}</span>${selected!=='all'?'<button type="button" class="link-button" data-action="filter-employer-invitations" data-filter="all">Сбросить фильтр</button>':''}</div>
     ${counts.action ? '<div class="demo-note"><strong>Тестовый режим</strong><span>Открытие контакта имитирует оплату и не списывает деньги.</span></div>' : ''}
