@@ -8,10 +8,10 @@
     function applicationIntroBadge(a) {
       if (!a.invitation_id) return '';
       if (a.contact_shared) {
-        return '<div class="interaction-note is-complete"><strong>Знакомство состоялось</strong><span>Работодатель открыл контакт после вашего согласия. Дополнительных действий на СТАЖНО не требуется.</span></div>';
+        return '<div class="interaction-note is-complete"><strong>Знакомство состоялось</strong><span>Работодатель открыл контакт после вашего согласия. На СТАЖНО дополнительных действий не требуется.</span></div><button class="btn btn-outline btn-tiny" data-v02-action="open-introductions" data-filter="introduced">Открыть знакомство →</button>';
       }
       if (a.invitation_status === 'accepted') {
-        return '<div class="interaction-note is-waiting"><strong>Согласие отправлено</strong><span>Теперь ждём работодателя. Повторно подтверждать знакомство не нужно.</span></div>';
+        return '<div class="interaction-note is-waiting"><strong>Согласие отправлено</strong><span>Теперь ждём работодателя. Повторно подтверждать знакомство не нужно.</span></div><button class="btn btn-outline btn-tiny" data-v02-action="open-introductions" data-filter="waiting">Посмотреть знакомство →</button>';
       }
       if (a.invitation_status === 'sent') {
         return '<div class="interaction-note is-ready"><strong>Работодатель предлагает знакомство</strong><span>Контакты останутся скрытыми, пока вы сами не согласитесь.</span></div><button class="btn btn-primary btn-tiny" data-v02-action="open-introductions" data-filter="decision">Ответить на запрос компании →</button>';
