@@ -7,9 +7,19 @@
     const eventLabels = {applied:'Отклик отправлен',reapplied:'Отклик отправлен повторно',withdrawn:'Отклик отозван',reviewing:'На рассмотрении',interview:'Работодатель заинтересован',rejected:'Получен отказ',hired:'Принят'};
     function applicationIntroBadge(a) {
       if (!a.invitation_id) return '';
-      const label = a.contact_shared ? 'Знакомство состоялось (демо)' : (introductionLabel[a.invitation_status] || 'Запрос отправлен');
-      return '<div class="interaction-note">Знакомство: ' + esc(label) + '</div>' +
-        (a.invitation_status === 'sent' ? '<button class="btn btn-primary btn-tiny" data-v02-action="open-introductions" data-filter="decision">Ответить на запрос компании →</button>' : '');
+      if (a.contact_shared) {
+        return '<div class="interaction-note is-complete"><strong>Знакомство состоялось</strong><span>Работодатель открыл контакт после вашего согласия. Дополнительных действий на СТАЖНО не требуется.</span></div>';
+      }
+      if (a.invitation_status === 'accepted') {
+        return '<div class="interaction-note is-waiting"><strong>Согласие отправлено</strong><span>Теперь ждём работодателя. Повторно подтверждать знакомство не нужно.</span></div>';
+      }
+      if (a.invitation_status === 'sent') {
+        return '<div class="interaction-note is-ready"><strong>Работодатель предлагает знакомство</strong><span>Контакты останутся скрытыми, пока вы сами не согласитесь.</span></div><button class="btn btn-primary btn-tiny" data-v02-action="open-introductions" data-filter="decision">Ответить на запрос компании →</button>';
+      }
+      if (a.invitation_status === 'declined') {
+        return '<div class="interaction-note is-closed"><strong>Вы отказались от знакомства</strong><span>Контакты компании не переданы. Дополнительных действий нет.</span></div>';
+      }
+      return '';
     }
     function employerApplicationStageLabel(a) {
       if (a.contact_shared) return 'Знакомство состоялось';
@@ -63,7 +73,7 @@
         : applicationByVacancy.get(jobId);
       if (!known) return `<button type="button" class="btn btn-primary btn-tiny" data-v02-action="apply" data-id="${jobId}">Откликнуться</button>`;
       if (known.status === 'withdrawn') return `<button type="button" class="btn btn-primary btn-tiny" data-v02-action="reapply" data-id="${jobId}">Откликнуться повторно</button>`;
-      return `<button type="button" class="btn btn-outline btn-tiny" data-v02-action="see-applications">Отклик: ${esc(workflowStatus(known,status[known.status] || known.status))} · история</button>`;
+      return `<button type="button" class="btn btn-outline btn-tiny" data-v02-action="see-applications">Отклик: ${esc(candidateWorkflowStatus(known,status[known.status] || known.status))} · история</button>`;
     }
     function employerTrustBadges(job, detailed = false) {
       const badges = [];
@@ -246,7 +256,7 @@
         if(state.tab==='applications'){
           const {applications}=await api('/api/candidate/applications');
           const updateSummary = await api('/api/candidate/vacancy-updates');
-          $('#dashboard-main').innerHTML=`<div class="panel"><div class="panel-title-row"><div><span class="section-kicker">ОТКЛИКИ</span><h3>История откликов</h3><p class="muted">Следите за этапом каждого отклика. Контакты не раскрываются работодателю автоматически.</p></div></div>${updateSummary.unread_count ? `<div class="vacancy-update-banner" role="status">По вакансиям, на которые вы откликались, есть изменения условий: ${Number(updateSummary.unread_count)}. <button type="button" class="btn btn-outline btn-tiny" data-tab="changes">Посмотреть изменения</button></div>` : ''}<div class="dashboard-list">${applications.length ? applications.map(a=>`<article class="item-card"><header><div><h4>${esc(a.title)}</h4><p>${esc(a.company_name)} · ${esc(a.city)} · ${formatPay(a)}</p></div><span class="mini-badge">${esc(workflowStatus(a,status[a.status]||a.status))}</span></header><div class="application-card-meta"><span>Отклик отправлен</span><strong>${esc(a.created_at)}</strong></div>${interactionStageMarkup(a,'application')}${activityTimelineMarkup(a)}${applicationIntroBadge(a)}${['applied','reviewing','interview'].includes(a.status) && !a.invitation_id?`<button class="btn btn-outline btn-tiny" data-v02-action="withdraw" data-id="${Number(a.id)}">Отозвать отклик</button>`:a.status==='withdrawn'?`<button class="btn btn-primary btn-tiny" data-v02-action="reapply" data-id="${Number(a.vacancy_id)}">Откликнуться повторно</button>`:''}</article>`).join(''):'<div class="empty-state empty-state-action"><span class="empty-state-icon" aria-hidden="true">↗</span><strong>Вы ещё не откликались</strong><p>Найдите подходящую вакансию и отправьте первый отклик. Контакты работодателю автоматически не передаются.</p><a class="btn btn-primary" href="#jobs">Найти вакансию →</a></div>'}</div></div>`;
+          $('#dashboard-main').innerHTML=`<div class="panel"><div class="panel-title-row"><div><span class="section-kicker">ОТКЛИКИ</span><h3>История откликов</h3><p class="muted">Следите за этапом каждого отклика. Контакты не раскрываются работодателю автоматически.</p></div></div>${updateSummary.unread_count ? `<div class="vacancy-update-banner" role="status">По вакансиям, на которые вы откликались, есть изменения условий: ${Number(updateSummary.unread_count)}. <button type="button" class="btn btn-outline btn-tiny" data-tab="changes">Посмотреть изменения</button></div>` : ''}<div class="dashboard-list">${applications.length ? applications.map(a=>`<article class="item-card"><header><div><h4>${esc(a.title)}</h4><p>${esc(a.company_name)} · ${esc(a.city)} · ${formatPay(a)}</p></div><span class="mini-badge">${esc(candidateWorkflowStatus(a,status[a.status]||a.status))}</span></header><div class="application-card-meta"><span>Отклик отправлен</span><strong>${esc(a.created_at)}</strong></div>${interactionStageMarkup(a,'application')}${activityTimelineMarkup(a)}${applicationIntroBadge(a)}${['applied','reviewing','interview'].includes(a.status) && !a.invitation_id?`<button class="btn btn-outline btn-tiny" data-v02-action="withdraw" data-id="${Number(a.id)}">Отозвать отклик</button>`:a.status==='withdrawn'?`<button class="btn btn-primary btn-tiny" data-v02-action="reapply" data-id="${Number(a.vacancy_id)}">Откликнуться повторно</button>`:''}</article>`).join(''):'<div class="empty-state empty-state-action"><span class="empty-state-icon" aria-hidden="true">↗</span><strong>Вы ещё не откликались</strong><p>Найдите подходящую вакансию и отправьте первый отклик. Контакты работодателю автоматически не передаются.</p><a class="btn btn-primary" href="#jobs">Найти вакансию →</a></div>'}</div></div>`;
         }
         if(state.tab==='changes'){
           const result=await api('/api/candidate/vacancy-updates');
