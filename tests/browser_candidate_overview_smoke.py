@@ -45,8 +45,12 @@ def run_overview(page):
     expect(dashboard.locator(".candidate-overview-grid")).to_be_visible()
     expect(dashboard.locator(".candidate-status-row")).to_be_visible()
     expect(dashboard.locator(".candidate-status-chip").first).to_be_visible()
+    mobile_section = page.locator("[data-dashboard-tab-select]")
+    expect(mobile_section).to_be_visible()
+    expect(mobile_section.locator("option")).to_have_count(9)
+    expect(page.locator(".dashboard-tabs")).to_be_hidden()
 
-    # Navigation from the consolidated overview still uses the same real tabs.
+    # Primary overview actions stay direct; section navigation uses the compact mobile switcher.
     dashboard.locator("[data-tab='offers']").first.click()
     expect(dashboard).to_contain_text("Подходящие вакансии")
     recommendation = dashboard.locator(".job-card").first
@@ -57,11 +61,11 @@ def run_overview(page):
     explanation.locator("summary").click()
     expect(explanation.locator(".match-factor-row")).to_have_count(6)
     expect(explanation).to_contain_text("Возраст и другие личные характеристики не используются")
-    page.locator(".dashboard-tabs [data-tab='overview']").click()
+    mobile_section.select_option("overview")
     expect(dashboard.locator(".candidate-overview-grid")).to_be_visible()
 
     # Account-security controls are available without leaving the dashboard.
-    page.locator(".dashboard-tabs [data-tab='security']").click()
+    mobile_section.select_option("security")
     expect(dashboard).to_contain_text("БЕЗОПАСНОСТЬ АККАУНТА")
     expect(dashboard.locator("#security-password-form")).to_be_visible()
     expect(dashboard.locator("[data-action='revoke-other-sessions']")).to_be_visible()
