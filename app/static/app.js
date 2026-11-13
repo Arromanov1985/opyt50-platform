@@ -1540,6 +1540,13 @@ async function handleDashboardSubmit(event) {
   }
 }
 async function handleDashboardChange(event) {
+  const introductionVacancy = event.target.closest('[data-employer-introduction-vacancy-filter]');
+  if (introductionVacancy) {
+    state.employerInvitationsVacancyFilter = String(introductionVacancy.value || 'all');
+    state.employerInvitationsFilter = 'all';
+    await loadEmployerInvitations();
+    return;
+  }
   const select = event.target.closest('[data-dashboard-tab-select]');
   if (!select) return;
   const nextTab = String(select.value || '');
@@ -1550,6 +1557,7 @@ async function handleDashboardChange(event) {
   }
   if (state.user?.role === 'employer' && nextTab === 'invitations') {
     state.employerInvitationsFilter = 'all';
+    state.employerInvitationsVacancyFilter = 'all';
   }
   if (state.user?.role === 'candidate' && nextTab === 'invitations') {
     state.candidateInvitationsFilter = 'all';
@@ -1567,6 +1575,7 @@ async function handleDashboardClick(event) {
     }
     if (state.user?.role === 'employer' && tab.dataset.tab === 'invitations') {
       state.employerInvitationsFilter = 'all';
+      state.employerInvitationsVacancyFilter = 'all';
     }
     if (state.user?.role === 'candidate' && tab.dataset.tab === 'invitations') {
       state.candidateInvitationsFilter = 'all';
@@ -1672,9 +1681,16 @@ async function handleDashboardClick(event) {
       await loadEmployerInvitations();
       return;
     }
+    if (action === 'reset-employer-invitation-filters') {
+      state.employerInvitationsFilter = 'all';
+      state.employerInvitationsVacancyFilter = 'all';
+      await loadEmployerInvitations();
+      return;
+    }
     if (action === 'open-employer-invitations') {
       const filter = Object.hasOwn(employerInvitationFilterLabels,btn.dataset.filter) ? btn.dataset.filter : 'all';
       state.employerInvitationsFilter = filter;
+      state.employerInvitationsVacancyFilter = btn.dataset.vacancyId ? String(btn.dataset.vacancyId) : 'all';
       state.tab = 'invitations';
       state.activeVacancy = null;
       await showDashboard();
