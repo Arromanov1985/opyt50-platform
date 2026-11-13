@@ -437,6 +437,8 @@ def run_browser(page):
     page.locator("#logout").click()
 
     login(page, "kladovshik@demo.example")
+    expect(page.locator("#dashboard-main .candidate-outcome-alert")).to_contain_text("Компания выбрала вас")
+    expect(page.locator("#dashboard-main .candidate-outcome-alert [data-action='open-candidate-invitations'][data-filter='closed']")).to_contain_text("Посмотреть итог")
     page.locator(".dashboard-tabs [data-tab='applications']").click()
     expect(page.locator("#dashboard-main")).to_contain_text("Компания выбрала вас")
     expect(page.locator("#dashboard-main .interaction-stage span")).to_have_count(5)
