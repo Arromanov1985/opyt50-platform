@@ -485,3 +485,43 @@
   #mobile-guest-actions #login-open,
   #mobile-member-actions #logout{display:none}
 }
+
+
+/* Release 0.5: compact dashboard navigation on phones */
+@media(max-width:700px){
+  .dashboard-mobile-switch,
+  body.comfortable-view .dashboard-mobile-switch{
+    display:grid!important;
+    gap:6px;
+    padding:2px 0 4px;
+  }
+  .dashboard-mobile-switch>span{
+    color:#60746B;
+    font-size:10px;
+    font-weight:850;
+    letter-spacing:.05em;
+    text-transform:uppercase;
+  }
+  .dashboard-mobile-switch select,
+  body.comfortable-view .dashboard-mobile-switch select{
+    width:100%;
+    min-height:48px;
+    padding:0 42px 0 13px;
+    border:1px solid #CFE2D7;
+    border-radius:13px;
+    background:#F8FCF9;
+    color:#0B2D26;
+    font:inherit;
+    font-size:15px;
+    font-weight:800;
+    outline-color:#00C853;
+  }
+  body.comfortable-view .dashboard-mobile-switch select{
+    min-height:54px;
+    font-size:17px;
+  }
+  .dashboard-tabs,
+  body.comfortable-view .dashboard-tabs{
+    display:none!important;
+  }
+}
