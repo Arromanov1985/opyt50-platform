@@ -392,6 +392,7 @@ def run_browser(page):
     expect(hired_summary.locator("strong")).to_have_text("1")
     expect(rejected_summary.locator("strong")).to_have_text("0")
     expect(waiting_summary.locator("strong")).to_have_text("0")
+    expect(page.locator("#dashboard-main .employer-outcome-rate")).to_contain_text("100%")
     page.locator(".dashboard-tabs [data-tab='vacancies']").click()
     expect(page.locator("#dashboard-main .employer-next")).not_to_contain_text("Зафиксируйте итог знакомства")
     completed_vacancy_card = page.locator("#dashboard-main .employer-vacancy-card").filter(has_text="Кладовщик")
