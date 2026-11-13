@@ -64,6 +64,7 @@
   padding:0 8px 8px;
   font-size:9px;
 }
+.dashboard-mobile-switch{display:none}
 .dashboard-tabs{
   display:grid;
   gap:4px;
