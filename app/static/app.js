@@ -1346,7 +1346,7 @@ function invitationEmployerMarkup(x) {
   } else {
     next = '<div class="interaction-note is-closed"><strong>Знакомство завершено</strong><span>Дополнительных действий не требуется.</span></div>';
   }
-  return `<article class="item-card invitation-card employer-invitation-card is-${bucket}"><header><div><span class="card-eyebrow">ЗНАКОМСТВО</span><h4>${esc(x.candidate_profession)}</h4><p class="invitation-vacancy-context">Вакансия: <strong>${esc(x.vacancy_title)}</strong></p></div><span class="mini-badge ${bucket==='closed'?'gray':''}">${esc(employerInvitationStageLabel(x))}</span></header>
+  return `<article class="item-card invitation-card employer-invitation-card is-${bucket}" data-invitation-id="${Number(x.id)}" data-application-id="${x.application_id ? Number(x.application_id) : ''}"><header><div><span class="card-eyebrow">ЗНАКОМСТВО</span><h4>${esc(x.candidate_profession)}</h4><p class="invitation-vacancy-context">Вакансия: <strong>${esc(x.vacancy_title)}</strong></p></div><span class="mini-badge ${bucket==='closed'?'gray':''}">${esc(employerInvitationStageLabel(x))}</span></header>
   ${interactionStageMarkup(x,'invitation')}
   ${invitationLastActivityMarkup(x)}
   ${activityTimelineMarkup(x)}
@@ -1686,6 +1686,12 @@ async function handleDashboardClick(event) {
       await api(`/api/employer/applications/${id}/status`,{method:'PATCH',body:JSON.stringify({status:outcome})});
       state.employerInvitationsFilter = 'closed';
       await loadEmployerInvitations();
+      const completedCard = document.querySelector(`#dashboard-main .employer-invitation-card[data-application-id="${Number(id)}"]`);
+      if (completedCard) {
+        completedCard.setAttribute('tabindex','-1');
+        completedCard.scrollIntoView({block:'nearest'});
+        completedCard.focus({preventScroll:true});
+      }
       toast(outcome === 'hired' ? 'Кандидат отмечен как принятый.' : 'Итог знакомства сохранён: не договорились.');
       return;
     }
