@@ -151,6 +151,30 @@ def test_trusted_host_allowlist_rejects_forged_host(tmp_path, monkeypatch):
 
 
 
+def test_private_api_and_shell_are_not_cacheable(tmp_path):
+    app = create_app(str(tmp_path / "cache-control.db"))
+    with TestClient(app) as client:
+        registered = client.post(
+            "/api/register",
+            headers=XHR,
+            json={
+                "role": "candidate",
+                "name": "Cache Test",
+                "email": "cache@example.test",
+                "password": "long secure password 2026",
+            },
+        )
+        assert registered.status_code == 201, registered.text
+        me = client.get("/api/me")
+        assert me.status_code == 200
+        assert me.headers["cache-control"] == "no-store"
+        assert me.headers["pragma"] == "no-cache"
+
+        shell = client.get("/")
+        assert shell.status_code == 200
+        assert "no-store" in shell.headers["cache-control"]
+
+
 def test_cross_site_mutations_are_rejected_by_origin_and_fetch_metadata(tmp_path, monkeypatch):
     monkeypatch.setenv("OPYT50_PUBLIC_URL", "https://stazhno.ru")
     app = create_app(str(tmp_path / "origin.db"))
