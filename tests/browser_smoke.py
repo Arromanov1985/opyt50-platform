@@ -425,7 +425,7 @@ def run_browser(page):
     mobile_section.select_option("profile")
     expect(page.locator("#profile-form")).to_be_visible()
     page.locator("[data-dashboard-tab-select]").select_option("applications")
-    expect(page.locator("#dashboard-main")).to_contain_text("Знакомство состоялось (демо")
+    expect(page.locator("#dashboard-main")).to_contain_text("Компания выбрала вас")
 
     # New employer vacancy flow runs after all candidate/admin regressions.
     # Only fictional job data is used and no external service is called.
