@@ -447,6 +447,10 @@ def run_browser(page):
     expect(page.locator("#dashboard-main")).to_contain_text("КОНТАКТ СОХРАНЁН · ДЕМО")
     expect(page.locator("#dashboard-main .invitation-last-activity")).to_be_visible()
     assert page.evaluate("""() => {
+      const grid = document.querySelector('.employer-invitation-stage-filter');
+      return grid && getComputedStyle(grid).gridTemplateColumns.trim().split(/\s+/).length === 2;
+    }"""), "Employer introduction filters should remain two columns at 390px"
+    assert page.evaluate("""() => {
       const element = document.querySelector('#dashboard-main');
       return element.scrollWidth <= element.clientWidth + 3;
     }"""), "Completed introduction must fit mobile width"
@@ -479,6 +483,16 @@ def run_browser(page):
     expect(page.locator("#dashboard-main [data-action='filter-candidate-invitations'][data-filter='closed']")).to_have_attribute("aria-pressed", "true")
     expect(page.locator("#dashboard-main")).to_contain_text("Компания выбрала вас")
     expect(page.locator("#dashboard-main")).to_contain_text("Дальнейшие договорённости проходят напрямую с компанией")
+    page.set_viewport_size({"width": 390, "height": 844})
+    assert page.evaluate("""() => {
+      const grid = document.querySelector('.candidate-introduction-stage-filter');
+      return grid && getComputedStyle(grid).gridTemplateColumns.trim().split(/\s+/).length === 2;
+    }"""), "Candidate introduction filters should remain two columns at 390px"
+    assert page.evaluate("""() => {
+      const element = document.querySelector('#dashboard-main');
+      return element.scrollWidth <= element.clientWidth + 3;
+    }"""), "Candidate completed introduction must fit mobile width"
+    page.set_viewport_size({"width": 1280, "height": 800})
     page.locator("#logout").click()
 
     # Accountant must not receive an engineer recommendation merely
