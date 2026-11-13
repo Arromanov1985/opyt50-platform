@@ -2397,3 +2397,28 @@ body.comfortable-view .candidate-introduction-note span{font-size:.92rem}
 @media(max-width:700px){
   .invitation-last-activity{grid-template-columns:1fr;gap:3px}
 }
+
+.employer-introduction-vacancy-filter{
+  display:grid;
+  gap:5px;
+  min-width:220px;
+}
+.employer-introduction-vacancy-filter>span{
+  font-size:9px;
+  font-weight:800;
+  letter-spacing:.08em;
+  text-transform:uppercase;
+  color:#7A8B83;
+}
+.employer-introduction-vacancy-filter select{
+  min-height:40px;
+  padding:8px 34px 8px 11px;
+  border:1px solid #D9E5DF;
+  border-radius:11px;
+  background:#fff;
+  color:#0B2D26;
+  font:inherit;
+}
+@media(max-width:700px){
+  .employer-introduction-vacancy-filter{width:100%;min-width:0}
+}
