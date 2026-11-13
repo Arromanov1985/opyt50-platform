@@ -2,7 +2,7 @@
 'use strict';
 const $ = (selector, root = document) => root.querySelector(selector);
 const $$ = (selector, root = document) => [...root.querySelectorAll(selector)];
-const state = { user: null, mode: 'register', role: 'candidate', tab: 'overview', activeVacancy: null, editVacancy: null, employerVacancyFilter: 'all', employerApplicationsVacancyFilter: 'all', employerApplicationsStatusFilter: 'all', employerInvitationsFilter: 'all', candidateInvitationsFilter: 'all', mfaChallenge: null, mfaMethod: null, mfaCodeLength: 8, mfaPublicKey: null, mfaTotpFallback: false };
+const state = { user: null, mode: 'register', role: 'candidate', tab: 'overview', activeVacancy: null, editVacancy: null, employerVacancyFilter: 'all', employerApplicationsVacancyFilter: 'all', employerApplicationsStatusFilter: 'all', employerInvitationsFilter: 'all', employerInvitationsVacancyFilter: 'all', candidateInvitationsFilter: 'all', mfaChallenge: null, mfaMethod: null, mfaCodeLength: 8, mfaPublicKey: null, mfaTotpFallback: false };
 const esc = value => String(value ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const money = value => Number(value || 0).toLocaleString('ru-RU') + ' ₽';
 const formatPay = job => job.salary_min === job.salary_max ? money(job.salary_min) : `${money(job.salary_min)} — ${money(job.salary_max)}`;
@@ -1183,7 +1183,7 @@ function jobEmployerMarkup(x, stats = {total: 0, interested: 0, attention: 0, re
     <header><div><span class="card-eyebrow">${esc(nextLabel)}</span><h4>${esc(x.title)}</h4><p>${esc(x.city)} · ${formatPay(x)} · ${esc(x.schedule)}</p><div class="vacancy-moderation-state ${esc(x.moderation_status||'approved')}"><strong>${x.moderation_status==='pending'?'На проверке':x.moderation_status==='rejected'?'Отклонена модератором':'Опубликована'}</strong>${x.moderation_reason?`<small>${esc(x.moderation_reason)}</small>`:''}</div></div><span class="mini-badge ${x.status === 'open' ? '' : 'gray'}">${x.status === 'open' ? 'Открыта' : 'Закрыта'}</span></header>
     <div class="vacancy-pipeline-mini"><span><strong>${stats.total}</strong><small>Отклики</small></span><span><strong>${stats.outcome}</strong><small>Ждут итога</small></span><span><strong>${stats.hired}</strong><small>Приняты</small></span><span><strong>${stats.rejected}</strong><small>Не договорились</small></span></div>
     <div class="vacancy-quality ${qualityClass}"><div class="vacancy-quality-head"><span>Качество объявления</span><strong>${quality.percent}%</strong></div><div class="vacancy-quality-track"><span style="width:${quality.percent}%"></span></div>${quality.suggestions.length?`<p>${esc(quality.suggestions.slice(0,2).join(' · '))}</p>`:'<p>Основные условия заполнены хорошо.</p>'}</div>
-    <div class="employer-vacancy-primary">${needsOutcome ? '<button type="button" class="btn btn-primary" data-action="open-employer-invitations" data-filter="introduced">Зафиксировать итог →</button>' : hasReadyIntroduction ? '<button type="button" class="btn btn-primary" data-action="open-employer-invitations" data-filter="action">Продолжить знакомство →</button>' : needsAttention ? `<button type="button" class="btn btn-primary" data-action="vacancy-applications-primary" data-id="${x.id}">Разобрать отклики →</button>` : `<button class="btn btn-dark" data-action="matches-primary" data-id="${x.id}" ${x.status === 'closed' ? 'disabled':''}>Подобрать кандидатов →</button>`}</div>
+    <div class="employer-vacancy-primary">${needsOutcome ? `<button type="button" class="btn btn-primary" data-action="open-employer-invitations" data-filter="introduced" data-vacancy-id="${x.id}">Зафиксировать итог →</button>` : hasReadyIntroduction ? `<button type="button" class="btn btn-primary" data-action="open-employer-invitations" data-filter="action" data-vacancy-id="${x.id}">Продолжить знакомство →</button>` : needsAttention ? `<button type="button" class="btn btn-primary" data-action="vacancy-applications-primary" data-id="${x.id}">Разобрать отклики →</button>` : `<button class="btn btn-dark" data-action="matches-primary" data-id="${x.id}" ${x.status === 'closed' ? 'disabled':''}>Подобрать кандидатов →</button>`}</div>
     <div class="item-actions employer-vacancy-secondary"><button type="button" class="btn btn-outline btn-tiny" data-action="vacancy-applications" data-id="${x.id}">Отклики</button><button class="btn btn-outline btn-tiny" data-action="matches" data-id="${x.id}" ${x.status === 'closed' ? 'disabled':''}>Подбор</button><button class="btn btn-outline btn-tiny" data-action="edit-job" data-id="${x.id}">Редактировать</button><button class="btn btn-outline btn-tiny" data-action="job-status" data-id="${x.id}" data-status="${x.status === 'open' ? 'closed' : 'open'}">${x.status === 'open' ? 'Закрыть' : 'Открыть'}</button></div>
   </article>`;
 }
@@ -1271,14 +1271,23 @@ async function loadEmployerInvitations() {
     ? state.employerInvitationsFilter
     : 'all';
   state.employerInvitationsFilter = selected;
+  const vacancyOptions = [...new Map(invitations.map(item => [String(item.vacancy_id), item.vacancy_title])).entries()];
+  const selectedVacancy = state.employerInvitationsVacancyFilter === 'all' ||
+    vacancyOptions.some(([id]) => id === String(state.employerInvitationsVacancyFilter))
+      ? String(state.employerInvitationsVacancyFilter || 'all')
+      : 'all';
+  state.employerInvitationsVacancyFilter = selectedVacancy;
+  const vacancyScoped = selectedVacancy === 'all'
+    ? invitations
+    : invitations.filter(item => String(item.vacancy_id) === selectedVacancy);
   const counts = {action:0,waiting:0,introduced:0,closed:0};
-  invitations.forEach(item => { counts[employerInvitationBucket(item)] += 1; });
+  vacancyScoped.forEach(item => { counts[employerInvitationBucket(item)] += 1; });
   const completedResults = {
-    hired: invitations.filter(item => item.application_status === 'hired').length,
-    rejected: invitations.filter(item => item.application_status === 'rejected').length,
-    other: invitations.filter(item => employerInvitationBucket(item) === 'closed' && !['hired','rejected'].includes(item.application_status)).length
+    hired: vacancyScoped.filter(item => item.application_status === 'hired').length,
+    rejected: vacancyScoped.filter(item => item.application_status === 'rejected').length,
+    other: vacancyScoped.filter(item => employerInvitationBucket(item) === 'closed' && !['hired','rejected'].includes(item.application_status)).length
   };
-  const ordered = [...invitations].sort((a,b) => {
+  const ordered = [...vacancyScoped].sort((a,b) => {
     const priority = {introduced:0,action:1,waiting:2,closed:3};
     const bucketDiff = priority[employerInvitationBucket(a)] - priority[employerInvitationBucket(b)];
     if (bucketDiff) return bucketDiff;
@@ -1286,19 +1295,20 @@ async function loadEmployerInvitations() {
   });
   const shown = selected === 'all' ? ordered : ordered.filter(item => employerInvitationBucket(item) === selected);
   const filterButtons = [
-    ['all',invitations.length],
+    ['all',vacancyScoped.length],
     ['action',counts.action],
     ['waiting',counts.waiting],
     ['introduced',counts.introduced],
     ['closed',counts.closed]
   ].map(([value,count]) => `<button type="button" class="btn btn-tiny ${selected===value?'btn-dark':'btn-outline'}" data-action="filter-employer-invitations" data-filter="${value}" aria-pressed="${selected===value}">${esc(employerInvitationFilterLabels[value])} · ${Number(count)}</button>`).join('');
+  const vacancySelector = `<label class="employer-introduction-vacancy-filter"><span>Вакансия</span><select data-employer-introduction-vacancy-filter><option value="all">Все вакансии</option>${vacancyOptions.map(([id,title]) => `<option value="${esc(id)}" ${selectedVacancy===id?'selected':''}>${esc(title)}</option>`).join('')}</select></label>`;
   const empty = invitations.length
     ? '<div class="empty-state empty-state-action"><span class="empty-state-icon" aria-hidden="true">⌕</span><strong>В этом этапе знакомств нет</strong><p>Выберите другой этап или покажите все знакомства.</p><button class="btn btn-outline" data-action="filter-employer-invitations" data-filter="all">Показать все</button></div>'
     : '<div class="empty-state"><strong>Знакомств пока нет.</strong><p>Откройте вакансию, запустите подбор и пригласите подходящего кандидата.</p><button class="btn btn-primary" data-tab="vacancies">К вакансиям →</button></div>';
   $('#dashboard-main').innerHTML = `<div class="panel invitation-center">
-    <div class="split-header"><div><span class="section-kicker">ЗНАКОМСТВА</span><h3>Знакомства и контакты</h3><p class="muted">Здесь продолжается работа после отклика: сначала показываем знакомства, где нужен ваш следующий шаг. Контакты открываются только после согласия кандидата.</p></div></div>
+    <div class="split-header"><div><span class="section-kicker">ЗНАКОМСТВА</span><h3>Знакомства и контакты</h3><p class="muted">Здесь продолжается работа после отклика: сначала показываем знакомства, где нужен ваш следующий шаг. Контакты открываются только после согласия кандидата.</p></div>${vacancySelector}</div>
     <div class="employer-invitation-stage-filter" role="group" aria-label="Фильтр знакомств по этапу">${filterButtons}</div>
-    <div class="employer-invitation-result-line"><span role="status">Показываем <strong>${shown.length}</strong> из <strong>${invitations.length}</strong>${selected==='all'&&invitations.length>1?' · сначала знакомства, где нужно ваше действие':''}</span>${selected!=='all'?'<button type="button" class="link-button" data-action="filter-employer-invitations" data-filter="all">Сбросить фильтр</button>':''}</div>
+    <div class="employer-invitation-result-line"><span role="status">Показываем <strong>${shown.length}</strong> из <strong>${vacancyScoped.length}</strong>${selected==='all'&&vacancyScoped.length>1?' · сначала знакомства, где нужно ваше действие':''}</span>${selected!=='all'||selectedVacancy!=='all'?'<button type="button" class="link-button" data-action="reset-employer-invitation-filters">Сбросить фильтры</button>':''}</div>
     ${counts.closed ? `<div class="completed-introduction-summary" aria-label="Итоги завершённых знакомств"><span><strong>${completedResults.hired}</strong> Приняты</span><span><strong>${completedResults.rejected}</strong> Не договорились</span>${completedResults.other ? `<span><strong>${completedResults.other}</strong> Другие завершённые</span>` : ''}</div>` : ''}
     ${counts.action ? '<div class="demo-note"><strong>Тестовый режим</strong><span>Открытие контакта имитирует оплату и не списывает деньги.</span></div>' : ''}
     <div class="dashboard-list">${shown.length ? shown.map(invitationEmployerMarkup).join('') : empty}</div>
