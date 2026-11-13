@@ -666,7 +666,11 @@ def interaction_timeline(
                WHERE application_id=? ORDER BY id ASC""", (application_id,)
         ).fetchall()
         for row in rows:
-            entries.append((normalize_event_time(row["created_at"]), row["id"], {
+            # SQLite timestamps are second-resolution. Final employer outcomes
+            # are causally after contact unlock, so give them a later tie-break
+            # phase when both events happen within the same second.
+            phase = 4000000 + row["id"] if row["event"] in {"hired", "rejected"} else row["id"]
+            entries.append((normalize_event_time(row["created_at"]), phase, {
                 "event": row["event"], "created_at": normalize_event_time(row["created_at"])
             }))
     if invitation_id is not None:
