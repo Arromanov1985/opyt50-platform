@@ -549,8 +549,20 @@ def test_unified_status_timeline_consent_and_terminal_guards(app):
         assert final["timeline"] == employer.get("/api/employer/applications").json()["applications"][0]["timeline"]
         assert employer.get("/api/employer/invitations").json()["invitations"][0]["contact"]["email"] == "candidate@demo.example"
         assert post(employer, f"/api/employer/invitations/{invite_id}/demo-pay").status_code == 200
-        assert employer.patch(
+        rejected = employer.patch(
             f"/api/employer/applications/{aid}/status", json={"status": "rejected"}, headers=HEADERS
+        )
+        assert rejected.status_code == 200, rejected.text
+        assert rejected.json()["status"] == "rejected"
+        candidate_intro = candidate.get("/api/candidate/invitations").json()["invitations"][0]
+        employer_intro = employer.get("/api/employer/invitations").json()["invitations"][0]
+        assert candidate_intro["application_status"] == "rejected"
+        assert employer_intro["application_status"] == "rejected"
+        assert candidate_intro["timeline"][-1]["event"] == "rejected"
+        assert employer_intro["timeline"][-1]["event"] == "rejected"
+        # Terminal outcome is immutable: it cannot be flipped after it is recorded.
+        assert employer.patch(
+            f"/api/employer/applications/{aid}/status", json={"status": "hired"}, headers=HEADERS
         ).status_code == 409
         with database(app.state.db_path) as db:
             assert db.execute("SELECT COUNT(*) FROM demo_transactions WHERE invitation_id=?", (invite_id,)).fetchone()[0] == 1
