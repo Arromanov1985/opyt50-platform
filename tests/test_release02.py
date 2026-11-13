@@ -337,7 +337,7 @@ def test_one_click_introduction_reuses_record_and_requires_consent(app):
         assert body["invitation_status"] == "sent"
         assert body["contact_shared"] is False
         invitation_id = body["invitation_id"]
-        assert stranger.get("/api/employer/invitations").json()["invitations"] == []
+        assert other.get("/api/employer/invitations").json()["invitations"] == []
         assert candidate.get("/api/employer/invitations").status_code == 403
         assert employer.get("/api/employer/applications").json()["applications"][0]["status"] == "interview"
         assert candidate.get("/api/candidate/applications").json()["applications"][0]["invitation_id"] == invitation_id
