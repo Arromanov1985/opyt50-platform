@@ -1,4 +1,5 @@
 """Real-browser smoke test for release 0.2 using fictional data. No external services."""
+import re
 import os
 import subprocess
 import sys
