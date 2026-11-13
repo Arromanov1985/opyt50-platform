@@ -1331,6 +1331,7 @@ async function handleDashboardClick(event) {
     }
     if (action === 'vacancy-applications' || action === 'vacancy-applications-primary') {
       state.employerApplicationsVacancyFilter = String(id);
+      state.employerApplicationsStatusFilter = 'all';
       state.tab = 'applications';
       state.activeVacancy = null;
       await showDashboard();
