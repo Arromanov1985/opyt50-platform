@@ -597,6 +597,10 @@ def test_proactive_invitation_has_unified_history_without_application(app):
         assert employer_item["introduction_stage"] == "awaiting_consent"
         assert employer_item["timeline"] == candidate_item["timeline"]
         assert [e["event"] for e in employer_item["timeline"]] == ["invitation_sent"]
+        assert employer_item["application_id"] is None
+        assert employer_item["application_status"] is None
+        assert candidate_item["application_id"] is None
+        assert candidate_item["application_status"] is None
         assert "contact" not in employer_item
 
 
