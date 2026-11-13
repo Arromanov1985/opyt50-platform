@@ -1572,14 +1572,30 @@ async function handleDashboardSubmit(event) {
   }
 }
 let employerInvitationSearchTimer = null;
+let candidateInvitationSearchTimer = null;
 function handleDashboardInput(event) {
-  const search = event.target.closest('[data-employer-introduction-search]');
-  if (!search) return;
-  state.employerInvitationsQuery = String(search.value || '');
-  clearTimeout(employerInvitationSearchTimer);
-  employerInvitationSearchTimer = setTimeout(async () => {
-    await loadEmployerInvitations();
-    const nextSearch = document.querySelector('#dashboard-main [data-employer-introduction-search]');
+  const employerSearch = event.target.closest('[data-employer-introduction-search]');
+  if (employerSearch) {
+    state.employerInvitationsQuery = String(employerSearch.value || '');
+    clearTimeout(employerInvitationSearchTimer);
+    employerInvitationSearchTimer = setTimeout(async () => {
+      await loadEmployerInvitations();
+      const nextSearch = document.querySelector('#dashboard-main [data-employer-introduction-search]');
+      if (nextSearch) {
+        nextSearch.focus();
+        const end = nextSearch.value.length;
+        nextSearch.setSelectionRange?.(end,end);
+      }
+    }, 180);
+    return;
+  }
+  const candidateSearch = event.target.closest('[data-candidate-introduction-search]');
+  if (!candidateSearch) return;
+  state.candidateInvitationsQuery = String(candidateSearch.value || '');
+  clearTimeout(candidateInvitationSearchTimer);
+  candidateInvitationSearchTimer = setTimeout(async () => {
+    await loadCandidateInvitations();
+    const nextSearch = document.querySelector('#dashboard-main [data-candidate-introduction-search]');
     if (nextSearch) {
       nextSearch.focus();
       const end = nextSearch.value.length;
@@ -1611,6 +1627,8 @@ async function handleDashboardChange(event) {
   }
   if (state.user?.role === 'candidate' && nextTab === 'invitations') {
     state.candidateInvitationsFilter = 'all';
+    state.candidateInvitationsQuery = '';
+    state.candidateInvitationsData = null;
   }
   state.tab = nextTab;
   state.activeVacancy = null;
@@ -1631,6 +1649,8 @@ async function handleDashboardClick(event) {
     }
     if (state.user?.role === 'candidate' && tab.dataset.tab === 'invitations') {
       state.candidateInvitationsFilter = 'all';
+      state.candidateInvitationsQuery = '';
+      state.candidateInvitationsData = null;
     }
     state.tab = tab.dataset.tab;
     state.activeVacancy = null;
@@ -1701,12 +1721,20 @@ async function handleDashboardClick(event) {
     if (action === 'filter-candidate-invitations') {
       if (!Object.hasOwn(candidateInvitationFilterLabels,btn.dataset.filter)) return;
       state.candidateInvitationsFilter = btn.dataset.filter;
-      await renderCandidate();
+      await loadCandidateInvitations();
+      return;
+    }
+    if (action === 'reset-candidate-invitation-filters') {
+      state.candidateInvitationsFilter = 'all';
+      state.candidateInvitationsQuery = '';
+      await loadCandidateInvitations();
       return;
     }
     if (action === 'open-candidate-invitations') {
       const filter = Object.hasOwn(candidateInvitationFilterLabels,btn.dataset.filter) ? btn.dataset.filter : 'all';
       state.candidateInvitationsFilter = filter;
+      state.candidateInvitationsQuery = '';
+      state.candidateInvitationsData = null;
       state.tab = 'invitations';
       state.activeVacancy = null;
       await showDashboard();
