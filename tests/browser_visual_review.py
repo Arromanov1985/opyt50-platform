@@ -145,6 +145,13 @@ def main():
                         ("mobile", 390, 844),
                     ):
                         capture(page, f"04-employer-{label}", width, height, "#dashboard")
+                        if label == "mobile":
+                            assert page.evaluate("""() => {
+                                const stats = document.querySelector('.employer-overview-stats');
+                                const trust = document.querySelector('.employer-trust-overview');
+                                return stats && trust &&
+                                    stats.getBoundingClientRect().top < trust.getBoundingClientRect().top;
+                            }"""), "Employer KPIs should appear above trust details on phones"
                 finally:
                     browser.close()
         finally:
