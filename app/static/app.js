@@ -550,8 +550,8 @@ function tabsMarkup(items, heading, subtitle) {
   return `<aside class="panel side-panel">
     <div class="dashboard-identity"><span class="dashboard-avatar" aria-hidden="true">${esc((state.user?.name||roleLabel).trim().charAt(0).toUpperCase())}</span><div><span>${esc(roleLabel)}</span><strong>${esc(subtitle)}</strong></div></div>
     <span class="section-kicker dashboard-menu-kicker">${esc(heading)}</span>
-    <label class="dashboard-mobile-switch"><span>Раздел кабинета</span><select data-dashboard-tab-select aria-label="Раздел личного кабинета">${items.map(t => `<option value="${esc(t.id)}" ${state.tab === t.id ? 'selected' : ''}>${esc(t.label)}</option>`).join('')}</select></label>
-    <nav class="dashboard-tabs" aria-label="Разделы личного кабинета">${items.map(t => `<button type="button" data-tab="${esc(t.id)}" class="${state.tab === t.id ? 'active' : ''}"><span class="dashboard-tab-icon" aria-hidden="true">${icons[t.id]||'•'}</span><span>${esc(t.label)}</span></button>`).join('')}</nav>
+    <label class="dashboard-mobile-switch"><span>Раздел кабинета</span><select data-dashboard-tab-select aria-label="Раздел личного кабинета">${items.map(t => `<option value="${esc(t.id)}" ${state.tab === t.id ? 'selected' : ''} data-base-label="${esc(t.label)}">${esc(t.label)}${actionCountForTab(t.id) ? ' · '+actionCountForTab(t.id) : ''}</option>`).join('')}</select></label>
+    <nav class="dashboard-tabs" aria-label="Разделы личного кабинета">${items.map(t => `<button type="button" data-tab="${esc(t.id)}" class="${state.tab === t.id ? 'active' : ''}"><span class="dashboard-tab-icon" aria-hidden="true">${icons[t.id]||'•'}</span><span>${esc(t.label)}</span><span class="dashboard-action-count" data-action-count-for="${esc(t.id)}" ${actionCountForTab(t.id) ? '' : 'hidden'} aria-label="Требует действия: ${actionCountForTab(t.id)}">${actionCountForTab(t.id) || ''}</span></button>`).join('')}</nav>
     <div class="dashboard-side-note"><span>Приватность</span><small>Контакты открываются только в сценарии знакомства.</small></div>
   </aside>`;
 }
