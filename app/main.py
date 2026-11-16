@@ -2263,9 +2263,24 @@ def create_app(db_path: str | None = None) -> FastAPI:
             types,
         ).fetchall()
         found = {row["event"]: row for row in rows}
+        queue_row = db.execute(
+            """SELECT
+                 COUNT(*) AS total,
+                 SUM(CASE WHEN state='pending' AND attempts=0 THEN 1 ELSE 0 END) AS queued,
+                 SUM(CASE WHEN state='pending' AND attempts>0 THEN 1 ELSE 0 END) AS retrying,
+                 SUM(CASE WHEN state='leased' THEN 1 ELSE 0 END) AS sending,
+                 SUM(CASE WHEN state='accepted' THEN 1 ELSE 0 END) AS accepted,
+                 SUM(CASE WHEN state='exhausted' THEN 1 ELSE 0 END) AS exhausted
+               FROM email_delivery_jobs"""
+        ).fetchone()
+        queue = {
+            key: int(queue_row[key] or 0)
+            for key in ("total", "queued", "retrying", "sending", "accepted", "exhausted")
+        }
         return {
             "delivery_mode": delivery_mode(),
             "proven_delivery": False,
+            "retry_queue": queue,
             "events": [
                 {
                     "event": name,
