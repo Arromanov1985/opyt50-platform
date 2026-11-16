@@ -2514,3 +2514,102 @@ body.comfortable-view .candidate-introduction-note span{font-size:.92rem}
   #dashboard-main .employer-trust-overview{order:2}
   #dashboard-main .employer-outcome-funnel{order:3}
 }
+
+
+/* Release 0.5 candidate decision flow: terms and explicit choice precede
+   optional timeline, without hiding any information or auto-granting consent. */
+.candidate-introduction-card .candidate-invitation-summary{
+  display:grid;
+  gap:7px;
+  margin-top:12px;
+  padding:12px 14px;
+  border:1px solid #D9E8E0;
+  border-radius:13px;
+  background:#F8FCF9;
+}
+.candidate-invitation-summary>strong{color:#0B2D26;font-size:13px}
+.candidate-invitation-summary>p,
+.candidate-invitation-conditions p{
+  margin:0;
+  color:#4D625A;
+  font-size:12px;
+  line-height:1.55;
+  white-space:pre-line;
+  overflow-wrap:anywhere;
+}
+.candidate-invitation-conditions,
+.candidate-invitation-history{min-width:0}
+.candidate-invitation-history{
+  margin-top:14px;
+  padding:10px 12px;
+  border:1px solid #E1EAE5;
+  border-radius:12px;
+  background:#FBFDFC;
+}
+.candidate-invitation-conditions summary,
+.candidate-invitation-history summary{
+  cursor:pointer;
+  color:#0F6941;
+  font-size:12px;
+  font-weight:800;
+  line-height:1.5;
+  min-height:42px;
+  display:flex;
+  align-items:center;
+}
+.candidate-invitation-conditions[open] summary,
+.candidate-invitation-history[open] summary{margin-bottom:8px}
+.candidate-invitation-conditions summary:focus-visible,
+.candidate-invitation-history summary:focus-visible{
+  outline:3px solid #00C853;
+  outline-offset:2px;
+  border-radius:5px;
+}
+.candidate-introduction-card.is-decision .consent-box{
+  margin-top:12px;
+  padding:13px;
+}
+.candidate-introduction-card.is-decision .consent-box .checks{
+  display:flex;
+  align-items:flex-start;
+  gap:10px;
+  padding:10px;
+  border-radius:10px;
+  border:1px solid #BEDAC9;
+  background:#fff;
+  color:#29473B;
+}
+.candidate-introduction-card.is-decision .consent-box input[type="checkbox"]{
+  min-width:22px;
+  width:22px;
+  height:22px;
+  margin:0;
+  accent-color:#0A9653;
+}
+.candidate-introduction-card.is-decision .invitation-actions .btn{
+  min-height:48px;
+}
+body.comfortable-view .candidate-invitation-summary>strong,
+body.comfortable-view .candidate-invitation-summary>p,
+body.comfortable-view .candidate-invitation-conditions p,
+body.comfortable-view .candidate-invitation-conditions summary,
+body.comfortable-view .candidate-invitation-history summary{
+  font-size:1rem;
+}
+@media(max-width:620px){
+  .candidate-introduction-card.is-decision .invitation-actions{
+    display:grid;
+    grid-template-columns:repeat(2,minmax(0,1fr));
+    gap:8px;
+  }
+  .candidate-introduction-card.is-decision .invitation-actions .btn{
+    min-width:0;
+    white-space:normal;
+    line-height:1.35;
+  }
+}
+@media(max-width:350px){
+  .candidate-introduction-card.is-decision .invitation-actions{
+    grid-template-columns:1fr;
+  }
+}
