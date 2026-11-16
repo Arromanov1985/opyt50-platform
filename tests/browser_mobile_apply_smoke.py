@@ -53,9 +53,24 @@ def login_resumes_vacancy(page):
     expect(page.locator("#job-dialog-title")).to_have_text("Кладовщик")
     assert posts == [], "The login must never submit an application automatically"
 
+    # The same vacancy exists in the background list and inside the dialog.
+    # Two synchronous click events must result in exactly one POST, even when
+    # the second event targets the other representation of the same job.
     with page.expect_response(lambda r: r.url.endswith("/api/candidate/applications")
                               and r.request.method == "POST") as reply:
-        page.locator("#job-dialog [data-v02-action='apply']").click()
+        busy = page.evaluate("""() => {
+          const modal = document.querySelector('#job-dialog [data-v02-action="apply"]');
+          const card = Array.from(document.querySelectorAll('#public-jobs .job-card'))
+            .find(node => node.textContent.includes('Кладовщик'))
+            ?.querySelector('[data-v02-action="apply"]');
+          if (!modal || !card) throw new Error('Expected two CTAs for same vacancy');
+          modal.dispatchEvent(new MouseEvent('click', {bubbles:true,cancelable:true}));
+          const firstBusy = modal.disabled && modal.getAttribute('aria-busy') === 'true';
+          const otherBusy = card.disabled && card.getAttribute('aria-busy') === 'true';
+          card.dispatchEvent(new MouseEvent('click', {bubbles:true,cancelable:true}));
+          return {firstBusy, otherBusy};
+        }""")
+    assert busy["firstBusy"] and busy["otherBusy"], busy
     assert reply.value.status == 201, reply.value.text()
     expect(page.locator("#job-dialog")).to_be_visible()
     receipt = page.locator("#job-dialog .job-application-receipt")
@@ -65,6 +80,11 @@ def login_resumes_vacancy(page):
     expect(receipt).to_contain_text("контакты остаются скрытыми")
     expect(page.locator("#job-dialog [data-v02-action='apply']")).to_have_count(0)
     assert len(posts) == 1
+    # Cards already on screen must reflect the saved result without a reload.
+    visible_card = page.locator("#public-jobs .job-card").filter(has_text="Кладовщик")
+    expect(visible_card.locator("[data-v02-action='apply']")).to_have_count(0)
+    expect(visible_card.locator("[data-v02-action='see-applications']")).to_be_visible()
+    expect(visible_card.locator(".job-application-receipt")).to_be_visible()
 
     page.locator("#job-dialog [data-v02-action='see-applications']").click()
     expect(page.locator("#job-dialog")).not_to_be_visible()
@@ -104,6 +124,24 @@ def registration_resumes_after_profile(page):
     expect(page.locator("#job-dialog-title")).to_have_text("Кладовщик")
     assert posts == [], "Profile save must not submit the vacancy application"
     expect(page.locator("#job-dialog [data-v02-action='apply']")).to_be_visible()
+    # A transient network failure must release the in-flight guard and allow
+    # an explicit retry (without forcing the user to reload or lose the job).
+    def fail_once(route):
+        route.fulfill(status=503, content_type="application/json",
+                      body='{"detail":"Временная ошибка отправки"}')
+    page.route("**/api/candidate/applications", fail_once)
+    page.locator("#job-dialog [data-v02-action='apply']").click()
+    expect(page.locator("#toast")).to_contain_text("Временная ошибка отправки")
+    expect(page.locator("#job-dialog [data-v02-action='apply']")).to_be_enabled()
+    expect(page.locator("#job-dialog [data-v02-action='apply']")).not_to_have_attribute(
+        "aria-busy", "true"
+    )
+    page.unroute("**/api/candidate/applications", fail_once)
+    with page.expect_response(lambda r: r.url.endswith("/api/candidate/applications")
+                              and r.request.method == "POST") as sent:
+        page.locator("#job-dialog [data-v02-action='apply']").click()
+    assert sent.value.status == 201, sent.value.text()
+    expect(page.locator("#job-dialog .job-application-receipt")).to_be_visible()
     assert page.evaluate("""() => document.documentElement.scrollWidth
       <= document.documentElement.clientWidth + 3"""), "Mobile resume introduces overflow"
 
