@@ -158,3 +158,61 @@ def test_events_send_one_correct_message_and_never_share_contacts_early(
         assert [r["event"] for r in notice_rows(app)] == [
             "new_application", "invitation", "invitation_response", "contact_opened"
         ]
+
+def test_existing_proactive_invitation_is_not_resent(tmp_path: Path, monkeypatch):
+    mail = mock_smtp(monkeypatch)
+    app = create_app(str(tmp_path / "proactive-invitation.db"))
+    with TestClient(app) as candidate, TestClient(app) as employer:
+        register(candidate, "candidate", CANDIDATE)
+        register(employer, "employer", EMPLOYER)
+        vacancy = prepare(candidate, employer)
+        with database(app.state.db_path) as db:
+            candidate_id = db.execute(
+                "SELECT id FROM users WHERE email=?", (CANDIDATE,)
+            ).fetchone()["id"]
+        baseline = len(mail)
+        direct = post(employer, "/api/employer/invitations", {
+            "vacancy_id": vacancy, "candidate_id": candidate_id,
+        })
+        assert direct.status_code == 201, direct.text
+        assert_notice(app, mail, 0, "invitation", CANDIDATE)
+        applied = post(candidate, "/api/candidate/applications", {
+            "vacancy_id": vacancy,
+        })
+        assert applied.status_code == 201, applied.text
+        assert_notice(app, mail, 1, "new_application", EMPLOYER)
+        linked = post(
+            employer, f"/api/employer/applications/{applied.json()['id']}/interest"
+        )
+        assert linked.status_code == 200, linked.text
+        assert linked.json()["created"] is False
+        # Existing introduction is reused: do not resend 'invitation',
+        # but a separate application status change may be notified.
+        assert_notice(app, mail, 2, "application_status", CANDIDATE)
+        assert len(mail) == baseline + 3
+        assert post(
+            employer, f"/api/employer/applications/{applied.json()['id']}/interest"
+        ).status_code == 200
+        assert len(mail) == baseline + 3
+
+
+def test_smtp_failure_is_not_misreported_as_delivered(tmp_path: Path, monkeypatch):
+    mock_smtp(monkeypatch)
+
+    class UnavailableSMTP:
+        def __init__(self, *args, **kwargs):
+            raise OSError("Simulated offline transport")
+
+    monkeypatch.setattr(email_delivery.smtplib, "SMTP", UnavailableSMTP)
+    app = create_app(str(tmp_path / "smtp-unavailable.db"))
+    with TestClient(app) as candidate, TestClient(app) as employer:
+        register(candidate, "candidate", CANDIDATE)
+        register(employer, "employer", EMPLOYER)
+        vacancy = prepare(candidate, employer)
+        applied = post(candidate, "/api/candidate/applications", {
+            "vacancy_id": vacancy,
+        })
+        assert applied.status_code == 201, applied.text
+        assert [row["event"] for row in notice_rows(app)] == ["new_application"]
+        # The database records generation, NOT SMTP acceptance or receipt.
+        # Delivery in the current implementation is not automatically retried.
