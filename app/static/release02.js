@@ -545,15 +545,34 @@
           if($('#job-dialog').open)$('#job-dialog').close();
           $('#report-dialog').showModal();
 }else if(['apply','favorite'].includes(type)){
-          if(state.user?.role!=='candidate'){ if($('#job-dialog').open) $('#job-dialog').close(); if(state.user)throw Error('Действие доступно только соискателю');openAuth('login','candidate');return; }
+          if(state.user?.role!=='candidate'){
+            if(state.user) throw Error('Действие доступно только соискателю');
+            if(type==='apply') state.pendingApplicationVacancyId = id;
+            if($('#job-dialog').open) $('#job-dialog').close();
+            openAuth('login','candidate');
+            if(type==='apply') $('#auth-guidance').textContent =
+              'После входа снова покажем выбранную вакансию. Отклик отправите отдельной кнопкой.';
+            return;
+          }
           if(type==='apply'){
+            const fromDialog = $('#job-dialog').open && $('#job-dialog').contains(btn);
             try {
               await req('POST','/api/candidate/applications',{vacancy_id:id});
               await refreshMyApplications();
-              toast('Отклик отправлен, статус появится в кабинете');
-              if($('#job-dialog').open)$('#job-dialog').close();
-              if(state.tab === 'offers') await showDashboard();
+              if(fromDialog){
+                // Preserve context and show the saved state instead of a second POST.
+                const action = $('#job-dialog .job-detail-action');
+                if(action){
+                  action.innerHTML = jobApplicationAction(id) + jobApplicationReceipt(id);
+                  const receipt = action.querySelector('.job-application-receipt');
+                  if(receipt){
+                    receipt.setAttribute('tabindex','-1');
+                    receipt.focus({preventScroll:true});
+                  }
+                }
+              } else if(state.tab === 'offers') await showDashboard();
               else await loadPublicJobs();
+              toast('Отклик отправлен. Контакты остаются скрытыми до вашего согласия.');
             } catch(err) {
               if(/уже откликались|уже существует/.test(err.message)){
                 await refreshMyApplications();
@@ -583,7 +602,10 @@
         else if(type==='withdraw'){await req('POST',`/api/candidate/applications/${id}/withdraw`);await showDashboard();toast('Отклик отозван');}
         else if(type==='reapply'){const result=await req('POST','/api/candidate/applications',{vacancy_id:id});await refreshMyApplications();await showDashboard();toast(result.reapplied?'Отклик отправлен повторно':'Отклик отправлен');}
         else if(type==='mark-vacancy-update-read'){await req('POST',`/api/candidate/vacancy-updates/${id}/read`);await showDashboard();toast('Изменение отмечено прочитанным.');}
-        else if(type==='see-applications'){state.tab='applications';await showDashboard(true);}
+        else if(type==='see-applications'){
+          if($('#job-dialog').open) $('#job-dialog').close();
+          state.tab='applications'; await showDashboard(true);
+        }
         else if(type==='employer-application-filter'){
           if(!Object.hasOwn(employerApplicationFilterLabels,btn.dataset.filter))return;
           state.employerApplicationsStatusFilter=btn.dataset.filter;
