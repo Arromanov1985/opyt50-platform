@@ -1543,6 +1543,9 @@ async function renderAdmin() {
         <button type="button" class="btn btn-outline" data-action="send-smtp-test-email" data-smtp-scenario="candidate_invitation">3. Тест письма соискателю →</button>
       </div>
       <p id="admin-mail-test-result" class="muted" role="status" aria-live="polite">Тестовые письма принимаются SMTP-сервером; получение нужно подтвердить во «Входящих» или «Спаме» вашего почтового ящика.</p>
+      <h4>Повторная отправка рабочих уведомлений</h4>
+      <div id="admin-mail-queue-summary" class="admin-mail-diagnostics" role="status" aria-live="polite"><p class="muted">Проверяем очередь…</p></div>
+      <p class="muted">Автоматические попытки: первоначальная и до трёх повторных. «Принято SMTP» не означает доставку во «Входящие». Исчерпанные попытки требуют проверки SMTP и отдельного решения администратора. Коды MFA и ссылки восстановления автоматически не повторяются.</p>
       <h4>События уведомлений</h4>
       <div id="admin-mail-diagnostics" class="admin-mail-diagnostics"><p class="muted">Загружаем события…</p></div>
       <p class="muted">Количество событий — это записи о создании уведомлений, <strong>не доказательство доставки писем</strong>. Пароли, ссылки восстановления и адреса получателей здесь не выводятся.</p>
@@ -1562,6 +1565,23 @@ async function renderAdmin() {
       contact_opened: 'Открытие контакта',
       application_status: 'Изменения статуса отклика'
     };
+    const queueContainer = $('#admin-mail-queue-summary');
+    if (queueContainer) {
+      const queue = mailDiagnostics?.retry_queue;
+      const states = [
+        ['В очереди', queue?.queued],
+        ['Повторная попытка', queue?.retrying],
+        ['Отправляются', queue?.sending],
+        ['Принято SMTP', queue?.accepted],
+        ['Исчерпали попытки', queue?.exhausted],
+      ];
+      queueContainer.innerHTML = queue
+        ? '<div class="admin-mail-event-grid">' + states.map(([label, count]) =>
+            '<div><span>' + esc(label) + '</span><strong>' +
+            Number(count || 0).toLocaleString('ru-RU') + '</strong></div>'
+          ).join('') + '</div>'
+        : '<p class="muted">Нет данных об очереди. Проверьте состояние приложения.</p>';
+    }
     const diagnostics = $('#admin-mail-diagnostics');
     if (diagnostics) {
       diagnostics.innerHTML = mailDiagnostics
