@@ -4,7 +4,8 @@ from pathlib import Path
 from fastapi.testclient import TestClient
 
 from app import email_delivery
-from app.db import database
+from app.db import database, init_db
+from app.release02 import init_release02
 from app.main import create_app
 from app.security import make_password_hash
 
@@ -12,6 +13,10 @@ HEADERS = {"X-Requested-With": "OPYT50"}
 
 
 def create_admin(app):
+    # Schema is normally created at TestClient startup. This helper installs
+    # it explicitly before inserting the first fictional administrator.
+    init_db(app.state.db_path)
+    init_release02(app.state.db_path)
     with database(app.state.db_path) as db:
         db.execute(
             "INSERT INTO users(role,email,name,password_hash) VALUES(?,?,?,?)",
