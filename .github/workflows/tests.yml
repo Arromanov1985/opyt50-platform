@@ -64,3 +64,16 @@ jobs:
         run: python tests/browser_taxonomy_smoke.py
       - name: Browser security smoke
         run: python tests/browser_security_smoke.py
+      - name: Capture PR visual review
+        if: github.event_name == 'pull_request'
+        env:
+          STAZHNO_VISUAL_REVIEW_DIR: visual-review
+        run: python tests/browser_visual_review.py
+      - name: Upload PR visual review
+        if: always() && github.event_name == 'pull_request'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: stazhno-ux-review
+          path: visual-review/
+          if-no-files-found: warn
+          retention-days: 7
