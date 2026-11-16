@@ -84,6 +84,8 @@ def run_overview(page):
     expect(mobile_section).to_be_visible()
     expect(mobile_section.locator("option")).to_have_count(9)
     expect(page.locator(".dashboard-tabs")).to_be_hidden()
+    expect(page.locator(".mobile-quick-nav")).to_be_hidden()
+    expect(page.locator("#mobile-member-actions")).to_be_visible()
 
     # Primary overview actions stay direct; section navigation uses the compact mobile switcher.
     dashboard.locator("[data-tab='offers']").first.click()
