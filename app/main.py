@@ -2291,7 +2291,7 @@ def create_app(db_path: str | None = None) -> FastAPI:
 
         samples = {
             "connection": (
-                "СТАЖНО — ПРОВЕРКА SMTP",
+                "СТАЖНО — ТЕСТ: проверка SMTP",
                 "ТЕСТОВОЕ ПИСЬМО. Проверка работы почтового канала СТАЖНО.",
             ),
             "employer_application": (
