@@ -123,11 +123,11 @@ def exercise_mobile_introduction(page):
         "Оборудование и обучение"
     )
     card.locator(".candidate-invitation-conditions summary").click()
-    card.locator(".candidate-invitation-history summary").click()
+    card.locator(".candidate-invitation-history > summary").click()
     expect(card.locator(".candidate-invitation-history")).to_have_attribute(
         "open", ""
     )
-    card.locator(".candidate-invitation-history summary").click()
+    card.locator(".candidate-invitation-history > summary").click()
 
     attempted = []
     page.on("request", lambda request: attempted.append(request.url) if (
