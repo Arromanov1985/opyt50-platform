@@ -526,11 +526,66 @@
   }
 }
 
-/* Signed-in mobile: the bottom actions and the cabinet selector replace the
-   public shortcut strip. Keep that strip visible for anonymous visitors. */
+/* Release 0.5.1: one navigation layer on phones for guests and members.
+   Job search and registration remain fixed at the bottom, and the hero keeps
+   its search field and the separate employer entry point. */
 @media(max-width:700px){
+  html{scroll-padding-top:76px}
+  .mobile-quick-nav,
+  body.comfortable-view .mobile-quick-nav,
   body.member-logged-in .mobile-quick-nav,
   body.member-logged-in.comfortable-view .mobile-quick-nav{
     display:none!important;
   }
+  #home .hero-actions>a[href="#jobs"]{display:none!important}
+  #home .hero-actions{grid-template-columns:1fr!important}
+  /* Only the candidate's overview is compacted. Employer stats are untouched. */
+  #dashboard-main .overview-stack>.overview-stat-grid:not(.employer-overview-stats){
+    grid-template-columns:repeat(2,minmax(0,1fr))!important;
+    gap:8px;
+  }
+  #dashboard-main .overview-stack>.overview-stat-grid:not(.employer-overview-stats) .overview-stat-card{
+    min-width:0;
+    min-height:108px;
+    padding:12px!important;
+  }
+  #dashboard-main .overview-stack>.overview-stat-grid:not(.employer-overview-stats) .overview-stat-card span{
+    font-size:12px;
+    line-height:1.35;
+  }
+  #dashboard-main .overview-stack>.overview-stat-grid:not(.employer-overview-stats) .overview-stat-card small{
+    font-size:11px;
+    line-height:1.3;
+  }
+  #dashboard-main .candidate-status-row{
+    grid-template-columns:repeat(2,minmax(0,1fr));
+    gap:7px;
+    margin-top:12px;
+    padding-top:12px;
+  }
+  #dashboard-main .candidate-status-chip{
+    min-width:0;
+    font-size:11px;
+    line-height:1.35;
+    padding:8px;
+    align-items:center;
+  }
+  #dashboard-main .candidate-status-chip.is-private{grid-column:1/-1}
 }
+/* Large-text mode gets the full width of each KPI and trust indicator. */
+@media(max-width:700px){
+  body.comfortable-view #dashboard-main .overview-stack>.overview-stat-grid:not(.employer-overview-stats),
+  body.comfortable-view #dashboard-main .candidate-status-row{
+    grid-template-columns:1fr!important;
+  }
+  body.comfortable-view #dashboard-main .candidate-status-chip{font-size:14px}
+}
+/* At 320px keep login reachable: the older rule hid it completely. */
+@media(max-width:350px){
+  #mobile-guest-actions{grid-template-columns:.9fr .8fr 1.3fr}
+  #mobile-guest-actions #login-open{display:flex!important}
+  #dashboard-main .overview-stack>.overview-stat-grid:not(.employer-overview-stats),
+  #dashboard-main .candidate-status-row{grid-template-columns:1fr!important}
+  #dashboard-main .candidate-status-chip.is-private{grid-column:auto}
+}
+
