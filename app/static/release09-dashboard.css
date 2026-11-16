@@ -2680,3 +2680,29 @@ body.comfortable-view .admin-mail-event-grid strong{font-size:1.4rem}
   .admin-security-panel .admin-passkey-actions{flex-wrap:wrap;gap:8px}
   .admin-security-panel [data-smtp-scenario]{white-space:normal;min-height:48px}
 }
+
+
+/* Release 0.5.7: forms keep data in the active page, never localStorage. */
+.editor-save-status{
+  min-height:24px;
+  margin:10px 0 8px;
+  color:var(--text-muted,#5C7065);
+  font-size:13px;
+  line-height:1.55;
+}
+.editor-save-status:empty{min-height:0;margin:0}
+.editor-save-status.is-dirty{
+  color:#754619;
+  background:#FFF5E8;
+  border:1px solid #EFDDBF;
+  border-radius:10px;
+  padding:10px 12px;
+}
+.editor-save-status.is-error{
+  color:#8D2626;
+  background:#FFF1F0;
+  border:1px solid #F0D0CC;
+  border-radius:10px;
+  padding:10px 12px;
+}
+body.comfortable-view .editor-save-status{font-size:1rem}
