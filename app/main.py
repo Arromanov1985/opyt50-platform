@@ -63,6 +63,10 @@ SCHEDULES = {"Любой", "Полный день", "Сменный", "Гибк�
 EMPLOYMENTS = {"Любая", "Полная", "Частичная", "Проектная"}
 
 
+class AdminSmtpTestEmailIn(BaseModel):
+    scenario: Literal["connection", "employer_application", "candidate_invitation"] = "connection"
+
+
 class Registration(BaseModel):
     role: Literal["candidate", "employer"]
     name: str = Field(min_length=2, max_length=100)
@@ -2219,39 +2223,110 @@ def create_app(db_path: str | None = None) -> FastAPI:
         from .email_delivery import smtp_healthcheck
         return smtp_healthcheck()
 
-    @app.post("/api/admin/smtp/test-email")
-    def admin_smtp_test_email(
+    @app.get("/api/admin/mail-diagnostics")
+    def admin_mail_diagnostics(
         user: dict = Depends(active_user),
         db: sqlite3.Connection = Depends(get_connection),
     ):
+        """Private counters for generated notices, not proof of delivery."""
         allowed(user, "admin")
-        from .email_delivery import send_email
+        from .email_delivery import delivery_mode
+
+        # GROUP BY returns only event categories and counts: no tokens,
+        # message body, recipient address or employer/candidate identity.
+        types = (
+            "new_application", "invitation", "invitation_response",
+            "contact_opened", "application_status",
+        )
+        rows = db.execute(
+            """SELECT event,COUNT(*) AS total,MAX(created_at) AS last_created_at
+               FROM email_outbox WHERE event IN (?,?,?,?,?)
+               GROUP BY event""",
+            types,
+        ).fetchall()
+        found = {row["event"]: row for row in rows}
+        return {
+            "delivery_mode": delivery_mode(),
+            "proven_delivery": False,
+            "events": [
+                {
+                    "event": name,
+                    "generated": int(found[name]["total"]) if name in found else 0,
+                    "last_created_at": found[name]["last_created_at"] if name in found else None,
+                }
+                for name in types
+            ],
+        }
+
+    @app.post("/api/admin/smtp/test-email")
+    def admin_smtp_test_email(
+        data: AdminSmtpTestEmailIn = AdminSmtpTestEmailIn(),
+        user: dict = Depends(active_user),
+        db: sqlite3.Connection = Depends(get_connection),
+    ):
+        """Send a safe sample of either workflow notification to ADMIN only.
+
+        Does not create real applications or invitations and never sends to
+        candidate/employer addresses. SMTP acceptance is not inbox delivery.
+        """
+        allowed(user, "admin")
+        from .email_delivery import delivery_mode, send_email
         from .release02 import record_security_event
 
         recipient = str(user.get("email") or "").strip()
         if not recipient:
             raise HTTPException(400, "У администратора не указан email")
+        if delivery_mode() != "smtp":
+            raise HTTPException(503, "SMTP не настроен. Проверьте переменные приложения")
 
-        sent = send_email(
-            recipient,
-            "Проверка почты СТАЖНО",
-            (
-                "Это тестовое письмо из административной панели СТАЖНО.\n\n"
-                "SMTP-соединение, авторизация и фактическая отправка письма "
-                "успешно выполнены приложением.\n\n"
-                "Если вы получили это письмо, канал служебной почты работает."
+        permitted, retry_after = consume_security_rate_limit(
+            db, "admin-smtp-test", str(user["id"]), 6, 3600,
+        )
+        if not permitted:
+            db.commit()
+            raise HTTPException(
+                429, "Достигнут лимит тестовых писем. Повторите позже",
+                headers={"Retry-After": str(retry_after)},
+            )
+
+        samples = {
+            "connection": (
+                "СТАЖНО — ТЕСТ: проверка SMTP",
+                "ТЕСТОВОЕ ПИСЬМО. Проверка работы почтового канала СТАЖНО.",
             ),
+            "employer_application": (
+                "СТАЖНО — ТЕСТ: новый отклик для работодателя",
+                "ТЕСТОВОЕ ПИСЬМО. Получен обезличенный отклик на вакансию "
+                "«Тестовая вакансия». Откройте кабинет.\n"
+                "Никаких настоящих откликов этим тестом не создано.",
+            ),
+            "candidate_invitation": (
+                "СТАЖНО — ТЕСТ: приглашение для соискателя",
+                "ТЕСТОВОЕ ПИСЬМО. Вы получили приглашение на вакансию "
+                "«Тестовая вакансия». Откройте личный кабинет.\n"
+                "Никаких настоящих приглашений этим тестом не создано.",
+            ),
+        }
+        subject, message = samples[data.scenario]
+        sent = send_email(
+            recipient, subject,
+            message + "\n\nПисьмо отправляется только на адрес администратора. "
+            "Проверьте входящие и папку «Спам»: ответ SMTP не подтверждает "
+            "доставку в почтовый ящик.",
         )
         record_security_event(
-            db,
-            user["id"],
-            "admin_smtp_test_email",
-            "sent=1" if sent else "sent=0",
+            db, user["id"], "admin_smtp_test_email",
+            f"scenario={data.scenario} accepted={int(sent)}",
         )
         db.commit()
         if not sent:
-            raise HTTPException(503, "SMTP принял соединение, но отправка письма не завершилась")
-        return {"ok": True}
+            raise HTTPException(503, "SMTP не принял тестовое письмо. Проверьте параметры и соединение")
+        return {
+            "ok": True,
+            "scenario": data.scenario,
+            "smtp_accepted": True,
+            "mailbox_confirmation_required": True,
+        }
 
     from .release02 import install_routes
     install_routes(app)

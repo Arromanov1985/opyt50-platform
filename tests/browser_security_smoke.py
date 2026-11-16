@@ -136,6 +136,23 @@ def run_security(page):
     assert me.status == 200
     assert me.json()["user"]["role"] == "admin"
 
+    # Mail diagnostics must be visible only in the authorized administrator
+    # cabinet. Never send real mail from browser CI.
+    expect(page.locator("#admin-mail-diagnostics")).to_be_visible()
+    expect(page.locator("#admin-mail-diagnostics")).to_contain_text(
+        "Новые отклики работодателю"
+    )
+    expect(page.locator(
+        "[data-action='send-smtp-test-email'][data-smtp-scenario='employer_application']"
+    )).to_be_visible()
+    expect(page.locator(
+        "[data-action='send-smtp-test-email'][data-smtp-scenario='candidate_invitation']"
+    )).to_be_visible()
+    diagnosis = page.request.get(URL + "/api/admin/mail-diagnostics")
+    assert diagnosis.status == 200, diagnosis.text()
+    assert diagnosis.json()["proven_delivery"] is False
+    assert "@" not in diagnosis.text(), "The diagnostics leaked an email address"
+
     if dialogs:
         raise AssertionError("Unexpected browser dialogs: " + " | ".join(dialogs))
     if browser_errors:

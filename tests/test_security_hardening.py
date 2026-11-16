@@ -811,6 +811,8 @@ def test_high_security_profile_requires_verify_full_database_tls(tmp_path, monke
 
 
 def test_admin_can_send_smtp_test_email_to_own_address(tmp_path, monkeypatch):
+    monkeypatch.setenv("OPYT50_SMTP_HOST", "smtp.example.invalid")
+    monkeypatch.setenv("OPYT50_MAIL_FROM", "noreply@example.invalid")
     app = create_app(str(tmp_path / "smtp-test-email.db"))
     password = "Administrator secure password 2026"
     captured = {}
@@ -840,7 +842,7 @@ def test_admin_can_send_smtp_test_email_to_own_address(tmp_path, monkeypatch):
         response = client.post("/api/admin/smtp/test-email", headers=XHR)
         assert response.status_code == 200, response.text
         assert captured["recipient"] == "admin@stazhno.ru"
-        assert captured["subject"] == "Проверка почты СТАЖНО"
+        assert captured["subject"] == "СТАЖНО — ТЕСТ: проверка SMTP"
 
         with database(app.state.db_path) as db:
             event = db.execute(
@@ -849,10 +851,12 @@ def test_admin_can_send_smtp_test_email_to_own_address(tmp_path, monkeypatch):
                    ORDER BY created_at DESC LIMIT 1"""
             ).fetchone()
             assert event is not None
-            assert event["detail"] == "sent=1"
+            assert event["detail"] == "scenario=connection accepted=1"
 
 
 def test_smtp_test_email_reports_delivery_failure_without_leaking_secret(tmp_path, monkeypatch):
+    monkeypatch.setenv("OPYT50_SMTP_HOST", "smtp.example.invalid")
+    monkeypatch.setenv("OPYT50_MAIL_FROM", "noreply@example.invalid")
     app = create_app(str(tmp_path / "smtp-test-email-fail.db"))
     password = "Administrator secure password 2026"
     monkeypatch.setattr("app.email_delivery.send_email", lambda *args, **kwargs: False)

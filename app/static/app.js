@@ -1534,21 +1534,45 @@ async function renderAdmin() {
     </section>
     <section class="panel admin-security-panel">
       <span class="section-kicker">ПОЧТА И ВОССТАНОВЛЕНИЕ</span>
-      <h3>SMTP</h3>
-      <p class="muted">Проверка соединения, TLS и авторизации без отправки письма и без раскрытия пароля.</p>
+      <h3>Проверка служебных писем</h3>
+      <p class="muted">Сначала проверяем TLS и авторизацию, затем отправляем два тестовых примера на <strong>email текущего администратора</strong>. Настоящие отклики, приглашения и письма другим пользователям не создаются.</p>
       <div id="admin-smtp-status" class="empty-state">SMTP ещё не проверялся.</div>
       <div class="admin-passkey-actions">
-        <button type="button" class="btn btn-outline" data-action="check-smtp">Проверить SMTP →</button>
-        <button type="button" class="btn btn-outline" data-action="send-smtp-test-email">Отправить тестовое письмо →</button>
+        <button type="button" class="btn btn-outline" data-action="check-smtp">1. Проверить SMTP →</button>
+        <button type="button" class="btn btn-outline" data-action="send-smtp-test-email" data-smtp-scenario="employer_application">2. Тест письма работодателю →</button>
+        <button type="button" class="btn btn-outline" data-action="send-smtp-test-email" data-smtp-scenario="candidate_invitation">3. Тест письма соискателю →</button>
       </div>
+      <p id="admin-mail-test-result" class="muted" role="status" aria-live="polite">Тестовые письма принимаются SMTP-сервером; получение нужно подтвердить во «Входящих» или «Спаме» вашего почтового ящика.</p>
+      <h4>События уведомлений</h4>
+      <div id="admin-mail-diagnostics" class="admin-mail-diagnostics"><p class="muted">Загружаем события…</p></div>
+      <p class="muted">Количество событий — это записи о создании уведомлений, <strong>не доказательство доставки писем</strong>. Пароли, ссылки восстановления и адреса получателей здесь не выводятся.</p>
     </section>
   </div>`;
   try {
-    const [stats, security, securityOverview] = await Promise.all([
+    const [stats, security, securityOverview, mailDiagnostics] = await Promise.all([
       api('/api/admin/stats'),
       api('/api/account/security'),
-      api('/api/admin/security-overview')
+      api('/api/admin/security-overview'),
+      api('/api/admin/mail-diagnostics').catch(() => null)
     ]);
+    const diagnosticLabels = {
+      new_application: 'Новые отклики работодателю',
+      invitation: 'Приглашения соискателю',
+      invitation_response: 'Ответы на приглашения',
+      contact_opened: 'Открытие контакта',
+      application_status: 'Изменения статуса отклика'
+    };
+    const diagnostics = $('#admin-mail-diagnostics');
+    if (diagnostics) {
+      diagnostics.innerHTML = mailDiagnostics
+        ? '<div class="admin-mail-event-grid">' +
+            (mailDiagnostics.events || []).map(item =>
+              '<div><span>' + esc(diagnosticLabels[item.event] || 'Уведомление') +
+              '</span><strong>' + Number(item.generated || 0).toLocaleString('ru-RU') +
+              '</strong></div>'
+            ).join('') + '</div>'
+        : '<p class="muted">Не удалось загрузить статистику уведомлений. SMTP можно проверить отдельно.</p>';
+    }
     const units = [['Соискатели',stats.candidates],['Работодатели',stats.employers],['Открытые вакансии',stats.open_vacancies],['Всего откликов',stats.applications_total],['Активные отклики',stats.applications_active],['Отозванные отклики',stats.applications_withdrawn],['Приглашения',stats.invitations],['Подтверждения',stats.confirmed],['Демо-знакомства',stats.demo_transactions],['Демо-оборот, ₽',stats.demo_turnover_rub]];
     $('#admin-stats').innerHTML = units.map(([title,value]) => `<div class="stat-tile"><strong>${Number(value).toLocaleString('ru-RU')}</strong><span>${esc(title)}</span></div>`).join('');
     const checks = Array.isArray(securityOverview.checks) ? securityOverview.checks : [];
@@ -1783,6 +1807,8 @@ async function handleDashboardClick(event) {
         not_configured:'SMTP не настроен в переменных окружения.',
         invalid_port:'В SMTP-порту указано некорректное значение.',
         authentication_failed:'SMTP-сервер доступен, но логин или пароль отклонён.',
+        tls_disabled:'SMTP без TLS запрещён для служебных писем.',
+        smtp_rejected:'SMTP-сервер отклонил проверочную команду.',
         tls_or_connect_failed:'Не удалось установить защищённое соединение с SMTP.',
         connection_failed:'SMTP недоступен или соединение завершилось ошибкой.'
       };
@@ -1794,12 +1820,23 @@ async function handleDashboardClick(event) {
       return;
     }
     if (action === 'send-smtp-test-email') {
-      btn.disabled = true;
+      const type = btn.dataset.smtpScenario || 'connection';
+      const target = $('#admin-mail-test-result');
+      const label = type === 'employer_application' ? 'для работодателя'
+        : type === 'candidate_invitation' ? 'для соискателя' : 'для проверки SMTP';
+      if (target) target.textContent = 'Отправляем тестовое письмо ' + label + '…';
       try {
-        await api('/api/admin/smtp/test-email',{method:'POST'});
-        toast('Тестовое письмо отправлено на email администратора.');
-      } finally {
-        if (btn.isConnected) btn.disabled = false;
+        const result = await api('/api/admin/smtp/test-email',{
+          method:'POST',body:JSON.stringify({scenario:type})
+        });
+        if (target) target.textContent = result.smtp_accepted
+          ? 'SMTP принял тестовое письмо ' + label +
+            '. Проверьте «Входящие» и «Спам» почты администратора. Это ещё не подтверждение доставки.'
+          : 'SMTP не подтвердил приём тестового письма.';
+        toast('SMTP принял тестовое письмо. Проверьте почтовый ящик администратора.');
+      } catch (e) {
+        if (target) target.textContent = 'Проверка письма ' + label + ' не удалась: ' + String(e.message || e);
+        throw e;
       }
       return;
     }
