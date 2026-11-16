@@ -145,3 +145,39 @@ def test_queue_uses_additive_schema_across_restarts(tmp_path: Path, monkeypatch)
         assert count_recipients(new_app) == 1
         assert process_due_workflow_mail(db_path)["accepted"] == 1
         assert len(out) == 1
+
+def test_administrator_sees_suppressed_counts_not_addresses(tmp_path: Path, monkeypatch):
+    from app.security import make_password_hash
+
+    setup_mail(monkeypatch)
+    monkeypatch.setenv("OPYT50_ADMIN_MFA_MODE", "off")
+    app = create_app(str(tmp_path / "counts.db"))
+    with TestClient(app) as client:
+        user_id, _ = create_real_job(app)
+        with database(app.state.db_path) as db:
+            db.execute(
+                "INSERT INTO account_controls(user_id,status) VALUES(?,'disabled')",
+                (user_id,),
+            )
+            db.execute(
+                "INSERT INTO users(email,role,name,password_hash) VALUES(?,?,?,?)",
+                (
+                    "review-admin@demo.example", "admin", "Review Admin",
+                    make_password_hash("StrongPass2026!"),
+                ),
+            )
+        assert process_due_workflow_mail(app.state.db_path)["exhausted"] == 1
+        assert client.get("/api/admin/mail-diagnostics").status_code == 401
+        login = client.post(
+            "/api/login", headers={"X-Requested-With": "OPYT50"},
+            json={"email": "review-admin@demo.example", "password": "StrongPass2026!"},
+        )
+        assert login.status_code == 200, login.text
+        report = client.get("/api/admin/mail-diagnostics")
+        assert report.status_code == 200, report.text
+        queue = report.json()["retry_queue"]
+        assert queue["suppressed"] == 1
+        assert queue["exhausted"] == 0
+        assert queue["accepted"] == 0
+        assert "recipient@demo.example" not in report.text
+        assert "Событие" not in report.text
