@@ -69,6 +69,43 @@
     // never looks like a system failure. The server still enforces uniqueness.
     let applicationByVacancy = new Map();
     let favoriteVacancyIds = new Set();
+    // A vacancy can have several CTA buttons (list, recommendation, dialog).
+    // Prevent one fast sequence of clicks from dispatching duplicate POSTs.
+    const pendingApplicationRequests = new Set();
+    function setApplicationPending(jobId, pending) {
+      if (!Number.isSafeInteger(jobId) || jobId <= 0) return;
+      const buttons = document.querySelectorAll(
+        `[data-v02-action="apply"][data-id="${jobId}"], [data-v02-action="reapply"][data-id="${jobId}"]`
+      );
+      buttons.forEach(button => {
+        if (pending) {
+          if (!button.dataset.originalApplyLabel) button.dataset.originalApplyLabel = button.textContent;
+          button.textContent = 'Отправляем отклик…';
+          button.disabled = true;
+          button.setAttribute('aria-busy', 'true');
+        } else {
+          if (button.dataset.originalApplyLabel) {
+            button.textContent = button.dataset.originalApplyLabel;
+            delete button.dataset.originalApplyLabel;
+          }
+          button.disabled = false;
+          button.removeAttribute('aria-busy');
+        }
+      });
+    }
+    function syncVisibleApplicationCards(jobId) {
+      // A successful send changes every visible card for this vacancy, not
+      // only the dialog from which the candidate submitted the application.
+      const actionHtml = jobApplicationAction(jobId);
+      const receiptHtml = jobApplicationReceipt(jobId);
+      document.querySelectorAll(`.job-card[data-job-id="${jobId}"]`).forEach(card => {
+        const action = card.querySelector('[data-v02-action="apply"], [data-v02-action="reapply"]');
+        if (action) action.outerHTML = actionHtml;
+        if (receiptHtml && !card.querySelector('.job-application-receipt')) {
+          card.insertAdjacentHTML('beforeend', receiptHtml);
+        }
+      });
+    }
     async function refreshFavorites() {
       if (state.user?.role !== 'candidate') { favoriteVacancyIds = new Set(); return; }
       const result = await api('/api/candidate/favorites');
@@ -515,7 +552,13 @@
       const btn=event.target.closest('[data-v02-action]');
       if(!btn)return;
       const type=btn.dataset.v02Action,id=Number(btn.dataset.id);
+      if (btn.disabled) return;
+      const tracksApplication = (type==='apply' || type==='reapply') &&
+        state.user?.role==='candidate' && Number.isSafeInteger(id) && id>0;
+      if (tracksApplication && pendingApplicationRequests.has(id)) return;
+      if (tracksApplication) pendingApplicationRequests.add(id);
       btn.disabled=true;
+      if (tracksApplication) setApplicationPending(id, true);
       try{
         if(type==='details'){
           await showJobDetails(id);
@@ -559,6 +602,7 @@
             try {
               await req('POST','/api/candidate/applications',{vacancy_id:id});
               await refreshMyApplications();
+              syncVisibleApplicationCards(id);
               if(fromDialog){
                 // Preserve context and show the saved state instead of a second POST.
                 const action = $('#job-dialog .job-detail-action');
@@ -600,7 +644,7 @@
           toast('Вакансия удалена из избранного');
         }
         else if(type==='withdraw'){await req('POST',`/api/candidate/applications/${id}/withdraw`);await showDashboard();toast('Отклик отозван');}
-        else if(type==='reapply'){const result=await req('POST','/api/candidate/applications',{vacancy_id:id});await refreshMyApplications();await showDashboard();toast(result.reapplied?'Отклик отправлен повторно':'Отклик отправлен');}
+        else if(type==='reapply'){const result=await req('POST','/api/candidate/applications',{vacancy_id:id});await refreshMyApplications();syncVisibleApplicationCards(id);await showDashboard();toast(result.reapplied?'Отклик отправлен повторно':'Отклик отправлен');}
         else if(type==='mark-vacancy-update-read'){await req('POST',`/api/candidate/vacancy-updates/${id}/read`);await showDashboard();toast('Изменение отмечено прочитанным.');}
         else if(type==='see-applications'){
           if($('#job-dialog').open) $('#job-dialog').close();
@@ -646,7 +690,13 @@
         else if(type==='admin-taxonomy-filter'){adminTaxonomyFilter=btn.dataset.filter||'pending';await adminView('taxonomy');}
         else if(type==='admin-taxonomy-status'){await req('PATCH',`/api/admin/taxonomy/${btn.dataset.key}`,{status:btn.dataset.status});await adminView('taxonomy');toast(btn.dataset.status==='approved'?'Термин добавлен в подсказки':'Термин отклонён');}
       }catch(e){toast(e.message,true);}
-      finally{if(btn.isConnected)btn.disabled=false;}
+      finally{
+        if (tracksApplication) {
+          pendingApplicationRequests.delete(id);
+          setApplicationPending(id, false);
+        }
+        if (btn.isConnected) btn.disabled=false;
+      }
     });
     $('#job-dialog-close').addEventListener('click',()=>$('#job-dialog').close());
     $('#company-dialog-close').addEventListener('click',()=>$('#company-dialog').close());
