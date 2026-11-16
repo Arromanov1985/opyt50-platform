@@ -2,7 +2,7 @@
 'use strict';
 const $ = (selector, root = document) => root.querySelector(selector);
 const $$ = (selector, root = document) => [...root.querySelectorAll(selector)];
-const state = { user: null, mode: 'register', role: 'candidate', tab: 'overview', activeVacancy: null, editVacancy: null, employerVacancyFilter: 'all', employerApplicationsVacancyFilter: 'all', employerApplicationsStatusFilter: 'all', employerInvitationsFilter: 'all', employerInvitationsVacancyFilter: 'all', employerInvitationsQuery: '', employerInvitationsData: null, candidateInvitationsFilter: 'all', candidateInvitationsQuery: '', candidateInvitationsData: null, pendingApplicationVacancyId: null, mfaChallenge: null, mfaMethod: null, mfaCodeLength: 8, mfaPublicKey: null, mfaTotpFallback: false };
+const state = { user: null, mode: 'register', role: 'candidate', tab: 'overview', activeVacancy: null, editVacancy: null, employerVacancyFilter: 'all', employerApplicationsVacancyFilter: 'all', employerApplicationsStatusFilter: 'all', employerInvitationsFilter: 'all', employerInvitationsVacancyFilter: 'all', employerInvitationsQuery: '', employerInvitationsData: null, candidateInvitationsFilter: 'all', candidateInvitationsQuery: '', candidateInvitationsData: null, pendingApplicationVacancyId: null, mfaChallenge: null, mfaMethod: null, mfaCodeLength: 8, mfaPublicKey: null, mfaTotpFallback: false, actionSummary: null };
 const esc = value => String(value ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const money = value => Number(value || 0).toLocaleString('ru-RU') + ' ₽';
 const formatPay = job => job.salary_min === job.salary_max ? money(job.salary_min) : `${money(job.salary_min)} — ${money(job.salary_max)}`;
@@ -434,6 +434,62 @@ async function submitAuth(event) {
     showError(e.message || 'Не удалось выполнить вход. Проверьте данные и попробуйте ещё раз.');
   } finally { btn.disabled = false; }
 }
+let lastActionRefreshAt = 0;
+function actionCountForTab(tab) {
+  const summary = state.actionSummary;
+  if (!summary || summary.role !== state.user?.role) return 0;
+  if (summary.role === 'candidate') {
+    if (tab === 'invitations') return Number(summary.invitations_pending || 0);
+    if (tab === 'changes') return Number(summary.vacancy_changes_unread || 0);
+  }
+  if (summary.role === 'employer') {
+    if (tab === 'applications') return Number(summary.applications_to_review || 0);
+    if (tab === 'invitations') return Number(summary.consents_to_continue || 0) +
+      Number(summary.introductions_to_finish || 0);
+  }
+  return 0;
+}
+function updateActionBadges() {
+  const total = state.user?.role === state.actionSummary?.role
+    ? Number(state.actionSummary.action_count || 0) : 0;
+  const account = $('#account-open');
+  const badge = $('#account-action-count');
+  if (account && badge) {
+    badge.hidden = total <= 0;
+    badge.textContent = total > 99 ? '99+' : String(total);
+    if (total > 0) account.setAttribute('aria-label', 'Мой кабинет, действий требуют внимания: ' + total);
+    else account.removeAttribute('aria-label');
+  }
+  document.querySelectorAll('[data-action-count-for]').forEach(badge => {
+    const count = actionCountForTab(badge.dataset.actionCountFor);
+    badge.hidden = count <= 0;
+    badge.textContent = count > 99 ? '99+' : String(count);
+    badge.setAttribute('aria-label', 'Требует действия: ' + count);
+  });
+  document.querySelectorAll('[data-dashboard-tab-select] option[data-base-label]').forEach(option => {
+    const count = actionCountForTab(option.value);
+    option.textContent = option.dataset.baseLabel + (count ? ' · ' + count : '');
+  });
+}
+async function refreshActionSummary() {
+  const ownerId = state.user?.id;
+  if (!ownerId) {
+    state.actionSummary = null;
+    updateActionBadges();
+    return;
+  }
+  try {
+    const summary = await api('/api/account/action-summary');
+    if (state.user?.id !== ownerId) return;
+    state.actionSummary = summary.role === state.user.role ? summary : null;
+  } catch {
+    // A notification-count error must not prevent using the account.
+    if (state.user?.id !== ownerId) return;
+    state.actionSummary = null;
+  }
+  lastActionRefreshAt = Date.now();
+  updateActionBadges();
+}
 function syncResponsiveMemberActions() {
   const useMobile = window.matchMedia('(max-width: 700px)').matches;
   const memberDesktop = $('#member-actions');
@@ -455,7 +511,10 @@ function syncResponsiveMemberActions() {
 }
 async function reloadUser() {
   syncResponsiveMemberActions();
+  const previousUserId = state.user?.id;
   try { const data = await api('/api/me'); state.user = data.user; } catch { state.user = null; }
+  if (state.user?.id !== previousUserId) state.actionSummary = null;
+  updateActionBadges();
   $('#guest-actions').classList.toggle('hidden', !!state.user);
   $('#member-actions').classList.toggle('hidden', !state.user);
   $('#mobile-guest-actions')?.classList.toggle('hidden', !!state.user);
@@ -467,6 +526,7 @@ async function reloadUser() {
 }
 async function showDashboard(scroll = false) {
   await reloadUser(); if (!state.user) { openAuth('login'); return; }
+  await refreshActionSummary();
   $('#welcome').textContent = `Здравствуйте, ${state.user.name.split(' ')[0]}!`;
   $('#account-subtitle').textContent = ({candidate:'Вакансии, отклики и приглашения — в одном месте.',employer:'Вакансии, отклики и знакомства с кандидатами — в одном месте.',admin:'Обзор работы платформы.'})[state.user.role];
   if (state.user.role === 'candidate') await renderCandidate();
@@ -1914,4 +1974,9 @@ async function start() {
   await loadPublicJobs();
   if (state.user) { state.tab = 'overview'; await showDashboard(); }
 }
+// Refresh when a signed-in user returns, never by background polling.
+document.addEventListener('visibilitychange', () => {
+  if (document.hidden || !state.user || Date.now() - lastActionRefreshAt < 15000) return;
+  refreshActionSummary();
+});
 document.addEventListener('DOMContentLoaded',start);
