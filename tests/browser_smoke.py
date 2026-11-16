@@ -798,6 +798,9 @@ def run_browser(page):
     }"""), "Changes list must fit mobile width"
     notices = page.request.get(URL + "/api/candidate/vacancy-updates").json()
     assert notices["unread_count"] == 2
+    # Visiting the changes page does not mark notices as read.
+    expect(page.locator("#account-action-count")).to_have_text("2")
+    expect(page.locator(".dashboard-tabs [data-tab='changes'] .dashboard-action-count")).to_have_text("2")
     with page.expect_response(lambda response: (
         "/api/candidate/vacancy-updates/" in response.url and
         response.url.endswith("/read") and response.request.method == "POST"
@@ -808,6 +811,8 @@ def run_browser(page):
     expect(page.locator(".vacancy-change-item").first).to_contain_text("Прочитано")
     refreshed = page.request.get(URL + "/api/candidate/vacancy-updates").json()
     assert refreshed["unread_count"] == 1
+    expect(page.locator("#account-action-count")).to_have_text("1")
+    expect(page.locator(".dashboard-tabs [data-tab='changes'] .dashboard-action-count")).to_have_text("1")
 
     if console_errors:
         raise AssertionError("Uncaught browser errors: " + " | ".join(console_errors))
