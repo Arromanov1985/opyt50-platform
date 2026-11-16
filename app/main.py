@@ -5,6 +5,7 @@ No paid services, real payments, or automated age-based screening in this releas
 
 from __future__ import annotations
 
+import asyncio
 import base64
 import binascii
 import hashlib
@@ -32,7 +33,7 @@ from webauthn.helpers.structs import (
     UserVerificationRequirement,
 )
 from collections import defaultdict, deque
-from contextlib import asynccontextmanager
+from contextlib import asynccontextmanager, suppress
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Literal
@@ -702,7 +703,24 @@ def create_app(db_path: str | None = None) -> FastAPI:
         init_db(app.state.db_path)
         from .release02 import init_release02
         init_release02(app.state.db_path)
-        yield
+        # Production defaults to automatic retry. Pytest runs use an explicit
+        # processor, so parallel TestClient lifespans never send from a
+        # background task while asserting deterministic mail state.
+        worker_enabled = os.getenv(
+            "OPYT50_MAIL_WORKER_ENABLED",
+            "0" if os.getenv("PYTEST_CURRENT_TEST") else "1",
+        ) == "1"
+        mail_task = None
+        if worker_enabled:
+            from .mail_queue import workflow_mail_worker
+            mail_task = asyncio.create_task(workflow_mail_worker(app.state.db_path))
+        try:
+            yield
+        finally:
+            if mail_task is not None:
+                mail_task.cancel()
+                with suppress(asyncio.CancelledError):
+                    await mail_task
 
     docs_enabled = os.getenv("OPYT50_ENABLE_DOCS", "0" if production_runtime() else "1") == "1"
     app = FastAPI(
@@ -2245,9 +2263,24 @@ def create_app(db_path: str | None = None) -> FastAPI:
             types,
         ).fetchall()
         found = {row["event"]: row for row in rows}
+        queue_row = db.execute(
+            """SELECT
+                 COUNT(*) AS total,
+                 SUM(CASE WHEN state='pending' AND attempts=0 THEN 1 ELSE 0 END) AS queued,
+                 SUM(CASE WHEN state='pending' AND attempts>0 THEN 1 ELSE 0 END) AS retrying,
+                 SUM(CASE WHEN state='leased' THEN 1 ELSE 0 END) AS sending,
+                 SUM(CASE WHEN state='accepted' THEN 1 ELSE 0 END) AS accepted,
+                 SUM(CASE WHEN state='exhausted' THEN 1 ELSE 0 END) AS exhausted
+               FROM email_delivery_jobs"""
+        ).fetchone()
+        queue = {
+            key: int(queue_row[key] or 0)
+            for key in ("total", "queued", "retrying", "sending", "accepted", "exhausted")
+        }
         return {
             "delivery_mode": delivery_mode(),
             "proven_delivery": False,
+            "retry_queue": queue,
             "events": [
                 {
                     "event": name,
