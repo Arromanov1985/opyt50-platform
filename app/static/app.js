@@ -92,7 +92,14 @@ async function api(path, options = {}) {
     headers['X-Requested-With'] = 'OPYT50';
     if (options.body) headers['Content-Type'] = 'application/json';
   }
-  const response = await fetch(path, {...options, credentials:'same-origin', headers});
+  let response;
+  try {
+    response = await fetch(path, {...options, credentials:'same-origin', headers});
+  } catch (cause) {
+    const err = new Error('Нет связи с сервером. Проверьте подключение к интернету.');
+    err.networkFailure = true;
+    throw err;
+  }
   let data;
   try { data = await response.json(); } catch { data = {}; }
   if (!response.ok) {
@@ -626,6 +633,7 @@ async function showDashboard(scroll = false) {
   if (state.user.role === 'candidate') await renderCandidate();
   if (state.user.role === 'employer') await renderEmployer();
   if (state.user.role === 'admin') await renderAdmin();
+  prepareEditorForms();
   if (scroll) $('#dashboard').scrollIntoView({behavior:'smooth',block:'start'});
 }
 function resumePendingApplicationVacancy() {
@@ -1813,6 +1821,7 @@ async function handleDashboardSubmit(event) {
 let employerInvitationSearchTimer = null;
 let candidateInvitationSearchTimer = null;
 function handleDashboardInput(event) {
+  editorChanged(editorForControl(event.target));
   const employerSearch = event.target.closest('[data-employer-introduction-search]');
   if (employerSearch) {
     state.employerInvitationsQuery = String(employerSearch.value || '');
@@ -1849,6 +1858,7 @@ function handleDashboardInput(event) {
   }, 180);
 }
 async function handleDashboardChange(event) {
+  editorChanged(editorForControl(event.target));
   const introductionVacancy = event.target.closest('[data-employer-introduction-vacancy-filter]');
   if (introductionVacancy) {
     state.employerInvitationsVacancyFilter = String(introductionVacancy.value || 'all');
@@ -1860,6 +1870,10 @@ async function handleDashboardChange(event) {
   if (!select) return;
   const nextTab = String(select.value || '');
   if (!nextTab || nextTab === state.tab) return;
+  if (!mayLeaveEditor()) {
+    select.value = state.tab;
+    return;
+  }
   if (state.user?.role === 'employer' && nextTab === 'applications') {
     state.employerApplicationsVacancyFilter = 'all';
     state.employerApplicationsStatusFilter = 'all';
@@ -1888,6 +1902,7 @@ async function handleDashboardChange(event) {
 async function handleDashboardClick(event) {
   const tab = event.target.closest('[data-tab]');
   if (tab) {
+    if (!mayLeaveEditor()) return;
     if (state.user?.role === 'employer' && tab.dataset.tab === 'applications') {
       state.employerApplicationsVacancyFilter = 'all';
       state.employerApplicationsStatusFilter = 'all';
@@ -2043,9 +2058,9 @@ async function handleDashboardClick(event) {
       await showDashboard();
       return;
     }
-    if (action === 'new-job') { state.editVacancy=null; state.tab='create'; await showDashboard(); }
-    if (action === 'edit-job') { state.editVacancy=id; state.activeVacancy=null; state.tab='edit'; await showDashboard(); }
-    if (action === 'cancel-job-edit') { state.editVacancy=null; state.tab='vacancies'; await showDashboard(); }
+    if (action === 'new-job') { if (!mayLeaveEditor()) return; state.editVacancy=null; state.tab='create'; await showDashboard(); }
+    if (action === 'edit-job') { if (!mayLeaveEditor()) return; state.editVacancy=id; state.activeVacancy=null; state.tab='edit'; await showDashboard(); }
+    if (action === 'cancel-job-edit') { if (!mayLeaveEditor()) return; state.editVacancy=null; state.tab='vacancies'; await showDashboard(); }
     if (action === 'matches' || action === 'matches-primary') { await loadMatches(id); }
     if (action === 'job-status') { await api(`/api/employer/vacancies/${id}/status`,{method:'PATCH',body:JSON.stringify({status:btn.dataset.status})}); await showDashboard(); toast('Статус вакансии обновлён.'); }
     if (action === 'invite') { await api('/api/employer/invitations',{method:'POST',body:JSON.stringify({vacancy_id:Number(btn.dataset.job),candidate_id:id})}); toast('Приглашение отправлено.'); state.employerInvitationsFilter='waiting'; state.tab='invitations'; await showDashboard(); }
@@ -2114,8 +2129,8 @@ async function start() {
     }
   });
   $$('[data-register]').forEach(button=>button.addEventListener('click',()=>openAuth('register',button.dataset.register)));
-  $('#account-open').addEventListener('click',()=>showDashboard(true));
-  $('#logout').addEventListener('click',async()=>{ try { await api('/api/logout',{method:'POST'}); state.user=null; $('#account-content').innerHTML=''; await reloadUser(); window.scrollTo({top:0,behavior:'smooth'}); toast('Вы вышли из аккаунта.'); } catch(e) { toast(e.message,true); }});
+  $('#account-open').addEventListener('click',()=>{ if (mayLeaveEditor()) showDashboard(true); });
+  $('#logout').addEventListener('click',async()=>{ if (!mayLeaveEditor()) return; try { await api('/api/logout',{method:'POST'}); state.user=null; $('#account-content').innerHTML=''; await reloadUser(); window.scrollTo({top:0,behavior:'smooth'}); toast('Вы вышли из аккаунта.'); } catch(e) { toast(e.message,true); }});
   $('#jobs-filter').addEventListener('click',loadPublicJobs);
   $('#city-filter').addEventListener('keydown',e=>{if(e.key==='Enter')loadPublicJobs();});
   $('#account-content').addEventListener('click',handleDashboardClick);
