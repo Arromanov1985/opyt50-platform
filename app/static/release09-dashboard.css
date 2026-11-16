@@ -2613,3 +2613,33 @@ body.comfortable-view .candidate-invitation-history summary{
     grid-template-columns:1fr;
   }
 }
+
+
+/* Release 0.5.2: counts represent current actions, never unread email. */
+#account-open{display:inline-flex;align-items:center;gap:7px}
+.account-action-count,
+.dashboard-action-count{
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  min-width:22px;
+  min-height:22px;
+  padding:2px 6px;
+  border-radius:999px;
+  background:#FCE9DE;
+  color:#934010;
+  font-size:11px;
+  line-height:1.15;
+  font-weight:850;
+  font-variant-numeric:tabular-nums;
+  white-space:nowrap;
+}
+.account-action-count[hidden],
+.dashboard-action-count[hidden]{display:none!important}
+.dashboard-action-count{margin-left:auto;flex-shrink:0}
+body.comfortable-view .account-action-count,
+body.comfortable-view .dashboard-action-count{min-width:28px;min-height:28px;font-size:14px}
+@media(max-width:700px){
+  #account-open{gap:5px}
+  .account-action-count{min-width:20px;min-height:20px;padding:2px 5px}
+}
