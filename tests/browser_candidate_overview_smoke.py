@@ -29,8 +29,42 @@ def run_overview(page):
     browser_errors = []
     page.on("pageerror", lambda error: browser_errors.append(str(error)))
 
+    # A real pending invitation must beat an unverified email in the main CTA.
+    # These are isolated fictional demo accounts in a temporary local database.
+    employer = page.request.post(
+        URL + "/api/login", headers=HEADERS,
+        data={"email": "company@demo.example", "password": "DemoPass2026!"},
+    )
+    assert employer.status == 200, employer.text()
+    vacancy_list = page.request.get(URL + "/api/employer/vacancies")
+    assert vacancy_list.status == 200
+    vacancy_id = next(
+        job["id"] for job in vacancy_list.json()["jobs"] if job["title"] == "Кладовщик"
+    )
+    matches = page.request.get(URL + f"/api/employer/vacancies/{vacancy_id}/matches")
+    assert matches.status == 200
+    candidate_id = next(
+        candidate["candidate_id"]
+        for candidate in matches.json()["matches"]
+        if candidate["profession"] == "Кладовщик"
+    )
+    invite = page.request.post(
+        URL + "/api/employer/invitations", headers=HEADERS,
+        data={"vacancy_id": vacancy_id, "candidate_id": candidate_id},
+    )
+    assert invite.status == 201, invite.text()
+    assert page.request.post(URL + "/api/logout", headers=HEADERS).status == 200
+
     login(page, "kladovshik@demo.example")
+    email_status = page.request.get(URL + "/api/account/email/status")
+    assert email_status.status == 200
+    assert email_status.json()["email_verified"] is False
     dashboard = page.locator("#dashboard-main")
+    expect(dashboard.locator(".overview-priority h3")).to_have_text(
+        "Ответьте на приглашение работодателя"
+    )
+    expect(dashboard.locator(".overview-priority [data-action='open-candidate-invitations']")).to_be_visible()
+    expect(dashboard.locator(".candidate-status-row")).to_contain_text("Подтвердите email")
     expect(dashboard).to_contain_text("ВАШ СЛЕДУЮЩИЙ ШАГ")
     expect(dashboard.locator(".overview-stat-card")).to_have_count(4)
     expect(dashboard.locator(".candidate-status-row")).to_be_visible()
@@ -38,7 +72,8 @@ def run_overview(page):
     expect(dashboard.locator(".candidate-overview-grid")).to_be_visible()
     expect(dashboard).to_contain_text("Вакансии для вас")
     expect(dashboard).to_contain_text("Сейчас в процессе")
-    expect(dashboard.locator(".candidate-overview-section")).to_have_count(2)
+    expect(dashboard.locator(".candidate-overview-section")).to_have_count(3)
+    expect(dashboard.locator(".candidate-invitations-preview")).to_be_visible()
 
     # The overview must remain usable at the core mobile width.
     page.set_viewport_size({"width": 390, "height": 844})
