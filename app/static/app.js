@@ -724,15 +724,10 @@ async function renderCandidate() {
       let nextTitle = 'Посмотрите подходящие вакансии';
       let nextText = 'Профиль уже может участвовать в подборе. Проверьте новые рекомендации.';
       let nextAction = '<button class="btn btn-primary" data-tab="offers">Открыть рекомендации →</button>';
-      if (!emailVerified) {
-        nextTitle = 'Подтвердите email';
-        nextText = 'Это защитит доступ к аккаунту и поможет надёжно получать сервисные уведомления.';
-        nextAction = '<button class="btn btn-primary" data-tab="email">Подтвердить email →</button>';
-      } else if (health.percent < 60) {
-        nextTitle = health.next;
-        nextText = 'Чем полнее основные данные, тем точнее подбор вакансий.';
-        nextAction = '<button class="btn btn-primary" data-tab="profile">Продолжить профиль →</button>';
-      } else if (pendingInvitations > 0) {
+      // Pending invitations and changed vacancy terms are time-sensitive.
+      // Profile completion and email verification remain visible below as
+      // account-health reminders, but must not hide an action from the company.
+      if (pendingInvitations > 0) {
         nextTitle = 'Ответьте на приглашение работодателя';
         nextText = `Ожидают решения: ${pendingInvitations}. Контакты не откроются без вашего согласия.`;
         nextAction = '<button class="btn btn-primary" data-action="open-candidate-invitations" data-filter="decision">Ответить →</button>';
@@ -740,6 +735,14 @@ async function renderCandidate() {
         nextTitle = 'Проверьте изменения условий';
         nextText = `Работодатели изменили условия по ${unreadChanges} вакансии(ям), с которыми вы уже взаимодействовали.`;
         nextAction = '<button class="btn btn-primary" data-tab="changes">Посмотреть изменения →</button>';
+      } else if (!emailVerified) {
+        nextTitle = 'Подтвердите email';
+        nextText = 'Это защитит доступ к аккаунту и поможет надёжно получать сервисные уведомления.';
+        nextAction = '<button class="btn btn-primary" data-tab="email">Подтвердить email →</button>';
+      } else if (health.percent < 60) {
+        nextTitle = health.next;
+        nextText = 'Чем полнее основные данные, тем точнее подбор вакансий.';
+        nextAction = '<button class="btn btn-primary" data-tab="profile">Продолжить профиль →</button>';
       } else if (waitingEmployerInvitations.length > 0) {
         nextTitle = 'Согласие отправлено — ждём работодателя';
         nextText = `Знакомств в ожидании продолжения: ${waitingEmployerInvitations.length}. Повторно подтверждать согласие не нужно.`;
