@@ -453,6 +453,9 @@ async function reloadUser() {
   $('#mobile-guest-actions')?.classList.toggle('hidden', !!state.user);
   $('#mobile-member-actions')?.classList.toggle('hidden', !state.user);
   $('#dashboard').classList.toggle('hidden', !state.user);
+  // Signed-in phones already have a bottom action bar and a dashboard selector.
+  // Keep the extra public quick-nav for guests only to avoid three menus at once.
+  document.body.classList.toggle('member-logged-in', Boolean(state.user));
 }
 async function showDashboard(scroll = false) {
   await reloadUser(); if (!state.user) { openAuth('login'); return; }
