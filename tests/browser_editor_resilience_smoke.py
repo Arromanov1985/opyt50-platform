@@ -81,6 +81,16 @@ def exercise_forms(page):
     profile = page.request.get(URL + "/api/me").json()["user"]["profile"]
     assert profile["profession"] == "Контролёр склада — локальный тест"
 
+    # A temporary /api/me outage must not falsely clear a valid session.
+    def session_outage(route):
+        route.fulfill(status=503, content_type="application/json",
+                      body='{"detail":"Сервис временно недоступен"}')
+    page.route("**/api/me", session_outage)
+    page.locator("[data-dashboard-tab-select]").select_option("offers")
+    expect(page.locator("#dashboard")).to_be_visible()
+    expect(page.locator("[data-dashboard-tab-select]")).to_have_value("offers")
+    page.unroute("**/api/me", session_outage)
+
     assert page.request.post(URL + "/api/logout", headers=HEADERS).status == 200
     login(page, "company@demo.example")
     page.locator("[data-dashboard-tab-select]").select_option("company")
