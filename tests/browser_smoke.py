@@ -559,7 +559,8 @@ def run_browser(page):
     expect(page.locator("#admin-v02-results")).to_contain_text("contact_opened")
     # The same linked journey must remain navigable on a narrow phone viewport.
     page.set_viewport_size({"width": 390, "height": 844})
-    expect(page.locator(".mobile-quick-nav")).to_be_visible()
+    expect(page.locator(".mobile-quick-nav")).to_be_hidden()
+    expect(page.locator("#mobile-member-actions")).to_be_visible()
     expect(page.locator("#admin-v02-results")).to_be_visible()
     page.locator("#logout").click()
     login(page, "kladovshik@demo.example")
