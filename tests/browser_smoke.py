@@ -233,7 +233,7 @@ def run_browser(page):
     expect(page.locator("#dashboard-main .overview-funnel")).to_be_visible()
     expect(page.locator("#dashboard-main .overview-funnel")).to_contain_text("Согласия")
     expect(page.locator("#dashboard-main .overview-funnel")).to_contain_text("Контакты")
-    expect(page.locator("#dashboard-main .overview-funnel")).to_contain_text("Выбраны")
+    expect(page.locator("#dashboard-main .overview-funnel")).to_contain_text("Положительные итоги")
     employer_tabs = page.locator(".dashboard-tabs [data-tab]")
     expect(employer_tabs).to_have_count(7)
     expect(page.locator(".dashboard-tabs [data-tab='applications']")).to_contain_text("Отклики")
