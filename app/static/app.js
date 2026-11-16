@@ -102,6 +102,100 @@ async function api(path, options = {}) {
   }
   return data;
 }
+// Unsaved editor values stay in memory only. Never write profile text,
+// contact details, company information or vacancy drafts to browser storage.
+const editorBaselines = new WeakMap();
+const editorSubmitting = new WeakSet();
+const EDITOR_IDS = new Set(['profile-form', 'company-form', 'vacancy-form']);
+function editorFingerprint(form) {
+  return JSON.stringify([...new FormData(form).entries()]);
+}
+function editorForControl(control) {
+  const form = control?.form || control?.closest?.('form');
+  return form && EDITOR_IDS.has(form.id) ? form : null;
+}
+function currentEditor() {
+  return $('#dashboard-main #profile-form, #dashboard-main #company-form, #dashboard-main #vacancy-form');
+}
+function editorIsDirty(form) {
+  return Boolean(form && editorBaselines.has(form) &&
+    editorBaselines.get(form) !== editorFingerprint(form));
+}
+function setEditorStatus(form, message, isError = false) {
+  const status = form?.querySelector('.editor-save-status');
+  if (!status) return;
+  status.textContent = message;
+  status.classList.toggle('is-error', isError);
+  status.classList.toggle('is-dirty', !isError && editorIsDirty(form));
+}
+function prepareEditorForms() {
+  document.querySelectorAll('#dashboard-main #profile-form, #dashboard-main #company-form, #dashboard-main #vacancy-form').forEach(form => {
+    if (editorBaselines.has(form)) return;
+    editorBaselines.set(form, editorFingerprint(form));
+    const status = document.createElement('p');
+    status.className = 'editor-save-status';
+    status.setAttribute('role', 'status');
+    status.setAttribute('aria-live', 'polite');
+    const submit = form.querySelector('button[type="submit"]');
+    if (submit) submit.before(status);
+    form.dataset.editorReady = '1';
+  });
+}
+function editorChanged(form) {
+  if (!form || !editorBaselines.has(form) || editorSubmitting.has(form)) return;
+  setEditorStatus(form, editorIsDirty(form)
+    ? 'Есть несохранённые изменения. Нажмите «Сохранить», прежде чем уходить из раздела.'
+    : '');
+}
+function editorSaved(form) {
+  editorBaselines.set(form, editorFingerprint(form));
+  setEditorStatus(form, 'Изменения сохранены.');
+}
+function mayLeaveEditor() {
+  const form = currentEditor();
+  if (!form) return true;
+  if (editorSubmitting.has(form)) {
+    toast('Сохранение ещё выполняется. Дождитесь результата.', true);
+    return false;
+  }
+  if (!editorIsDirty(form)) return true;
+  return confirm('В форме остались несохранённые изменения. Выйти без сохранения?');
+}
+function beginEditorSave(form) {
+  if (editorSubmitting.has(form)) return null;
+  editorSubmitting.add(form);
+  const submit = form.querySelector('button[type="submit"]');
+  if (submit) {
+    submit.disabled = true;
+    submit.setAttribute('aria-busy', 'true');
+  }
+  setEditorStatus(form, 'Сохраняем изменения…');
+  return submit;
+}
+function endEditorSave(form, submit) {
+  editorSubmitting.delete(form);
+  if (submit?.isConnected) {
+    submit.disabled = false;
+    submit.removeAttribute('aria-busy');
+  }
+}
+function editorSaveFailure(form, error, isNewVacancy = false) {
+  const lostConnection = error?.networkFailure;
+  const text = lostConnection
+    ? (isNewVacancy
+      ? 'Соединение прервалось. Вакансия могла сохраниться. Проверьте «Мои вакансии» перед повторной публикацией. Поля остались заполнены.'
+      : 'Соединение прервалось. Данные в форме сохранены на экране, но результат сервера неизвестен. Проверьте соединение перед повтором.')
+    : 'Не удалось сохранить: ' + String(error?.message || 'Ошибка сервера') +
+      '. Введённые данные остались в форме.';
+  setEditorStatus(form, text, true);
+  toast(text, true);
+}
+window.addEventListener('beforeunload', event => {
+  if (!editorIsDirty(currentEditor())) return;
+  event.preventDefault();
+  event.returnValue = '';
+});
+
 function base64urlToBuffer(value) {
   const text = String(value || '');
   const padded = text.replace(/-/g,'+').replace(/_/g,'/') + '='.repeat((4 - (text.length % 4)) % 4);
