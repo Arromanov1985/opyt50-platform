@@ -118,6 +118,10 @@ def test_mail_diagnostics_is_private_read_only_and_redacted(tmp_path, monkeypatc
         body = response.json()
         assert body["delivery_mode"] == "smtp"
         assert body["proven_delivery"] is False
+        assert body["retry_queue"] == {
+            "total": 0, "queued": 0, "retrying": 0,
+            "sending": 0, "accepted": 0, "exhausted": 0,
+        }
         by_event = {entry["event"]: entry["generated"] for entry in body["events"]}
         assert by_event == {
             "new_application": 2, "invitation": 1, "invitation_response": 1,
