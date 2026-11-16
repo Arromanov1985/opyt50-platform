@@ -121,6 +121,7 @@ def test_mail_diagnostics_is_private_read_only_and_redacted(tmp_path, monkeypatc
         assert body["retry_queue"] == {
             "total": 0, "queued": 0, "retrying": 0,
             "sending": 0, "accepted": 0, "exhausted": 0,
+            "suppressed": 0,
         }
         by_event = {entry["event"]: entry["generated"] for entry in body["events"]}
         assert by_event == {
