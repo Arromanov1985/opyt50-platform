@@ -1767,55 +1767,82 @@ async function handleDashboardSubmit(event) {
   }
   if (form.id === 'profile-form') {
     event.preventDefault();
+    const submit = beginEditorSave(form);
+    if (!submit) return;
     const body = {profession:formValue(form,'profession'),city:formValue(form,'city'),skills:formValue(form,'skills'),salary_min:parseNumber(form,'salary_min'),phone:formValue(form,'phone'),schedule:formValue(form,'schedule'),employment:formValue(form,'employment'),about:formValue(form,'about'),is_active:form.elements.namedItem('is_active').checked};
     try {
       await api('/api/candidate/profile',{method:'PUT',body:JSON.stringify(body)});
+      editorSaved(form);
       await reloadUser();
-      toast('Профиль сохранён. Теперь он участвует в подборе.');
+      toast('Профиль сохранён.');
       resumePendingApplicationVacancy();
-    } catch(e) { toast(e.message,true); }
+    } catch(e) { editorSaveFailure(form, e); }
+    finally { endEditorSave(form, submit); }
+    return;
   }
   if (form.id === 'company-form') {
     event.preventDefault();
+    const submit = beginEditorSave(form);
+    if (!submit) return;
     const body = {company_name:formValue(form,'company_name'),inn:formValue(form,'inn'),about:formValue(form,'about')};
+    let persisted = false;
     try {
       await api('/api/employer/company',{method:'PUT',body:JSON.stringify(body)});
+      persisted = true;
+      editorSaved(form);
       await reloadUser();
       const result = await api('/api/employer/company');
       $('#dashboard-main').innerHTML = employerCompanyMarkup(result);
+      prepareEditorForms();
       toast('Данные компании сохранены.');
-    } catch(e) { toast(e.message,true); }
+    } catch(e) {
+      if (persisted) toast('Данные сохранены, но не удалось обновить страницу. Обновите кабинет после восстановления связи.', true);
+      else editorSaveFailure(form, e);
+    } finally { endEditorSave(form, submit); }
     return;
   }
-    if (form.id === 'vacancy-form') {
+  if (form.id === 'vacancy-form') {
     event.preventDefault();
     const description = window.OpytnovacancyWizard?.getReviewedDescription(form);
     if (description === null || description === undefined) {
       toast('Сначала проверьте вакансию в предпросмотре.', true);
       return;
     }
+    const submit = beginEditorSave(form);
+    if (!submit) return;
     const editing = Boolean(form.dataset.editId);
     const body = {title:formValue(form,'title'),city:formValue(form,'city'),skills:formValue(form,'skills'),salary_min:parseNumber(form,'salary_min'),salary_max:parseNumber(form,'salary_max'),schedule:formValue(form,'schedule'),employment:formValue(form,'employment'),description};
     if (editing) body.expected_revision = form.dataset.revision;
-    const submit = form.querySelector('#vacancy-publish');
-    submit.disabled = true;
+    let persisted = false;
+    let conflict = false;
     try {
       const endpoint = editing ? `/api/employer/vacancies/${form.dataset.editId}` : '/api/employer/vacancies';
       await api(endpoint,{method:editing ? 'PATCH' : 'POST',body:JSON.stringify(body)});
+      persisted = true;
+      editorSaved(form);
       state.editVacancy = null;
       state.activeVacancy = null;
-      state.tab='vacancies';
+      state.tab = 'vacancies';
       await showDashboard();
       await loadPublicJobs();
       toast(editing ? 'Изменения сохранены в прежней вакансии, отклики остались на месте.' : 'Вакансия опубликована. Теперь она доступна в поиске.');
     } catch(e) {
-      toast(e.message,true);
-      // A stale edit must never silently overwrite another browser tab's changes.
-      if (editing && /изменилась|уже изменена/.test(e.message)) {
-        const line = form.querySelector('#vacancy-form-message');
-        if (line) line.textContent = 'Вакансия изменена в другой вкладке. Отмените редактирование и откройте её заново.';
-      } else if (submit.isConnected) submit.disabled = false;
+      if (persisted) {
+        toast('Вакансия сохранена, но не удалось обновить список. Проверьте раздел «Мои вакансии».', true);
+      } else {
+        editorSaveFailure(form, e, !editing);
+        // A stale edit must never overwrite another browser tab's changes.
+        if (editing && /изменилась|уже изменена/.test(e.message)) {
+          const line = form.querySelector('#vacancy-form-message');
+          if (line) line.textContent = 'Вакансия изменена в другой вкладке. Отмените редактирование и откройте её заново.';
+          conflict = true;
+        }
+      }
+    } finally {
+      endEditorSave(form, submit);
+      if (conflict && submit?.isConnected) submit.disabled = true;
     }
+    return;
   }
 }
 let employerInvitationSearchTimer = null;
