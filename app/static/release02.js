@@ -1,14 +1,14 @@
 'use strict';
 (function initRelease02() {
   document.addEventListener('DOMContentLoaded', () => {
-    const status = {applied:'Отправлен',reviewing:'На рассмотрении',interview:'Работодатель заинтересован',rejected:'Отказ',hired:'Принят',withdrawn:'Отозван'};
+    const status = {applied:'Отправлен',reviewing:'На рассмотрении',interview:'Работодатель заинтересован',rejected:'Отказ',hired:'Положительный итог',withdrawn:'Отозван'};
     const req = (method, path, data) => api(path,{method, ...(data ? {body:JSON.stringify(data)} : {})});
     const introductionLabel = {sent:'Ожидается ваше решение',accepted:'Согласие получено',declined:'От знакомства отказались'};
-    const eventLabels = {applied:'Отклик отправлен',reapplied:'Отклик отправлен повторно',withdrawn:'Отклик отозван',reviewing:'На рассмотрении',interview:'Работодатель заинтересован',rejected:'Получен отказ',hired:'Принят'};
+    const eventLabels = {applied:'Отклик отправлен',reapplied:'Отклик отправлен повторно',withdrawn:'Отклик отозван',reviewing:'На рассмотрении',interview:'Работодатель заинтересован',rejected:'Получен отказ',hired:'Положительный итог'};
     function applicationIntroBadge(a) {
       if (!a.invitation_id) return '';
       if (a.contact_shared && a.status === 'hired') {
-        return '<div class="interaction-note is-complete"><strong>Компания выбрала вас</strong><span>Работодатель отметил положительный итог знакомства.</span></div><button class="btn btn-outline btn-tiny" data-v02-action="open-introductions" data-filter="closed">Открыть завершённое знакомство →</button>';
+        return '<div class="interaction-note is-complete"><strong>Положительный итог знакомства</strong><span>Компания хочет продолжить общение. Это не подтверждение трудоустройства. Условия работы обсудите напрямую с компанией.</span></div><button class="btn btn-outline btn-tiny" data-v02-action="open-introductions" data-filter="closed">Открыть завершённое знакомство →</button>';
       }
       if (a.contact_shared && a.status === 'rejected') {
         return '<div class="interaction-note is-closed"><strong>Не договорились</strong><span>Знакомство завершено без продолжения.</span></div><button class="btn btn-outline btn-tiny" data-v02-action="open-introductions" data-filter="closed">Открыть завершённое знакомство →</button>';
@@ -28,13 +28,13 @@
       return '';
     }
     function employerApplicationStageLabel(a) {
-      if (a.status === 'hired') return 'Кандидат принят';
+      if (a.status === 'hired') return 'Положительный итог';
       if (a.status === 'rejected' && a.contact_shared) return 'Не договорились';
       if (a.contact_shared) return 'Знакомство состоялось';
       if (a.invitation_status === 'accepted') return 'Согласие получено';
       if (a.invitation_status === 'sent') return 'Ждём решения кандидата';
       if (a.invitation_status === 'declined') return 'Кандидат отказался';
-      if (a.status === 'hired') return 'Кандидат принят';
+      if (a.status === 'hired') return 'Положительный итог';
       if (a.status === 'rejected') return 'Отказ';
       if (a.status === 'withdrawn') return 'Отклик отозван';
       if (a.status === 'reviewing') return 'На рассмотрении';
@@ -44,7 +44,7 @@
     function employerIntroBadge(a) {
       if (!a.invitation_id) return '';
       if (a.contact_shared && a.status === 'hired') {
-        return '<div class="interaction-note is-complete"><strong>Кандидат принят</strong><span>Положительный итог знакомства зафиксирован.</span></div><button class="btn btn-outline btn-tiny" data-v02-action="open-introductions" data-filter="closed">Открыть завершённое знакомство →</button>';
+        return '<div class="interaction-note is-complete"><strong>Положительный итог</strong><span>Компания хочет продолжить общение. Это не подтверждение трудоустройства.</span></div><button class="btn btn-outline btn-tiny" data-v02-action="open-introductions" data-filter="closed">Открыть завершённое знакомство →</button>';
       }
       if (a.contact_shared && a.status === 'rejected') {
         return '<div class="interaction-note is-closed"><strong>Не договорились</strong><span>Знакомство завершено без продолжения.</span></div><button class="btn btn-outline btn-tiny" data-v02-action="open-introductions" data-filter="closed">Открыть завершённое знакомство →</button>';
