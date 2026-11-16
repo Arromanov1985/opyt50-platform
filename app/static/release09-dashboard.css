@@ -2643,3 +2643,40 @@ body.comfortable-view .dashboard-action-count{min-width:28px;min-height:28px;fon
   #account-open{gap:5px}
   .account-action-count{min-width:20px;min-height:20px;padding:2px 5px}
 }
+
+
+/* Release 0.5.3: administrators see aggregate notice creation, not recipients. */
+.admin-mail-diagnostics{min-width:0;margin:12px 0 10px}
+.admin-mail-event-grid{
+  display:grid;
+  grid-template-columns:repeat(auto-fit,minmax(min(100%,180px),1fr));
+  gap:9px;
+}
+.admin-mail-event-grid>div{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:12px;
+  min-width:0;
+  padding:12px;
+  background:#F8FAF9;
+  border:1px solid #DAE7E0;
+  border-radius:12px;
+}
+.admin-mail-event-grid span{color:#476355;font-size:12px;line-height:1.5}
+.admin-mail-event-grid strong{color:#123B28;font-size:21px;font-variant-numeric:tabular-nums}
+#admin-mail-test-result{
+  margin-top:10px;
+  padding:10px 12px;
+  border-radius:10px;
+  background:#F1F7F4;
+  line-height:1.55;
+}
+body.comfortable-view .admin-mail-event-grid span{font-size:1rem}
+body.comfortable-view .admin-mail-event-grid strong{font-size:1.4rem}
+@media(max-width:700px){
+  .admin-mail-event-grid{grid-template-columns:1fr}
+  .admin-mail-event-grid>div{padding:11px}
+  .admin-security-panel .admin-passkey-actions{flex-wrap:wrap;gap:8px}
+  .admin-security-panel [data-smtp-scenario]{white-space:normal;min-height:48px}
+}
