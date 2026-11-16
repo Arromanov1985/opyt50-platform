@@ -107,6 +107,12 @@ RELEASE09_RUNTIME_DDL = (
         created_at TEXT NOT NULL
     )""",
     "CREATE INDEX IF NOT EXISTS idx_email_delivery_due ON email_delivery_jobs(state,next_attempt_at)",
+    # Separate new table preserves old 0.5.5 queue schema and stored jobs.
+    # SET NULL keeps the safety tombstone if the user account is deleted.
+    """CREATE TABLE IF NOT EXISTS email_delivery_recipients (
+        outbox_id INTEGER PRIMARY KEY REFERENCES email_delivery_jobs(outbox_id) ON DELETE CASCADE,
+        user_id INTEGER REFERENCES users(id) ON DELETE SET NULL
+    )""",
     """CREATE TABLE IF NOT EXISTS employer_public_profiles (
         employer_id INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
         about TEXT NOT NULL DEFAULT '',
@@ -320,6 +326,7 @@ def enqueue_notice(
         from .mail_queue import enqueue_workflow_job
         if not enqueue_workflow_job(
             db, inserted.lastrowid, event, redacted=stored_body is not None,
+            recipient_user_id=user_id,
         ):
             # Security and short-lived token emails keep their immediate
             # delivery semantics. Their redacted stored copy MUST NOT be
