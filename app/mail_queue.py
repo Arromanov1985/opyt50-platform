@@ -30,6 +30,8 @@ RETRY_DELAYS = (30, 120, 600)  # Seconds following failures 1, 2 and 3.
 LEASE_SECONDS = 120
 POLL_SECONDS = 5
 BATCH_LIMIT = 8
+# Outdated workflow alerts must not be mailed days after a long SMTP outage.
+MAX_NOTICE_AGE = timedelta(hours=72)
 
 
 def _now() -> datetime:
@@ -40,7 +42,10 @@ def _stamp(moment: datetime) -> str:
     return moment.astimezone(timezone.utc).isoformat(timespec="seconds")
 
 
-def enqueue_workflow_job(db, outbox_id: int, event: str, *, redacted: bool) -> bool:
+def enqueue_workflow_job(
+    db, outbox_id: int, event: str, *, redacted: bool,
+    recipient_user_id: int | None = None,
+) -> bool:
     """Enqueue in the SAME transaction as the business operation and outbox.
 
     No existing historic outbox messages are imported; a new deployment must
@@ -55,6 +60,12 @@ def enqueue_workflow_job(db, outbox_id: int, event: str, *, redacted: bool) -> b
            ) VALUES(?, 'pending', 0, ?, ?)""",
         (outbox_id, instant, instant),
     )
+    if recipient_user_id is not None:
+        # A separate mapping table is additive for existing 0.5.5 queues.
+        db.execute(
+            "INSERT INTO email_delivery_recipients(outbox_id,user_id) VALUES(?,?)",
+            (outbox_id, recipient_user_id),
+        )
     return True
 
 
@@ -74,7 +85,7 @@ def _claim_next(db_path: str, now: datetime):
         # The conditional UPDATE is the cross-SQLite/PostgreSQL claim lock.
         # Competing workers can see a candidate, but only one obtains it.
         rows = db.execute(
-            """SELECT q.outbox_id,o.to_email,o.subject,o.body,q.attempts
+            """SELECT q.outbox_id,o.to_email,o.subject,o.body,q.attempts,q.created_at
                FROM email_delivery_jobs q
                JOIN email_outbox o ON o.id=q.outbox_id
                WHERE q.attempts<?
@@ -100,8 +111,55 @@ def _claim_next(db_path: str, now: datetime):
                     "id": item["outbox_id"], "recipient": item["to_email"],
                     "subject": item["subject"], "body": item["body"],
                     "attempt": int(item["attempts"]) + 1, "token": token,
+                    "created_at": item["created_at"],
                 }
     return None
+
+
+def _delivery_block_reason(db_path: str, item, now: datetime) -> str | None:
+    """Suppress out-of-date notices or mail destined for disabled/deleted users.
+
+    Unmapped 0.5.5 jobs stay eligible until the age limit. All newly
+    generated workflow notices have a stable recipient identity.
+    """
+    try:
+        created = datetime.fromisoformat(str(item["created_at"]))
+        if created.tzinfo is None:
+            return "invalid_created_at"
+        if now - created.astimezone(timezone.utc) >= MAX_NOTICE_AGE:
+            return "stale_notice"
+    except (ValueError, TypeError):
+        return "invalid_created_at"
+
+    with database(db_path) as db:
+        entry = db.execute(
+            """SELECT t.user_id,u.email,COALESCE(c.status,'active') AS account_status
+               FROM email_delivery_recipients t
+               LEFT JOIN users u ON u.id=t.user_id
+               LEFT JOIN account_controls c ON c.user_id=u.id
+               WHERE t.outbox_id=?""",
+            (item["id"],),
+        ).fetchone()
+    if entry is None:  # Previously queued jobs have no recipient mapping.
+        return None
+    if (entry["user_id"] is None or entry["email"] != item["recipient"]
+            or entry["account_status"] != "active"):
+        return "recipient_unavailable"
+    return None
+
+
+def _suppress(db_path: str, item, reason: str) -> bool:
+    """Complete this lease without SMTP; only known non-sensitive codes."""
+    assert reason in ("stale_notice", "invalid_created_at", "recipient_unavailable")
+    with database(db_path) as db:
+        updated = db.execute(
+            """UPDATE email_delivery_jobs
+               SET state='exhausted', last_error_code=?,
+                   lease_token=NULL, leased_until=NULL
+               WHERE outbox_id=? AND state='leased' AND lease_token=?""",
+            (reason, item["id"], item["token"]),
+        )
+    return updated.rowcount == 1
 
 
 def _finish(db_path: str, item, accepted: bool, now: datetime) -> str:
@@ -143,6 +201,12 @@ def process_due_workflow_mail(
         item = _claim_next(db_path, clock)
         if item is None:
             break
+        reason = _delivery_block_reason(db_path, item, clock)
+        if reason is not None:
+            if _suppress(db_path, item, reason):
+                totals["processed"] += 1
+                totals["exhausted"] += 1
+            continue
         try:
             accepted = bool(send_email(item["recipient"], item["subject"], item["body"]))
         except Exception as exc:

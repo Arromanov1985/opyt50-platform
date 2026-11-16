@@ -140,7 +140,8 @@ def run_security(page):
     # cabinet. Never send real mail from browser CI.
     expect(page.locator("#admin-mail-queue-summary")).to_be_visible()
     expect(page.locator("#admin-mail-queue-summary")).to_contain_text("Принято SMTP")
-    expect(page.locator("#admin-mail-queue-summary")).to_contain_text("Исчерпали попытки")
+    expect(page.locator("#admin-mail-queue-summary")).to_contain_text("Исчерпали попытки SMTP")
+    expect(page.locator("#admin-mail-queue-summary")).to_contain_text("Остановлены безопасностью")
     expect(page.locator("#admin-mail-diagnostics")).to_be_visible()
     expect(page.locator("#admin-mail-diagnostics")).to_contain_text(
         "Новые отклики работодателю"
