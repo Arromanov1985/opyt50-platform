@@ -616,6 +616,48 @@ def test_unified_status_timeline_consent_and_terminal_guards(app):
                               (jid, cid)).fetchone()[0] == 1
 
 
+
+def test_positive_introduction_notice_does_not_claim_employment(app):
+    """The positive milestone is an employer decision, not proof of hiring."""
+    with TestClient(app) as candidate, TestClient(app) as employer:
+        register(candidate, "positive-candidate@demo.example")
+        register(employer, "positive-employer@demo.example", "employer")
+        profile(candidate)
+        job_id = vacancy(employer)
+        applied = post(candidate, "/api/candidate/applications", {"vacancy_id": job_id})
+        assert applied.status_code == 201, applied.text
+        application_id = applied.json()["id"]
+        assert employer.patch(
+            f"/api/employer/applications/{application_id}/status",
+            json={"status": "reviewing"}, headers=HEADERS
+        ).status_code == 200
+        requested = post(employer, f"/api/employer/applications/{application_id}/interest")
+        assert requested.status_code == 200, requested.text
+        invitation_id = requested.json()["invitation_id"]
+        accepted = post(
+            candidate, f"/api/candidate/invitations/{invitation_id}/respond",
+            {"decision": "accepted", "share_consent": True},
+        )
+        assert accepted.status_code == 200, accepted.text
+        opened = post(employer, f"/api/employer/invitations/{invitation_id}/demo-pay")
+        assert opened.status_code == 200, opened.text
+        positive = employer.patch(
+            f"/api/employer/applications/{application_id}/status",
+            json={"status": "hired"}, headers=HEADERS,
+        )
+        assert positive.status_code == 200, positive.text
+        assert positive.json()["status"] == "hired"  # Stable API contract.
+        with database(app.state.db_path) as db:
+            notice = db.execute(
+                "SELECT subject,body FROM email_outbox WHERE event='application_status' ORDER BY id DESC LIMIT 1"
+            ).fetchone()
+        assert notice["subject"] == "Итог знакомства — СТАЖНО"
+        assert "положительный итог знакомства" in notice["body"]
+        assert "не подтверждение трудоустройства" in notice["body"]
+        assert "hired" not in notice["body"]
+
+
+
 def test_proactive_invitation_has_unified_history_without_application(app):
     """Contact flow works even if an employer invited a candidate proactively."""
     with TestClient(app) as candidate, TestClient(app) as employer:
