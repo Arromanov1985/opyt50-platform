@@ -80,6 +80,17 @@ jobs:
       - name: Probe Timeweb preview reachability (GET only)
         if: always() && github.event_name == 'pull_request'
         run: python scripts/probe_timeweb_preview.py
+      - name: Capture actual public Timeweb homepage (no auth)
+        if: always() && github.event_name == 'pull_request'
+        run: python tests/browser_timeweb_public_review.py
+      - name: Upload actual public Timeweb screenshots
+        if: always() && github.event_name == 'pull_request'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: stazhno-timeweb-public-review
+          path: timeweb-public-review/
+          if-no-files-found: warn
+          retention-days: 7
       - name: Upload Timeweb preview reachability report
         if: always() && github.event_name == 'pull_request'
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
