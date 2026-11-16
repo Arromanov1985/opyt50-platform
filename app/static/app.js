@@ -92,16 +92,123 @@ async function api(path, options = {}) {
     headers['X-Requested-With'] = 'OPYT50';
     if (options.body) headers['Content-Type'] = 'application/json';
   }
-  const response = await fetch(path, {...options, credentials:'same-origin', headers});
+  let response;
+  try {
+    response = await fetch(path, {...options, credentials:'same-origin', headers});
+  } catch (cause) {
+    const err = new Error('Нет связи с сервером. Проверьте подключение к интернету.');
+    err.networkFailure = true;
+    throw err;
+  }
   let data;
   try { data = await response.json(); } catch { data = {}; }
   if (!response.ok) {
     const issue = data.detail;
     const msg = Array.isArray(issue) ? issue.map(x => x.msg).join('; ') : (typeof issue === 'string' ? issue : `Ошибка ${response.status}`);
-    throw new Error(msg);
+    const error = new Error(msg);
+    error.httpStatus = response.status;
+    throw error;
   }
   return data;
 }
+// Unsaved editor values stay in memory only. Never write profile text,
+// contact details, company information or vacancy drafts to browser storage.
+const editorBaselines = new WeakMap();
+const editorSubmitting = new WeakSet();
+const EDITOR_IDS = new Set(['profile-form', 'company-form', 'vacancy-form']);
+function editorFingerprint(form) {
+  return JSON.stringify([...new FormData(form).entries()]);
+}
+function editorForControl(control) {
+  const form = control?.form || control?.closest?.('form');
+  return form && EDITOR_IDS.has(form.id) ? form : null;
+}
+function currentEditor() {
+  return $('#dashboard-main #profile-form, #dashboard-main #company-form, #dashboard-main #vacancy-form');
+}
+function editorIsDirty(form) {
+  return Boolean(form && editorBaselines.has(form) &&
+    editorBaselines.get(form) !== editorFingerprint(form));
+}
+function setEditorStatus(form, message, isError = false) {
+  const status = form?.querySelector('.editor-save-status');
+  if (!status) return;
+  status.textContent = message;
+  status.classList.toggle('is-error', isError);
+  status.classList.toggle('is-dirty', !isError && editorIsDirty(form));
+}
+function prepareEditorForms() {
+  document.querySelectorAll('#dashboard-main #profile-form, #dashboard-main #company-form, #dashboard-main #vacancy-form').forEach(form => {
+    if (editorBaselines.has(form)) return;
+    editorBaselines.set(form, editorFingerprint(form));
+    const status = document.createElement('p');
+    status.className = 'editor-save-status';
+    status.setAttribute('role', 'status');
+    status.setAttribute('aria-live', 'polite');
+    const submit = form.querySelector('button[type="submit"]');
+    if (submit) submit.before(status);
+    form.dataset.editorReady = '1';
+  });
+}
+function editorChanged(form) {
+  if (!form || !editorBaselines.has(form) || editorSubmitting.has(form)) return;
+  setEditorStatus(form, editorIsDirty(form)
+    ? 'Есть несохранённые изменения. Нажмите «Сохранить», прежде чем уходить из раздела.'
+    : '');
+}
+function editorSaved(form) {
+  editorBaselines.set(form, editorFingerprint(form));
+  setEditorStatus(form, 'Изменения сохранены.');
+}
+function mayLeaveEditor() {
+  const form = currentEditor();
+  if (!form) return true;
+  if (editorSubmitting.has(form)) {
+    toast('Сохранение ещё выполняется. Дождитесь результата.', true);
+    return false;
+  }
+  if (!editorIsDirty(form)) return true;
+  return confirm('В форме остались несохранённые изменения. Выйти без сохранения?');
+}
+function beginEditorSave(form) {
+  if (editorSubmitting.has(form)) return null;
+  editorSubmitting.add(form);
+  const submit = form.querySelector('button[type="submit"]');
+  if (submit) {
+    submit.disabled = true;
+    submit.setAttribute('aria-busy', 'true');
+  }
+  setEditorStatus(form, 'Сохраняем изменения…');
+  // Prevent edits to the submitted snapshot while the request is pending.
+  // Unlike disabling inputs, inert does not change the FormData fingerprint.
+  form.inert = true;
+  return submit;
+}
+function endEditorSave(form, submit) {
+  editorSubmitting.delete(form);
+  form.inert = false;
+  if (submit?.isConnected) {
+    submit.disabled = false;
+    submit.removeAttribute('aria-busy');
+  }
+}
+function editorSaveFailure(form, error, isNewVacancy = false) {
+  const lostConnection = error?.networkFailure;
+  const text = lostConnection
+    ? (isNewVacancy
+      ? 'Соединение прервалось. Вакансия могла сохраниться. Проверьте «Мои вакансии» перед повторной публикацией. Поля остались заполнены.'
+      : 'Соединение прервалось. Данные в форме сохранены на экране, но результат сервера неизвестен. Проверьте соединение перед повтором.')
+    : 'Не удалось сохранить: ' + String(error?.message || 'Ошибка сервера') +
+      '. Введённые данные остались в форме.';
+  setEditorStatus(form, text, true);
+  toast(text, true);
+}
+window.addEventListener('beforeunload', event => {
+  if (!editorIsDirty(currentEditor())) return;
+  event.preventDefault();
+  event.returnValue = '';
+});
+
 function base64urlToBuffer(value) {
   const text = String(value || '');
   const padded = text.replace(/-/g,'+').replace(/_/g,'/') + '='.repeat((4 - (text.length % 4)) % 4);
@@ -511,8 +618,15 @@ function syncResponsiveMemberActions() {
 }
 async function reloadUser() {
   syncResponsiveMemberActions();
-  const previousUserId = state.user?.id;
-  try { const data = await api('/api/me'); state.user = data.user; } catch { state.user = null; }
+  const previousUser = state.user;
+  const previousUserId = previousUser?.id;
+  try { const data = await api('/api/me'); state.user = data.user; }
+  catch (error) {
+    // A temporary outage must not erase an open form or falsely log the
+    // user out. A real 401/403 still clears the session immediately.
+    state.user = previousUser && (error.networkFailure || error.httpStatus >= 500)
+      ? previousUser : null;
+  }
   if (state.user?.id !== previousUserId) state.actionSummary = null;
   updateActionBadges();
   $('#guest-actions').classList.toggle('hidden', !!state.user);
@@ -532,6 +646,7 @@ async function showDashboard(scroll = false) {
   if (state.user.role === 'candidate') await renderCandidate();
   if (state.user.role === 'employer') await renderEmployer();
   if (state.user.role === 'admin') await renderAdmin();
+  prepareEditorForms();
   if (scroll) $('#dashboard').scrollIntoView({behavior:'smooth',block:'start'});
 }
 function resumePendingApplicationVacancy() {
@@ -1665,60 +1780,88 @@ async function handleDashboardSubmit(event) {
   }
   if (form.id === 'profile-form') {
     event.preventDefault();
+    const submit = beginEditorSave(form);
+    if (!submit) return;
     const body = {profession:formValue(form,'profession'),city:formValue(form,'city'),skills:formValue(form,'skills'),salary_min:parseNumber(form,'salary_min'),phone:formValue(form,'phone'),schedule:formValue(form,'schedule'),employment:formValue(form,'employment'),about:formValue(form,'about'),is_active:form.elements.namedItem('is_active').checked};
     try {
       await api('/api/candidate/profile',{method:'PUT',body:JSON.stringify(body)});
+      editorSaved(form);
       await reloadUser();
-      toast('Профиль сохранён. Теперь он участвует в подборе.');
+      toast('Профиль сохранён.');
       resumePendingApplicationVacancy();
-    } catch(e) { toast(e.message,true); }
+    } catch(e) { editorSaveFailure(form, e); }
+    finally { endEditorSave(form, submit); }
+    return;
   }
   if (form.id === 'company-form') {
     event.preventDefault();
+    const submit = beginEditorSave(form);
+    if (!submit) return;
     const body = {company_name:formValue(form,'company_name'),inn:formValue(form,'inn'),about:formValue(form,'about')};
+    let persisted = false;
     try {
       await api('/api/employer/company',{method:'PUT',body:JSON.stringify(body)});
+      persisted = true;
+      editorSaved(form);
       await reloadUser();
       const result = await api('/api/employer/company');
       $('#dashboard-main').innerHTML = employerCompanyMarkup(result);
+      prepareEditorForms();
       toast('Данные компании сохранены.');
-    } catch(e) { toast(e.message,true); }
+    } catch(e) {
+      if (persisted) toast('Данные сохранены, но не удалось обновить страницу. Обновите кабинет после восстановления связи.', true);
+      else editorSaveFailure(form, e);
+    } finally { endEditorSave(form, submit); }
     return;
   }
-    if (form.id === 'vacancy-form') {
+  if (form.id === 'vacancy-form') {
     event.preventDefault();
     const description = window.OpytnovacancyWizard?.getReviewedDescription(form);
     if (description === null || description === undefined) {
       toast('Сначала проверьте вакансию в предпросмотре.', true);
       return;
     }
+    const submit = beginEditorSave(form);
+    if (!submit) return;
     const editing = Boolean(form.dataset.editId);
     const body = {title:formValue(form,'title'),city:formValue(form,'city'),skills:formValue(form,'skills'),salary_min:parseNumber(form,'salary_min'),salary_max:parseNumber(form,'salary_max'),schedule:formValue(form,'schedule'),employment:formValue(form,'employment'),description};
     if (editing) body.expected_revision = form.dataset.revision;
-    const submit = form.querySelector('#vacancy-publish');
-    submit.disabled = true;
+    let persisted = false;
+    let conflict = false;
     try {
       const endpoint = editing ? `/api/employer/vacancies/${form.dataset.editId}` : '/api/employer/vacancies';
       await api(endpoint,{method:editing ? 'PATCH' : 'POST',body:JSON.stringify(body)});
+      persisted = true;
+      editorSaved(form);
       state.editVacancy = null;
       state.activeVacancy = null;
-      state.tab='vacancies';
+      state.tab = 'vacancies';
       await showDashboard();
       await loadPublicJobs();
       toast(editing ? 'Изменения сохранены в прежней вакансии, отклики остались на месте.' : 'Вакансия опубликована. Теперь она доступна в поиске.');
     } catch(e) {
-      toast(e.message,true);
-      // A stale edit must never silently overwrite another browser tab's changes.
-      if (editing && /изменилась|уже изменена/.test(e.message)) {
-        const line = form.querySelector('#vacancy-form-message');
-        if (line) line.textContent = 'Вакансия изменена в другой вкладке. Отмените редактирование и откройте её заново.';
-      } else if (submit.isConnected) submit.disabled = false;
+      if (persisted) {
+        toast('Вакансия сохранена, но не удалось обновить список. Проверьте раздел «Мои вакансии».', true);
+      } else {
+        editorSaveFailure(form, e, !editing);
+        // A stale edit must never overwrite another browser tab's changes.
+        if (editing && /изменилась|уже изменена/.test(e.message)) {
+          const line = form.querySelector('#vacancy-form-message');
+          if (line) line.textContent = 'Вакансия изменена в другой вкладке. Отмените редактирование и откройте её заново.';
+          conflict = true;
+        }
+      }
+    } finally {
+      endEditorSave(form, submit);
+      if (conflict && submit?.isConnected) submit.disabled = true;
     }
+    return;
   }
 }
 let employerInvitationSearchTimer = null;
 let candidateInvitationSearchTimer = null;
 function handleDashboardInput(event) {
+  editorChanged(editorForControl(event.target));
   const employerSearch = event.target.closest('[data-employer-introduction-search]');
   if (employerSearch) {
     state.employerInvitationsQuery = String(employerSearch.value || '');
@@ -1755,6 +1898,7 @@ function handleDashboardInput(event) {
   }, 180);
 }
 async function handleDashboardChange(event) {
+  editorChanged(editorForControl(event.target));
   const introductionVacancy = event.target.closest('[data-employer-introduction-vacancy-filter]');
   if (introductionVacancy) {
     state.employerInvitationsVacancyFilter = String(introductionVacancy.value || 'all');
@@ -1766,6 +1910,10 @@ async function handleDashboardChange(event) {
   if (!select) return;
   const nextTab = String(select.value || '');
   if (!nextTab || nextTab === state.tab) return;
+  if (!mayLeaveEditor()) {
+    select.value = state.tab;
+    return;
+  }
   if (state.user?.role === 'employer' && nextTab === 'applications') {
     state.employerApplicationsVacancyFilter = 'all';
     state.employerApplicationsStatusFilter = 'all';
@@ -1794,6 +1942,7 @@ async function handleDashboardChange(event) {
 async function handleDashboardClick(event) {
   const tab = event.target.closest('[data-tab]');
   if (tab) {
+    if (!mayLeaveEditor()) return;
     if (state.user?.role === 'employer' && tab.dataset.tab === 'applications') {
       state.employerApplicationsVacancyFilter = 'all';
       state.employerApplicationsStatusFilter = 'all';
@@ -1949,9 +2098,9 @@ async function handleDashboardClick(event) {
       await showDashboard();
       return;
     }
-    if (action === 'new-job') { state.editVacancy=null; state.tab='create'; await showDashboard(); }
-    if (action === 'edit-job') { state.editVacancy=id; state.activeVacancy=null; state.tab='edit'; await showDashboard(); }
-    if (action === 'cancel-job-edit') { state.editVacancy=null; state.tab='vacancies'; await showDashboard(); }
+    if (action === 'new-job') { if (!mayLeaveEditor()) return; state.editVacancy=null; state.tab='create'; await showDashboard(); }
+    if (action === 'edit-job') { if (!mayLeaveEditor()) return; state.editVacancy=id; state.activeVacancy=null; state.tab='edit'; await showDashboard(); }
+    if (action === 'cancel-job-edit') { if (!mayLeaveEditor()) return; state.editVacancy=null; state.tab='vacancies'; await showDashboard(); }
     if (action === 'matches' || action === 'matches-primary') { await loadMatches(id); }
     if (action === 'job-status') { await api(`/api/employer/vacancies/${id}/status`,{method:'PATCH',body:JSON.stringify({status:btn.dataset.status})}); await showDashboard(); toast('Статус вакансии обновлён.'); }
     if (action === 'invite') { await api('/api/employer/invitations',{method:'POST',body:JSON.stringify({vacancy_id:Number(btn.dataset.job),candidate_id:id})}); toast('Приглашение отправлено.'); state.employerInvitationsFilter='waiting'; state.tab='invitations'; await showDashboard(); }
@@ -2020,8 +2169,8 @@ async function start() {
     }
   });
   $$('[data-register]').forEach(button=>button.addEventListener('click',()=>openAuth('register',button.dataset.register)));
-  $('#account-open').addEventListener('click',()=>showDashboard(true));
-  $('#logout').addEventListener('click',async()=>{ try { await api('/api/logout',{method:'POST'}); state.user=null; $('#account-content').innerHTML=''; await reloadUser(); window.scrollTo({top:0,behavior:'smooth'}); toast('Вы вышли из аккаунта.'); } catch(e) { toast(e.message,true); }});
+  $('#account-open').addEventListener('click',()=>{ if (mayLeaveEditor()) showDashboard(true); });
+  $('#logout').addEventListener('click',async()=>{ if (!mayLeaveEditor()) return; try { await api('/api/logout',{method:'POST'}); state.user=null; $('#account-content').innerHTML=''; await reloadUser(); window.scrollTo({top:0,behavior:'smooth'}); toast('Вы вышли из аккаунта.'); } catch(e) { toast(e.message,true); }});
   $('#jobs-filter').addEventListener('click',loadPublicJobs);
   $('#city-filter').addEventListener('keydown',e=>{if(e.key==='Enter')loadPublicJobs();});
   $('#account-content').addEventListener('click',handleDashboardClick);

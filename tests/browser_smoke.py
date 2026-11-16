@@ -781,6 +781,8 @@ def run_browser(page):
     assert conflict.value.status == 409, conflict.value.text()
     expect(page.locator("#vacancy-form-message")).to_contain_text("Отмените редактирование")
     expect(page.locator("#vacancy-publish")).to_be_disabled()
+    # Discarding an invalidated edit is an explicit decision, not a silent loss.
+    page.once("dialog", lambda dialog: dialog.accept())
     page.locator("[data-action='cancel-job-edit']").click()
     expect(page.locator("#dashboard-main")).to_contain_text("Мои вакансии")
 
