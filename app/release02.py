@@ -1164,11 +1164,17 @@ def install_routes(app) -> None:
                 "INSERT INTO application_events(application_id,event) VALUES(?,?)",
                 (application_id, "interview"),
             )
-            enqueue_notice(
-                db, item["candidate_id"], "application_status",
-                "Статус отклика — СТАЖНО",
-                f"Работодатель заинтересовался откликом на «{item['title']}». Откройте кабинет.",
-            )
+            # A newly created invitation already sends an actionable email
+            # about the same employer decision. Keep the application event in
+            # the history, but do not send a second email for one click.
+            # If an older proactive invitation was reused, the status-change
+            # message is still useful because no new invitation email is sent.
+            if not created:
+                enqueue_notice(
+                    db, item["candidate_id"], "application_status",
+                    "Статус отклика — СТАЖНО",
+                    f"Работодатель заинтересовался откликом на «{item['title']}». Откройте кабинет.",
+                )
         # Commit before the HTTP response: a new dashboard request may arrive immediately.
         db.commit()
         return {
