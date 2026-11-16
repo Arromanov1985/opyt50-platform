@@ -1639,6 +1639,12 @@ async function handleDashboardChange(event) {
   state.tab = nextTab;
   state.activeVacancy = null;
   await showDashboard();
+  // The mobile menu is rebuilt on every tab change. Restore keyboard focus
+  // to its replacement so keyboard and assistive-technology users do not lose context.
+  if (window.matchMedia('(max-width: 700px)').matches) {
+    const activeSelect = document.querySelector('#dashboard [data-dashboard-tab-select]');
+    if (activeSelect && activeSelect.value === nextTab) activeSelect.focus({preventScroll:true});
+  }
 }
 async function handleDashboardClick(event) {
   const tab = event.target.closest('[data-tab]');
