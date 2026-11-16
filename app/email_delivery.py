@@ -39,6 +39,10 @@ def send_email(to_email: str, subject: str, body: str) -> bool:
     password = os.getenv("OPYT50_SMTP_PASSWORD", "")
     use_ssl = os.getenv("OPYT50_SMTP_SSL", "0") == "1"
     use_starttls = os.getenv("OPYT50_SMTP_STARTTLS", "1") == "1"
+    if not use_ssl and not use_starttls:
+        # Never allow an accidentally unencrypted transport for user notices.
+        logger.error("Email delivery configuration error: TLS required")
+        return False
 
     message = EmailMessage()
     message["From"] = sender
@@ -51,14 +55,20 @@ def send_email(to_email: str, subject: str, body: str) -> bool:
             with smtplib.SMTP_SSL(host, port, timeout=10, context=ssl.create_default_context()) as smtp:
                 if username:
                     smtp.login(username, password)
-                smtp.send_message(message)
+                refused = smtp.send_message(message)
+                if refused:
+                    logger.error("Email delivery failed (RecipientsRefused)")
+                    return False
         else:
             with smtplib.SMTP(host, port, timeout=10) as smtp:
                 if use_starttls:
                     smtp.starttls(context=ssl.create_default_context())
                 if username:
                     smtp.login(username, password)
-                smtp.send_message(message)
+                refused = smtp.send_message(message)
+                if refused:
+                    logger.error("Email delivery failed (RecipientsRefused)")
+                    return False
         return True
     except (OSError, UnicodeError, smtplib.SMTPException) as exc:
         # Do not emit SMTP server text/tracebacks: providers may include
@@ -88,6 +98,11 @@ def smtp_healthcheck() -> dict[str, object]:
     use_ssl = os.getenv("OPYT50_SMTP_SSL", "0") == "1"
     use_starttls = os.getenv("OPYT50_SMTP_STARTTLS", "1") == "1"
     tls_mode = "ssl" if use_ssl else ("starttls" if use_starttls else "none")
+    if tls_mode == "none":
+        return {
+            "ok": False, "configured": True,
+            "status": "tls_disabled", "tls_mode": "none",
+        }
 
     try:
         if use_ssl:
@@ -99,14 +114,18 @@ def smtp_healthcheck() -> dict[str, object]:
             ) as smtp:
                 if username:
                     smtp.login(username, password)
-                smtp.noop()
+                if smtp.noop()[0] != 250:
+                    return {"ok": False, "configured": True,
+                            "status": "smtp_rejected", "tls_mode": tls_mode}
         else:
             with smtplib.SMTP(host, port, timeout=10) as smtp:
                 if use_starttls:
                     smtp.starttls(context=ssl.create_default_context())
                 if username:
                     smtp.login(username, password)
-                smtp.noop()
+                if smtp.noop()[0] != 250:
+                    return {"ok": False, "configured": True,
+                            "status": "smtp_rejected", "tls_mode": tls_mode}
         return {
             "ok": True,
             "configured": True,
