@@ -92,6 +92,21 @@ CREATE INDEX IF NOT EXISTS idx_vacancy_update_recipients_candidate ON vacancy_up
 """
 
 RELEASE09_RUNTIME_DDL = (
+    # Additive, cross-PostgreSQL/SQLite schema for retryable business notices.
+    # Historic email_outbox rows are never backfilled or resent.
+    """CREATE TABLE IF NOT EXISTS email_delivery_jobs (
+        outbox_id INTEGER PRIMARY KEY REFERENCES email_outbox(id) ON DELETE CASCADE,
+        state TEXT NOT NULL DEFAULT 'pending'
+          CHECK(state IN ('pending','leased','accepted','exhausted')),
+        attempts INTEGER NOT NULL DEFAULT 0,
+        next_attempt_at TEXT NOT NULL,
+        lease_token TEXT,
+        leased_until TEXT,
+        accepted_at TEXT,
+        last_error_code TEXT NOT NULL DEFAULT '',
+        created_at TEXT NOT NULL
+    )""",
+    "CREATE INDEX IF NOT EXISTS idx_email_delivery_due ON email_delivery_jobs(state,next_attempt_at)",
     """CREATE TABLE IF NOT EXISTS employer_public_profiles (
         employer_id INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
         about TEXT NOT NULL DEFAULT '',
@@ -298,11 +313,20 @@ def enqueue_notice(
     user = db.execute("SELECT email FROM users WHERE id=?", (user_id,)).fetchone()
     if user is not None:
         persisted = message if stored_body is None else stored_body
-        db.execute(
+        inserted = db.execute(
             "INSERT INTO email_outbox(to_email,event,subject,body) VALUES(?,?,?,?)",
             (user["email"], event, subject, persisted),
         )
-        send_email(user["email"], subject, message)
+        from .mail_queue import enqueue_workflow_job
+        if not enqueue_workflow_job(
+            db, inserted.lastrowid, event, redacted=stored_body is not None,
+        ):
+            # Security and short-lived token emails keep their immediate
+            # delivery semantics. Their redacted stored copy MUST NOT be
+            # retried or used as a replacement for the original token.
+            send_email(user["email"], subject, message)
+        # Workflow notifications are queued atomically with the business
+        # action, and sent by the background worker only after DB commit.
 
 
 class ApplicationIn(BaseModel):
