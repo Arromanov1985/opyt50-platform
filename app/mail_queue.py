@@ -62,16 +62,26 @@ def _claim_next(db_path: str, now: datetime):
     stamp = _stamp(now)
     until = _stamp(now + timedelta(seconds=LEASE_SECONDS))
     with database(db_path) as db:
+        # A process may die during its final attempt. A timed-out final
+        # lease is exhausted, not sent a fifth time.
+        db.execute(
+            """UPDATE email_delivery_jobs
+               SET state='exhausted', last_error_code='lease_expired',
+                   lease_token=NULL, leased_until=NULL
+               WHERE state='leased' AND attempts>=? AND leased_until<=?""",
+            (MAX_ATTEMPTS, stamp),
+        )
         # The conditional UPDATE is the cross-SQLite/PostgreSQL claim lock.
         # Competing workers can see a candidate, but only one obtains it.
         rows = db.execute(
             """SELECT q.outbox_id,o.to_email,o.subject,o.body,q.attempts
                FROM email_delivery_jobs q
                JOIN email_outbox o ON o.id=q.outbox_id
-               WHERE (q.state='pending' AND q.next_attempt_at<=?)
-                  OR (q.state='leased' AND q.leased_until<=?)
+               WHERE q.attempts<?
+                 AND ((q.state='pending' AND q.next_attempt_at<=?)
+                   OR (q.state='leased' AND q.leased_until<=?))
                ORDER BY q.outbox_id LIMIT 20""",
-            (stamp, stamp),
+            (MAX_ATTEMPTS, stamp, stamp),
         ).fetchall()
         for item in rows:
             token = secrets.token_hex(16)
@@ -79,10 +89,10 @@ def _claim_next(db_path: str, now: datetime):
                 """UPDATE email_delivery_jobs
                    SET state='leased', attempts=attempts+1, lease_token=?,
                        leased_until=?
-                   WHERE outbox_id=?
+                   WHERE outbox_id=? AND attempts<?
                      AND ((state='pending' AND next_attempt_at<=?)
                        OR (state='leased' AND leased_until<=?))""",
-                (token, until, item["outbox_id"], stamp, stamp),
+                (token, until, item["outbox_id"], MAX_ATTEMPTS, stamp, stamp),
             )
             if changed.rowcount == 1:
                 db.commit()  # Commit BEFORE an external SMTP side effect.
