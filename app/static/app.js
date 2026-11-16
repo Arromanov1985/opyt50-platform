@@ -2,7 +2,7 @@
 'use strict';
 const $ = (selector, root = document) => root.querySelector(selector);
 const $$ = (selector, root = document) => [...root.querySelectorAll(selector)];
-const state = { user: null, mode: 'register', role: 'candidate', tab: 'overview', activeVacancy: null, editVacancy: null, employerVacancyFilter: 'all', employerApplicationsVacancyFilter: 'all', employerApplicationsStatusFilter: 'all', employerInvitationsFilter: 'all', employerInvitationsVacancyFilter: 'all', employerInvitationsQuery: '', employerInvitationsData: null, candidateInvitationsFilter: 'all', candidateInvitationsQuery: '', candidateInvitationsData: null, mfaChallenge: null, mfaMethod: null, mfaCodeLength: 8, mfaPublicKey: null, mfaTotpFallback: false };
+const state = { user: null, mode: 'register', role: 'candidate', tab: 'overview', activeVacancy: null, editVacancy: null, employerVacancyFilter: 'all', employerApplicationsVacancyFilter: 'all', employerApplicationsStatusFilter: 'all', employerInvitationsFilter: 'all', employerInvitationsVacancyFilter: 'all', employerInvitationsQuery: '', employerInvitationsData: null, candidateInvitationsFilter: 'all', candidateInvitationsQuery: '', candidateInvitationsData: null, pendingApplicationVacancyId: null, mfaChallenge: null, mfaMethod: null, mfaCodeLength: 8, mfaPublicKey: null, mfaTotpFallback: false };
 const esc = value => String(value ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const money = value => Number(value || 0).toLocaleString('ru-RU') + ' ₽';
 const formatPay = job => job.salary_min === job.salary_max ? money(job.salary_min) : `${money(job.salary_min)} — ${money(job.salary_max)}`;
@@ -419,6 +419,14 @@ async function submitAuth(event) {
       ? (data.user.role === 'candidate' ? 'profile' : data.user.role === 'employer' ? 'create' : 'overview')
       : 'overview';
     await showDashboard(true);
+    // Resume only the chosen vacancy after login, never submit an application
+    // without a new explicit click. Newly registered candidates finish their
+    // short profile first; profile save resumes the same vacancy below.
+    if (data.user.role === 'candidate' && state.mode === 'login') {
+      resumePendingApplicationVacancy();
+    } else if (data.user.role !== 'candidate') {
+      state.pendingApplicationVacancyId = null;
+    }
     toast(state.mode === 'register'
       ? (data.user.role === 'candidate' ? 'Аккаунт создан. Заполните короткий профиль.' : data.user.role === 'employer' ? 'Аккаунт создан. Можно разместить первую вакансию.' : 'Аккаунт создан.')
       : 'Вы вошли в аккаунт.');
@@ -465,6 +473,13 @@ async function showDashboard(scroll = false) {
   if (state.user.role === 'employer') await renderEmployer();
   if (state.user.role === 'admin') await renderAdmin();
   if (scroll) $('#dashboard').scrollIntoView({behavior:'smooth',block:'start'});
+}
+function resumePendingApplicationVacancy() {
+  const id = Number(state.pendingApplicationVacancyId);
+  if (!Number.isSafeInteger(id) || id <= 0 || state.user?.role !== 'candidate') return;
+  state.pendingApplicationVacancyId = null;
+  // Opening the vacancy is read-only: user must choose "Откликнуться" again.
+  document.dispatchEvent(new CustomEvent('stazhno:resume-vacancy', {detail:{id}}));
 }
 function tabsMarkup(items, heading, subtitle) {
   const icons = {
@@ -1532,7 +1547,12 @@ async function handleDashboardSubmit(event) {
   if (form.id === 'profile-form') {
     event.preventDefault();
     const body = {profession:formValue(form,'profession'),city:formValue(form,'city'),skills:formValue(form,'skills'),salary_min:parseNumber(form,'salary_min'),phone:formValue(form,'phone'),schedule:formValue(form,'schedule'),employment:formValue(form,'employment'),about:formValue(form,'about'),is_active:form.elements.namedItem('is_active').checked};
-    try { await api('/api/candidate/profile',{method:'PUT',body:JSON.stringify(body)}); await reloadUser(); toast('Профиль сохранён. Теперь он участвует в подборе.'); } catch(e) { toast(e.message,true); }
+    try {
+      await api('/api/candidate/profile',{method:'PUT',body:JSON.stringify(body)});
+      await reloadUser();
+      toast('Профиль сохранён. Теперь он участвует в подборе.');
+      resumePendingApplicationVacancy();
+    } catch(e) { toast(e.message,true); }
   }
   if (form.id === 'company-form') {
     event.preventDefault();
@@ -1844,8 +1864,17 @@ async function start() {
   $('#register-open').addEventListener('click',()=>openAuth('register'));
   window.addEventListener('resize', syncResponsiveMemberActions);
   syncResponsiveMemberActions();
-  $('#modal-close').addEventListener('click',()=>$('#auth-dialog').close());
-  $('#auth-dialog').addEventListener('click',e=>{ if(e.target === $('#auth-dialog')) $('#auth-dialog').close(); });
+  $('#modal-close').addEventListener('click',()=>{
+    state.pendingApplicationVacancyId = null;
+    $('#auth-dialog').close();
+  });
+  $('#auth-dialog').addEventListener('click',e=>{
+    if(e.target === $('#auth-dialog')) {
+      state.pendingApplicationVacancyId = null;
+      $('#auth-dialog').close();
+    }
+  });
+  $('#auth-dialog').addEventListener('cancel',()=>{ state.pendingApplicationVacancyId = null; });
   $('#auth-form').addEventListener('submit',submitAuth);
   $('#auth-dialog').addEventListener('click',async e=>{
     const role = e.target.closest('[data-role]'); if(role){ state.role=role.dataset.role; updateAuth(); }
