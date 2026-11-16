@@ -1452,6 +1452,67 @@ def create_app(db_path: str | None = None) -> FastAPI:
     def me(user: dict = Depends(active_user), db: sqlite3.Connection = Depends(get_connection)):
         return {"user": user_response(user, db)}
 
+    @app.get("/api/account/action-summary")
+    def account_action_summary(
+        user: dict = Depends(active_user),
+        db: sqlite3.Connection = Depends(get_connection),
+    ):
+        """Count current work requiring this account's decision.
+
+        These counts describe *pending actions*, not unread email. The result
+        contains no candidate identity, contact details, or other accounts'
+        records. It only reads existing tables; no schema or read markers.
+        """
+        owner = user["id"]
+        if user["role"] == "candidate":
+            invitations = db.execute(
+                "SELECT COUNT(*) FROM invitations WHERE candidate_id=? AND status='sent'",
+                (owner,),
+            ).fetchone()[0]
+            changes = db.execute(
+                """SELECT COUNT(*) FROM vacancy_update_recipients
+                   WHERE candidate_id=? AND read_at IS NULL""",
+                (owner,),
+            ).fetchone()[0]
+            return {
+                "role": "candidate",
+                "action_count": invitations + changes,
+                "invitations_pending": invitations,
+                "vacancy_changes_unread": changes,
+            }
+        if user["role"] == "employer":
+            applications = db.execute(
+                """SELECT COUNT(*)
+                   FROM job_applications a
+                   JOIN vacancies v ON v.id=a.vacancy_id
+                   LEFT JOIN invitations i
+                     ON i.vacancy_id=a.vacancy_id AND i.candidate_id=a.candidate_id
+                   WHERE v.employer_id=? AND i.id IS NULL
+                     AND a.status IN ('applied','reviewing','interview')""",
+                (owner,),
+            ).fetchone()[0]
+            consents = db.execute(
+                """SELECT COUNT(*) FROM invitations
+                   WHERE employer_id=? AND status='accepted' AND contact_shared=0""",
+                (owner,),
+            ).fetchone()[0]
+            outcomes = db.execute(
+                """SELECT COUNT(*) FROM invitations i
+                   JOIN job_applications a
+                     ON a.vacancy_id=i.vacancy_id AND a.candidate_id=i.candidate_id
+                   WHERE i.employer_id=? AND i.contact_shared=1
+                     AND a.status NOT IN ('hired','rejected','withdrawn')""",
+                (owner,),
+            ).fetchone()[0]
+            return {
+                "role": "employer",
+                "action_count": applications + consents + outcomes,
+                "applications_to_review": applications,
+                "consents_to_continue": consents,
+                "introductions_to_finish": outcomes,
+            }
+        return {"role": "admin", "action_count": 0}
+
     @app.get("/api/admin/security-status")
     def admin_security_status(user: dict = Depends(active_user)):
         allowed(user, "admin")

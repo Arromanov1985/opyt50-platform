@@ -251,6 +251,9 @@ def run_browser(page):
     page.locator("#logout").click()
 
     login(page, "company@demo.example")
+    expect(page.locator("#account-action-count")).to_have_text("1")
+    expect(page.locator(".dashboard-tabs [data-tab='applications'] .dashboard-action-count")).to_have_text("1")
+    expect(page.locator("#account-open")).to_have_attribute("aria-label", "Мой кабинет, действий требуют внимания: 1")
     expect(page.locator("#dashboard-main")).to_contain_text("ПРИОРИТЕТ СЕЙЧАС")
     expect(page.locator("#dashboard-main .overview-stat-card")).to_have_count(4)
     expect(page.locator("#dashboard-main .overview-funnel")).to_be_visible()
@@ -293,6 +296,7 @@ def run_browser(page):
     page.locator("#dashboard-main [data-v02-action='application-status'][data-status='reviewing']").click()
     expect(page.locator("#dashboard-main")).to_contain_text("На рассмотрении")
     page.locator("#dashboard-main [data-v02-action='express-interest']").click()
+    expect(page.locator("#account-action-count")).to_be_hidden()
     expect(page.locator("#dashboard-main")).to_contain_text("Запрос отправлен")
     expect(page.locator("#dashboard-main")).to_contain_text("Ждём решения кандидата")
     expect(page.locator("#dashboard-main [data-v02-action='express-interest']")).to_have_count(0)
@@ -311,6 +315,9 @@ def run_browser(page):
     page.locator("#logout").click()
 
     login(page, "kladovshik@demo.example")
+    expect(page.locator("#account-action-count")).to_have_text("1")
+    expect(page.locator(".dashboard-tabs [data-tab='invitations'] .dashboard-action-count")).to_have_text("1")
+    expect(page.locator("[data-dashboard-tab-select] option[value='invitations']")).to_have_text("Знакомства · 1")
     expect(page.locator("#dashboard-main")).to_contain_text("Требует вашего ответа")
     page.locator(".dashboard-tabs [data-tab='applications']").click()
     expect(page.locator("#dashboard-main")).to_contain_text("Требует вашего ответа")
@@ -323,6 +330,7 @@ def run_browser(page):
     expect(page.locator("#dashboard-main")).to_contain_text("Требует ответа")
     page.locator("#dashboard-main [id^='consent-']").check()
     page.locator("#dashboard-main [data-action='accept']").click()
+    expect(page.locator("#account-action-count")).to_be_hidden()
     expect(page.locator("#dashboard-main")).to_contain_text("Согласие отправлено")
     expect(page.locator("#dashboard-main")).to_contain_text("Теперь ждём работодателя")
     expect(page.locator("#dashboard-main [data-action='filter-candidate-invitations'][data-filter='waiting']")).to_have_attribute("aria-pressed", "true")
@@ -338,6 +346,8 @@ def run_browser(page):
     page.locator("#logout").click()
 
     login(page, "company@demo.example")
+    expect(page.locator("#account-action-count")).to_have_text("1")
+    expect(page.locator(".dashboard-tabs [data-tab='invitations'] .dashboard-action-count")).to_have_text("1")
     expect(page.locator("#dashboard-main")).to_contain_text("Есть согласие кандидата")
     page.locator(".dashboard-tabs [data-tab='applications']").click()
     expect(page.locator("#dashboard-main")).to_contain_text("Согласие получено")
@@ -788,6 +798,9 @@ def run_browser(page):
     }"""), "Changes list must fit mobile width"
     notices = page.request.get(URL + "/api/candidate/vacancy-updates").json()
     assert notices["unread_count"] == 2
+    # Visiting the changes page does not mark notices as read.
+    expect(page.locator("#account-action-count")).to_have_text("2")
+    expect(page.locator(".dashboard-tabs [data-tab='changes'] .dashboard-action-count")).to_have_text("2")
     with page.expect_response(lambda response: (
         "/api/candidate/vacancy-updates/" in response.url and
         response.url.endswith("/read") and response.request.method == "POST"
@@ -798,6 +811,8 @@ def run_browser(page):
     expect(page.locator(".vacancy-change-item").first).to_contain_text("Прочитано")
     refreshed = page.request.get(URL + "/api/candidate/vacancy-updates").json()
     assert refreshed["unread_count"] == 1
+    expect(page.locator("#account-action-count")).to_have_text("1")
+    expect(page.locator(".dashboard-tabs [data-tab='changes'] .dashboard-action-count")).to_have_text("1")
 
     if console_errors:
         raise AssertionError("Uncaught browser errors: " + " | ".join(console_errors))
