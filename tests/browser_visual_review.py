@@ -121,6 +121,16 @@ def main():
                     ):
                         capture(page, f"01-public-{label}", width, height)
 
+                    # Capture the actual mobile vacancy CTA above the details,
+                    # not merely the public listing card.
+                    page.set_viewport_size({"width": 390, "height": 844})
+                    card = page.locator("#public-jobs .job-card").filter(has_text="Кладовщик")
+                    card.locator("[data-v02-action='details']").click()
+                    expect(page.locator("#job-dialog")).to_be_visible()
+                    expect(page.locator("#job-dialog .job-detail-action")).to_be_visible()
+                    capture(page, "01-vacancy-detail-mobile", 390, 844, "#job-dialog")
+                    page.locator("#job-dialog-close").click()
+
                     make_invitation(page)
                     login(page, "kladovshik@demo.example")
                     expect(page.locator(".overview-priority h3")).to_have_text(
