@@ -60,7 +60,46 @@ jobs:
         run: python tests/browser_safety_smoke.py
       - name: Browser candidate overview smoke
         run: python tests/browser_candidate_overview_smoke.py
+      - name: Browser mobile vacancy application smoke
+        run: python tests/browser_mobile_apply_smoke.py
+      - name: Browser mobile invitation consent smoke
+        run: python tests/browser_mobile_introduction_smoke.py
       - name: Browser taxonomy autocomplete smoke
         run: python tests/browser_taxonomy_smoke.py
       - name: Browser security smoke
         run: python tests/browser_security_smoke.py
+      - name: Capture PR visual review
+        if: github.event_name == 'pull_request'
+        env:
+          STAZHNO_VISUAL_REVIEW_DIR: visual-review
+        run: python tests/browser_visual_review.py
+      - name: Upload PR visual review
+        if: always() && github.event_name == 'pull_request'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: stazhno-ux-review
+          path: visual-review/
+          if-no-files-found: warn
+          retention-days: 7
+      - name: Probe Timeweb preview reachability (GET only)
+        if: always() && github.event_name == 'pull_request'
+        run: python scripts/probe_timeweb_preview.py
+      - name: Capture actual public Timeweb homepage (no auth)
+        if: always() && github.event_name == 'pull_request'
+        run: python tests/browser_timeweb_public_review.py
+      - name: Upload actual public Timeweb screenshots
+        if: always() && github.event_name == 'pull_request'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: stazhno-timeweb-public-review
+          path: timeweb-public-review/
+          if-no-files-found: warn
+          retention-days: 7
+      - name: Upload Timeweb preview reachability report
+        if: always() && github.event_name == 'pull_request'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: stazhno-preview-reachability
+          path: preview-reachability.json
+          if-no-files-found: warn
+          retention-days: 7

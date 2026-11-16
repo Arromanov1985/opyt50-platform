@@ -29,8 +29,42 @@ def run_overview(page):
     browser_errors = []
     page.on("pageerror", lambda error: browser_errors.append(str(error)))
 
+    # A real pending invitation must beat an unverified email in the main CTA.
+    # These are isolated fictional demo accounts in a temporary local database.
+    employer = page.request.post(
+        URL + "/api/login", headers=HEADERS,
+        data={"email": "company@demo.example", "password": "DemoPass2026!"},
+    )
+    assert employer.status == 200, employer.text()
+    vacancy_list = page.request.get(URL + "/api/employer/vacancies")
+    assert vacancy_list.status == 200
+    vacancy_id = next(
+        job["id"] for job in vacancy_list.json()["jobs"] if job["title"] == "Кладовщик"
+    )
+    matches = page.request.get(URL + f"/api/employer/vacancies/{vacancy_id}/matches")
+    assert matches.status == 200
+    candidate_id = next(
+        candidate["candidate_id"]
+        for candidate in matches.json()["matches"]
+        if candidate["profession"] == "Кладовщик"
+    )
+    invite = page.request.post(
+        URL + "/api/employer/invitations", headers=HEADERS,
+        data={"vacancy_id": vacancy_id, "candidate_id": candidate_id},
+    )
+    assert invite.status == 201, invite.text()
+    assert page.request.post(URL + "/api/logout", headers=HEADERS).status == 200
+
     login(page, "kladovshik@demo.example")
+    email_status = page.request.get(URL + "/api/account/email/status")
+    assert email_status.status == 200
+    assert email_status.json()["email_verified"] is False
     dashboard = page.locator("#dashboard-main")
+    expect(dashboard.locator(".overview-priority h3")).to_have_text(
+        "Ответьте на приглашение работодателя"
+    )
+    expect(dashboard.locator(".overview-priority [data-action='open-candidate-invitations']")).to_be_visible()
+    expect(dashboard.locator(".candidate-status-row")).to_contain_text("Подтвердите email")
     expect(dashboard).to_contain_text("ВАШ СЛЕДУЮЩИЙ ШАГ")
     expect(dashboard.locator(".overview-stat-card")).to_have_count(4)
     expect(dashboard.locator(".candidate-status-row")).to_be_visible()
@@ -38,15 +72,22 @@ def run_overview(page):
     expect(dashboard.locator(".candidate-overview-grid")).to_be_visible()
     expect(dashboard).to_contain_text("Вакансии для вас")
     expect(dashboard).to_contain_text("Сейчас в процессе")
-    expect(dashboard.locator(".candidate-overview-section")).to_have_count(2)
+    expect(dashboard.locator(".candidate-overview-section")).to_have_count(3)
+    expect(dashboard.locator(".candidate-invitations-preview")).to_be_visible()
 
     # The overview must remain usable at the core mobile width.
     page.set_viewport_size({"width": 390, "height": 844})
     expect(dashboard.locator(".candidate-overview-grid")).to_be_visible()
     expect(dashboard.locator(".candidate-status-row")).to_be_visible()
     expect(dashboard.locator(".candidate-status-chip").first).to_be_visible()
+    mobile_section = page.locator("[data-dashboard-tab-select]")
+    expect(mobile_section).to_be_visible()
+    expect(mobile_section.locator("option")).to_have_count(9)
+    expect(page.locator(".dashboard-tabs")).to_be_hidden()
+    expect(page.locator(".mobile-quick-nav")).to_be_hidden()
+    expect(page.locator("#mobile-member-actions")).to_be_visible()
 
-    # Navigation from the consolidated overview still uses the same real tabs.
+    # Primary overview actions stay direct; section navigation uses the compact mobile switcher.
     dashboard.locator("[data-tab='offers']").first.click()
     expect(dashboard).to_contain_text("Подходящие вакансии")
     recommendation = dashboard.locator(".job-card").first
@@ -57,11 +98,35 @@ def run_overview(page):
     explanation.locator("summary").click()
     expect(explanation.locator(".match-factor-row")).to_have_count(6)
     expect(explanation).to_contain_text("Возраст и другие личные характеристики не используются")
-    page.locator(".dashboard-tabs [data-tab='overview']").click()
+    mobile_section.select_option("overview")
     expect(dashboard.locator(".candidate-overview-grid")).to_be_visible()
+    expect(dashboard.locator(".candidate-invitations-preview")).to_be_visible()
+    assert page.evaluate("""() => {
+      const invitation = document.querySelector('#dashboard-main .candidate-invitations-preview');
+      const regular = document.querySelector('#dashboard-main .candidate-overview-grid');
+      return invitation && regular &&
+        invitation.getBoundingClientRect().top < regular.getBoundingClientRect().top;
+    }"""), "Unanswered invitations must precede routine recommendations"
+    assert page.evaluate("""() => {
+      const stats = document.querySelector('#dashboard-main .overview-stat-grid');
+      return stats && getComputedStyle(stats).gridTemplateColumns.trim().split(/\\s+/).length === 2;
+    }"""), "Candidate KPIs must use two readable columns at 390px"
+    assert page.evaluate("""() => {
+      const chips = document.querySelector('#dashboard-main .candidate-status-row');
+      return chips && getComputedStyle(chips).gridTemplateColumns.trim().split(/\\s+/).length === 2;
+    }"""), "Candidate trust indicators must fit two columns at 390px"
+    page.locator("#reading-mode-toggle").click()
+    assert page.evaluate("""() => {
+      const stats = document.querySelector('#dashboard-main .overview-stat-grid');
+      return stats && getComputedStyle(stats).gridTemplateColumns.trim().split(/\\s+/).length === 1;
+    }"""), "Large-text mode must retain full-width candidate KPI cards"
+    page.locator("#reading-mode-toggle").click()
 
     # Account-security controls are available without leaving the dashboard.
-    page.locator(".dashboard-tabs [data-tab='security']").click()
+    mobile_section.focus()
+    mobile_section.select_option("security")
+    expect(page.locator("[data-dashboard-tab-select]")).to_be_focused()
+    expect(page.locator("[data-dashboard-tab-select]")).to_have_value("security")
     expect(dashboard).to_contain_text("БЕЗОПАСНОСТЬ АККАУНТА")
     expect(dashboard.locator("#security-password-form")).to_be_visible()
     expect(dashboard.locator("[data-action='revoke-other-sessions']")).to_be_visible()
