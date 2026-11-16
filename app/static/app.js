@@ -901,9 +901,23 @@ function invitationCandidateMarkup(x) {
   } else if (x.status === 'declined') {
     action = '<div class="candidate-introduction-note is-closed"><strong>Вы отказались от знакомства</strong><span>Контакты этой компании не переданы. Дополнительных действий нет.</span></div>';
   }
+  const description = String(x.description || 'Подробности на собеседовании.').trim();
+  if (bucket === 'decision') {
+    const preview = description.length > 200 ? description.slice(0, 200).trimEnd() + '…' : description;
+    const fullConditions = description.length > 200
+      ? `<details class="candidate-invitation-conditions"><summary>Прочитать полные условия вакансии</summary><p>${esc(description)}</p></details>`
+      : '';
+    // The candidate sees who invites them and a readable job summary before
+    // consent. The detailed timeline stays available without burying the CTA.
+    return `<article class="item-card invitation-card candidate-introduction-card is-decision"><header><div><span class="card-eyebrow">ЗНАКОМСТВО</span><h4>${esc(x.title)}</h4><p>${esc(x.company_name)} · ${esc(x.city)} · ${formatPay(x)}</p>${employerPublicTrustMarkup(x)}</div><span class="mini-badge">${esc(candidateInvitationStageLabel(x))}</span></header>
+      <div class="candidate-invitation-summary"><strong>Условия вакансии</strong><p>${esc(preview)}</p>${fullConditions}</div>
+      ${action}
+      <details class="candidate-invitation-history"><summary>Этапы знакомства и история</summary>${interactionStageMarkup(x,'invitation')}${activityTimelineMarkup(x)}</details>
+    </article>`;
+  }
   return `<article class="item-card invitation-card candidate-introduction-card is-${bucket}"><header><div><span class="card-eyebrow">ЗНАКОМСТВО</span><h4>${esc(x.title)}</h4><p>${esc(x.company_name)} · ${esc(x.city)} · ${formatPay(x)}</p>${employerPublicTrustMarkup(x)}</div><span class="mini-badge ${bucket==='closed'?'gray':''}">${esc(candidateInvitationStageLabel(x))}</span></header>
    ${interactionStageMarkup(x,'invitation')}
-   <p class="invitation-description">${esc(x.description || 'Подробности на собеседовании.')}</p>
+   <p class="invitation-description">${esc(description)}</p>
    ${activityTimelineMarkup(x)}
    ${action}</article>`;
 }
