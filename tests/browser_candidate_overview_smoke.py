@@ -65,7 +65,10 @@ def run_overview(page):
     expect(dashboard.locator(".candidate-overview-grid")).to_be_visible()
 
     # Account-security controls are available without leaving the dashboard.
+    mobile_section.focus()
     mobile_section.select_option("security")
+    expect(page.locator("[data-dashboard-tab-select]")).to_be_focused()
+    expect(page.locator("[data-dashboard-tab-select]")).to_have_value("security")
     expect(dashboard).to_contain_text("БЕЗОПАСНОСТЬ АККАУНТА")
     expect(dashboard.locator("#security-password-form")).to_be_visible()
     expect(dashboard.locator("[data-action='revoke-other-sessions']")).to_be_visible()
