@@ -125,3 +125,38 @@ def test_smtp_healthcheck_reports_authentication_failure(monkeypatch):
         "status": "authentication_failed",
         "tls_mode": "starttls",
     }
+
+def test_smtp_disabled_when_transport_is_plaintext(monkeypatch):
+    configure(monkeypatch)
+    monkeypatch.setenv("OPYT50_SMTP_STARTTLS", "0")
+    monkeypatch.setenv("OPYT50_SMTP_SSL", "0")
+    assert email_delivery.smtp_healthcheck() == {
+        "ok": False, "configured": True, "status": "tls_disabled",
+        "tls_mode": "none",
+    }
+    assert email_delivery.send_email("candidate@example.invalid", "Test", "Body") is False
+
+
+def test_smtp_rejects_non_successful_noop(monkeypatch):
+    configure(monkeypatch)
+
+    class RejectingSMTP(FakeSMTP):
+        def noop(self):
+            return (550, b"SMTP server rejected the request")
+
+    monkeypatch.setattr(email_delivery.smtplib, "SMTP", RejectingSMTP)
+    assert email_delivery.smtp_healthcheck() == {
+        "ok": False, "configured": True, "status": "smtp_rejected",
+        "tls_mode": "starttls",
+    }
+
+
+def test_refused_recipient_is_not_reported_as_accepted(monkeypatch):
+    configure(monkeypatch)
+
+    class RefusingSMTP(FakeSMTP):
+        def send_message(self, message):
+            return {"someone@example.invalid": (550, b"Rejected")}
+
+    monkeypatch.setattr(email_delivery.smtplib, "SMTP", RefusingSMTP)
+    assert email_delivery.send_email("someone@example.invalid", "Subject", "Body") is False
