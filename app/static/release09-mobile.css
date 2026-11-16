@@ -589,3 +589,52 @@
   #dashboard-main .candidate-status-chip.is-private{grid-column:auto}
 }
 
+/* Release 0.5.1: apply directly from the vacancy card; the rest is optional. */
+@media(max-width:700px){
+  .job-card-v08 .job-actions,
+  .job-card-v08 .job-actions.has-favorite{
+    display:grid;
+    grid-template-columns:minmax(0,1fr);
+    align-items:stretch;
+    gap:6px;
+  }
+  .job-card-v08 .job-actions.has-favorite{
+    grid-template-columns:minmax(0,1fr) 48px;
+  }
+  .job-card-v08 .job-actions [data-v02-action="details"]{
+    grid-column:1/-1;
+    min-height:40px!important;
+    padding:7px 12px;
+    font-size:12px;
+  }
+  .job-card-v08 .job-actions .favorite-toggle{
+    grid-column:2;
+    grid-row:1;
+    min-height:48px;
+    height:48px;
+    width:48px;
+  }
+  .job-card-v08 .job-actions [data-v02-action="apply"],
+  .job-card-v08 .job-actions [data-v02-action="reapply"],
+  .job-card-v08 .job-actions [data-v02-action="see-applications"]{
+    grid-column:1;
+    grid-row:1;
+    min-height:48px!important;
+    font-size:13px;
+  }
+  .job-card-v08 .job-application-receipt{margin-top:2px}
+  /* Put the apply button near salary and essential conditions rather than
+     after the long description; full conditions remain scrollable below. */
+  #job-dialog .job-detail-facts{
+    grid-template-columns:repeat(2,minmax(0,1fr))!important;
+    gap:8px;
+  }
+  #job-dialog .job-detail-facts span{min-width:0;padding:11px}
+  #job-dialog .job-detail-privacy{margin:0}
+  #job-dialog .job-detail-action{margin:0;display:flex;flex-direction:column;gap:9px}
+  #job-dialog .job-detail-action .btn{min-height:48px;font-size:14px}
+  #job-dialog .job-detail-action .job-application-receipt{width:100%}
+  body.comfortable-view #job-dialog .job-detail-facts{
+    grid-template-columns:1fr!important;
+  }
+}
