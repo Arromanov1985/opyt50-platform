@@ -450,7 +450,7 @@ function actionCountForTab(tab) {
   return 0;
 }
 function updateActionBadges() {
-  const total = state.user?.role === state.actionSummary?.role
+  const total = state.user && state.actionSummary && state.user.role === state.actionSummary.role
     ? Number(state.actionSummary.action_count || 0) : 0;
   const account = $('#account-open');
   const badge = $('#account-action-count');
