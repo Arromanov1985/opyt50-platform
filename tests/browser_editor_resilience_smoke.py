@@ -124,12 +124,15 @@ def exercise_forms(page):
     )) as saved_company:
         page.locator("#company-form button[type='submit']").click()
     assert saved_company.value.status == 200
+    expect(page.locator("#toast")).to_contain_text("Данные компании сохранены.")
+    expect(page.locator("#company-form")).not_to_have_attribute("inert", "")
     expect(page.locator("#company-about")).to_have_value(
         "Вымышленная компания. Проверка сохранения при ошибке 503."
     )
 
-    # Existing preview gate must still be required for vacancy publication.
+    # Wait for the full post-save UI refresh before navigating.
     page.locator("[data-dashboard-tab-select]").select_option("create")
+    expect(page.locator("#vacancy-form")).to_be_visible()
     expect(page.locator("#vacancy-publish")).to_be_disabled()
     title = "Специалист по складу — проверка сохранения"
     page.locator("#vacancy-title").fill(title)
