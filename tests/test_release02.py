@@ -784,3 +784,75 @@ def test_account_email_links_use_public_origin(app, monkeypatch):
                 "SELECT body FROM email_outbox WHERE event='account_verify' ORDER BY id DESC"
             ).fetchone()["body"]
         assert "token=" not in body
+
+
+def test_private_action_summary_follows_existing_workflow_without_extra_emails(app):
+    """Counts are per-user pending actions, not duplicated notification sends."""
+    with TestClient(app) as candidate, TestClient(app) as employer, TestClient(app) as outsider, TestClient(app) as guest:
+        assert guest.get("/api/account/action-summary").status_code == 401
+        register(candidate, "attention-candidate@demo.example")
+        register(employer, "attention-employer@demo.example", "employer")
+        register(outsider, "attention-other@demo.example", "employer")
+        profile(candidate)
+        jid = vacancy(employer)
+
+        def summary(client):
+            response = client.get("/api/account/action-summary")
+            assert response.status_code == 200, response.text
+            return response.json()
+
+        assert summary(candidate) == {
+            "role": "candidate", "action_count": 0,
+            "invitations_pending": 0, "vacancy_changes_unread": 0,
+        }
+        assert summary(employer)["action_count"] == 0
+        assert summary(outsider)["action_count"] == 0
+
+        created = post(candidate, "/api/candidate/applications", {"vacancy_id": jid})
+        assert created.status_code == 201, created.text
+        aid = created.json()["id"]
+        assert summary(employer)["applications_to_review"] == 1
+        assert summary(employer)["action_count"] == 1
+        assert summary(outsider)["action_count"] == 0
+
+        invitation = post(employer, f"/api/employer/applications/{aid}/interest")
+        assert invitation.status_code == 200, invitation.text
+        invitation_id = invitation.json()["invitation_id"]
+        assert summary(employer)["applications_to_review"] == 0
+        assert summary(employer)["action_count"] == 0
+        assert summary(candidate)["invitations_pending"] == 1
+        assert summary(candidate)["action_count"] == 1
+
+        # Only the candidate can consent; summary GET does not change status.
+        with database(app.state.db_path) as db:
+            outbox_before = db.execute("SELECT COUNT(*) FROM email_outbox").fetchone()[0]
+        assert summary(candidate)["action_count"] == 1
+        assert summary(employer)["action_count"] == 0
+        with database(app.state.db_path) as db:
+            assert db.execute("SELECT COUNT(*) FROM email_outbox").fetchone()[0] == outbox_before
+
+        accepted = post(candidate, f"/api/candidate/invitations/{invitation_id}/respond", {
+            "decision": "accepted", "share_consent": True,
+        })
+        assert accepted.status_code == 200, accepted.text
+        assert summary(candidate)["action_count"] == 0
+        assert summary(employer)["consents_to_continue"] == 1
+        assert summary(employer)["action_count"] == 1
+        assert summary(outsider)["action_count"] == 0
+        employer_invitations = employer.get("/api/employer/invitations").json()["invitations"]
+        assert all("contact" not in item for item in employer_invitations)
+
+        opened = post(employer, f"/api/employer/invitations/{invitation_id}/demo-pay")
+        assert opened.status_code == 200, opened.text
+        assert summary(employer)["consents_to_continue"] == 0
+        assert summary(employer)["introductions_to_finish"] == 1
+        assert summary(employer)["action_count"] == 1
+
+        decided = employer.patch(
+            f"/api/employer/applications/{aid}/status",
+            json={"status": "hired"}, headers=HEADERS,
+        )
+        assert decided.status_code == 200, decided.text
+        assert summary(employer)["introductions_to_finish"] == 0
+        assert summary(employer)["action_count"] == 0
+        assert summary(candidate)["action_count"] == 0
