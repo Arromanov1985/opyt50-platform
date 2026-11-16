@@ -89,6 +89,13 @@
       if (known.status === 'withdrawn') return `<button type="button" class="btn btn-primary btn-tiny" data-v02-action="reapply" data-id="${jobId}">Откликнуться повторно</button>`;
       return `<button type="button" class="btn btn-outline btn-tiny" data-v02-action="see-applications">Отклик: ${esc(candidateWorkflowStatus(known,status[known.status] || known.status))} · история</button>`;
     }
+    function jobApplicationReceipt(jobId, job = null) {
+      const known = (job && job.application_status)
+        ? {status:job.application_status, contact_shared:job.contact_shared}
+        : applicationByVacancy.get(jobId);
+      if (!known || known.status !== 'applied') return '';
+      return '<div class="job-application-receipt" role="status"><strong>✓ Отклик отправлен</strong><span>Работодатель видит данные профиля для рассмотрения. Имя и контакты остаются скрытыми до отдельного согласия на знакомство.</span></div>';
+    }
     function employerTrustBadges(job, detailed = false) {
       const badges = [];
       if (job.employer_verified) badges.push('<span class="employer-trust-badge verified">✓ Компания проверена</span>');
@@ -146,7 +153,7 @@
         ${personalized && reasons.length ? `<div class="match-reasons-preview">${reasons.slice(0,2).map(reason=>`<span>✓ ${esc(reason)}</span>`).join('')}</div>` : ''}
         ${personalized && cautions.length ? `<div class="match-caution-preview">${cautions.slice(0,1).map(text=>`<span>! ${esc(text)}</span>`).join('')}</div>` : ''}
         ${personalized ? `<details class="match-explanation"><summary>Как рассчитано совпадение?</summary>${matchBreakdownMarkup(job)}</details>` : ''}
-        <div class="job-actions"><button class="btn btn-outline btn-tiny" data-v02-action="details" data-id="${id}">Подробнее</button>${roleActions}</div></article>`;
+        <div class="job-actions"><button class="btn btn-outline btn-tiny" data-v02-action="details" data-id="${id}">Подробнее</button>${roleActions}</div>${state.user?.role === 'candidate' ? jobApplicationReceipt(id, job) : ''}</article>`;
     };
 
     loadPublicJobs = async function() {
@@ -487,6 +494,23 @@
       if (state.user?.role === 'employer' && state.tab === 'applications') renderEmployer().catch(error => toast(error.message,true));
     });
 
+    async function showJobDetails(id) {
+
+          if($('#company-dialog').open) $('#company-dialog').close();
+          const {job}=await api(`/api/jobs/${id}`);
+          $('#job-dialog-title').textContent=job.title;
+          const skills=String(job.skills||'').split(',').map(x=>x.trim()).filter(Boolean);
+          $('#job-dialog-content').innerHTML=`<div class="job-detail-v08"><div class="job-detail-company"><span class="section-kicker">ВАКАНСИЯ</span><strong>${esc(job.company_name)}</strong><button class="link-button" type="button" data-v02-action="company" data-id="${Number(job.employer_id)}">О компании</button><span>⌖ ${esc(job.city)}</span>${employerTrustBadges(job,true)}</div><div class="job-detail-pay">${formatPay(job)}</div><div class="job-detail-facts"><span><small>График</small><strong>${esc(job.schedule)}</strong></span><span><small>Занятость</small><strong>${esc(job.employment)}</strong></span></div>${skills.length?`<div class="job-skill-tags">${skills.slice(0,8).map(skill=>`<span>${esc(skill)}</span>`).join('')}</div>`:''}<div class="job-detail-privacy">Ваши контакты не передаются работодателю автоматически. Сначала отправляется отклик, а знакомство проходит только через отдельное согласие.</div><div class="job-detail-action">${state.user?.role==='candidate' ? jobApplicationAction(Number(job.id), job) + jobApplicationReceipt(Number(job.id), job) : !state.user ? `<button class="btn btn-primary" data-v02-action="apply" data-id="${Number(job.id)}">Откликнуться на вакансию →</button>` : `<span class="job-role-note">Вы вошли как ${state.user.role==='employer'?'работодатель':'администратор'}. Отклики доступны только соискателям.</span>`}</div><div class="job-detail-description">${esc(job.description||'Подробности у работодателя').replace(/\n/g,'<br>')}</div><div class="job-employer-trust-note"><strong>О работодателе</strong><p>${job.employer_verified?'Компания прошла проверку администратором СТАЖНО по заполненным реквизитам и подтверждённому email.':job.employer_email_verified&&job.employer_inn_provided?'Email подтверждён, реквизиты указаны. Статус проверки компании ещё не присвоен.':job.employer_email_verified?'Email работодателя подтверждён. Реквизиты компании пока не указаны или не проверены.':'Статус проверки компании пока не подтверждён.'}</p></div><div class="job-safety-actions"><button class="btn btn-text btn-tiny" type="button" data-v02-action="report" data-id="${Number(job.id)}">Пожаловаться на вакансию или компанию</button></div></div>`;
+          $('#job-dialog').showModal();
+    }
+    // A guest who selected "Откликнуться" returns to this vacancy only
+    // after login/profile save. Opening it must never POST an application.
+    document.addEventListener('stazhno:resume-vacancy', event => {
+      const id = Number(event.detail?.id);
+      if (!Number.isSafeInteger(id) || id <= 0) return;
+      showJobDetails(id).catch(error => toast(error.message, true));
+    });
+
     document.addEventListener('click',async(event)=>{
       const btn=event.target.closest('[data-v02-action]');
       if(!btn)return;
@@ -494,12 +518,7 @@
       btn.disabled=true;
       try{
         if(type==='details'){
-          if($('#company-dialog').open) $('#company-dialog').close();
-          const {job}=await api(`/api/jobs/${id}`);
-          $('#job-dialog-title').textContent=job.title;
-          const skills=String(job.skills||'').split(',').map(x=>x.trim()).filter(Boolean);
-          $('#job-dialog-content').innerHTML=`<div class="job-detail-v08"><div class="job-detail-company"><span class="section-kicker">ВАКАНСИЯ</span><strong>${esc(job.company_name)}</strong><button class="link-button" type="button" data-v02-action="company" data-id="${Number(job.employer_id)}">О компании</button><span>⌖ ${esc(job.city)}</span>${employerTrustBadges(job,true)}</div><div class="job-detail-pay">${formatPay(job)}</div><div class="job-detail-facts"><span><small>График</small><strong>${esc(job.schedule)}</strong></span><span><small>Занятость</small><strong>${esc(job.employment)}</strong></span></div>${skills.length?`<div class="job-skill-tags">${skills.slice(0,8).map(skill=>`<span>${esc(skill)}</span>`).join('')}</div>`:''}<div class="job-detail-description">${esc(job.description||'Подробности у работодателя').replace(/\n/g,'<br>')}</div><div class="job-employer-trust-note"><strong>О работодателе</strong><p>${job.employer_verified?'Компания прошла проверку администратором СТАЖНО по заполненным реквизитам и подтверждённому email.':job.employer_email_verified&&job.employer_inn_provided?'Email подтверждён, реквизиты указаны. Статус проверки компании ещё не присвоен.':job.employer_email_verified?'Email работодателя подтверждён. Реквизиты компании пока не указаны или не проверены.':'Статус проверки компании пока не подтверждён.'}</p></div><div class="job-detail-privacy">Ваши контакты не передаются работодателю автоматически. Сначала отправляется отклик, а знакомство проходит только через отдельное согласие.</div><div class="job-safety-actions"><button class="btn btn-text btn-tiny" type="button" data-v02-action="report" data-id="${Number(job.id)}">Пожаловаться на вакансию или компанию</button></div><div class="job-detail-action">${state.user?.role==='candidate' ? jobApplicationAction(Number(job.id), job) : !state.user ? `<button class="btn btn-primary" data-v02-action="apply" data-id="${Number(job.id)}">Откликнуться на вакансию →</button>` : `<span class="job-role-note">Вы вошли как ${state.user.role==='employer'?'работодатель':'администратор'}. Отклики доступны только соискателям.</span>`}</div></div>`;
-          $('#job-dialog').showModal();
+          await showJobDetails(id);
         }else if(type==='company'){
   const result=await api('/api/companies/'+id);
   const c=result.company, jobs=result.jobs||[];
