@@ -778,6 +778,7 @@ async function renderCandidate() {
           <button type="button" class="overview-stat-card" data-action="open-candidate-invitations" data-filter="${introductionOverviewFilter}"><strong>${activeIntroductions}</strong><span>Знакомства</span><small>${pendingInvitations ? `Требуют ответа: ${pendingInvitations}` : waitingEmployerInvitations.length ? `Ждём работодателя: ${waitingEmployerInvitations.length}` : 'Новых действий нет'}</small></button>
           <button type="button" class="overview-stat-card" data-tab="favorites"><strong>${favorites.length}</strong><span>Избранное</span><small>Сохранённые вакансии</small></button>
         </section>
+        ${pendingInvitationsList.length ? `<section class="panel candidate-overview-section candidate-invitations-preview"><div class="split-header"><div><span class="section-kicker">ТРЕБУЕТ ОТВЕТА</span><h3>Новые приглашения</h3><p class="muted">Решение за вами: контакты остаются закрытыми, пока вы не согласитесь.</p></div><button class="btn btn-outline btn-tiny" data-tab="invitations">Все знакомства</button></div><div class="candidate-overview-list">${pendingInvitationsList.slice(0,2).map(candidateOverviewInvitationCard).join('')}</div></section>` : ''}
         <section class="candidate-overview-grid">
           <div class="panel candidate-overview-section">
             <div class="split-header"><div><span class="section-kicker">РЕКОМЕНДАЦИИ</span><h3>Вакансии для вас</h3><p class="muted">Сначала варианты с лучшим совпадением по вашему профилю.</p></div><button class="btn btn-outline btn-tiny" data-tab="offers">Все рекомендации</button></div>
@@ -788,7 +789,6 @@ async function renderCandidate() {
             <div class="candidate-overview-list">${activeApplicationsList.length ? activeApplicationsList.slice(0,2).map(candidateOverviewApplicationCard).join('') : '<div class="empty-state"><p>Активных откликов пока нет.</p><button class="btn btn-primary btn-tiny" data-tab="offers">Выбрать вакансию →</button></div>'}</div>
           </div>
         </section>
-        ${pendingInvitationsList.length ? `<section class="panel candidate-overview-section candidate-invitations-preview"><div class="split-header"><div><span class="section-kicker">ТРЕБУЕТ ОТВЕТА</span><h3>Новые приглашения</h3><p class="muted">Решение за вами: контакты остаются закрытыми, пока вы не согласитесь.</p></div><button class="btn btn-outline btn-tiny" data-tab="invitations">Все знакомства</button></div><div class="candidate-overview-list">${pendingInvitationsList.slice(0,2).map(candidateOverviewInvitationCard).join('')}</div></section>` : ''}
         ${favorites.length ? `<section class="candidate-saved-strip"><div><span class="section-kicker">СОХРАНЕНО</span><strong>${favorites.length} вакансий в избранном</strong><small>Можно вернуться к ним позже и сравнить условия.</small></div><button class="btn btn-outline btn-tiny" data-tab="favorites">Открыть сохранённые →</button></section>` : ''}
       </div>`;
     } else if (state.tab === 'profile') target.innerHTML = profileMarkup(state.user.profile, state.user);
