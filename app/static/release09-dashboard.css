@@ -2505,3 +2505,12 @@ body.comfortable-view .candidate-introduction-note span{font-size:.92rem}
   .candidate-introduction-center>.split-header{align-items:stretch;flex-direction:column}
   .candidate-introduction-search{width:100%;min-width:0}
 }
+
+/* Release 0.5 mobile review: surface actionable employer KPIs before
+   company-verification guidance; retain the full trust panel below. */
+@media(max-width:700px){
+  #dashboard-main .employer-overview-hero{order:0}
+  #dashboard-main .employer-overview-stats{order:1}
+  #dashboard-main .employer-trust-overview{order:2}
+  #dashboard-main .employer-outcome-funnel{order:3}
+}
