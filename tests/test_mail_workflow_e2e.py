@@ -6,8 +6,8 @@ from app.db import database
 from app.main import create_app
 
 XHR = {"X-Requested-With": "OPYT50"}
-CANDIDATE = "candidate@example.invalid"
-EMPLOYER = "employer@example.invalid"
+CANDIDATE = "candidate@demo.example"
+EMPLOYER = "employer@demo.example"
 
 
 def post(client, route, body=None):
