@@ -177,10 +177,14 @@ function beginEditorSave(form) {
     submit.setAttribute('aria-busy', 'true');
   }
   setEditorStatus(form, 'Сохраняем изменения…');
+  // Prevent edits to the submitted snapshot while the request is pending.
+  // Unlike disabling inputs, inert does not change the FormData fingerprint.
+  form.inert = true;
   return submit;
 }
 function endEditorSave(form, submit) {
   editorSubmitting.delete(form);
+  form.inert = false;
   if (submit?.isConnected) {
     submit.disabled = false;
     submit.removeAttribute('aria-busy');
