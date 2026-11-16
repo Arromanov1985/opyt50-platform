@@ -4,6 +4,7 @@ from fastapi.testclient import TestClient
 from app import email_delivery
 from app.db import database
 from app.main import create_app
+from app.mail_queue import process_due_workflow_mail
 
 XHR = {"X-Requested-With": "OPYT50"}
 CANDIDATE = "candidate@demo.example"
@@ -100,6 +101,11 @@ def assert_notice(app, mail, previous, event, recipient):
     assert row["body"].strip() == mail[-1][2]
 
 
+def dispatch_one(app):
+    result = process_due_workflow_mail(app.state.db_path)
+    assert result["processed"] == result["accepted"] == 1, result
+
+
 def test_events_send_one_correct_message_and_never_share_contacts_early(
     tmp_path: Path, monkeypatch,
 ):
@@ -113,6 +119,7 @@ def test_events_send_one_correct_message_and_never_share_contacts_early(
         applied = post(candidate, "/api/candidate/applications", {"vacancy_id": job})
         assert applied.status_code == 201, applied.text
         application = applied.json()["id"]
+        dispatch_one(app)
         assert_notice(app, mail, 0, "new_application", EMPLOYER)
         assert len(mail) == base + 1
         assert CANDIDATE not in mail[-1][2]
@@ -125,6 +132,7 @@ def test_events_send_one_correct_message_and_never_share_contacts_early(
         assert interested.status_code == 200, interested.text
         invitation = interested.json()["invitation_id"]
         assert interested.json()["created"] is True
+        dispatch_one(app)
         assert_notice(app, mail, 1, "invitation", CANDIDATE)
         assert len(mail) == base + 2  # No second status email for same click.
         assert "отдельного согласия" in mail[-1][2]
@@ -142,6 +150,7 @@ def test_events_send_one_correct_message_and_never_share_contacts_early(
         accepted = post(candidate, f"/api/candidate/invitations/{invitation}/respond",
                         {"decision": "accepted", "share_consent": True})
         assert accepted.status_code == 200
+        dispatch_one(app)
         assert_notice(app, mail, 2, "invitation_response", EMPLOYER)
         assert len(mail) == base + 3
         assert CANDIDATE not in employer.get("/api/employer/invitations").text
@@ -152,6 +161,7 @@ def test_events_send_one_correct_message_and_never_share_contacts_early(
         opened = post(employer, f"/api/employer/invitations/{invitation}/demo-pay")
         assert opened.status_code == 200
         assert opened.json()["contact"]["email"] == CANDIDATE
+        dispatch_one(app)
         assert_notice(app, mail, 3, "contact_opened", CANDIDATE)
         assert post(employer, f"/api/employer/invitations/{invitation}/demo-pay").status_code == 200
         assert len(mail) == base + 4
@@ -175,17 +185,20 @@ def test_existing_proactive_invitation_is_not_resent(tmp_path: Path, monkeypatch
             "vacancy_id": vacancy, "candidate_id": candidate_id,
         })
         assert direct.status_code == 201, direct.text
+        dispatch_one(app)
         assert_notice(app, mail, 0, "invitation", CANDIDATE)
         applied = post(candidate, "/api/candidate/applications", {
             "vacancy_id": vacancy,
         })
         assert applied.status_code == 201, applied.text
+        dispatch_one(app)
         assert_notice(app, mail, 1, "new_application", EMPLOYER)
         linked = post(
             employer, f"/api/employer/applications/{applied.json()['id']}/interest"
         )
         assert linked.status_code == 200, linked.text
         assert linked.json()["created"] is False
+        dispatch_one(app)
         # Existing introduction is reused: do not resend 'invitation',
         # but a separate application status change may be notified.
         assert_notice(app, mail, 2, "application_status", CANDIDATE)
@@ -214,5 +227,14 @@ def test_smtp_failure_is_not_misreported_as_delivered(tmp_path: Path, monkeypatc
         })
         assert applied.status_code == 201, applied.text
         assert [row["event"] for row in notice_rows(app)] == ["new_application"]
-        # The database records generation, NOT SMTP acceptance or receipt.
-        # Delivery in the current implementation is not automatically retried.
+        result = process_due_workflow_mail(app.state.db_path)
+        assert result["processed"] == 1 and result["pending"] == 1
+        with database(app.state.db_path) as db:
+            state = db.execute(
+                "SELECT state,attempts,last_error_code FROM email_delivery_jobs"
+            ).fetchone()
+            assert state["state"] == "pending"
+            assert state["attempts"] == 1
+            assert state["last_error_code"] == "smtp_not_accepted"
+        # The outbox means generation, not SMTP acceptance or inbox delivery.
+        # The worker will retry this stored business notice later.
