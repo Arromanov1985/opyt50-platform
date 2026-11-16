@@ -105,7 +105,9 @@ async function api(path, options = {}) {
   if (!response.ok) {
     const issue = data.detail;
     const msg = Array.isArray(issue) ? issue.map(x => x.msg).join('; ') : (typeof issue === 'string' ? issue : `Ошибка ${response.status}`);
-    throw new Error(msg);
+    const error = new Error(msg);
+    error.httpStatus = response.status;
+    throw error;
   }
   return data;
 }
@@ -616,8 +618,15 @@ function syncResponsiveMemberActions() {
 }
 async function reloadUser() {
   syncResponsiveMemberActions();
-  const previousUserId = state.user?.id;
-  try { const data = await api('/api/me'); state.user = data.user; } catch { state.user = null; }
+  const previousUser = state.user;
+  const previousUserId = previousUser?.id;
+  try { const data = await api('/api/me'); state.user = data.user; }
+  catch (error) {
+    // A temporary outage must not erase an open form or falsely log the
+    // user out. A real 401/403 still clears the session immediately.
+    state.user = previousUser && (error.networkFailure || error.httpStatus >= 500)
+      ? previousUser : null;
+  }
   if (state.user?.id !== previousUserId) state.actionSummary = null;
   updateActionBadges();
   $('#guest-actions').classList.toggle('hidden', !!state.user);
