@@ -153,7 +153,7 @@
         ${personalized && reasons.length ? `<div class="match-reasons-preview">${reasons.slice(0,2).map(reason=>`<span>✓ ${esc(reason)}</span>`).join('')}</div>` : ''}
         ${personalized && cautions.length ? `<div class="match-caution-preview">${cautions.slice(0,1).map(text=>`<span>! ${esc(text)}</span>`).join('')}</div>` : ''}
         ${personalized ? `<details class="match-explanation"><summary>Как рассчитано совпадение?</summary>${matchBreakdownMarkup(job)}</details>` : ''}
-        <div class="job-actions"><button class="btn btn-outline btn-tiny" data-v02-action="details" data-id="${id}">Подробнее</button>${roleActions}</div>${state.user?.role === 'candidate' ? jobApplicationReceipt(id, job) : ''}</article>`;
+        <div class="job-actions ${open && state.user?.role==='candidate' ? 'has-favorite' : ''}">${roleActions}<button class="btn btn-outline btn-tiny" data-v02-action="details" data-id="${id}">Условия и описание</button></div>${state.user?.role === 'candidate' ? jobApplicationReceipt(id, job) : ''}</article>`;
     };
 
     loadPublicJobs = async function() {
