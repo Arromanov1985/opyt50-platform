@@ -100,6 +100,27 @@ def run_overview(page):
     expect(explanation).to_contain_text("Возраст и другие личные характеристики не используются")
     mobile_section.select_option("overview")
     expect(dashboard.locator(".candidate-overview-grid")).to_be_visible()
+    expect(dashboard.locator(".candidate-invitations-preview")).to_be_visible()
+    assert page.evaluate("""() => {
+      const invitation = document.querySelector('#dashboard-main .candidate-invitations-preview');
+      const regular = document.querySelector('#dashboard-main .candidate-overview-grid');
+      return invitation && regular &&
+        invitation.getBoundingClientRect().top < regular.getBoundingClientRect().top;
+    }"""), "Unanswered invitations must precede routine recommendations"
+    assert page.evaluate("""() => {
+      const stats = document.querySelector('#dashboard-main .overview-stat-grid');
+      return stats && getComputedStyle(stats).gridTemplateColumns.trim().split(/\\s+/).length === 2;
+    }"""), "Candidate KPIs must use two readable columns at 390px"
+    assert page.evaluate("""() => {
+      const chips = document.querySelector('#dashboard-main .candidate-status-row');
+      return chips && getComputedStyle(chips).gridTemplateColumns.trim().split(/\\s+/).length === 2;
+    }"""), "Candidate trust indicators must fit two columns at 390px"
+    page.locator("#reading-mode-toggle").click()
+    assert page.evaluate("""() => {
+      const stats = document.querySelector('#dashboard-main .overview-stat-grid');
+      return stats && getComputedStyle(stats).gridTemplateColumns.trim().split(/\\s+/).length === 1;
+    }"""), "Large-text mode must retain full-width candidate KPI cards"
+    page.locator("#reading-mode-toggle").click()
 
     # Account-security controls are available without leaving the dashboard.
     mobile_section.focus()
