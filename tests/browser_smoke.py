@@ -70,6 +70,29 @@ def run_browser(page):
     page.set_viewport_size({"width": 1060, "height": 760})
     expect(page.locator(".mobile-quick-nav")).to_be_visible()
     expect(page.locator(".nav-links")).not_to_be_visible()
+
+    # The public phone homepage has one navigation layer, while sign-in and
+    # registration remain possible without hunting through the page.
+    page.set_viewport_size({"width": 390, "height": 844})
+    expect(page.locator(".mobile-quick-nav")).to_be_hidden()
+    expect(page.locator("#mobile-guest-actions")).to_be_visible()
+    expect(page.locator("#mobile-guest-actions #login-open")).to_be_visible()
+    expect(page.locator("#mobile-guest-actions #register-open")).to_be_visible()
+    expect(page.locator("#home .hero-actions a[href='#jobs']")).to_be_hidden()
+    expect(page.locator("#home .hero-actions [data-register='employer']")).to_be_visible()
+    page.locator("#mobile-guest-actions #login-open").click()
+    expect(page.locator("#auth-dialog")).to_be_visible()
+    page.locator("#modal-close").click()
+    mode.click()
+    expect(mode).to_have_attribute("aria-pressed", "true")
+    assert page.evaluate("""() => document.documentElement.scrollWidth
+      <= document.documentElement.clientWidth + 3"""), "Large-text mobile homepage overflows"
+    mode.click()
+    page.set_viewport_size({"width": 320, "height": 740})
+    expect(page.locator("#mobile-guest-actions #login-open")).to_be_visible()
+    expect(page.locator("#mobile-guest-actions #register-open")).to_be_visible()
+    assert page.evaluate("""() => document.documentElement.scrollWidth
+      <= document.documentElement.clientWidth + 3"""), "Narrow mobile homepage overflows"
     page.set_viewport_size({"width": 1280, "height": 720})
 
     page.locator("#register-open").click()
