@@ -64,6 +64,8 @@ jobs:
         run: python tests/browser_mobile_apply_smoke.py
       - name: Browser mobile invitation consent smoke
         run: python tests/browser_mobile_introduction_smoke.py
+      - name: Browser editor draft and offline-save smoke
+        run: python tests/browser_editor_resilience_smoke.py
       - name: Browser taxonomy autocomplete smoke
         run: python tests/browser_taxonomy_smoke.py
       - name: Browser security smoke
