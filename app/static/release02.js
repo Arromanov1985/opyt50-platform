@@ -43,17 +43,18 @@
     }
     function employerIntroBadge(a) {
       if (!a.invitation_id) return '';
+      const context = ` data-vacancy-id="${Number(a.vacancy_id)}" data-invitation-id="${Number(a.invitation_id)}"`;
       if (a.contact_shared && a.status === 'hired') {
-        return '<div class="interaction-note is-complete"><strong>Положительный итог</strong><span>Компания хочет продолжить общение. Это не подтверждение трудоустройства.</span></div><button class="btn btn-outline btn-tiny" data-v02-action="open-introductions" data-filter="closed">Открыть завершённое знакомство →</button>';
+        return `<div class="interaction-note is-complete"><strong>Положительный итог</strong><span>Компания хочет продолжить общение. Это не подтверждение трудоустройства.</span></div><button class="btn btn-outline btn-tiny" data-v02-action="open-introductions" data-filter="closed"${context}>Открыть завершённое знакомство →</button>`;
       }
       if (a.contact_shared && a.status === 'rejected') {
-        return '<div class="interaction-note is-closed"><strong>Не договорились</strong><span>Знакомство завершено без продолжения.</span></div><button class="btn btn-outline btn-tiny" data-v02-action="open-introductions" data-filter="closed">Открыть завершённое знакомство →</button>';
+        return `<div class="interaction-note is-closed"><strong>Не договорились</strong><span>Знакомство завершено без продолжения.</span></div><button class="btn btn-outline btn-tiny" data-v02-action="open-introductions" data-filter="closed"${context}>Открыть завершённое знакомство →</button>`;
       }
       if (a.contact_shared) {
-        return '<div class="interaction-note is-complete"><strong>Знакомство состоялось</strong><span>Контакт уже открыт. История и контакт доступны в разделе знакомств.</span></div><button class="btn btn-outline btn-tiny" data-v02-action="open-introductions" data-filter="introduced">Открыть контакт →</button>';
+        return `<div class="interaction-note is-complete"><strong>Знакомство состоялось</strong><span>Контакт уже открыт. История и контакт доступны в разделе знакомств.</span></div><button class="btn btn-outline btn-tiny" data-v02-action="open-introductions" data-filter="introduced"${context}>Открыть контакт →</button>`;
       }
       if (a.invitation_status === 'accepted') {
-        return '<div class="interaction-note is-ready"><strong>Согласие получено</strong><span>Кандидат разрешил продолжить знакомство. Следующий шаг — открыть контакт.</span></div><button class="btn btn-primary btn-tiny" data-v02-action="open-introductions" data-filter="action">Продолжить знакомство →</button>';
+        return `<div class="interaction-note is-ready"><strong>Согласие получено</strong><span>Кандидат разрешил продолжить знакомство. Следующий шаг — открыть контакт.</span></div><button class="btn btn-primary btn-tiny" data-v02-action="open-introductions" data-filter="action"${context}>Продолжить знакомство →</button>`;
       }
       if (a.invitation_status === 'sent') {
         return '<div class="interaction-note is-waiting"><strong>Запрос отправлен</strong><span>Ждём решения кандидата. Повторно отправлять запрос не нужно.</span></div>';
@@ -442,21 +443,48 @@
       });
     }
 
-    function applyEmployerApplicationsSearch() {
+    const employerApplicationPageSize = 10;
+    let employerApplicationRows = [];
+    let employerApplicationEmptyMarkup = '';
+    function employerApplicationCard(a) {
+      return `<article class="item-card application-review-card" data-application-id="${Number(a.id)}" data-application-search="${esc([a.profession,a.title,a.city,a.skills].join(' '))}"><header><div><h4>${esc(a.profession)}</h4><p>${esc(a.title)} · ${esc(a.city)} · ожидания от ${money(a.expected_salary)}</p></div><span class="mini-badge">${esc(employerApplicationStageLabel(a))}</span></header>${interactionStageMarkup(a,'application')}<div class="application-profile-strip is-compact"><span><small>Навыки</small><strong>${esc(a.skills||'Не указаны')}</strong></span></div>${activityTimelineMarkup(a)}${employerIntroBadge(a)}${['applied','reviewing','interview'].includes(a.status) && !a.invitation_id?`<div class="application-next-action"><span>Следующее действие</span><strong>${a.status==='applied'?'Проверьте профиль и переведите в рассмотрение':'Решите, хотите ли начать знакомство'}</strong></div><div class="item-actions">${a.status==='applied'?`<button class="btn btn-outline btn-tiny" data-v02-action="application-status" data-id="${Number(a.id)}" data-status="reviewing">Взять в рассмотрение</button>`:''}<button class="btn btn-primary btn-tiny" data-v02-action="express-interest" data-id="${Number(a.id)}">Запросить согласие на знакомство →</button><button class="btn btn-outline btn-tiny" data-v02-action="application-status" data-id="${Number(a.id)}" data-status="rejected">Отказать</button></div>`:''}</article>`;
+    }
+    function applyEmployerApplicationsSearch(focusNewFrom = null) {
       const list = document.querySelector('#employer-application-results');
       if (!list) return;
       const query = String(state.employerApplicationsQuery || '').trim().toLocaleLowerCase('ru-RU');
-      const cards = Array.from(list.querySelectorAll('.application-review-card'));
-      let visible = 0;
-      for (const card of cards) {
-        const haystack = String(card.dataset.applicationSearch || '').toLocaleLowerCase('ru-RU');
-        card.hidden = Boolean(query && !haystack.includes(query));
-        if (!card.hidden) visible += 1;
-      }
+      // Search ALL rows from the employer-authorized API response, not only the
+      // current ten visible cards. No input goes to localStorage or the network.
+      const matching = query
+        ? employerApplicationRows.filter(item => [item.profession,item.title,item.city,item.skills]
+            .some(value => String(value || '').toLocaleLowerCase('ru-RU').includes(query)))
+        : employerApplicationRows;
+      const limit = Math.max(employerApplicationPageSize, Number(state.employerApplicationsVisibleLimit) || employerApplicationPageSize);
+      const displayed = matching.slice(0, limit);
+      list.innerHTML = employerApplicationRows.length
+        ? displayed.map(employerApplicationCard).join('')
+        : employerApplicationEmptyMarkup;
       const count = document.querySelector('#employer-application-visible-count');
-      if (count) count.textContent = String(visible);
+      if (count) count.textContent = String(displayed.length);
+      const total = document.querySelector('#employer-application-total-count');
+      if (total) total.textContent = String(matching.length);
       const empty = document.querySelector('#employer-application-search-empty');
-      if (empty) empty.hidden = visible !== 0 || cards.length === 0 || !query;
+      if (empty) empty.hidden = displayed.length !== 0 || employerApplicationRows.length === 0 || !query;
+      const pagination = document.querySelector('#employer-application-more');
+      const remaining = matching.length - displayed.length;
+      if (pagination) pagination.innerHTML = remaining > 0
+        ? `<button type="button" class="btn btn-outline" data-v02-action="more-employer-applications" aria-controls="employer-application-results">Показать ещё ${Math.min(employerApplicationPageSize,remaining)} откликов</button>`
+        : '';
+      // The old button disappears when the next batch is rendered. Move focus
+      // to the first newly loaded card, preserving keyboard and tablet context.
+      if (focusNewFrom !== null && displayed.length > focusNewFrom) {
+        const next = list.querySelector('[data-application-id="' + Number(displayed[focusNewFrom].id) + '"]');
+        if (next) {
+          next.setAttribute('tabindex','-1');
+          next.scrollIntoView({block:'nearest'});
+          next.focus({preventScroll:true});
+        }
+      }
     }
 
     renderEmployer = async function() {
@@ -497,15 +525,17 @@
           ['introduced',bucketCounts.introduced],
           ['closed',bucketCounts.closed]
         ].map(([value,count]) => `<button type="button" class="btn btn-tiny ${selectedStatus===value?'btn-dark':'btn-outline'}" data-v02-action="employer-application-filter" data-filter="${value}" aria-pressed="${selectedStatus===value}">${esc(employerApplicationFilterLabels[value])} · ${Number(count)}</button>`).join('');
+        employerApplicationRows = shown;
         const emptyFiltered = vacancyScoped.length
           ? `<div class="empty-state empty-state-action"><span class="empty-state-icon" aria-hidden="true">⌕</span><strong>В этом этапе откликов нет</strong><p>Попробуйте другой этап или сбросьте фильтры, чтобы увидеть всю воронку.</p><button class="btn btn-outline" data-v02-action="reset-application-filters">Сбросить фильтры</button></div>`
           : '<div class="empty-state empty-state-action"><span class="empty-state-icon" aria-hidden="true">＋</span><strong>Откликов пока нет</strong><p>Можно не ждать: запустите подбор и пригласите подходящих специалистов сами.</p><button class="btn btn-primary" data-tab="vacancies">Перейти к вакансиям →</button></div>';
+        employerApplicationEmptyMarkup = emptyFiltered;
         $('#dashboard-main').innerHTML=`<div class="panel employer-applications-panel">
           <div class="split-header"><div><span class="section-kicker">ОТКЛИКИ</span><h3>Отклики соискателей</h3><p class="muted">Сначала оценивайте опыт и навыки. Имя, телефон и email остаются скрытыми до отдельного согласия кандидата.</p></div><div class="application-flow-legend" aria-label="Этапы обработки отклика"><span>1. Отклик</span><b>→</b><span>2. Рассмотрение</span><b>→</b><span>3. Согласие</span><b>→</b><span>4. Знакомство</span><b>→</b><span>5. Итог</span></div></div>
           <div class="employer-application-toolbar"><div class="employer-application-vacancy-filter">${selector}</div><div class="employer-application-stage-filter" role="group" aria-label="Фильтр откликов по этапу">${filterButtons}</div></div>
           <div class="employer-application-search"><label for="employer-application-search">Поиск по профессии, вакансии, городу и навыкам</label><div class="employer-application-search-row"><input type="search" id="employer-application-search" data-employer-application-search autocomplete="off" placeholder="Например, бухгалтер или Excel" value="${esc(state.employerApplicationsQuery||'')}"><button class="btn btn-outline btn-tiny" type="button" data-v02-action="clear-employer-application-search">Очистить поиск</button></div></div>
-          <div class="employer-application-result-line"><span role="status" aria-live="polite">Показываем <strong id="employer-application-visible-count">${shown.length}</strong> из <strong>${vacancyScoped.length}</strong>${selectedStatus==='all'&&vacancyScoped.length>1?' · сначала этапы, где нужен ваш следующий шаг':''}</span>${selectedVacancy!=='all'||selectedStatus!=='all'?'<button type="button" class="link-button" data-v02-action="reset-application-filters">Сбросить фильтры</button>':''}</div>
-          <div class="dashboard-list" id="employer-application-results">${shown.length?shown.map(a=>`<article class="item-card application-review-card" data-application-id="${Number(a.id)}" data-application-search="${esc([a.profession,a.title,a.city,a.skills].join(' '))}"><header><div><h4>${esc(a.profession)}</h4><p>${esc(a.title)} · ${esc(a.city)} · ожидания от ${money(a.expected_salary)}</p></div><span class="mini-badge">${esc(employerApplicationStageLabel(a))}</span></header>${interactionStageMarkup(a,'application')}<div class="application-profile-strip is-compact"><span><small>Навыки</small><strong>${esc(a.skills||'Не указаны')}</strong></span></div>${activityTimelineMarkup(a)}${employerIntroBadge(a)}${['applied','reviewing','interview'].includes(a.status) && !a.invitation_id?`<div class="application-next-action"><span>Следующее действие</span><strong>${a.status==='applied'?'Проверьте профиль и переведите в рассмотрение':'Решите, хотите ли начать знакомство'}</strong></div><div class="item-actions">${a.status==='applied'?`<button class="btn btn-outline btn-tiny" data-v02-action="application-status" data-id="${Number(a.id)}" data-status="reviewing">Взять в рассмотрение</button>`:''}<button class="btn btn-primary btn-tiny" data-v02-action="express-interest" data-id="${Number(a.id)}">Запросить согласие на знакомство →</button><button class="btn btn-outline btn-tiny" data-v02-action="application-status" data-id="${Number(a.id)}" data-status="rejected">Отказать</button></div>`:''}</article>`).join(''):emptyFiltered}</div>
+          <div class="employer-application-result-line"><span role="status" aria-live="polite">Показываем <strong id="employer-application-visible-count">0</strong> из <strong id="employer-application-total-count">0</strong>${selectedStatus==='all'&&vacancyScoped.length>1?' · сначала этапы, где нужен ваш следующий шаг':''}</span>${selectedVacancy!=='all'||selectedStatus!=='all'?'<button type="button" class="link-button" data-v02-action="reset-application-filters">Сбросить фильтры</button>':''}</div>
+          <div class="dashboard-list" id="employer-application-results"></div><div class="employer-application-more" id="employer-application-more"></div>
           <div class="empty-state" id="employer-application-search-empty" hidden><strong>По вашему запросу откликов нет</strong><p>Попробуйте другую профессию, навык или город.</p><button type="button" class="btn btn-outline" data-v02-action="clear-employer-application-search">Очистить поиск</button></div>
         </div>`;
         applyEmployerApplicationsSearch();
@@ -626,12 +656,14 @@
       if (!event.target?.matches('[data-employer-application-search]') ||
           state.user?.role !== 'employer' || state.tab !== 'applications') return;
       state.employerApplicationsQuery = event.target.value;
+      state.employerApplicationsVisibleLimit = employerApplicationPageSize;
       applyEmployerApplicationsSearch();
     });
 
     document.addEventListener('change', event => {
       if (event.target?.id !== 'employer-applications-vacancy') return;
       state.employerApplicationsVacancyFilter = event.target.value;
+      state.employerApplicationsVisibleLimit = employerApplicationPageSize;
       if (state.user?.role === 'employer' && state.tab === 'applications') {
         renderEmployer().then(() => {
           document.querySelector('#employer-applications-vacancy')?.focus({preventScroll:true});
@@ -801,6 +833,7 @@
         else if(type==='employer-application-filter'){
           if(!Object.hasOwn(employerApplicationFilterLabels,btn.dataset.filter))return;
           state.employerApplicationsStatusFilter=btn.dataset.filter;
+          state.employerApplicationsVisibleLimit=employerApplicationPageSize;
           await renderEmployer();
           document.querySelector('[data-v02-action="employer-application-filter"][data-filter="' + state.employerApplicationsStatusFilter + '"]')?.focus({preventScroll:true});
         }
@@ -808,13 +841,20 @@
           state.employerApplicationsVacancyFilter='all';
           state.employerApplicationsStatusFilter='all';
           state.employerApplicationsQuery='';
+          state.employerApplicationsVisibleLimit=employerApplicationPageSize;
           await renderEmployer();
         }
         else if(type==='clear-employer-application-search'){
           state.employerApplicationsQuery='';
+          state.employerApplicationsVisibleLimit=employerApplicationPageSize;
           const input=document.querySelector('#employer-application-search');
           if(input){input.value='';input.focus({preventScroll:true});}
           applyEmployerApplicationsSearch();
+        }
+        else if(type==='more-employer-applications'){
+          const previous=Number(state.employerApplicationsVisibleLimit)||employerApplicationPageSize;
+          state.employerApplicationsVisibleLimit=previous+employerApplicationPageSize;
+          applyEmployerApplicationsSearch(previous);
         }
         else if(type==='application-status'){await req('PATCH',`/api/employer/applications/${id}/status`,{status:btn.dataset.status});await showDashboard();toast('Статус обновлён');}
         else if(type==='express-interest'){
@@ -824,10 +864,36 @@
           toast(data.created?'Кандидату направлен запрос на знакомство (демо)':'Запрос уже существует — повторно не отправлен');
         }
         else if(type==='open-introductions'){
-          if(state.user?.role==='candidate') state.candidateInvitationsFilter=btn.dataset.filter||'decision';
-          else state.employerInvitationsFilter=btn.dataset.filter||'all';
+          const employer=state.user?.role==='employer';
+          if(!employer) {
+            state.candidateInvitationsFilter=btn.dataset.filter||'decision';
+          } else {
+            state.employerInvitationsFilter=btn.dataset.filter||'all';
+            const vacancyId=Number(btn.dataset.vacancyId);
+            state.employerInvitationsVacancyFilter=Number.isSafeInteger(vacancyId)&&vacancyId>0
+              ? String(vacancyId) : 'all';
+            state.employerInvitationsQuery='';
+            state.employerInvitationsData=null;
+          }
           state.tab='invitations';
           await showDashboard();
+          const invitationId=Number(btn.dataset.invitationId);
+          if(employer && Number.isSafeInteger(invitationId) && invitationId>0) {
+            const findCard=()=>document.querySelector('#dashboard-main .employer-invitation-card[data-invitation-id="'+invitationId+'"]');
+            let card=findCard();
+            // An invitation can change stage between clicking and loading the
+            // next page. Fall back to all stages, never to a different person.
+            if(!card) {
+              state.employerInvitationsFilter='all';
+              await loadEmployerInvitations(true);
+              card=findCard();
+            }
+            if(card) {
+              card.setAttribute('tabindex','-1');
+              card.scrollIntoView({block:'nearest'});
+              card.focus({preventScroll:true});
+            }
+          }
         }
         else if(type==='verify-email'){await req('POST','/api/account/email/request');toast('Письмо подтверждения отправлено, если почтовая доставка настроена');}
         else if(type==='recover'){$('#auth-dialog').close();$('#reset-dialog').showModal();}
