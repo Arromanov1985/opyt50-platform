@@ -379,7 +379,7 @@ def run_browser(page):
     expect(pager).to_contain_text("20")
     pager.click()
     expect(page.locator("#employer-application-results .application-review-card:visible")).to_have_count(40)
-    expect(page.locator(".application-review-card[data-application-id='50020']")).to_be_focused()
+    expect(page.locator(".application-review-card[data-application-id='50024']")).to_be_focused()
     expect(pager).to_contain_text("5")
     pager.click()
     expect(page.locator("#employer-application-results .application-review-card:visible")).to_have_count(45)
