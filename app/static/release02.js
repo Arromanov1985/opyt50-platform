@@ -288,7 +288,7 @@
       const nextTab=fromInvitation?'invitations':'applications';
       const nextLabel=fromInvitation?'Открыть знакомства':'Посмотреть отклики';
       const details=vacancyChangeDetails(update.changes);
-      return `<article class="item-card vacancy-change-item ${update.read_at ? 'is-read' : 'is-new'}">
+      return `<article class="item-card vacancy-change-item ${update.read_at ? 'is-read' : 'is-new'}" data-vacancy-update-id="${Number(update.id)}">
         <header><div><h4>${esc(update.title)}</h4>
           <p>${esc(update.company_name)} · ${esc(vacancyChangeDate(update.created_at))}</p></div>
           <span class="mini-badge ${update.read_at ? 'gray' : ''}">${update.read_at ? 'Прочитано' : 'Новое изменение'}</span></header>
@@ -302,6 +302,38 @@
         </div>
         ${update.read_at?'':`<p class="muted vacancy-change-read-help">Отметка подтверждает только прочтение, но не согласие с изменёнными условиями.</p>`}
       </article>`;
+    }
+    const vacancyUpdatesLimit = 20;
+    let vacancyUpdatesFilter = 'all';
+    let vacancyUpdatesNextCursor = null;
+    let vacancyUpdatesLoading = false;
+    const vacancyUpdatesFilters = ['all','unread','read'];
+    function vacancyUpdatesEndpoint(filter, beforeId = null) {
+      const params = new URLSearchParams({filter,limit:String(vacancyUpdatesLimit)});
+      if(beforeId !== null) params.set('before_id',String(beforeId));
+      return '/api/candidate/vacancy-updates?' + params.toString();
+    }
+    function vacancyUpdatesFilterControls(result) {
+      const counts = {
+        all:Number(result.total_count||0),
+        unread:Number(result.unread_count||0),
+        read:Number(result.read_count||0)
+      };
+      const names={all:'Все',unread:'Непрочитанные',read:'Прочитанные'};
+      return vacancyUpdatesFilters.map(filter=>`<button type="button" class="btn btn-outline btn-tiny vacancy-update-filter ${vacancyUpdatesFilter===filter?'is-active':''}"
+        data-v02-action="filter-vacancy-updates" data-filter="${filter}" aria-pressed="${vacancyUpdatesFilter===filter}">${names[filter]} (${counts[filter]})</button>`).join('');
+    }
+    function vacancyUpdatesPager(result) {
+      return result.has_more && result.next_cursor
+        ? '<button type="button" class="btn btn-outline" data-v02-action="more-vacancy-updates">Показать более ранние изменения</button>'
+        : '';
+    }
+    function vacancyUpdatesEmpty(filter) {
+      const headings={
+        all:'Изменений пока нет',unread:'Все изменения прочитаны',read:'Прочитанных изменений пока нет'
+      };
+      return `<div class="empty-state empty-state-action"><strong>${headings[filter]}</strong>
+        <p>${filter==='all'?'Если работодатель изменит условия вакансии после вашего отклика или приглашения, информация появится здесь.': 'Чтобы посмотреть другие уведомления, выберите «Все».'}</p></div>`;
     }
     const employerExtra = [{id:'applications',label:'Отклики'}];
 
@@ -357,12 +389,17 @@
           $('#dashboard-main').innerHTML=`<div class="panel"><div class="panel-title-row"><div><span class="section-kicker">ОТКЛИКИ</span><h3>История откликов</h3><p class="muted">Следите за этапом каждого отклика. Контакты не раскрываются работодателю автоматически.</p></div></div>${updateSummary.unread_count ? `<div class="vacancy-update-banner" role="status">По вакансиям, на которые вы откликались, есть изменения условий: ${Number(updateSummary.unread_count)}. <button type="button" class="btn btn-outline btn-tiny" data-tab="changes">Посмотреть изменения</button></div>` : ''}<div class="dashboard-list">${applications.length ? applications.map(a=>`<article class="item-card"><header><div><h4>${esc(a.title)}</h4><p>${esc(a.company_name)} · ${esc(a.city)} · ${formatPay(a)}</p></div><span class="mini-badge">${esc(candidateWorkflowStatus(a,status[a.status]||a.status))}</span></header><div class="application-card-meta"><span>Отклик отправлен</span><strong>${esc(a.created_at)}</strong></div>${interactionStageMarkup(a,'application')}${activityTimelineMarkup(a)}${applicationIntroBadge(a)}${['applied','reviewing','interview'].includes(a.status) && !a.invitation_id?`<button class="btn btn-outline btn-tiny" data-v02-action="withdraw" data-id="${Number(a.id)}">Отозвать отклик</button>`:a.status==='withdrawn'?`<button class="btn btn-primary btn-tiny" data-v02-action="reapply" data-id="${Number(a.vacancy_id)}">Откликнуться повторно</button>`:''}</article>`).join(''):'<div class="empty-state empty-state-action"><span class="empty-state-icon" aria-hidden="true">↗</span><strong>Вы ещё не откликались</strong><p>Найдите подходящую вакансию и отправьте первый отклик. Контакты работодателю автоматически не передаются.</p><a class="btn btn-primary" href="#jobs">Найти вакансию →</a></div>'}</div></div>`;
         }
         if(state.tab==='changes'){
-          const result=await api('/api/candidate/vacancy-updates');
+          const result=await api(vacancyUpdatesEndpoint(vacancyUpdatesFilter));
+          vacancyUpdatesNextCursor=result.next_cursor;
           $('#dashboard-main').innerHTML=`<div class="panel vacancy-changes">
             <span class="section-kicker">ИЗМЕНЕНИЯ</span><h3>Изменения условий вакансий</h3>
-            <p class="muted">Здесь отображаются изменения вакансий, на которые вы откликнулись или получили приглашение. Реальные письма не отправляются.</p>
+            <p class="muted">История изменений вакансий, на которые вы откликались или получали приглашения. Можно посмотреть все старые уведомления. Письма не отправляются.</p>
             ${result.unread_count ? `<p class="vacancy-unread-count" role="status">Непрочитанных изменений: ${Number(result.unread_count)}</p>` : '<p class="muted">Новых изменений нет.</p>'}
-            <div class="dashboard-list">${result.updates.length ? result.updates.map(vacancyUpdateMarkup).join('') : '<div class="empty-state empty-state-action"><span class="empty-state-icon" aria-hidden="true">✓</span><strong>Изменений нет</strong><p>Если работодатель изменит условия вакансии после вашего отклика, информация появится здесь.</p></div>'}</div>
+            <div class="vacancy-update-filters" role="group" aria-label="Показать уведомления">
+              ${vacancyUpdatesFilterControls(result)}
+            </div>
+            <div class="dashboard-list" id="vacancy-updates-list">${result.updates.length ? result.updates.map(vacancyUpdateMarkup).join('') : vacancyUpdatesEmpty(vacancyUpdatesFilter)}</div>
+            <div class="vacancy-update-pagination" id="vacancy-updates-pagination">${vacancyUpdatesPager(result)}</div>
           </div>`;
         }
         if(state.tab==='email'){
@@ -685,7 +722,34 @@
         }
         else if(type==='withdraw'){await req('POST',`/api/candidate/applications/${id}/withdraw`);await showDashboard();toast('Отклик отозван');}
         else if(type==='reapply'){const result=await req('POST','/api/candidate/applications',{vacancy_id:id});await refreshMyApplications();syncVisibleApplicationCards(id);await showDashboard();toast(result.reapplied?'Отклик отправлен повторно':'Отклик отправлен');}
-        else if(type==='mark-vacancy-update-read'){await req('POST',`/api/candidate/vacancy-updates/${id}/read`);await showDashboard();toast('Изменение отмечено прочитанным.');}
+        else if(type==='filter-vacancy-updates'){
+          if(!vacancyUpdatesFilters.includes(btn.dataset.filter)||state.user?.role!=='candidate') return;
+          vacancyUpdatesFilter=btn.dataset.filter;
+          vacancyUpdatesNextCursor=null;
+          await showDashboard();
+        }
+        else if(type==='more-vacancy-updates'){
+          if(state.user?.role!=='candidate'||state.tab!=='changes'||vacancyUpdatesLoading||!vacancyUpdatesNextCursor) return;
+          vacancyUpdatesLoading=true;
+          const filter=vacancyUpdatesFilter,cursor=vacancyUpdatesNextCursor;
+          try {
+            const next=await api(vacancyUpdatesEndpoint(filter,cursor));
+            if(state.tab!=='changes'||vacancyUpdatesFilter!==filter) return;
+            const list=document.getElementById('vacancy-updates-list');
+            if(!list) return;
+            const existing=new Set(Array.from(list.querySelectorAll('[data-vacancy-update-id]')).map(el=>el.dataset.vacancyUpdateId));
+            const items=next.updates.filter(update=>!existing.has(String(update.id)));
+            list.insertAdjacentHTML('beforeend',items.map(vacancyUpdateMarkup).join(''));
+            vacancyUpdatesNextCursor=next.next_cursor;
+            const pager=document.getElementById('vacancy-updates-pagination');
+            if(pager) pager.innerHTML=vacancyUpdatesPager(next);
+          } finally {vacancyUpdatesLoading=false;}
+        }
+        else if(type==='mark-vacancy-update-read'){
+          await req('POST',`/api/candidate/vacancy-updates/${id}/read`);
+          await showDashboard();
+          toast('Изменение отмечено прочитанным.');
+        }
         else if(type==='see-applications'){
           if($('#job-dialog').open) $('#job-dialog').close();
           state.tab='applications'; await showDashboard(true);
