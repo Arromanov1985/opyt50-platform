@@ -124,6 +124,10 @@ def register_draft_routes(app, active_user, get_connection, allowed, VacancyIn):
         if row["published_vacancy_id"] is not None:
             return {"ok": True, "id": row["published_vacancy_id"], "already_published": True}
         fields = json.loads(row["fields_json"])
+        required = ("title", "city", "salary_min", "salary_max",
+                    "responsibilities", "requirements", "conditions")
+        if any(not str(fields.get(name, "")).strip() for name in required):
+            raise HTTPException(422, "Заполните все обязательные поля до публикации")
         description = "\n".join((
             "Обязанности:", fields.get("responsibilities", ""), "",
             "Требования:", fields.get("requirements", ""), "",
