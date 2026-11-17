@@ -103,6 +103,15 @@ def test_only_preexisting_active_applicants_receive_edits(app):
         assert u["changes"]["description"]["after"] == "Обновлённые условия"
         assert "salary_max" not in u["changes"]
         assert u["read_at"] is None
+        assert u["relationship"] == "application"
+        employer_history = owner.get(f"/api/employer/vacancies/{job_id}/updates")
+        assert employer_history.status_code == 200, employer_history.text
+        history = employer_history.json()
+        assert history["vacancy_id"] == job_id
+        assert history["total_count"] == 1
+        assert history["updates"][0]["changes"] == u["changes"]
+        assert history["updates"][0]["recipients_total"] == 1
+        assert "recipients_read" not in history["updates"][0]
         assert notifications(withdrawn)["updates"] == []
         assert notifications(late)["updates"] == []
 
@@ -114,6 +123,11 @@ def test_only_preexisting_active_applicants_receive_edits(app):
         assert notifications(applicant)["unread_count"] == 2
         assert notifications(late)["unread_count"] == 1
         assert notifications(withdrawn)["unread_count"] == 0
+        history = owner.get(f"/api/employer/vacancies/{job_id}/updates").json()
+        assert history["total_count"] == 2
+        assert len(history["updates"]) == 2
+        assert [item["recipients_total"] for item in history["updates"]] == [2, 1]
+        assert history["updates"][0]["changes"]["salary_max"]["after"] == 120000
 
         # Ownership of notifications is checked for both listing and read.
         nid = u["id"]
@@ -126,6 +140,9 @@ def test_only_preexisting_active_applicants_receive_edits(app):
         assert read["unread_count"] == 1
         assert next(v for v in read["updates"] if v["id"] == nid)["read_at"]
         assert len(read["updates"]) == 2  # Read events stay visible.
+        assert "recipients_read" not in owner.get(
+            f"/api/employer/vacancies/{job_id}/updates"
+        ).json()["updates"][1]  # Candidate's read status is private.
 
         with database(app.state.db_path) as db:
             assert db.execute("SELECT COUNT(*) FROM vacancy_updates").fetchone()[0] == 2
@@ -155,3 +172,42 @@ def test_no_changes_means_no_notification_and_rejected_edit_is_atomic(app):
         assert notifications(candidate)["unread_count"] == 1
         with database(app.state.db_path) as db:
             assert db.execute("SELECT COUNT(*) FROM vacancy_updates").fetchone()[0] == 1
+
+
+
+def test_change_history_owner_only_invitation_next_step_and_zero_updates(app):
+    with TestClient(app) as owner, TestClient(app) as stranger, TestClient(app) as candidate:
+        register(owner, "employer", "Мария Демо", "history-owner@example.test")
+        register(stranger, "employer", "Другой Работодатель", "history-stranger@example.test")
+        cid = register(candidate, "candidate", "Соискатель Демо", "invite-only@example.test")
+        job_id = create_job(owner)
+        history_url = f"/api/employer/vacancies/{job_id}/updates"
+        empty = owner.get(history_url)
+        assert empty.status_code == 200, empty.text
+        assert empty.json() == {"vacancy_id": job_id, "total_count": 0, "updates": []}
+        assert stranger.get(history_url).status_code == 404
+        assert candidate.get(history_url).status_code == 403
+        assert owner.get("/api/employer/vacancies/999999/updates").status_code == 404
+
+        # Candidate was invited directly and never applied for this vacancy.
+        invite = post(owner, "/api/employer/invitations", {
+            "vacancy_id": job_id, "candidate_id": cid,
+        })
+        assert invite.status_code == 201, invite.text
+        assert edit(owner, job_id, salary_min=76000).status_code == 200
+        notice = notifications(candidate)
+        assert notice["unread_count"] == 1
+        assert len(notice["updates"]) == 1
+        assert notice["updates"][0]["relationship"] == "invitation"
+        assert notice["updates"][0]["changes"]["salary_min"] == {
+            "before": 70000, "after": 76000,
+        }
+
+        after = owner.get(history_url)
+        assert after.status_code == 200
+        assert after.json()["total_count"] == 1
+        assert after.json()["updates"][0]["recipients_total"] == 1
+        assert "read_at" not in after.json()["updates"][0]
+        assert "recipients_read" not in after.json()["updates"][0]
+        assert stranger.get(history_url).status_code == 404
+        assert candidate.get(history_url).status_code == 403

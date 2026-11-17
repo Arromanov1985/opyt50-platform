@@ -2869,3 +2869,89 @@ body.comfortable-view .draft-conflict-field select{font-size:1rem}
 }
 body.comfortable-view .published-vacancy-conflict-panel>p,
 body.comfortable-view .published-vacancy-status-warning{font-size:1rem}
+
+/* 0.5.14 — private timeline of changes under employer vacancy cards. */
+.employer-vacancy-history[hidden]{display:none}
+.employer-vacancy-history{
+  min-width:0;
+  max-width:100%;
+  padding:17px;
+  margin:16px 0 0;
+  border:1px solid #D9E8DF;
+  border-radius:13px;
+  background:#FBFDFC;
+}
+.employer-vacancy-history-heading h5{
+  margin:5px 0 8px;
+  color:#133B2C;
+  font-size:17px;
+}
+.employer-vacancy-history-heading p{
+  margin:0;
+  line-height:1.6;
+}
+.employer-vacancy-history-list{
+  display:grid;
+  gap:13px;
+  margin-top:16px;
+}
+.employer-vacancy-history-entry{
+  border-left:3px solid #3B9970;
+  padding:10px 12px;
+  background:white;
+  border-radius:7px;
+}
+.employer-vacancy-history-meta{
+  display:flex;
+  justify-content:space-between;
+  flex-wrap:wrap;
+  gap:8px 16px;
+  align-items:flex-start;
+  line-height:1.55;
+}
+.employer-vacancy-history-meta strong{
+  font-size:13px;color:#143F2F
+}
+.employer-vacancy-history-entry .vacancy-changes-list{
+  margin:13px 0 0;
+  gap:9px;
+}
+.employer-vacancy-history-entry .vacancy-change-detail{
+  padding:10px 12px;
+}
+.employer-vacancy-card .employer-vacancy-secondary [data-action="vacancy-history"]{
+  min-height:42px;
+}
+.vacancy-change-next{
+  border-radius:9px;
+  background:#F3F9F5;
+  color:#1B5340;
+  padding:11px 13px;
+  line-height:1.55;
+  margin:13px 0;
+}
+.vacancy-change-actions{
+  display:flex;
+  flex-wrap:wrap;
+  gap:9px;
+  align-items:center;
+  margin:12px 0 0;
+}
+.vacancy-change-actions .btn{min-height:44px}
+.vacancy-change-read-help{
+  font-size:12px;
+  line-height:1.6;
+  margin:11px 0 0;
+}
+@media(max-width:700px){
+  .employer-vacancy-history{padding:12px;margin-top:14px}
+  .employer-vacancy-history-entry{padding:10px}
+  .employer-vacancy-history-meta{flex-direction:column;gap:3px}
+  .employer-vacancy-history .vacancy-change-pair{grid-template-columns:1fr}
+  .vacancy-change-actions{display:grid;grid-template-columns:minmax(0,1fr)}
+  .vacancy-change-actions .btn{width:100%;white-space:normal}
+}
+body.comfortable-view .vacancy-change-next,
+body.comfortable-view .employer-vacancy-history-meta{
+  font-size:1rem;
+}

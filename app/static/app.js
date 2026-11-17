@@ -1962,12 +1962,13 @@ function jobEmployerMarkup(x, stats = {total: 0, interested: 0, attention: 0, re
   const nextLabel = needsOutcome ? 'Нужно зафиксировать итог' : hasReadyIntroduction ? 'Есть согласие кандидата' : needsAttention ? 'Есть отклики для разбора' : stats.waiting > 0 ? 'Ждём решения кандидата' : (x.status === 'open' ? 'Ищем кандидатов' : 'Вакансия закрыта');
   const quality = vacancyQuality(x);
   const qualityClass = quality.percent >= 88 ? 'high' : quality.percent >= 63 ? 'medium' : 'low';
-  return `<article class="item-card employer-vacancy-card ${(needsAttention || hasReadyIntroduction || needsOutcome) ? 'needs-attention' : ''}">
+  return `<article class="item-card employer-vacancy-card ${(needsAttention || hasReadyIntroduction || needsOutcome) ? 'needs-attention' : ''}" data-employer-vacancy-id="${Number(x.id)}">
     <header><div><span class="card-eyebrow">${esc(nextLabel)}</span><h4>${esc(x.title)}</h4><p>${esc(x.city)} · ${formatPay(x)} · ${esc(x.schedule)}</p><div class="vacancy-moderation-state ${esc(x.moderation_status||'approved')}"><strong>${x.moderation_status==='pending'?'На проверке':x.moderation_status==='rejected'?'Отклонена модератором':'Опубликована'}</strong>${x.moderation_reason?`<small>${esc(x.moderation_reason)}</small>`:''}</div></div><span class="mini-badge ${x.status === 'open' ? '' : 'gray'}">${x.status === 'open' ? 'Открыта' : 'Закрыта'}</span></header>
     <div class="vacancy-pipeline-mini"><span><strong>${stats.total}</strong><small>Отклики</small></span><span><strong>${stats.outcome}</strong><small>Ждут итога</small></span><span><strong>${stats.hired}</strong><small>Выбраны</small></span><span><strong>${stats.rejected}</strong><small>Не договорились</small></span></div>
     <div class="vacancy-quality ${qualityClass}"><div class="vacancy-quality-head"><span>Качество объявления</span><strong>${quality.percent}%</strong></div><div class="vacancy-quality-track"><span style="width:${quality.percent}%"></span></div>${quality.suggestions.length?`<p>${esc(quality.suggestions.slice(0,2).join(' · '))}</p>`:'<p>Основные условия заполнены хорошо.</p>'}</div>
     <div class="employer-vacancy-primary">${needsOutcome ? `<button type="button" class="btn btn-primary" data-action="open-employer-invitations" data-filter="introduced" data-vacancy-id="${x.id}">Зафиксировать итог →</button>` : hasReadyIntroduction ? `<button type="button" class="btn btn-primary" data-action="open-employer-invitations" data-filter="action" data-vacancy-id="${x.id}">Продолжить знакомство →</button>` : needsAttention ? `<button type="button" class="btn btn-primary" data-action="vacancy-applications-primary" data-id="${x.id}">Разобрать отклики →</button>` : `<button class="btn btn-dark" data-action="matches-primary" data-id="${x.id}" ${x.status === 'closed' ? 'disabled':''}>Подобрать кандидатов →</button>`}</div>
-    <div class="item-actions employer-vacancy-secondary"><button type="button" class="btn btn-outline btn-tiny" data-action="vacancy-applications" data-id="${x.id}">Отклики</button><button class="btn btn-outline btn-tiny" data-action="matches" data-id="${x.id}" ${x.status === 'closed' ? 'disabled':''}>Подбор</button><button class="btn btn-outline btn-tiny" data-action="edit-job" data-id="${x.id}">Редактировать</button><button class="btn btn-outline btn-tiny" data-action="job-status" data-id="${x.id}" data-status="${x.status === 'open' ? 'closed' : 'open'}">${x.status === 'open' ? 'Закрыть' : 'Открыть'}</button></div>
+    <div class="item-actions employer-vacancy-secondary"><button type="button" class="btn btn-outline btn-tiny" data-action="vacancy-applications" data-id="${x.id}">Отклики</button><button class="btn btn-outline btn-tiny" data-action="matches" data-id="${x.id}" ${x.status === 'closed' ? 'disabled':''}>Подбор</button><button class="btn btn-outline btn-tiny" data-action="edit-job" data-id="${x.id}">Редактировать</button><button type="button" class="btn btn-outline btn-tiny" data-action="vacancy-history" data-id="${Number(x.id)}" aria-expanded="false" aria-controls="employer-vacancy-history-${Number(x.id)}">История условий</button><button class="btn btn-outline btn-tiny" data-action="job-status" data-id="${x.id}" data-status="${x.status === 'open' ? 'closed' : 'open'}">${x.status === 'open' ? 'Закрыть' : 'Открыть'}</button></div>
+    <section class="employer-vacancy-history" id="employer-vacancy-history-${Number(x.id)}" aria-label="История изменений условий вакансии" hidden></section>
   </article>`;
 }
 function employerMatchBreakdownMarkup(item) {
@@ -1981,6 +1982,43 @@ function employerMatchBreakdownMarkup(item) {
   </div>`).join('');
   const cautionMarkup = cautions.length ? `<div class="match-cautions"><strong>Что уточнить до приглашения</strong>${cautions.slice(0,3).map(text=>`<span>! ${esc(text)}</span>`).join('')}</div>` : '';
   return `<div class="match-breakdown compact">${rows}${cautionMarkup}<p class="match-method-note">Оценка строится только по профессиональному профилю и условиям вакансии. Возраст не используется.</p></div>`;
+}
+async function toggleEmployerVacancyHistory(btn,jobId) {
+  const card = btn.closest('.employer-vacancy-card');
+  const history = card?.querySelector('#employer-vacancy-history-' + jobId);
+  if (!history || !Number.isSafeInteger(jobId) || jobId <= 0) return;
+  if (!history.hidden) {
+    history.hidden = true;
+    btn.setAttribute('aria-expanded','false');
+    return;
+  }
+  const view = window.StazhnoVacancyChanges;
+  if (!view || typeof view.markup !== 'function') {
+    throw new Error('История изменений временно недоступна. Обновите страницу.');
+  }
+  const result = await api('/api/employer/vacancies/' + jobId + '/updates');
+  const updates = result.updates || [];
+  history.innerHTML = `<div class="employer-vacancy-history-heading">
+      <div><span class="section-kicker">СОХРАНЁННАЯ ИСТОРИЯ</span>
+        <h5>Изменения условий</h5>
+        <p class="muted">Всего изменений: ${Number(result.total_count||0)}.
+          ${Number(result.total_count||0)>50?'Показаны последние 50.':''}
+          Уведомления сохраняются в кабинетах соискателей, которым они предназначены.</p></div>
+      </div>
+      ${updates.length ? `<div class="employer-vacancy-history-list">${updates.map(update=>`
+        <article class="employer-vacancy-history-entry">
+          <div class="employer-vacancy-history-meta">
+            <strong>Изменение от ${esc(view.date(update.created_at))}</strong>
+            <span class="muted">${Number(update.recipients_total)>0
+              ? 'Получателей в личных кабинетах: '+Number(update.recipients_total)
+              : 'На момент изменения получателей не было'}</span>
+          </div>
+          <div class="vacancy-changes-list">${view.markup(update.changes)}</div>
+        </article>`).join('')}</div>`
+        : '<p class="muted">Условия этой вакансии ещё не изменялись после публикации.</p>'}`;
+  history.hidden = false;
+  btn.setAttribute('aria-expanded','true');
+  history.scrollIntoView({block:'nearest'});
 }
 async function loadMatches(jobId) {
   const target = $('#employer-matches');
@@ -2699,6 +2737,10 @@ async function handleDashboardClick(event) {
       state.tab = 'invitations';
       state.activeVacancy = null;
       await showDashboard();
+      return;
+    }
+    if (action === 'vacancy-history') {
+      await toggleEmployerVacancyHistory(btn,id);
       return;
     }
     if (action === 'filter-employer-jobs') {
