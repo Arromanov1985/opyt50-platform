@@ -2048,7 +2048,7 @@ body.comfortable-view .account-security-event small{
     flex-direction:column;
   }
 }
-@media(max-width:390px){
+@media(max-width:340px){
   .employer-application-stage-filter{grid-template-columns:1fr}
 }
 
