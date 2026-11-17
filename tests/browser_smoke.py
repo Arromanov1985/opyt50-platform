@@ -1,5 +1,6 @@
 """Real-browser smoke test for release 0.2 using fictional data. No external services."""
 import re
+import json
 import os
 import subprocess
 import sys
@@ -864,6 +865,45 @@ def run_browser(page):
     assert refreshed["unread_count"] == 1
     expect(page.locator("#account-action-count")).to_have_text("1")
     expect(page.locator(".dashboard-tabs [data-tab='changes'] .dashboard-action-count")).to_have_text("1")
+    # Read/unread filters use the server and never mark items read by viewing.
+    page.locator('[data-v02-action="filter-vacancy-updates"][data-filter="unread"]').click()
+    expect(page.locator(".vacancy-change-item")).to_have_count(1)
+    expect(page.locator('[data-v02-action="filter-vacancy-updates"][data-filter="unread"]')).to_have_attribute("aria-pressed","true")
+    page.locator('[data-v02-action="filter-vacancy-updates"][data-filter="read"]').click()
+    expect(page.locator(".vacancy-change-item")).to_have_count(1)
+    expect(page.locator(".vacancy-change-item").first).to_contain_text("Прочитано")
+    page.locator('[data-v02-action="filter-vacancy-updates"][data-filter="all"]').click()
+    expect(page.locator(".vacancy-change-item")).to_have_count(2)
+    assert page.request.get(URL + "/api/candidate/vacancy-updates").json()["unread_count"] == 1
+
+    # Stub only the visual pagination window: backend pagination and ownership
+    # are covered independently by the 125-event API regression.
+    samples = page.request.get(URL + "/api/candidate/vacancy-updates").json()
+    template = samples["updates"][0]
+    fake_first = dict(samples, total_count=21, read_count=20, unread_count=1,
+                      has_more=True, next_cursor=2000,
+                      updates=[dict(template, id=2020-i) for i in range(20)])
+    fake_second = dict(samples, total_count=21, read_count=20, unread_count=1,
+                       has_more=False, next_cursor=None,
+                       updates=[dict(template, id=1999)])
+    def paginated_changes(route):
+        if "filter=all" not in route.request.url:
+            route.continue_()
+            return
+        result = fake_second if "before_id=2000" in route.request.url else fake_first
+        route.fulfill(status=200, content_type="application/json",
+                      body=json.dumps(result, ensure_ascii=False))
+    page.route("**/api/candidate/vacancy-updates?*", paginated_changes)
+    page.locator('[data-v02-action="filter-vacancy-updates"][data-filter="all"]').click()
+    expect(page.locator(".vacancy-change-item")).to_have_count(20)
+    page.locator('[data-v02-action="more-vacancy-updates"]').click()
+    expect(page.locator(".vacancy-change-item")).to_have_count(21)
+    expect(page.locator('[data-v02-action="more-vacancy-updates"]')).to_have_count(0)
+    ids = page.locator(".vacancy-change-item").evaluate_all(
+        "(items) => items.map(item => item.dataset.vacancyUpdateId)"
+    )
+    assert len(ids) == len(set(ids)) == 21
+    page.unroute("**/api/candidate/vacancy-updates?*", paginated_changes)
 
     if console_errors:
         raise AssertionError("Uncaught browser errors: " + " | ".join(console_errors))

@@ -39,7 +39,7 @@ from pathlib import Path
 from typing import Any, Literal
 from urllib.parse import urlsplit
 
-from fastapi import Depends, FastAPI, HTTPException, Request, Response
+from fastapi import Depends, FastAPI, HTTPException, Query, Request, Response
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from starlette.middleware.trustedhost import TrustedHostMiddleware
@@ -2026,11 +2026,30 @@ def create_app(db_path: str | None = None) -> FastAPI:
 
     @app.get("/api/candidate/vacancy-updates")
     def candidate_vacancy_updates(
+        filter: Literal["all", "unread", "read"] = "all",
+        before_id: int | None = Query(default=None, ge=1),
+        limit: int = Query(default=20, ge=1, le=50),
         user: dict = Depends(active_user),
         db: sqlite3.Connection = Depends(get_connection),
     ):
-        """Private in-account notices about actual edits to relevant vacancies."""
+        """Recipient-only, paginated history. Unread items never disappear at 100.
+
+        Keyset pagination uses strictly descending update IDs, preventing
+        duplicate pages when users mark notifications read between requests.
+        Counts are global per candidate, not limited to the displayed page.
+        """
         allowed(user, "candidate")
+        counter = db.execute(
+            """SELECT COUNT(*) AS total_count,
+                      SUM(CASE WHEN read_at IS NULL THEN 1 ELSE 0 END) AS unread_count
+               FROM vacancy_update_recipients WHERE candidate_id=?""",
+            (user["id"],),
+        ).fetchone()
+        total_count = int(counter["total_count"])
+        unread_count = int(counter["unread_count"] or 0)
+        # Keep the entire statement static. Even the filter condition and
+        # keyset cursor are bound values: no SQL fragments from request data.
+        cursor = before_id or 0
         rows = db.execute(
             """SELECT u.id,u.vacancy_id,u.created_at,u.changes_json,
                       v.title,v.status AS vacancy_status,e.company_name,
@@ -2045,21 +2064,27 @@ def create_app(db_path: str | None = None) -> FastAPI:
                JOIN vacancies v ON v.id=u.vacancy_id
                JOIN employer_profiles e ON e.user_id=u.employer_id
                WHERE r.candidate_id=?
-               ORDER BY u.id DESC LIMIT 100""",
-            (user["id"],),
+                 AND (?='all' OR (?='unread' AND r.read_at IS NULL)
+                                 OR (?='read' AND r.read_at IS NOT NULL))
+                 AND (?=0 OR u.id<?)
+               ORDER BY u.id DESC LIMIT ?""",
+            (user["id"], filter, filter, filter, cursor, cursor, limit + 1),
         ).fetchall()
-        unread_count = db.execute(
-            """SELECT COUNT(*) FROM vacancy_update_recipients
-               WHERE candidate_id=? AND read_at IS NULL""", (user["id"],),
-        ).fetchone()[0]
+        has_more = len(rows) > limit
+        page = rows[:limit]
         return {
             "unread_count": unread_count,
+            "read_count": total_count - unread_count,
+            "total_count": total_count,
+            "filter": filter,
+            "has_more": has_more,
+            "next_cursor": page[-1]["id"] if has_more and page else None,
             "updates": [
                 {**{field: row[field] for field in (
                     "id", "vacancy_id", "created_at", "title",
                     "vacancy_status", "company_name", "read_at", "relationship"
                 )}, "changes": json.loads(row["changes_json"])}
-                for row in rows
+                for row in page
             ],
         }
 
