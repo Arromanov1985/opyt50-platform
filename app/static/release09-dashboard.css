@@ -2955,3 +2955,62 @@ body.comfortable-view .vacancy-change-next,
 body.comfortable-view .employer-vacancy-history-meta{
   font-size:1rem;
 }
+
+/* Release 0.5.15: accessible, filterable, full candidate change inbox. */
+.vacancy-update-filters{
+  display:flex;
+  align-items:center;
+  flex-wrap:wrap;
+  gap:9px;
+  margin:16px 0 18px;
+}
+.vacancy-update-filter{
+  min-height:44px;
+  border-radius:10px;
+  white-space:normal;
+}
+.vacancy-update-filter.is-active,
+.vacancy-update-filter[aria-pressed="true"]{
+  border-color:#126A4A;
+  background:#EAF5EE;
+  color:#124F38;
+  font-weight:800;
+}
+.vacancy-update-filter:focus-visible,
+.vacancy-update-pagination .btn:focus-visible{
+  outline:3px solid #39996E;
+  outline-offset:3px;
+}
+.vacancy-update-pagination{
+  display:flex;
+  justify-content:center;
+  margin:17px 0 0;
+}
+.vacancy-update-pagination .btn{
+  min-height:44px;
+  width:min(100%,390px);
+  white-space:normal;
+}
+@media (max-width:700px){
+  .vacancy-update-filters{
+    display:grid;
+    grid-template-columns:repeat(3,minmax(0,1fr));
+    gap:6px;
+  }
+  .vacancy-update-filter{
+    width:100%;
+    min-width:0;
+    padding:9px 5px;
+    line-height:1.35;
+    font-size:12px;
+  }
+}
+@media(max-width:360px){
+  .vacancy-update-filters{
+    grid-template-columns:minmax(0,1fr);
+  }
+}
+body.comfortable-view .vacancy-update-filter{
+  font-size:1rem;
+  min-height:48px;
+}
