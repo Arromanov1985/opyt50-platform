@@ -2,7 +2,7 @@
 'use strict';
 const $ = (selector, root = document) => root.querySelector(selector);
 const $$ = (selector, root = document) => [...root.querySelectorAll(selector)];
-const state = { user: null, mode: 'register', role: 'candidate', tab: 'overview', activeVacancy: null, editVacancy: null, employerVacancyFilter: 'all', employerApplicationsVacancyFilter: 'all', employerApplicationsStatusFilter: 'all', employerInvitationsFilter: 'all', employerInvitationsVacancyFilter: 'all', employerInvitationsQuery: '', employerInvitationsData: null, candidateInvitationsFilter: 'all', candidateInvitationsQuery: '', candidateInvitationsData: null, pendingApplicationVacancyId: null, mfaChallenge: null, mfaMethod: null, mfaCodeLength: 8, mfaPublicKey: null, mfaTotpFallback: false, actionSummary: null };
+const state = { user: null, mode: 'register', role: 'candidate', tab: 'overview', activeVacancy: null, editVacancy: null, activeDraft: null, employerVacancyFilter: 'all', employerApplicationsVacancyFilter: 'all', employerApplicationsStatusFilter: 'all', employerInvitationsFilter: 'all', employerInvitationsVacancyFilter: 'all', employerInvitationsQuery: '', employerInvitationsData: null, candidateInvitationsFilter: 'all', candidateInvitationsQuery: '', candidateInvitationsData: null, pendingApplicationVacancyId: null, mfaChallenge: null, mfaMethod: null, mfaCodeLength: 8, mfaPublicKey: null, mfaTotpFallback: false, actionSummary: null };
 const esc = value => String(value ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const money = value => Number(value || 0).toLocaleString('ru-RU') + ' ₽';
 const formatPay = job => job.salary_min === job.salary_max ? money(job.salary_min) : `${money(job.salary_min)} — ${money(job.salary_max)}`;
@@ -115,6 +115,36 @@ async function api(path, options = {}) {
 // contact details, company information or vacancy drafts to browser storage.
 const editorBaselines = new WeakMap();
 const editorSubmitting = new WeakSet();
+function draftFields(form) {
+  const names = ['title','city','salary_min','salary_max','schedule','employment','skills','responsibilities','requirements','conditions'];
+  return Object.fromEntries(names.map(name => [name, formValue(form,name)]));
+}
+async function saveVacancyDraft(form) {
+  const button = form.querySelector('[data-action="save-vacancy-draft"]');
+  if (button?.disabled || editorSubmitting.has(form)) return;
+  const submit = beginEditorSave(form);
+  if (button) button.disabled = true;
+  try {
+    const fields = draftFields(form);
+    const id = Number(form.dataset.draftId || 0);
+    const result = await api(id ? `/api/employer/vacancy-drafts/${id}` : '/api/employer/vacancy-drafts', {
+      method: id ? 'PUT' : 'POST',
+      body: JSON.stringify(id ? {fields, expected_version:Number(form.dataset.draftVersion)} : {fields})
+    });
+    form.dataset.draftId = result.id;
+    form.dataset.draftVersion = result.version;
+    state.activeDraft = result;
+    editorSaved(form);
+    setEditorStatus(form, 'Черновик сохранён на сервере. Его можно открыть с другого устройства.');
+    toast('Черновик сохранён. Вакансия ещё не опубликована.');
+  } catch(e) {
+    setEditorStatus(form, 'Черновик не сохранён: ' + e.message + '. Поля остались заполнены.', true);
+    toast('Не удалось сохранить черновик: ' + e.message, true);
+  } finally {
+    endEditorSave(form, submit);
+    if (button?.isConnected) button.disabled = false;
+  }
+}
 const EDITOR_IDS = new Set(['profile-form', 'company-form', 'vacancy-form']);
 function editorFingerprint(form) {
   return JSON.stringify([...new FormData(form).entries()]);
@@ -1230,16 +1260,21 @@ async function renderEmployer() {
     } else if (state.tab === 'company') {
       const result = await api('/api/employer/company');
       target.innerHTML = employerCompanyMarkup(result);
-    } else if (state.tab === 'create') target.innerHTML = vacancyFormMarkup();
+    } else if (state.tab === 'create') {
+      const draft = state.activeDraft;
+      target.innerHTML = vacancyFormMarkup(null, draft);
+    }
     else if (state.tab === 'edit') await loadEmployerVacancyEdit();
     else if (state.tab === 'vacancies') await loadEmployerVacancies();
     else if (state.tab === 'security') await renderAccountSecurity(target);
     else await loadEmployerInvitations(true);
   } catch(e) { target.innerHTML = `<div class="panel">${esc(e.message)}</div>`; toast(e.message,true); }
 }
-function vacancyFormMarkup(job = null) {
-  const isEdit = Boolean(job);
-  const sections = isEdit ? window.OpytnovacancyWizard?.splitDescription(job.description) : null;
+function vacancyFormMarkup(job = null, draft = null) {
+  if (draft && !job) job = {...draft.fields, draft_only: true};
+  const isEdit = Boolean(job && !job.draft_only);
+  const draftValues = draft?.fields || {};
+  const sections = isEdit ? window.OpytnovacancyWizard?.splitDescription(job.description) : (draft ? draftValues : null);
   const legacy = isEdit && !sections;
   const fields = legacy
     ? `<div class="field vacancy-legacy"><label for="vacancy-legacy">Исходное описание (старый формат)</label>
@@ -1261,7 +1296,7 @@ function vacancyFormMarkup(job = null) {
     <div class="vacancy-compose-header"><div><span class="section-kicker">${isEdit ? 'РЕДАКТИРОВАНИЕ ВАКАНСИИ' : 'НОВАЯ ВАКАНСИЯ'}</span><h3>${isEdit ? 'Изменить вакансию' : 'Разместить вакансию'}</h3><p class="muted">${isEdit ? 'Исправьте условия и проверьте объявление перед сохранением. Отклики и история вакансии сохранятся.' : 'Сначала основные условия, затем короткое описание работы. Перед публикацией вы увидите вакансию глазами соискателя.'}</p></div><span class="vacancy-compose-badge">${isEdit ? 'Изменения сохранят историю' : 'Размещение бесплатно'}</span></div>
     <p class="vacancy-demo-warning">Не добавляйте телефон или email в текст вакансии. Для контакта используется защищённый сценарий знакомства.</p>
     ${isEdit ? `<p class="vacancy-edit-warning">Редактирование не удаляет отклики и приглашения. После изменения условий соискатель увидит уведомление в своём кабинете.</p>` : ``}
-    <form id="vacancy-form" data-edit-id="${isEdit ? job.id : ''}" data-revision="${isEdit ? esc(job.revision) : ''}" data-edit-mode="${legacy ? 'legacy' : 'structured'}">
+    <form id="vacancy-form" data-edit-id="${isEdit ? job.id : ''}" data-revision="${isEdit ? esc(job.revision) : ''}" data-edit-mode="${legacy ? 'legacy' : 'structured'}" data-draft-id="${draft?.id || ''}" data-draft-version="${draft?.version || ''}">
       <div class="vacancy-progress" aria-label="Прогресс заполнения вакансии">
         <span class="vacancy-progress-step is-current"><i>1</i><b>Основное</b></span>
         <span class="vacancy-progress-step"><i>2</i><b>Описание</b></span>
@@ -1276,8 +1311,8 @@ function vacancyFormMarkup(job = null) {
           <div class="field wide"><label for="vacancy-title">Должность *</label><input id="vacancy-title" name="title" value="${esc(job?.title || '')}" placeholder="Например, инженер по эксплуатации" minlength="3" maxlength="120" required></div>
           <div class="field"><label for="vacancy-city">Город или формат работы *</label><input id="vacancy-city" name="city" value="${esc(job?.city || '')}" placeholder="Например, Москва или Удалённо" minlength="2" maxlength="100" required></div>
           <div class="field"><label for="vacancy-skills">Ключевые навыки (через запятую)</label><input id="vacancy-skills" name="skills" value="${esc(job?.skills || '')}" placeholder="Например, 1С, Excel" maxlength="300"></div>
-          <div class="field"><label for="vacancy-salary-min">Зарплата от, ₽ *</label><input id="vacancy-salary-min" name="salary_min" type="number" inputmode="numeric" min="0" max="10000000" value="${isEdit ? Number(job.salary_min) : 50000}" required></div>
-          <div class="field"><label for="vacancy-salary-max">Зарплата до, ₽ *</label><input id="vacancy-salary-max" name="salary_max" type="number" inputmode="numeric" min="0" max="10000000" value="${isEdit ? Number(job.salary_max) : 100000}" required></div>
+          <div class="field"><label for="vacancy-salary-min">Зарплата от, ₽ *</label><input id="vacancy-salary-min" name="salary_min" type="number" inputmode="numeric" min="0" max="10000000" value="${draft ? esc(draftValues.salary_min ?? '') : (isEdit ? Number(job.salary_min) : 50000)}" required></div>
+          <div class="field"><label for="vacancy-salary-max">Зарплата до, ₽ *</label><input id="vacancy-salary-max" name="salary_max" type="number" inputmode="numeric" min="0" max="10000000" value="${draft ? esc(draftValues.salary_max ?? '') : (isEdit ? Number(job.salary_max) : 100000)}" required></div>
           <div class="field"><label for="vacancy-schedule">График</label><select id="vacancy-schedule" name="schedule">${optList(schedules,job?.schedule || 'Любой')}</select></div>
           <div class="field"><label for="vacancy-employment">Занятость</label><select id="vacancy-employment" name="employment">${optList(employment,job?.employment || 'Любая')}</select></div>
         </div>
@@ -1303,6 +1338,7 @@ function vacancyFormMarkup(job = null) {
         <p id="vacancy-preview-description" class="vacancy-preview-description"></p>
         <p class="vacancy-preview-note">Проверьте каждую строку. Чтобы исправить что-либо, измените поля выше и повторно откройте предпросмотр.</p>
       </section>
+      ${!isEdit ? '<div class="vacancy-draft-actions"><button type="button" class="btn btn-outline" data-action="save-vacancy-draft">Сохранить черновик</button><small>Черновик доступен только вам, с компьютера и планшета. Для публикации требуется предпросмотр.</small></div>' : ''}
       <div class="vacancy-publish-actions">
         <button type="submit" class="btn btn-primary btn-lg" id="vacancy-publish" disabled>${isEdit ? 'Сохранить изменения ↗' : 'Опубликовать вакансию ↗'}</button>
         <p class="field-help">${isEdit ? 'Кнопка станет доступна после предпросмотра. Изменения сохранятся в той же вакансии, не удаляя отклики.' : 'Кнопка станет доступна после предварительного просмотра. Публикация отправляет вакансию в тестовую базу.'}</p>
@@ -1324,11 +1360,13 @@ async function loadEmployerVacancyEdit() {
   $('#dashboard-main').innerHTML = vacancyFormMarkup(job);
 }
 async function loadEmployerVacancies() {
-  const [jobsResult, applicationsResult, invitationsResult] = await Promise.all([
+  const [jobsResult, applicationsResult, invitationsResult, draftsResult] = await Promise.all([
     api('/api/employer/vacancies'),
     api('/api/employer/applications'),
-    api('/api/employer/invitations')
+    api('/api/employer/invitations'),
+    api('/api/employer/vacancy-drafts')
   ]);
+  const drafts = draftsResult.drafts || [];
   const jobs = jobsResult.jobs || [];
   const applications = applicationsResult.applications || [];
   const invitations = invitationsResult.invitations || [];
@@ -1378,7 +1416,10 @@ async function loadEmployerVacancies() {
   } else if (jobs.length) {
     nextAction = '<div class="employer-next employer-next-ok"><div><span>Воронка под контролем</span><strong>Продолжайте работу с вакансиями</strong><small>Статусы и следующие действия собраны в одном кабинете.</small></div></div>';
   }
-  view.innerHTML = `<div class="panel">${nextAction}<div class="split-header"><div><h3>Мои вакансии</h3><p class="muted">После размещения получите список обезличенных профилей.</p></div><button class="btn btn-primary btn-tiny" data-action="new-job">+ Добавить</button></div><div class="stat-grid" aria-label="Статистика вакансий"><div class="stat-tile"><strong>${jobs.length}</strong><span>Всего вакансий</span></div><div class="stat-tile"><strong>${openCount}</strong><span>Открыты</span></div><div class="stat-tile"><strong>${closedCount}</strong><span>Закрыты</span></div></div><div class="stat-grid" aria-label="Воронка подбора"><div class="stat-tile"><strong>${applications.length}</strong><span>Отклики</span></div><div class="stat-tile"><strong>${invitationCount}</strong><span>Запросы на знакомство</span></div><div class="stat-tile"><strong>${introducedCount}</strong><span>Открытые контакты</span></div></div><div class="item-actions" role="group" aria-label="Фильтр вакансий"><button type="button" class="btn btn-tiny ${filter === 'all' ? 'btn-dark' : 'btn-outline'}" data-action="filter-employer-jobs" data-filter="all" aria-pressed="${filter === 'all'}">Все (${jobs.length})</button><button type="button" class="btn btn-tiny ${filter === 'open' ? 'btn-dark' : 'btn-outline'}" data-action="filter-employer-jobs" data-filter="open" aria-pressed="${filter === 'open'}">Открытые (${openCount})</button><button type="button" class="btn btn-tiny ${filter === 'closed' ? 'btn-dark' : 'btn-outline'}" data-action="filter-employer-jobs" data-filter="closed" aria-pressed="${filter === 'closed'}">Закрытые (${closedCount})</button></div><div class="dashboard-list">${visibleJobs.length ? visibleJobs.map(job => jobEmployerMarkup(job, applicationsByJob.get(Number(job.id)))).join('') : '<div class="empty-state">В выбранной категории вакансий нет.</div>'}</div></div><div id="employer-matches" class="hidden"></div>`;
+  const draftsMarkup = drafts.length
+    ? `<section class="panel"><div class="split-header"><h3>Черновики (${drafts.length})</h3></div><p class="muted">Черновики не видны соискателям до публикации.</p><div class="dashboard-list">${drafts.map(d => `<article class="item-card"><h4>${esc(d.fields.title || 'Без названия')}</h4><p class="muted">Изменён: ${esc(d.updated_at || '')}</p><div class="item-actions"><button type="button" class="btn btn-primary btn-tiny" data-action="resume-vacancy-draft" data-id="${d.id}">Продолжить</button><button type="button" class="btn btn-outline btn-tiny" data-action="delete-vacancy-draft" data-id="${d.id}">Удалить</button></div></article>`).join('')}</div></section>`
+    : '';
+  view.innerHTML = draftsMarkup + `<div class="panel">${nextAction}<div class="split-header"><div><h3>Мои вакансии</h3><p class="muted">После размещения получите список обезличенных профилей.</p></div><button class="btn btn-primary btn-tiny" data-action="new-job">+ Добавить</button></div><div class="stat-grid" aria-label="Статистика вакансий"><div class="stat-tile"><strong>${jobs.length}</strong><span>Всего вакансий</span></div><div class="stat-tile"><strong>${openCount}</strong><span>Открыты</span></div><div class="stat-tile"><strong>${closedCount}</strong><span>Закрыты</span></div></div><div class="stat-grid" aria-label="Воронка подбора"><div class="stat-tile"><strong>${applications.length}</strong><span>Отклики</span></div><div class="stat-tile"><strong>${invitationCount}</strong><span>Запросы на знакомство</span></div><div class="stat-tile"><strong>${introducedCount}</strong><span>Открытые контакты</span></div></div><div class="item-actions" role="group" aria-label="Фильтр вакансий"><button type="button" class="btn btn-tiny ${filter === 'all' ? 'btn-dark' : 'btn-outline'}" data-action="filter-employer-jobs" data-filter="all" aria-pressed="${filter === 'all'}">Все (${jobs.length})</button><button type="button" class="btn btn-tiny ${filter === 'open' ? 'btn-dark' : 'btn-outline'}" data-action="filter-employer-jobs" data-filter="open" aria-pressed="${filter === 'open'}">Открытые (${openCount})</button><button type="button" class="btn btn-tiny ${filter === 'closed' ? 'btn-dark' : 'btn-outline'}" data-action="filter-employer-jobs" data-filter="closed" aria-pressed="${filter === 'closed'}">Закрытые (${closedCount})</button></div><div class="dashboard-list">${visibleJobs.length ? visibleJobs.map(job => jobEmployerMarkup(job, applicationsByJob.get(Number(job.id)))).join('') : '<div class="empty-state">В выбранной категории вакансий нет.</div>'}</div></div><div id="employer-matches" class="hidden"></div>`;
   if (state.activeVacancy && jobs.some(j=>j.id===state.activeVacancy)) await loadMatches(state.activeVacancy);
 }
 function vacancyQuality(job = {}) {
@@ -1829,8 +1870,18 @@ async function handleDashboardSubmit(event) {
     let persisted = false;
     let conflict = false;
     try {
-      const endpoint = editing ? `/api/employer/vacancies/${form.dataset.editId}` : '/api/employer/vacancies';
-      await api(endpoint,{method:editing ? 'PATCH' : 'POST',body:JSON.stringify(body)});
+      const draftId = !editing ? Number(form.dataset.draftId || 0) : 0;
+      if (draftId) {
+        const saved = await api(`/api/employer/vacancy-drafts/${draftId}`, {
+          method:'PUT', body:JSON.stringify({fields:draftFields(form),expected_version:Number(form.dataset.draftVersion)})
+        });
+        form.dataset.draftVersion = saved.version;
+        await api(`/api/employer/vacancy-drafts/${draftId}/publish`, {method:'POST'});
+        state.activeDraft = null;
+      } else {
+        const endpoint = editing ? `/api/employer/vacancies/${form.dataset.editId}` : '/api/employer/vacancies';
+        await api(endpoint,{method:editing ? 'PATCH' : 'POST',body:JSON.stringify(body)});
+      }
       persisted = true;
       editorSaved(form);
       state.editVacancy = null;
@@ -1929,6 +1980,7 @@ async function handleDashboardChange(event) {
     state.candidateInvitationsQuery = '';
     state.candidateInvitationsData = null;
   }
+  if (state.user?.role === 'employer' && nextTab === 'create') state.activeDraft = null;
   state.tab = nextTab;
   state.activeVacancy = null;
   await showDashboard();
@@ -1958,6 +2010,7 @@ async function handleDashboardClick(event) {
       state.candidateInvitationsQuery = '';
       state.candidateInvitationsData = null;
     }
+    if (state.user?.role === 'employer' && tab.dataset.tab === 'create') state.activeDraft = null;
     state.tab = tab.dataset.tab;
     state.activeVacancy = null;
     await showDashboard();
@@ -1966,8 +2019,30 @@ async function handleDashboardClick(event) {
   const btn = event.target.closest('[data-action]'); if (!btn) return;
   const action = btn.dataset.action, id = Number(btn.dataset.id);
   if (btn.disabled) return;
+  if (action === 'save-vacancy-draft') {
+    const form = btn.closest('#vacancy-form');
+    if (form) await saveVacancyDraft(form);
+    return;
+  }
   btn.disabled = true;
   try {
+    if (action === 'resume-vacancy-draft') {
+      const result = await api('/api/employer/vacancy-drafts');
+      const draft = (result.drafts || []).find(d => Number(d.id) === id);
+      if (!draft) throw new Error('Черновик больше не найден');
+      state.activeDraft = draft;
+      state.tab = 'create';
+      await showDashboard();
+      return;
+    }
+    if (action === 'delete-vacancy-draft') {
+      if (!confirm('Удалить этот черновик без возможности восстановления?')) return;
+      await api(`/api/employer/vacancy-drafts/${id}`, {method:'DELETE'});
+      if (Number(state.activeDraft?.id) === id) state.activeDraft = null;
+      await loadEmployerVacancies();
+      toast('Черновик удалён.');
+      return;
+    }
     if (action === 'check-smtp') {
       const target = $('#admin-smtp-status');
       if (target) target.innerHTML = '<div class="loading">Проверяем SMTP...</div>';
@@ -2098,7 +2173,7 @@ async function handleDashboardClick(event) {
       await showDashboard();
       return;
     }
-    if (action === 'new-job') { if (!mayLeaveEditor()) return; state.editVacancy=null; state.tab='create'; await showDashboard(); }
+    if (action === 'new-job') { if (!mayLeaveEditor()) return; state.editVacancy=null; state.activeDraft=null; state.tab='create'; await showDashboard(); }
     if (action === 'edit-job') { if (!mayLeaveEditor()) return; state.editVacancy=id; state.activeVacancy=null; state.tab='edit'; await showDashboard(); }
     if (action === 'cancel-job-edit') { if (!mayLeaveEditor()) return; state.editVacancy=null; state.tab='vacancies'; await showDashboard(); }
     if (action === 'matches' || action === 'matches-primary') { await loadMatches(id); }

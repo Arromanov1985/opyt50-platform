@@ -122,3 +122,32 @@ def test_full_introduction_timeline_persists_and_has_stable_timestamps(runtime_d
             "SELECT COUNT(*) FROM demo_transactions WHERE invitation_id=?",
             (invitation_id,),
         ).fetchone()[0] == 1
+
+
+def test_private_drafts_work_in_real_postgresql(runtime_db):
+    """Ensure the new additive schema and ID RETURNING work with PostgreSQL 17."""
+    from app.release02 import init_release02
+    init_release02("unused-with-DATABASE_URL")
+    with postgres_database(runtime_db) as db:
+        created = db.execute(
+            "INSERT INTO vacancy_drafts(employer_id,fields_json) VALUES(?,?)",
+            (2, '{"title":"Оператор склада"}'),
+        )
+        draft_id = created.lastrowid
+        assert isinstance(draft_id, int) and draft_id > 0
+        row = db.execute(
+            "SELECT * FROM vacancy_drafts WHERE id=? AND employer_id=?",
+            (draft_id, 2),
+        ).fetchone()
+        assert row["version"] == 1
+        assert row["published_vacancy_id"] is None
+        updated = db.execute(
+            """UPDATE vacancy_drafts SET fields_json=?,version=version+1,
+               updated_at=datetime('now')
+               WHERE id=? AND employer_id=? AND version=?""",
+            ('{"title":"Оператор склада","city":"Москва"}', draft_id, 2, 1),
+        )
+        assert updated.rowcount == 1
+        assert db.execute(
+            "SELECT version FROM vacancy_drafts WHERE id=?", (draft_id,)
+        ).fetchone()["version"] == 2

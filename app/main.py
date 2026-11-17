@@ -1838,6 +1838,9 @@ def create_app(db_path: str | None = None) -> FastAPI:
         )
         return {"jobs": alternatives[:10]}
 
+    from .vacancy_drafts import register_draft_routes
+    register_draft_routes(app, active_user, get_connection, allowed, VacancyIn)
+
     @app.post("/api/employer/vacancies", status_code=201)
     def create_vacancy(data: VacancyIn, user: dict = Depends(active_user), db: sqlite3.Connection = Depends(get_connection)):
         allowed(user, "employer")

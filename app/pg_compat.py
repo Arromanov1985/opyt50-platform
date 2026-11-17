@@ -16,7 +16,7 @@ import psycopg
 
 IDENTITY_TABLES = {
     "users", "vacancies", "invitations", "demo_transactions", "job_applications",
-    "application_events", "email_outbox", "admin_audit", "vacancy_updates",
+    "application_events", "email_outbox", "admin_audit", "vacancy_updates", "vacancy_drafts",
 }
 
 
