@@ -275,6 +275,44 @@ def run_browser(page):
     expect(page.locator("#dashboard-main .stat-grid")).to_have_count(2)
     expect(page.locator("#dashboard-main .stat-grid[aria-label='Статистика вакансий'] > .stat-tile")).to_have_count(3)
     expect(page.locator("#dashboard-main .stat-grid[aria-label='Воронка подбора'] > .stat-tile")).to_have_count(3)
+    # Release 0.5.17: employer worklist is searchable without new API calls.
+    vacancy_search = page.locator("#employer-vacancy-search")
+    expect(vacancy_search).to_be_visible()
+    expect(page.locator("#employer-vacancy-results .employer-vacancy-card:visible")).to_have_count(4)
+    expect(page.locator("#employer-vacancy-count")).to_contain_text("Показываем 4 из 4")
+    vacancy_search.fill("пОдОлЬсК")
+    expect(page.locator("#employer-vacancy-results .employer-vacancy-card:visible")).to_have_count(1)
+    expect(page.locator("#employer-vacancy-results .employer-vacancy-card:visible")).to_contain_text("Кладовщик")
+    vacancy_search.fill("Москва")
+    expect(page.locator("#employer-vacancy-results .employer-vacancy-card:visible")).to_have_count(2)
+    vacancy_search.fill("нет такой вакансии")
+    expect(page.locator("#employer-vacancy-results .employer-vacancy-card:visible")).to_have_count(0)
+    expect(page.locator("#employer-vacancy-empty")).to_be_visible()
+    page.locator("[data-action='clear-employer-job-search']").click()
+    expect(vacancy_search).to_be_focused()
+    expect(vacancy_search).to_have_value("")
+    expect(page.locator("#employer-vacancy-results .employer-vacancy-card:visible")).to_have_count(4)
+    attention_filter = page.locator(
+        "#dashboard-main [data-action='filter-employer-jobs'][data-filter='attention']"
+    )
+    expect(attention_filter).to_contain_text("Требуют внимания (1)")
+    attention_filter.click()
+    expect(attention_filter).to_have_attribute("aria-pressed","true")
+    expect(attention_filter).to_be_focused()
+    expect(page.locator("#employer-vacancy-results .employer-vacancy-card:visible")).to_have_count(1)
+    expect(page.locator("#employer-vacancy-results .employer-vacancy-card:visible")).to_contain_text("Кладовщик")
+    # Search survives changing a status filter and remains usable at 390px.
+    vacancy_search.fill("Кладовщик")
+    page.set_viewport_size({"width": 390, "height": 844})
+    assert page.evaluate("""() => {
+      const content = document.querySelector('#dashboard-main');
+      return content.scrollWidth <= content.clientWidth + 3;
+    }"""), "Employer vacancy search must fit mobile width"
+    expect(page.locator("#employer-vacancy-results .employer-vacancy-card:visible")).to_have_count(1)
+    page.locator("[data-action='filter-employer-jobs'][data-filter='all']").click()
+    expect(page.locator("#employer-vacancy-search")).to_have_value("Кладовщик")
+    page.locator("[data-action='clear-employer-job-search']").click()
+    page.set_viewport_size({"width": 1280, "height": 800})
     page.locator("#dashboard-main [data-action='filter-employer-jobs'][data-filter='closed']").click()
     expect(page.locator("#dashboard-main [data-action='filter-employer-jobs'][data-filter='closed']")).to_have_attribute("aria-pressed", "true")
     page.locator("#dashboard-main [data-action='filter-employer-jobs'][data-filter='all']").click()
