@@ -221,3 +221,41 @@ def test_first_create_key_survives_restart_and_rejects_invalid_uuid(tmp_path: Pa
         assert retry.status_code == 200
         assert retry.json()["id"] == did
         assert len(reopened.get("/api/employer/vacancy-drafts").json()["drafts"]) == 1
+
+
+def test_drafts_sorted_by_latest_save_and_stable_tiebreaker(tmp_path: Path):
+    """Employer sees most recently saved drafts first, not oldest ID first."""
+    import sqlite3
+
+    path = tmp_path / "draft-sort.db"
+    app = create_app(str(path))
+    with TestClient(app) as owner, TestClient(app) as other:
+        register(owner, "sort-owner@example.test", "employer")
+        register(other, "sort-other@example.test", "employer")
+        first = owner.post(
+            "/api/employer/vacancy-drafts",
+            json={"fields": {"title": "Старый черновик"}}, headers=XHR,
+        ).json()["id"]
+        second = owner.post(
+            "/api/employer/vacancy-drafts",
+            json={"fields": {"title": "Новый черновик"}}, headers=XHR,
+        ).json()["id"]
+        other.post(
+            "/api/employer/vacancy-drafts",
+            json={"fields": {"title": "Чужая вакансия"}}, headers=XHR,
+        )
+        ordered = owner.get("/api/employer/vacancy-drafts").json()["drafts"]
+        assert [row["id"] for row in ordered] == [second, first]
+
+        # Older ID is updated more recently: it must become the first draft.
+        # Explicit timestamps make the test deterministic on PostgreSQL/SQLite
+        # installations with second-resolution datetime('now').
+        with sqlite3.connect(str(path)) as db:
+            db.execute(
+                "UPDATE vacancy_drafts SET updated_at=? WHERE id=?",
+                ("2099-01-02 12:30:00", first),
+            )
+        ordered = owner.get("/api/employer/vacancy-drafts").json()["drafts"]
+        assert [row["id"] for row in ordered] == [first, second]
+        assert all(row["fields"]["title"] != "Чужая вакансия" for row in ordered)
+        assert ordered[0]["updated_at"] == "2099-01-02 12:30:00"
