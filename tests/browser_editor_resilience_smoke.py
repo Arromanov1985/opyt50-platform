@@ -571,6 +571,48 @@ def exercise_forms(page):
                page.request.get(URL+"/api/employer/vacancies").json()["jobs"]) == 1
     page.set_viewport_size({"width":1280,"height":800})
 
+    # A second tab can close the vacancy while the first edits its content.
+    # The owner must acknowledge the new status; merging never reopens it.
+    page.locator("[data-dashboard-tab-select]").select_option("vacancies")
+    page.locator(f"[data-action='edit-job'][data-id='{job_id}']").click()
+    expect(page.locator("#vacancy-form")).to_have_attribute("data-edit-id",str(job_id))
+    page.locator("#vacancy-title").fill("Специалист отгрузки — обновлено")
+    page.locator("#vacancy-show-preview").click()
+    expect(page.locator("#vacancy-publish")).to_be_enabled()
+    status_reply = page.request.patch(
+        edit_url + "/status", headers=HEADERS, data={"status":"closed"},
+    )
+    assert status_reply.status == 200, status_reply.text()
+    with page.expect_response(lambda r: (
+        r.url.endswith(f"/api/employer/vacancies/{job_id}")
+        and r.request.method == "PATCH" and r.status == 409
+    ),timeout=15000):
+        page.locator("#vacancy-publish").click()
+    comparison = page.locator("[data-published-conflict-panel]")
+    expect(comparison).to_be_visible()
+    expect(comparison.locator("[data-published-conflict-status-ack]")).not_to_be_checked()
+    comparison.locator("[data-action='apply-published-conflict']").click()
+    expect(page.locator("#vacancy-form .editor-save-status")).to_contain_text(
+        "Подтвердите, что заметили изменение статуса"
+    )
+    assert page.request.get(edit_url).json()["job"]["status"] == "closed"
+    comparison.locator("[data-published-conflict-status-ack]").check()
+    comparison.locator("[data-action='apply-published-conflict']").click()
+    expect(page.locator("[data-published-conflict-panel]")).to_have_count(0)
+    expect(page.locator("#vacancy-title")).to_have_value("Специалист отгрузки — обновлено")
+    expect(page.locator("#vacancy-publish")).to_be_disabled()
+    assert page.request.get(edit_url).json()["job"]["title"] == saved_job["title"]
+    page.locator("#vacancy-show-preview").click()
+    with page.expect_response(lambda r: (
+        r.url.endswith(f"/api/employer/vacancies/{job_id}")
+        and r.request.method == "PATCH" and r.status == 200
+    ),timeout=15000):
+        page.locator("#vacancy-publish").click()
+    expect(page.locator("#vacancy-form")).to_have_count(0)
+    closed_result = page.request.get(edit_url).json()["job"]
+    assert closed_result["id"] == job_id and closed_result["status"] == "closed"
+    assert closed_result["title"] == "Специалист отгрузки — обновлено"
+
     assert not errors, errors
 
 
