@@ -817,6 +817,39 @@ def run_browser(page):
       const element = document.querySelector('.employer-vacancy-history');
       return element.scrollWidth <= element.clientWidth + 3;
     }"""), "Change timeline must fit mobile viewport"
+    # More than twenty events remain accessible without navigating away.
+    sample_history = page.request.get(
+        URL + f"/api/employer/vacancies/{old_job['id']}/updates"
+    ).json()
+    history_template = sample_history["updates"][0]
+    first_history = dict(sample_history, total_count=21, has_more=True,
+                         next_cursor=2000, updates=[
+                             dict(history_template, id=2020-i) for i in range(20)])
+    second_history = dict(sample_history, total_count=21, has_more=False,
+                          next_cursor=None, updates=[dict(history_template,id=1999)])
+    def paginated_employer_history(route):
+        result = second_history if "before_id=2000" in route.request.url else first_history
+        route.fulfill(status=200, content_type="application/json",
+                      body=json.dumps(result, ensure_ascii=False))
+    page.route(
+        f"**/api/employer/vacancies/{old_job['id']}/updates*",
+        paginated_employer_history
+    )
+    history_button.click()
+    history_button.click()
+    expect(history_section.locator(".employer-vacancy-history-entry")).to_have_count(20)
+    expect(history_section.locator("[data-action='more-vacancy-history']")).to_be_visible()
+    history_section.locator("[data-action='more-vacancy-history']").click()
+    expect(history_section.locator(".employer-vacancy-history-entry")).to_have_count(21)
+    expect(history_section.locator("[data-action='more-vacancy-history']")).to_have_count(0)
+    ids = history_section.locator("[data-history-update-id]").evaluate_all(
+        "(items) => items.map(item => item.dataset.historyUpdateId)"
+    )
+    assert len(ids) == len(set(ids)) == 21
+    page.unroute(
+        f"**/api/employer/vacancies/{old_job['id']}/updates*",
+        paginated_employer_history
+    )
     history_button.click()
     expect(history_section).to_be_hidden()
     expect(history_button).to_have_attribute("aria-expanded", "false")

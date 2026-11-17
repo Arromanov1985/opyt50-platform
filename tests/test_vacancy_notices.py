@@ -184,7 +184,7 @@ def test_change_history_owner_only_invitation_next_step_and_zero_updates(app):
         history_url = f"/api/employer/vacancies/{job_id}/updates"
         empty = owner.get(history_url)
         assert empty.status_code == 200, empty.text
-        assert empty.json() == {"vacancy_id": job_id, "total_count": 0, "updates": []}
+        assert empty.json() == {"vacancy_id": job_id, "total_count": 0, "has_more": False, "next_cursor": None, "updates": []}
         assert stranger.get(history_url).status_code == 404
         assert candidate.get(history_url).status_code == 403
         assert owner.get("/api/employer/vacancies/999999/updates").status_code == 404
@@ -272,3 +272,64 @@ def test_candidate_inbox_history_over_100_and_filters(app):
         for invalid in [{"filter": "bad"}, {"limit": 0}, {"limit": 51},
                         {"before_id": 0}, {"before_id": -1}]:
             assert candidate.get("/api/candidate/vacancy-updates",params=invalid).status_code == 422
+
+
+def test_employer_history_all_pages_and_owner_scoping(app):
+    """Employers can inspect all historical changes without candidate read receipts."""
+    import json
+    with TestClient(app) as employer, TestClient(app) as stranger, TestClient(app) as candidate:
+        owner_id = register(employer, "employer", "Работодатель", "history-owner125@example.test")
+        register(stranger, "employer", "Чужой работодатель", "history-stranger125@example.test")
+        candidate_id = register(candidate, "candidate", "Соискатель", "history-candidate125@example.test")
+        job_id = create_job(employer)
+        other_job = create_job(employer)
+        with database(app.state.db_path) as db:
+            for n in range(125):
+                inserted = db.execute(
+                    "INSERT INTO vacancy_updates(vacancy_id,employer_id,changes_json) VALUES(?,?,?)",
+                    (job_id, owner_id, json.dumps({"salary_min": {"before": 70000, "after": 70001+n}})),
+                )
+                if n % 2 == 0:
+                    db.execute(
+                        "INSERT INTO vacancy_update_recipients(update_id,candidate_id,read_at) VALUES(?,?,?)",
+                        (inserted.lastrowid, candidate_id, "2026-11-17 10:00:00" if n % 4 == 0 else None),
+                    )
+            # Another vacancy must not appear in this history.
+            db.execute(
+                "INSERT INTO vacancy_updates(vacancy_id,employer_id,changes_json) VALUES(?,?,?)",
+                (other_job, owner_id, '{"title":{"before":"A","after":"B"}}'),
+            )
+            db.commit()
+
+        url = f"/api/employer/vacancies/{job_id}/updates"
+        first = employer.get(url)
+        assert first.status_code == 200, first.text
+        data = first.json()
+        assert data["total_count"] == 125
+        assert len(data["updates"]) == 20
+        assert data["has_more"] is True
+        assert data["next_cursor"] == data["updates"][-1]["id"]
+        collected = []
+        cursor = None
+        while True:
+            params = {"limit": 17}
+            if cursor is not None:
+                params["before_id"] = cursor
+            response = employer.get(url, params=params)
+            assert response.status_code == 200, response.text
+            page = response.json()
+            assert page["total_count"] == 125
+            collected.extend(item["id"] for item in page["updates"])
+            assert all("read_at" not in item and "candidate_id" not in item
+                       and "recipients_read" not in item for item in page["updates"])
+            if not page["has_more"]:
+                assert page["next_cursor"] is None
+                break
+            cursor = page["next_cursor"]
+        assert len(collected) == len(set(collected)) == 125
+        assert collected == sorted(collected, reverse=True)
+        assert stranger.get(url).status_code == 404
+        assert candidate.get(url).status_code == 403
+        assert employer.get(f"/api/employer/vacancies/{other_job}/updates").json()["total_count"] == 1
+        for invalid in [{"limit": 0}, {"limit": 51}, {"before_id": 0}, {"before_id": -1}]:
+            assert employer.get(url, params=invalid).status_code == 422

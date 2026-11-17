@@ -1984,13 +1984,16 @@ def create_app(db_path: str | None = None) -> FastAPI:
     @app.get("/api/employer/vacancies/{job_id}/updates")
     def employer_vacancy_updates(
         job_id: int,
+        before_id: int | None = Query(default=None, ge=1),
+        limit: int = Query(default=20, ge=1, le=50),
         user: dict = Depends(active_user),
         db: sqlite3.Connection = Depends(get_connection),
     ):
-        """Private, read-only history of edits to one employer-owned vacancy.
+        """Private, paginated history of edits to one employer-owned vacancy.
 
         Recipient totals are aggregate; candidate identities, individual read
         receipts and read-state counts are never exposed to the employer.
+        Keyset pagination preserves the order as older pages are requested.
         Historical edits are not reconstructed from current vacancy values.
         """
         allowed(user, "employer")
@@ -2000,27 +2003,33 @@ def create_app(db_path: str | None = None) -> FastAPI:
         ).fetchone()
         if owned is None:
             raise HTTPException(404, "Вакансия не найдена")
+        cursor = before_id or 0
         rows = db.execute(
             """SELECT u.id,u.created_at,u.changes_json,
                       (SELECT COUNT(*) FROM vacancy_update_recipients r
                        WHERE r.update_id=u.id) AS recipients_total
                FROM vacancy_updates u
                WHERE u.vacancy_id=? AND u.employer_id=?
-               ORDER BY u.id DESC LIMIT 50""",
-            (job_id, user["id"]),
+                 AND (?=0 OR u.id<?)
+               ORDER BY u.id DESC LIMIT ?""",
+            (job_id, user["id"], cursor, cursor, limit + 1),
         ).fetchall()
         count = db.execute(
             "SELECT COUNT(*) FROM vacancy_updates WHERE vacancy_id=? AND employer_id=?",
             (job_id, user["id"]),
         ).fetchone()[0]
+        has_more = len(rows) > limit
+        page = rows[:limit]
         return {
             "vacancy_id": job_id,
             "total_count": count,
+            "has_more": has_more,
+            "next_cursor": page[-1]["id"] if has_more and page else None,
             "updates": [
                 {"id": row["id"], "created_at": row["created_at"],
                  "changes": json.loads(row["changes_json"]),
                  "recipients_total": row["recipients_total"]}
-                for row in rows
+                for row in page
             ],
         }
 
