@@ -442,6 +442,23 @@
       });
     }
 
+    function applyEmployerApplicationsSearch() {
+      const list = document.querySelector('#employer-application-results');
+      if (!list) return;
+      const query = String(state.employerApplicationsQuery || '').trim().toLocaleLowerCase('ru-RU');
+      const cards = Array.from(list.querySelectorAll('.application-review-card'));
+      let visible = 0;
+      for (const card of cards) {
+        const haystack = String(card.dataset.applicationSearch || '').toLocaleLowerCase('ru-RU');
+        card.hidden = Boolean(query && !haystack.includes(query));
+        if (!card.hidden) visible += 1;
+      }
+      const count = document.querySelector('#employer-application-visible-count');
+      if (count) count.textContent = String(visible);
+      const empty = document.querySelector('#employer-application-search-empty');
+      if (empty) empty.hidden = visible !== 0 || cards.length === 0 || !query;
+    }
+
     renderEmployer = async function() {
       if(state.tab!=='applications'){
         await oldEmployer();
@@ -486,9 +503,12 @@
         $('#dashboard-main').innerHTML=`<div class="panel employer-applications-panel">
           <div class="split-header"><div><span class="section-kicker">ОТКЛИКИ</span><h3>Отклики соискателей</h3><p class="muted">Сначала оценивайте опыт и навыки. Имя, телефон и email остаются скрытыми до отдельного согласия кандидата.</p></div><div class="application-flow-legend" aria-label="Этапы обработки отклика"><span>1. Отклик</span><b>→</b><span>2. Рассмотрение</span><b>→</b><span>3. Согласие</span><b>→</b><span>4. Знакомство</span><b>→</b><span>5. Итог</span></div></div>
           <div class="employer-application-toolbar"><div class="employer-application-vacancy-filter">${selector}</div><div class="employer-application-stage-filter" role="group" aria-label="Фильтр откликов по этапу">${filterButtons}</div></div>
-          <div class="employer-application-result-line"><span role="status">Показываем <strong>${shown.length}</strong> из <strong>${vacancyScoped.length}</strong>${selectedStatus==='all'&&vacancyScoped.length>1?' · сначала этапы, где нужен ваш следующий шаг':''}</span>${selectedVacancy!=='all'||selectedStatus!=='all'?'<button type="button" class="link-button" data-v02-action="reset-application-filters">Сбросить фильтры</button>':''}</div>
-          <div class="dashboard-list">${shown.length?shown.map(a=>`<article class="item-card application-review-card"><header><div><h4>${esc(a.profession)}</h4><p>${esc(a.title)} · ${esc(a.city)} · ожидания от ${money(a.expected_salary)}</p></div><span class="mini-badge">${esc(employerApplicationStageLabel(a))}</span></header>${interactionStageMarkup(a,'application')}<div class="application-profile-strip is-compact"><span><small>Навыки</small><strong>${esc(a.skills||'Не указаны')}</strong></span></div>${activityTimelineMarkup(a)}${employerIntroBadge(a)}${['applied','reviewing','interview'].includes(a.status) && !a.invitation_id?`<div class="application-next-action"><span>Следующее действие</span><strong>${a.status==='applied'?'Проверьте профиль и переведите в рассмотрение':'Решите, хотите ли начать знакомство'}</strong></div><div class="item-actions"><button class="btn btn-outline btn-tiny" data-v02-action="application-status" data-id="${Number(a.id)}" data-status="reviewing">${a.status==='applied'?'Взять в рассмотрение':'Оставить на рассмотрении'}</button><button class="btn btn-primary btn-tiny" data-v02-action="express-interest" data-id="${Number(a.id)}">Запросить согласие на знакомство →</button><button class="btn btn-outline btn-tiny" data-v02-action="application-status" data-id="${Number(a.id)}" data-status="rejected">Отказать</button></div>`:''}</article>`).join(''):emptyFiltered}</div>
+          <div class="employer-application-search"><label for="employer-application-search">Поиск по профессии, вакансии, городу и навыкам</label><div class="employer-application-search-row"><input type="search" id="employer-application-search" data-employer-application-search autocomplete="off" placeholder="Например, бухгалтер или Excel" value="${esc(state.employerApplicationsQuery||'')}"><button class="btn btn-outline btn-tiny" type="button" data-v02-action="clear-employer-application-search">Очистить поиск</button></div></div>
+          <div class="employer-application-result-line"><span role="status" aria-live="polite">Показываем <strong id="employer-application-visible-count">${shown.length}</strong> из <strong>${vacancyScoped.length}</strong>${selectedStatus==='all'&&vacancyScoped.length>1?' · сначала этапы, где нужен ваш следующий шаг':''}</span>${selectedVacancy!=='all'||selectedStatus!=='all'?'<button type="button" class="link-button" data-v02-action="reset-application-filters">Сбросить фильтры</button>':''}</div>
+          <div class="dashboard-list" id="employer-application-results">${shown.length?shown.map(a=>`<article class="item-card application-review-card" data-application-id="${Number(a.id)}" data-application-search="${esc([a.profession,a.title,a.city,a.skills].join(' '))}"><header><div><h4>${esc(a.profession)}</h4><p>${esc(a.title)} · ${esc(a.city)} · ожидания от ${money(a.expected_salary)}</p></div><span class="mini-badge">${esc(employerApplicationStageLabel(a))}</span></header>${interactionStageMarkup(a,'application')}<div class="application-profile-strip is-compact"><span><small>Навыки</small><strong>${esc(a.skills||'Не указаны')}</strong></span></div>${activityTimelineMarkup(a)}${employerIntroBadge(a)}${['applied','reviewing','interview'].includes(a.status) && !a.invitation_id?`<div class="application-next-action"><span>Следующее действие</span><strong>${a.status==='applied'?'Проверьте профиль и переведите в рассмотрение':'Решите, хотите ли начать знакомство'}</strong></div><div class="item-actions">${a.status==='applied'?`<button class="btn btn-outline btn-tiny" data-v02-action="application-status" data-id="${Number(a.id)}" data-status="reviewing">Взять в рассмотрение</button>`:''}<button class="btn btn-primary btn-tiny" data-v02-action="express-interest" data-id="${Number(a.id)}">Запросить согласие на знакомство →</button><button class="btn btn-outline btn-tiny" data-v02-action="application-status" data-id="${Number(a.id)}" data-status="rejected">Отказать</button></div>`:''}</article>`).join(''):emptyFiltered}</div>
+          <div class="empty-state" id="employer-application-search-empty" hidden><strong>По вашему запросу откликов нет</strong><p>Попробуйте другую профессию, навык или город.</p><button type="button" class="btn btn-outline" data-v02-action="clear-employer-application-search">Очистить поиск</button></div>
         </div>`;
+        applyEmployerApplicationsSearch();
       } catch(e) { $('#dashboard-main').textContent=e.message;toast(e.message,true); }
     };
 
@@ -602,10 +622,21 @@
       }
     }
 
+    document.addEventListener('input', event => {
+      if (!event.target?.matches('[data-employer-application-search]') ||
+          state.user?.role !== 'employer' || state.tab !== 'applications') return;
+      state.employerApplicationsQuery = event.target.value;
+      applyEmployerApplicationsSearch();
+    });
+
     document.addEventListener('change', event => {
       if (event.target?.id !== 'employer-applications-vacancy') return;
       state.employerApplicationsVacancyFilter = event.target.value;
-      if (state.user?.role === 'employer' && state.tab === 'applications') renderEmployer().catch(error => toast(error.message,true));
+      if (state.user?.role === 'employer' && state.tab === 'applications') {
+        renderEmployer().then(() => {
+          document.querySelector('#employer-applications-vacancy')?.focus({preventScroll:true});
+        }).catch(error => toast(error.message,true));
+      }
     });
 
     async function showJobDetails(id) {
@@ -625,11 +656,24 @@
       showJobDetails(id).catch(error => toast(error.message, true));
     });
 
+    const pendingEmployerReviewRequests = new Set();
     document.addEventListener('click',async(event)=>{
       const btn=event.target.closest('[data-v02-action]');
       if(!btn)return;
       const type=btn.dataset.v02Action,id=Number(btn.dataset.id);
       if (btn.disabled) return;
+      if (type==='application-status' && btn.dataset.status==='rejected' &&
+          !window.confirm('Отказать по этому отклику? Кандидат увидит ваш отказ.')) return;
+      const tracksEmployerReview = ['application-status','express-interest'].includes(type) &&
+        state.user?.role === 'employer' && Number.isSafeInteger(id) && id > 0;
+      if (tracksEmployerReview && pendingEmployerReviewRequests.has(id)) return;
+      if (tracksEmployerReview) pendingEmployerReviewRequests.add(id);
+      const reviewCard = tracksEmployerReview ? btn.closest('.application-review-card') : null;
+      const reviewActions = reviewCard ? Array.from(reviewCard.querySelectorAll('[data-v02-action="application-status"],[data-v02-action="express-interest"]')) : [];
+      for (const action of reviewActions) {
+        action.disabled = true;
+        action.setAttribute('aria-busy','true');
+      }
       const tracksApplication = (type==='apply' || type==='reapply') &&
         state.user?.role==='candidate' && Number.isSafeInteger(id) && id>0;
       if (tracksApplication && pendingApplicationRequests.has(id)) return;
@@ -758,11 +802,19 @@
           if(!Object.hasOwn(employerApplicationFilterLabels,btn.dataset.filter))return;
           state.employerApplicationsStatusFilter=btn.dataset.filter;
           await renderEmployer();
+          document.querySelector('[data-v02-action="employer-application-filter"][data-filter="' + state.employerApplicationsStatusFilter + '"]')?.focus({preventScroll:true});
         }
         else if(type==='reset-application-filters'){
           state.employerApplicationsVacancyFilter='all';
           state.employerApplicationsStatusFilter='all';
+          state.employerApplicationsQuery='';
           await renderEmployer();
+        }
+        else if(type==='clear-employer-application-search'){
+          state.employerApplicationsQuery='';
+          const input=document.querySelector('#employer-application-search');
+          if(input){input.value='';input.focus({preventScroll:true});}
+          applyEmployerApplicationsSearch();
         }
         else if(type==='application-status'){await req('PATCH',`/api/employer/applications/${id}/status`,{status:btn.dataset.status});await showDashboard();toast('Статус обновлён');}
         else if(type==='express-interest'){
@@ -795,6 +847,15 @@
         else if(type==='admin-taxonomy-status'){await req('PATCH',`/api/admin/taxonomy/${btn.dataset.key}`,{status:btn.dataset.status});await adminView('taxonomy');toast(btn.dataset.status==='approved'?'Термин добавлен в подсказки':'Термин отклонён');}
       }catch(e){toast(e.message,true);}
       finally{
+        if (tracksEmployerReview) {
+          pendingEmployerReviewRequests.delete(id);
+          for (const action of reviewActions) {
+            if (action.isConnected) {
+              action.disabled = false;
+              action.removeAttribute('aria-busy');
+            }
+          }
+        }
         if (tracksApplication) {
           pendingApplicationRequests.delete(id);
           setApplicationPending(id, false);

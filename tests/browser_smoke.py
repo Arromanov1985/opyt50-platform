@@ -321,22 +321,72 @@ def run_browser(page):
     expect(page.locator("#employer-applications-vacancy")).not_to_have_value("all")
     expect(page.locator("#dashboard-main")).to_contain_text("Кладовщик")
     expect(page.locator("#dashboard-main .application-review-card").first.locator(".application-profile-strip span")).to_have_count(1)
+    # Release 0.5.18: local search reads only the current employer's
+    # already loaded profiles. Typing does not query the API or reveal contacts.
+    application_search = page.locator("#employer-application-search")
+    expect(application_search).to_be_visible()
+    employer_application_reads = []
+    page.on("request", lambda request: employer_application_reads.append(request)
+            if request.method == "GET" and request.url.endswith("/api/employer/applications")
+            else None)
+    expect(page.locator("#employer-application-results .application-review-card:visible")).to_have_count(1)
+    application_search.fill("пОДОльСК")
+    expect(page.locator("#employer-application-results .application-review-card:visible")).to_have_count(1)
+    application_search.fill("1С")
+    expect(page.locator("#employer-application-results .application-review-card:visible")).to_have_count(1)
+    application_search.fill("точно-нет-такой-профессии")
+    expect(page.locator("#employer-application-results .application-review-card:visible")).to_have_count(0)
+    expect(page.locator("#employer-application-search-empty")).to_be_visible()
+    expect(page.locator("#employer-application-visible-count")).to_have_text("0")
+    assert not employer_application_reads, "Search typing must not make API requests"
+    page.locator("#employer-application-search-empty [data-v02-action='clear-employer-application-search']").click()
+    expect(application_search).to_have_value("")
+    expect(application_search).to_be_focused()
+    expect(page.locator("#employer-application-results .application-review-card:visible")).to_have_count(1)
+    application_search.fill("Кладовщик")
+    page.set_viewport_size({"width": 390, "height": 844})
+    assert page.evaluate("""() => {
+      const root = document.querySelector('#dashboard-main');
+      const input = document.querySelector('#employer-application-search');
+      const grid = document.querySelector('.employer-application-stage-filter');
+      return root.scrollWidth <= root.clientWidth + 3 &&
+        input.getBoundingClientRect().height >= 44 &&
+        getComputedStyle(grid).gridTemplateColumns.trim().split(/\\s+/).length === 2;
+    }"""), "Application triage should fit 390px with two-column stage filters"
+    page.set_viewport_size({"width": 1280, "height": 800})
     expect(page.locator("#dashboard-main [data-v02-action='employer-application-filter']")).to_have_count(6)
     attention_filter = page.locator("#dashboard-main [data-v02-action='employer-application-filter'][data-filter='attention']")
     expect(attention_filter).to_contain_text("Требуют внимания")
     expect(attention_filter).to_have_attribute("aria-pressed", "false")
     attention_filter.click()
     expect(attention_filter).to_have_attribute("aria-pressed", "true")
+    expect(page.locator("[data-v02-action='employer-application-filter'][data-filter='attention']")).to_be_focused()
+    expect(page.locator("#employer-application-search")).to_have_value("Кладовщик")
     expect(page.locator("#dashboard-main .employer-application-result-line")).to_contain_text("Показываем 1 из 1")
     page.locator("#employer-applications-vacancy").select_option("all")
     expect(page.locator("#employer-applications-vacancy")).to_have_value("all")
     expect(page.locator("#dashboard-main")).to_contain_text("Отклики соискателей")
     expect(page.locator("#dashboard-main")).to_contain_text("Кладовщик")
+    # A mistaken tap on refusal must not update the candidate's status.
+    before_refusal = page.request.get(URL + "/api/employer/applications").json()["applications"][0]
+    page.once("dialog", lambda dialog: dialog.dismiss())
+    page.locator("#dashboard-main [data-v02-action='application-status'][data-status='rejected']").click()
+    after_refusal = page.request.get(URL + "/api/employer/applications").json()["applications"][0]
+    assert before_refusal["status"] == after_refusal["status"] == "applied"
     page.locator("#dashboard-main [data-v02-action='application-status'][data-status='reviewing']").click()
     expect(page.locator("#dashboard-main")).to_contain_text("На рассмотрении")
-    page.locator("#dashboard-main [data-v02-action='express-interest']").click()
+    expect(page.locator("#dashboard-main [data-v02-action='application-status'][data-status='reviewing']")).to_have_count(0)
+    # Fast double clicks should generate only one request and one invitation.
+    interest_requests = []
+    page.on("request", lambda request: interest_requests.append(request)
+            if request.method == "POST" and request.url.endswith("/interest")
+            and "/api/employer/applications/" in request.url else None)
+    page.locator("#dashboard-main [data-v02-action='express-interest']").evaluate(
+        "(button) => { button.click(); button.click(); }"
+    )
     expect(page.locator("#account-action-count")).to_be_hidden()
     expect(page.locator("#dashboard-main")).to_contain_text("Запрос отправлен")
+    assert len(interest_requests) == 1, f"Expected one interest POST, got {len(interest_requests)}"
     expect(page.locator("#dashboard-main")).to_contain_text("Ждём решения кандидата")
     expect(page.locator("#dashboard-main [data-v02-action='express-interest']")).to_have_count(0)
     expect(page.locator("#dashboard-main [data-v02-action='open-introductions']")).to_have_count(0)
