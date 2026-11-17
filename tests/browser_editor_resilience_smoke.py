@@ -1,4 +1,5 @@
 """Draft-loss and interrupted-save regression, using local fictional accounts."""
+import json
 import os
 import subprocess
 import sys
@@ -75,6 +76,9 @@ def exercise_forms(page):
     expect(page.locator("#profile-form .editor-save-status")).to_have_text(
         "Изменения сохранены."
     )
+    # A successful HTTP response can precede the final async session refresh.
+    # Do not navigate while the form is still inert/busy.
+    expect(page.locator("#profile-form")).not_to_have_attribute("inert", "")
     # The saved form may be left without a leave dialog.
     page.locator("[data-dashboard-tab-select]").select_option("applications")
     expect(page.locator("[data-dashboard-tab-select]")).to_have_value("applications")
@@ -284,6 +288,59 @@ def exercise_forms(page):
     published_jobs = page.request.get(URL + "/api/employer/vacancies").json()["jobs"]
     assert sum(job["title"] == draft_title for job in published_jobs) == 1
     assert page.request.get(URL + "/api/employer/vacancy-drafts").json()["drafts"] == []
+
+    # Initial create: the server commits, but the browser loses the HTTP reply.
+    # Repeating save with the SAME key must not create a second draft even if
+    # the user has edited more fields before the retry.
+    page.locator("[data-dashboard-tab-select]").select_option("create")
+    expect(page.locator("#vacancy-form")).to_be_visible()
+    first_title = "Оператор доставки — первый запрос потерял ответ"
+    page.locator("#vacancy-title").fill(first_title)
+    page.locator("#vacancy-city").fill("Подольск")
+    received_keys = []
+
+    def lose_first_draft_reply(route):
+        if route.request.method == "POST":
+            payload = json.loads(route.request.post_data or "{}")
+            assert payload["request_key"]
+            received_keys.append(payload["request_key"])
+            response = route.fetch()
+            assert response.status == 201, response.text()
+            route.abort("failed")
+        else:
+            route.continue_()
+
+    page.route("**/api/employer/vacancy-drafts", lose_first_draft_reply)
+    page.locator("[data-action='save-vacancy-draft']").click()
+    expect(page.locator("#vacancy-form .editor-save-status")).to_contain_text(
+        "дубликат не создастся", timeout=10000,
+    )
+    expect(page.locator("#vacancy-title")).to_have_value(first_title)
+    assert len(received_keys) == 1
+    initially_created = page.request.get(URL + "/api/employer/vacancy-drafts").json()["drafts"]
+    assert len(initially_created) == 1
+    created_id = initially_created[0]["id"]
+    assert initially_created[0]["fields"]["city"] == "Подольск"
+    page.unroute("**/api/employer/vacancy-drafts", lose_first_draft_reply)
+
+    # Changing the form after the lost reply creates a 409 on the repeated
+    # POST. The UI securely recovers the original draft, then saves via PUT.
+    page.locator("#vacancy-city").fill("Новый Подольск")
+    with page.expect_response(lambda r: (
+        r.url.endswith(f"/api/employer/vacancy-drafts/{created_id}")
+        and r.request.method == "PUT" and r.status == 200
+    ), timeout=15000):
+        page.locator("[data-action='save-vacancy-draft']").click()
+    expect(page.locator("#vacancy-form .editor-save-status")).to_contain_text(
+        "Черновик сохранён на сервере", timeout=10000,
+    )
+    after_retry = page.request.get(URL + "/api/employer/vacancy-drafts").json()["drafts"]
+    assert len(after_retry) == 1, after_retry
+    assert after_retry[0]["id"] == created_id
+    assert after_retry[0]["fields"]["city"] == "Новый Подольск"
+    assert after_retry[0]["version"] == 2
+    assert first_title not in [j["title"] for j in page.request.get(
+        URL + "/api/jobs").json()["jobs"]]
 
     assert not errors, errors
 

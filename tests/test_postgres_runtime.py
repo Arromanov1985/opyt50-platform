@@ -151,3 +151,60 @@ def test_private_drafts_work_in_real_postgresql(runtime_db):
         assert db.execute(
             "SELECT version FROM vacancy_drafts WHERE id=?", (draft_id,)
         ).fetchone()["version"] == 2
+
+
+
+def test_first_draft_create_key_is_atomic_in_postgres(runtime_db):
+    """The new ledger is additive, unique per employer, and survives deletion."""
+    from app.release02 import init_release02
+    init_release02("ignored-when-DATABASE_URL-present")
+    init_release02("ignored-when-DATABASE_URL-present")
+    key = "319ccb12-8b14-4878-b81e-179c0c505c10"
+    with postgres_database(runtime_db) as db:
+        reserved = db.execute(
+            """INSERT OR IGNORE INTO vacancy_draft_create_requests
+               (employer_id,request_key,payload_sha256) VALUES(?,?,?)""",
+            (2, key, "sha256-test"),
+        )
+        assert reserved.rowcount == 1
+        draft = db.execute(
+            "INSERT INTO vacancy_drafts(employer_id,fields_json) VALUES(?,?)",
+            (2, '{"title":"Тест идемпотентности"}'),
+        )
+        did = draft.lastrowid
+        db.execute(
+            """UPDATE vacancy_draft_create_requests SET draft_id=?
+               WHERE employer_id=? AND request_key=?""",
+            (did, 2, key),
+        )
+        db.commit()
+
+    with postgres_database(runtime_db) as db:
+        replay = db.execute(
+            """INSERT OR IGNORE INTO vacancy_draft_create_requests
+               (employer_id,request_key,payload_sha256) VALUES(?,?,?)""",
+            (2, key, "sha256-test"),
+        )
+        assert replay.rowcount == 0
+        row = db.execute(
+            """SELECT draft_id,payload_sha256 FROM vacancy_draft_create_requests
+               WHERE employer_id=? AND request_key=?""",
+            (2, key),
+        ).fetchone()
+        assert row["draft_id"] == did
+        assert row["payload_sha256"] == "sha256-test"
+        db.execute("DELETE FROM vacancy_drafts WHERE id=? AND employer_id=?", (did, 2))
+        db.commit()
+
+    with postgres_database(runtime_db) as db:
+        tombstone = db.execute(
+            """SELECT draft_id FROM vacancy_draft_create_requests
+               WHERE employer_id=? AND request_key=?""",
+            (2, key),
+        ).fetchone()
+        assert tombstone is not None and tombstone["draft_id"] is None
+        assert db.execute(
+            """INSERT OR IGNORE INTO vacancy_draft_create_requests
+               (employer_id,request_key,payload_sha256) VALUES(?,?,?)""",
+            (2, key, "sha256-test"),
+        ).rowcount == 0
