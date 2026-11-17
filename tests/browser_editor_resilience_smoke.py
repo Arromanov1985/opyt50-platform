@@ -573,7 +573,10 @@ def exercise_forms(page):
 
     # A second tab can close the vacancy while the first edits its content.
     # The owner must acknowledge the new status; merging never reopens it.
-    page.locator("[data-dashboard-tab-select]").select_option("vacancies")
+    # At desktop width use the visible edit control, not the mobile-only menu.
+    expect(page.locator(
+        f"[data-action='edit-job'][data-id='{job_id}']"
+    )).to_be_visible()
     page.locator(f"[data-action='edit-job'][data-id='{job_id}']").click()
     expect(page.locator("#vacancy-form")).to_have_attribute("data-edit-id",str(job_id))
     page.locator("#vacancy-title").fill("Специалист отгрузки — обновлено")
