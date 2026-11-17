@@ -798,6 +798,27 @@ def run_browser(page):
     page.once("dialog", lambda dialog: dialog.accept())
     page.locator("[data-action='cancel-job-edit']").click()
     expect(page.locator("#dashboard-main")).to_contain_text("Мои вакансии")
+    # The employer can inspect the exact history of the same vacancy, without
+    # seeing candidate identities or individual read receipts.
+    vacancy_card = page.locator(
+        f".employer-vacancy-card[data-employer-vacancy-id='{old_job['id']}']"
+    )
+    history_button = vacancy_card.locator("[data-action='vacancy-history']")
+    expect(history_button).to_have_attribute("aria-expanded", "false")
+    history_button.click()
+    history_section = vacancy_card.locator(".employer-vacancy-history")
+    expect(history_section).to_be_visible()
+    expect(history_button).to_have_attribute("aria-expanded", "true")
+    expect(history_section).to_contain_text("Всего изменений: 2")
+    expect(history_section).to_contain_text("Получателей в личных кабинетах")
+    expect(history_section).to_contain_text("Зарплата от")
+    assert page.evaluate("""() => {
+      const element = document.querySelector('.employer-vacancy-history');
+      return element.scrollWidth <= element.clientWidth + 3;
+    }"""), "Change timeline must fit mobile viewport"
+    history_button.click()
+    expect(history_section).to_be_hidden()
+    expect(history_button).to_have_attribute("aria-expanded", "false")
 
     # A candidate who had already applied sees changes to the older vacancy.
     page.locator("#logout").click()
@@ -807,6 +828,21 @@ def run_browser(page):
     page.locator("[data-dashboard-tab-select]").select_option("changes")
     expect(page.locator(".vacancy-change-item")).to_have_count(2)
     expect(page.locator(".vacancy-changes-list").first).to_contain_text("Зарплата от")
+    expect(page.locator(".vacancy-change-next").first).to_contain_text("Следующий шаг")
+    expect(page.locator(".vacancy-change-item").first.locator(
+        "[data-tab='applications']"
+    )).to_be_visible()
+    # Structured descriptions are compared section by section; legacy free
+    # text is kept whole rather than lost or silently truncated.
+    assert page.evaluate("""() => {
+      const before = 'Обязанности:\\nУчёт\\n\\nТребования:\\n1С\\n\\nУсловия работы:\\n2/2';
+      const after = before.replace('2/2','3/3');
+      const details = window.StazhnoVacancyChanges.details({
+        description:{before,after}
+      });
+      return details.length === 1 && details[0].label === 'Условия работы'
+        && details[0].before === '2/2' && details[0].after === '3/3';
+    }"""), "Structured vacancy change details should compare only modified fields"
     assert page.evaluate("""() => {
       const element = document.querySelector('#dashboard-main');
       return element.scrollWidth <= element.clientWidth + 3;
