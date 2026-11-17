@@ -1269,9 +1269,9 @@ async function renderEmployer() {
 function vacancyFormMarkup(job = null, draft = null) {
   if (draft && !job) job = {...draft.fields, draft_only: true};
   const isEdit = Boolean(job && !job.draft_only);
+  const draftValues = draft?.fields || {};
   const sections = isEdit ? window.OpytnovacancyWizard?.splitDescription(job.description) : (draft ? draftValues : null);
   const legacy = isEdit && !sections;
-  const draftValues = draft?.fields || {};
   const fields = legacy
     ? `<div class="field vacancy-legacy"><label for="vacancy-legacy">Исходное описание (старый формат)</label>
          <textarea id="vacancy-legacy" name="legacy_description" maxlength="1200" rows="6" placeholder="Описание вакансии">${esc(job.description || '')}</textarea>
@@ -2167,7 +2167,7 @@ async function handleDashboardClick(event) {
       await showDashboard();
       return;
     }
-    if (action === 'new-job') { if (!mayLeaveEditor()) return; state.editVacancy=null; state.tab='create'; await showDashboard(); }
+    if (action === 'new-job') { if (!mayLeaveEditor()) return; state.editVacancy=null; state.activeDraft=null; state.tab='create'; await showDashboard(); }
     if (action === 'edit-job') { if (!mayLeaveEditor()) return; state.editVacancy=id; state.activeVacancy=null; state.tab='edit'; await showDashboard(); }
     if (action === 'cancel-job-edit') { if (!mayLeaveEditor()) return; state.editVacancy=null; state.tab='vacancies'; await showDashboard(); }
     if (action === 'matches' || action === 'matches-primary') { await loadMatches(id); }
