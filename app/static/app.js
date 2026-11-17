@@ -164,6 +164,7 @@ async function saveVacancyDraft(form, automatic = false) {
     });
     form.dataset.draftId = result.id;
     form.dataset.draftVersion = result.version;
+    if (button) button.textContent = 'Сохранить сейчас';
     state.activeDraft = result;
     draftAutoBlocked.delete(form);
     // Mark only the exact submitted snapshot as saved, never newer keystrokes.
