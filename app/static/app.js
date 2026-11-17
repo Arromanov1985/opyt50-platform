@@ -493,6 +493,142 @@ async function applyDraftConflictResolution(form) {
     if (button?.isConnected) button.disabled = false;
   }
 }
+
+async function showPublishedVacancyConflict(form) {
+  const jobId = Number(form?.dataset.editId || 0);
+  const base = publishedVacancyBaselines.get(form);
+  if (!jobId || !base) throw new Error('Неизвестна исходная версия. Откройте вакансию заново.');
+  const local = publishedFormValues(form);
+  const response = await api('/api/employer/vacancies/' + jobId);
+  const server = publishedJobSnapshot(response.job);
+  const {differences,detailed,parts} = publishedConflictDifference(base,local,server);
+  const statusChanged = String(base.status) !== String(server.status);
+  const snapshot = editorFingerprint(form);
+  publishedVacancyConflictSessions.set(form,{
+    jobId,base,local,server,differences,detailed,parts,statusChanged,snapshot
+  });
+  const previous = form.querySelector('[data-published-conflict-panel]');
+  if (previous) previous.remove();
+  const panel = document.createElement('section');
+  panel.dataset.publishedConflictPanel = 'true';
+  panel.className = 'draft-conflict-panel published-vacancy-conflict-panel';
+  panel.setAttribute('role','region');
+  panel.setAttribute('aria-labelledby','published-conflict-title');
+  const overlap = differences.filter(d => d.localChanged && d.serverChanged).length;
+  const fieldsHtml = differences.map(d => {
+    const label = PUBLISHED_FIELD_LABELS[d.name] || d.name;
+    const hint = d.localChanged && d.serverChanged
+      ? 'Поле изменено на обоих устройствах. Выберите нужный вариант.'
+      : d.localChanged ? 'Изменено только здесь. Предлагаем ваш вариант.'
+        : 'Изменено на другом устройстве. Предлагаем вариант сервера.';
+    const value = (heading,contents) => '<div><span>' + esc(heading) +
+      '</span><div class="draft-conflict-value">' + esc(contents || '— Не заполнено —') + '</div></div>';
+    return '<div class="draft-conflict-field"><strong>' + esc(label) + '</strong><small>' +
+      esc(hint) + '</small><div class="draft-conflict-versions">' +
+      value('При открытии формы',d.baseValue) +
+      value('На этом устройстве',d.localValue) +
+      value('Последняя версия сервера',d.serverValue) + '</div>' +
+      '<label for="published-conflict-' + d.name + '">Какой вариант оставить?</label>' +
+      '<select id="published-conflict-' + d.name +
+      '" data-published-conflict-choice="' + d.name + '">' +
+      '<option value=""' + (!d.suggested ? ' selected' : '') + '>Выберите вариант</option>' +
+      '<option value="local"' + (d.suggested === 'local' ? ' selected' : '') + '>Мои изменения</option>' +
+      '<option value="server"' + (d.suggested === 'server' ? ' selected' : '') + '>С сервера</option>' +
+      '</select></div>';
+  }).join('');
+  const statusHtml = statusChanged
+    ? '<div class="published-vacancy-status-warning"><strong>Статус вакансии изменился:</strong> ' +
+      esc(String(base.status)) + ' → ' + esc(String(server.status)) +
+      '<label><input type="checkbox" data-published-conflict-status-ack> ' +
+      'Я понимаю, что статус останется таким, как на сервере.</label></div>'
+    : '';
+  panel.innerHTML = '<span class="section-kicker">СОГЛАСОВАНИЕ УСЛОВИЙ</span>' +
+    '<h3 id="published-conflict-title">Вакансия изменилась на другом устройстве</h3>' +
+    '<p>На экране осталась ваша версия. Сравните условия, затем примените выбранные значения в форму. ' +
+    '<strong>Вакансия пока не изменится.</strong> Для сохранения потребуется новый предпросмотр.</p>' +
+    (overlap ? '<p class="muted">Одновременно изменённых полей: ' + overlap + '.</p>' : '') +
+    (differences.length ? '<div class="draft-conflict-fields">' + fieldsHtml + '</div>' :
+      '<p class="muted">Содержимое совпадает. Сервер обновил другие данные вакансии.</p>') +
+    statusHtml +
+    '<div class="draft-conflict-actions">' +
+    '<button type="button" class="btn btn-primary" data-action="apply-published-conflict">Применить выбранные значения к форме</button>' +
+    '<button type="button" class="btn btn-outline" data-action="refresh-published-conflict">Обновить сравнение</button>' +
+    '</div><p class="draft-conflict-note" role="status" aria-live="polite">' +
+    'Отклики и история сохраняются. Изменения не попадут в опубликованную вакансию до вашего нового подтверждения.</p>';
+  const insertion = form.querySelector('.vacancy-preview-intro');
+  if (!insertion) throw new Error('Не удалось открыть сравнение полей');
+  insertion.before(panel);
+  const preview = form.querySelector('#vacancy-preview');
+  if (preview) preview.hidden = true;
+  const submit = form.querySelector('#vacancy-publish');
+  if (submit) submit.disabled = true;
+  setEditorStatus(form,'Вакансия изменилась на другом устройстве. Выберите условия в блоке сравнения.',true);
+}
+async function applyPublishedVacancyConflict(form) {
+  const session = publishedVacancyConflictSessions.get(form);
+  const panel = form?.querySelector('[data-published-conflict-panel]');
+  if (!session || !panel || editorSubmitting.has(form)) return;
+  if (editorFingerprint(form) !== session.snapshot) {
+    await showPublishedVacancyConflict(form);
+    toast('Пока вы сравнивали версии, форма изменилась. Проверьте варианты заново.',true);
+    return;
+  }
+  if (session.statusChanged && !panel.querySelector('[data-published-conflict-status-ack]')?.checked) {
+    setEditorStatus(form,'Подтвердите, что заметили изменение статуса вакансии.',true);
+    panel.querySelector('[data-published-conflict-status-ack]')?.focus();
+    return;
+  }
+  const merged = {...session.server};
+  const parts = session.detailed ? {...session.parts} : null;
+  for (const difference of session.differences) {
+    const selection = panel.querySelector('[data-published-conflict-choice="' + difference.name + '"]');
+    const choice = selection?.value;
+    if (choice !== 'local' && choice !== 'server') {
+      setEditorStatus(form,'Выберите вариант поля «' + PUBLISHED_FIELD_LABELS[difference.name] + '».',true);
+      selection?.focus();
+      return;
+    }
+    const value = choice === 'local' ? difference.localValue : difference.serverValue;
+    if (parts && ['responsibilities','requirements','conditions'].includes(difference.name)) {
+      parts[difference.name] = value;
+    } else if (['salary_min','salary_max'].includes(difference.name)) {
+      merged[difference.name] = Number(value);
+    } else {
+      merged[difference.name] = value;
+    }
+  }
+  if (parts) merged.description = publishedMergeDescription(parts);
+  // Do not change the published vacancy yet. Also confirm the server has not
+  // changed while the user was choosing values.
+  const action = panel.querySelector('[data-action="apply-published-conflict"]');
+  if (action) action.disabled = true;
+  try {
+    const response = await api('/api/employer/vacancies/' + session.jobId);
+    if (response.job.revision !== session.server.revision) {
+      await showPublishedVacancyConflict(form);
+      toast('На другом устройстве сохранили новые изменения. Сравнение обновлено.',true);
+      return;
+    }
+    const nextJob = {...response.job,...merged,revision:response.job.revision,status:response.job.status};
+    const main = $('#dashboard-main');
+    main.innerHTML = vacancyFormMarkup(nextJob);
+    prepareEditorForms();
+    const nextForm = main.querySelector('#vacancy-form');
+    if (!nextForm) throw new Error('Не удалось построить форму для объединённых условий');
+    publishedVacancyBaselines.set(nextForm,publishedJobSnapshot(response.job));
+    publishedVacancyPending.add(nextForm);
+    setEditorStatus(nextForm,'Выбранные значения подготовлены, но ещё НЕ сохранены. Откройте новый предпросмотр и нажмите «Сохранить изменения».');
+    const publish = nextForm.querySelector('#vacancy-publish');
+    if (publish) publish.disabled = true;
+    toast('Изменения объединены в форме. Перед сохранением обязательно проверьте предпросмотр.');
+    nextForm.querySelector('#vacancy-show-preview')?.focus({preventScroll:true});
+  } catch(error) {
+    setEditorStatus(form,'Сравнение не завершено: ' + error.message + '. Ваш текст остался на экране.',true);
+    toast('Не удалось завершить сравнение. Проверьте соединение и повторите попытку.',true);
+  } finally {
+    if (action?.isConnected) action.disabled = false;
+  }
+}
 const EDITOR_IDS = new Set(['profile-form', 'company-form', 'vacancy-form']);
 function editorFingerprint(form) {
   return JSON.stringify([...new FormData(form).entries()]);
