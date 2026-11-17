@@ -3014,3 +3014,51 @@ body.comfortable-view .vacancy-update-filter{
   font-size:1rem;
   min-height:48px;
 }
+
+/* Employer vacancy worklist: local search, large controls, narrow screens. */
+.employer-vacancy-find{
+  margin:14px 0;
+  padding:13px 14px;
+  border:1px solid #E1ECE6;
+  border-radius:13px;
+  background:#F8FBF9;
+}
+.employer-vacancy-find label{
+  display:block;
+  margin-bottom:8px;
+  color:#335347;
+  font-weight:750;
+  font-size:13px;
+}
+.employer-vacancy-find-row{
+  display:flex;
+  align-items:stretch;
+  gap:10px;
+  flex-wrap:wrap;
+}
+.employer-vacancy-find-row input{
+  min-width:0;
+  flex:1 1 220px;
+  min-height:44px;
+  padding:9px 12px;
+  border:1px solid #C6D7CD;
+  border-radius:10px;
+  font:inherit;
+  background:white;
+  color:#0B2D26;
+}
+.employer-vacancy-find-row .btn{min-height:44px}
+.employer-vacancy-result-count{
+  margin:9px 0 0;
+  font-size:12px;
+}
+#employer-vacancy-results .employer-vacancy-card[hidden],
+#employer-vacancy-empty[hidden]{display:none !important}
+body.comfortable-view .employer-vacancy-find label,
+body.comfortable-view .employer-vacancy-result-count{font-size:1rem}
+@media(max-width:430px){
+  .employer-vacancy-find{padding:11px}
+  .employer-vacancy-find-row{display:grid;grid-template-columns:minmax(0,1fr)}
+  .employer-vacancy-find-row input{width:100%;flex:auto}
+  .employer-vacancy-find-row .btn{width:100%}
+}
