@@ -243,24 +243,64 @@
     };
     function displayChangeValue(field,value) {
       if(field==='salary_min'||field==='salary_max')return money(value);
-      return String(value ?? 'Не указано');
+      const text=String(value ?? '').trim();
+      return text || 'Не указано';
+    }
+    function vacancyChangeDate(raw) {
+      const original=String(raw||'').trim();
+      if(!original)return 'Дата не указана';
+      const iso=original.replace(' ','T').replace(/([+-][0-9]{2})$/,'$1:00');
+      const qualified=/(?:Z|[+-][0-9]{2}:?[0-9]{2})$/i.test(iso)?iso:iso+'Z';
+      const date=new Date(qualified);
+      if(Number.isNaN(date.getTime()))return 'Дата не указана';
+      return new Intl.DateTimeFormat('ru-RU',{
+        day:'numeric',month:'long',year:'numeric',hour:'2-digit',minute:'2-digit'
+      }).format(date);
+    }
+    function vacancyChangeDetails(changes) {
+      return Object.entries(changes||{}).flatMap(([field,pair])=>{
+        if(!Object.hasOwn(changedFieldLabels,field)||!pair||typeof pair!=='object')return [];
+        if(field==='description'){
+          const splitter=window.OpytnovacancyWizard?.splitDescription;
+          const oldParts=splitter?.(pair.before),newParts=splitter?.(pair.after);
+          if(oldParts&&newParts){
+            return [
+              ['responsibilities','Обязанности'],['requirements','Требования'],['conditions','Условия работы']
+            ].filter(([name])=>oldParts[name]!==newParts[name])
+              .map(([name,label])=>({field:name,label,before:oldParts[name],after:newParts[name]}));
+          }
+        }
+        return [{field,label:changedFieldLabels[field],before:pair.before,after:pair.after}];
+      });
     }
     function vacancyChangesMarkup(changes) {
-      return Object.entries(changes || {}).filter(([key])=>Object.hasOwn(changedFieldLabels,key))
-        .map(([field,pair])=>`<div class="vacancy-change-detail">
-          <strong>${esc(changedFieldLabels[field])}</strong>
-          <div class="vacancy-change-pair"><div><small>Было</small><p>${esc(displayChangeValue(field,pair.before))}</p></div>
-          <div><small>Стало</small><p>${esc(displayChangeValue(field,pair.after))}</p></div></div></div>`).join('');
+      return vacancyChangeDetails(changes).map(({field,label,before,after})=>`<div class="vacancy-change-detail">
+          <strong>${esc(label)}</strong>
+          <div class="vacancy-change-pair"><div><small>Было</small><p>${esc(displayChangeValue(field,before))}</p></div>
+          <div><small>Стало</small><p>${esc(displayChangeValue(field,after))}</p></div></div></div>`).join('');
     }
+    // Shared read-only markup for candidate notifications and employer history.
+    window.StazhnoVacancyChanges=Object.freeze({
+      markup:vacancyChangesMarkup,date:vacancyChangeDate,details:vacancyChangeDetails
+    });
     function vacancyUpdateMarkup(update) {
+      const fromInvitation=update.relationship==='invitation';
+      const nextTab=fromInvitation?'invitations':'applications';
+      const nextLabel=fromInvitation?'Открыть знакомства':'Посмотреть отклики';
+      const details=vacancyChangeDetails(update.changes);
       return `<article class="item-card vacancy-change-item ${update.read_at ? 'is-read' : 'is-new'}">
         <header><div><h4>${esc(update.title)}</h4>
-          <p>${esc(update.company_name)} · ${esc(update.created_at)}</p></div>
+          <p>${esc(update.company_name)} · ${esc(vacancyChangeDate(update.created_at))}</p></div>
           <span class="mini-badge ${update.read_at ? 'gray' : ''}">${update.read_at ? 'Прочитано' : 'Новое изменение'}</span></header>
-        <p class="vacancy-change-context">Работодатель изменил условия этой вакансии после вашего отклика или приглашения.
-        Проверьте новые условия перед продолжением общения.</p>
+        <p class="vacancy-change-context">Изменились условия вакансии после вашего отклика или приглашения.
+        Сравните значения ниже. Изменено полей: ${details.length}.</p>
         <div class="vacancy-changes-list">${vacancyChangesMarkup(update.changes)}</div>
-        ${update.read_at ? '' : `<button class="btn btn-outline btn-tiny" data-v02-action="mark-vacancy-update-read" data-id="${Number(update.id)}">Отметить прочитанным</button>`}
+        <p class="vacancy-change-next">Следующий шаг: проверьте обновлённые условия и текущий статус ${fromInvitation?'знакомства':'отклика'}.</p>
+        <div class="item-actions vacancy-change-actions">
+          <button type="button" class="btn btn-outline btn-tiny" data-tab="${nextTab}">${nextLabel} →</button>
+          ${update.read_at ? '' : `<button type="button" class="btn btn-primary btn-tiny" data-v02-action="mark-vacancy-update-read" data-id="${Number(update.id)}">Отметить прочитанным</button>`}
+        </div>
+        ${update.read_at?'':`<p class="muted vacancy-change-read-help">Отметка подтверждает только прочтение, но не согласие с изменёнными условиями.</p>`}
       </article>`;
     }
     const employerExtra = [{id:'applications',label:'Отклики'}];
