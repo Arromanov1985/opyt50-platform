@@ -12,6 +12,7 @@ STATIC = Path(__file__).resolve().parents[1] / "app" / "static"
 
 @pytest.mark.parametrize("asset,attribute", [
     ("app.js", "src"),
+    ("vacancy-wizard.js", "src"),
     ("release09-dashboard.css", "href"),
 ])
 def test_dashboard_asset_revision_matches_git_blob(asset, attribute):

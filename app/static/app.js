@@ -181,6 +181,56 @@ const draftAutoWarnings = new WeakMap();
 // Original server snapshot is essential to a three-way merge. DOM only, no storage.
 const draftServerBaselines = new WeakMap();
 const draftConflictSessions = new WeakMap();
+// Published edits are never autosaved. These snapshots live only while a
+// single editing form exists. Selection is staged locally until new preview.
+const publishedVacancyBaselines = new WeakMap();
+const publishedVacancyConflictSessions = new WeakMap();
+const publishedVacancyPending = new WeakSet();
+const PUBLISHED_EDIT_FIELDS = ['title','city','salary_min','salary_max','schedule','employment','skills','description'];
+const PUBLISHED_FIELD_LABELS = {
+  title:'Должность',city:'Город',salary_min:'Зарплата от',
+  salary_max:'Зарплата до',schedule:'График',employment:'Занятость',
+  skills:'Ключевые навыки',description:'Описание вакансии',
+  responsibilities:'Обязанности',requirements:'Требования',conditions:'Условия работы'
+};
+function publishedJobSnapshot(job) {
+  return Object.fromEntries([...PUBLISHED_EDIT_FIELDS,'status','revision','id'].map(key => [key, job[key]]));
+}
+function publishedFormValues(form) {
+  const describe = window.OpytnovacancyWizard?.describe;
+  if (!describe) throw new Error('Не удалось проверить описание. Перезагрузите страницу.');
+  return {
+    title: formValue(form,'title'),city:formValue(form,'city'),
+    salary_min:parseNumber(form,'salary_min'),salary_max:parseNumber(form,'salary_max'),
+    schedule:formValue(form,'schedule'),employment:formValue(form,'employment'),
+    skills:formValue(form,'skills'),description:describe(form)
+  };
+}
+function publishedMergeDescription(parts) {
+  return ['Обязанности:', parts.responsibilities, '', 'Требования:',
+    parts.requirements, '', 'Условия работы:', parts.conditions].join('\n');
+}
+function publishedConflictDifference(base, local, server) {
+  const parse = window.OpytnovacancyWizard?.splitDescription;
+  const b = parse?.(base.description), l = parse?.(local.description), r = parse?.(server.description);
+  const detailed = Boolean(b && l && r);
+  const names = [...PUBLISHED_EDIT_FIELDS.filter(key => key !== 'description'),
+    ...(detailed ? ['responsibilities','requirements','conditions'] : ['description'])];
+  const baseFields = {...base,...(detailed ? b : {})};
+  const localFields = {...local,...(detailed ? l : {})};
+  const serverFields = {...server,...(detailed ? r : {})};
+  const differences = names.filter(key => String(localFields[key]) !== String(serverFields[key])).map(name => {
+    const localChanged = String(localFields[name]) !== String(baseFields[name]);
+    const serverChanged = String(serverFields[name]) !== String(baseFields[name]);
+    return {
+      name, baseValue:String(baseFields[name] ?? ''), localValue:String(localFields[name] ?? ''),
+      serverValue:String(serverFields[name] ?? ''), localChanged, serverChanged,
+      suggested: localChanged && serverChanged ? '' : localChanged ? 'local' : 'server'
+    };
+  });
+  return {differences,detailed,parts:r || null};
+}
+
 function cancelDraftAutosave(form) {
   const timer = draftAutoTimers.get(form);
   if (timer) clearTimeout(timer);
@@ -443,6 +493,142 @@ async function applyDraftConflictResolution(form) {
     if (button?.isConnected) button.disabled = false;
   }
 }
+
+async function showPublishedVacancyConflict(form) {
+  const jobId = Number(form?.dataset.editId || 0);
+  const base = publishedVacancyBaselines.get(form);
+  if (!jobId || !base) throw new Error('Неизвестна исходная версия. Откройте вакансию заново.');
+  const local = publishedFormValues(form);
+  const response = await api('/api/employer/vacancies/' + jobId);
+  const server = publishedJobSnapshot(response.job);
+  const {differences,detailed,parts} = publishedConflictDifference(base,local,server);
+  const statusChanged = String(base.status) !== String(server.status);
+  const snapshot = editorFingerprint(form);
+  publishedVacancyConflictSessions.set(form,{
+    jobId,base,local,server,differences,detailed,parts,statusChanged,snapshot
+  });
+  const previous = form.querySelector('[data-published-conflict-panel]');
+  if (previous) previous.remove();
+  const panel = document.createElement('section');
+  panel.dataset.publishedConflictPanel = 'true';
+  panel.className = 'draft-conflict-panel published-vacancy-conflict-panel';
+  panel.setAttribute('role','region');
+  panel.setAttribute('aria-labelledby','published-conflict-title');
+  const overlap = differences.filter(d => d.localChanged && d.serverChanged).length;
+  const fieldsHtml = differences.map(d => {
+    const label = PUBLISHED_FIELD_LABELS[d.name] || d.name;
+    const hint = d.localChanged && d.serverChanged
+      ? 'Поле изменено на обоих устройствах. Выберите нужный вариант.'
+      : d.localChanged ? 'Изменено только здесь. Предлагаем ваш вариант.'
+        : 'Изменено на другом устройстве. Предлагаем вариант сервера.';
+    const value = (heading,contents) => '<div><span>' + esc(heading) +
+      '</span><div class="draft-conflict-value">' + esc(contents || '— Не заполнено —') + '</div></div>';
+    return '<div class="draft-conflict-field"><strong>' + esc(label) + '</strong><small>' +
+      esc(hint) + '</small><div class="draft-conflict-versions">' +
+      value('При открытии формы',d.baseValue) +
+      value('На этом устройстве',d.localValue) +
+      value('Последняя версия сервера',d.serverValue) + '</div>' +
+      '<label for="published-conflict-' + d.name + '">Какой вариант оставить?</label>' +
+      '<select id="published-conflict-' + d.name +
+      '" data-published-conflict-choice="' + d.name + '">' +
+      '<option value=""' + (!d.suggested ? ' selected' : '') + '>Выберите вариант</option>' +
+      '<option value="local"' + (d.suggested === 'local' ? ' selected' : '') + '>Мои изменения</option>' +
+      '<option value="server"' + (d.suggested === 'server' ? ' selected' : '') + '>С сервера</option>' +
+      '</select></div>';
+  }).join('');
+  const statusHtml = statusChanged
+    ? '<div class="published-vacancy-status-warning"><strong>Статус вакансии изменился:</strong> ' +
+      esc(String(base.status)) + ' → ' + esc(String(server.status)) +
+      '<label><input type="checkbox" data-published-conflict-status-ack> ' +
+      'Я понимаю, что статус останется таким, как на сервере.</label></div>'
+    : '';
+  panel.innerHTML = '<span class="section-kicker">СОГЛАСОВАНИЕ УСЛОВИЙ</span>' +
+    '<h3 id="published-conflict-title">Вакансия изменилась на другом устройстве</h3>' +
+    '<p>На экране осталась ваша версия. Сравните условия, затем примените выбранные значения в форму. ' +
+    '<strong>Вакансия пока не изменится.</strong> Для сохранения потребуется новый предпросмотр.</p>' +
+    (overlap ? '<p class="muted">Одновременно изменённых полей: ' + overlap + '.</p>' : '') +
+    (differences.length ? '<div class="draft-conflict-fields">' + fieldsHtml + '</div>' :
+      '<p class="muted">Содержимое совпадает. Сервер обновил другие данные вакансии.</p>') +
+    statusHtml +
+    '<div class="draft-conflict-actions">' +
+    '<button type="button" class="btn btn-primary" data-action="apply-published-conflict">Применить выбранные значения к форме</button>' +
+    '<button type="button" class="btn btn-outline" data-action="refresh-published-conflict">Обновить сравнение</button>' +
+    '</div><p class="draft-conflict-note" role="status" aria-live="polite">' +
+    'Отклики и история сохраняются. Изменения не попадут в опубликованную вакансию до вашего нового подтверждения.</p>';
+  const insertion = form.querySelector('.vacancy-preview-intro');
+  if (!insertion) throw new Error('Не удалось открыть сравнение полей');
+  insertion.before(panel);
+  const preview = form.querySelector('#vacancy-preview');
+  if (preview) preview.hidden = true;
+  const submit = form.querySelector('#vacancy-publish');
+  if (submit) submit.disabled = true;
+  setEditorStatus(form,'Вакансия изменилась на другом устройстве. Выберите условия в блоке сравнения.',true);
+}
+async function applyPublishedVacancyConflict(form) {
+  const session = publishedVacancyConflictSessions.get(form);
+  const panel = form?.querySelector('[data-published-conflict-panel]');
+  if (!session || !panel || editorSubmitting.has(form)) return;
+  if (editorFingerprint(form) !== session.snapshot) {
+    await showPublishedVacancyConflict(form);
+    toast('Пока вы сравнивали версии, форма изменилась. Проверьте варианты заново.',true);
+    return;
+  }
+  if (session.statusChanged && !panel.querySelector('[data-published-conflict-status-ack]')?.checked) {
+    setEditorStatus(form,'Подтвердите, что заметили изменение статуса вакансии.',true);
+    panel.querySelector('[data-published-conflict-status-ack]')?.focus();
+    return;
+  }
+  const merged = {...session.server};
+  const parts = session.detailed ? {...session.parts} : null;
+  for (const difference of session.differences) {
+    const selection = panel.querySelector('[data-published-conflict-choice="' + difference.name + '"]');
+    const choice = selection?.value;
+    if (choice !== 'local' && choice !== 'server') {
+      setEditorStatus(form,'Выберите вариант поля «' + PUBLISHED_FIELD_LABELS[difference.name] + '».',true);
+      selection?.focus();
+      return;
+    }
+    const value = choice === 'local' ? difference.localValue : difference.serverValue;
+    if (parts && ['responsibilities','requirements','conditions'].includes(difference.name)) {
+      parts[difference.name] = value;
+    } else if (['salary_min','salary_max'].includes(difference.name)) {
+      merged[difference.name] = Number(value);
+    } else {
+      merged[difference.name] = value;
+    }
+  }
+  if (parts) merged.description = publishedMergeDescription(parts);
+  // Do not change the published vacancy yet. Also confirm the server has not
+  // changed while the user was choosing values.
+  const action = panel.querySelector('[data-action="apply-published-conflict"]');
+  if (action) action.disabled = true;
+  try {
+    const response = await api('/api/employer/vacancies/' + session.jobId);
+    if (response.job.revision !== session.server.revision) {
+      await showPublishedVacancyConflict(form);
+      toast('На другом устройстве сохранили новые изменения. Сравнение обновлено.',true);
+      return;
+    }
+    const nextJob = {...response.job,...merged,revision:response.job.revision,status:response.job.status};
+    const main = $('#dashboard-main');
+    main.innerHTML = vacancyFormMarkup(nextJob);
+    prepareEditorForms();
+    const nextForm = main.querySelector('#vacancy-form');
+    if (!nextForm) throw new Error('Не удалось построить форму для объединённых условий');
+    publishedVacancyBaselines.set(nextForm,publishedJobSnapshot(response.job));
+    publishedVacancyPending.add(nextForm);
+    setEditorStatus(nextForm,'Выбранные значения подготовлены, но ещё НЕ сохранены. Откройте новый предпросмотр и нажмите «Сохранить изменения».');
+    const publish = nextForm.querySelector('#vacancy-publish');
+    if (publish) publish.disabled = true;
+    toast('Изменения объединены в форме. Перед сохранением обязательно проверьте предпросмотр.');
+    nextForm.querySelector('#vacancy-show-preview')?.focus({preventScroll:true});
+  } catch(error) {
+    setEditorStatus(form,'Сравнение не завершено: ' + error.message + '. Ваш текст остался на экране.',true);
+    toast('Не удалось завершить сравнение. Проверьте соединение и повторите попытку.',true);
+  } finally {
+    if (action?.isConnected) action.disabled = false;
+  }
+}
 const EDITOR_IDS = new Set(['profile-form', 'company-form', 'vacancy-form']);
 function editorFingerprint(form) {
   return JSON.stringify([...new FormData(form).entries()]);
@@ -455,8 +641,8 @@ function currentEditor() {
   return $('#dashboard-main #profile-form, #dashboard-main #company-form, #dashboard-main #vacancy-form');
 }
 function editorIsDirty(form) {
-  return Boolean(form && editorBaselines.has(form) &&
-    editorBaselines.get(form) !== editorFingerprint(form));
+  return Boolean(form && (publishedVacancyPending.has(form) ||
+    (editorBaselines.has(form) && editorBaselines.get(form) !== editorFingerprint(form))));
 }
 function setEditorStatus(form, message, isError = false) {
   const status = form?.querySelector('.editor-save-status');
@@ -1683,6 +1869,8 @@ async function loadEmployerVacancyEdit() {
     return;
   }
   $('#dashboard-main').innerHTML = vacancyFormMarkup(job);
+  const form = $('#dashboard-main #vacancy-form');
+  if (form) publishedVacancyBaselines.set(form, publishedJobSnapshot(job));
 }
 async function loadEmployerVacancies() {
   const [jobsResult, applicationsResult, invitationsResult, draftsResult] = await Promise.all([
@@ -2190,6 +2378,11 @@ async function handleDashboardSubmit(event) {
       form.querySelector('[data-draft-conflict-panel]')?.scrollIntoView({block:'nearest'});
       return;
     }
+    if (publishedVacancyConflictSessions.has(form)) {
+      toast('Сначала выберите и примените варианты в блоке сравнения вакансии.', true);
+      form.querySelector('[data-published-conflict-panel]')?.scrollIntoView({block:'nearest'});
+      return;
+    }
     const description = window.OpytnovacancyWizard?.getReviewedDescription(form);
     if (description === null || description === undefined) {
       toast('Сначала проверьте вакансию в предпросмотре.', true);
@@ -2239,14 +2432,16 @@ async function handleDashboardSubmit(event) {
         } catch(readError) {
           editorSaveFailure(form, readError, true);
         }
+      } else if (editing && e?.httpStatus === 409) {
+        conflict = true;
+        try {
+          await showPublishedVacancyConflict(form);
+          toast('Условия уже изменились на другом устройстве. Сравните версии перед сохранением.',true);
+        } catch(readError) {
+          editorSaveFailure(form,readError);
+        }
       } else {
         editorSaveFailure(form, e, !editing);
-        // A stale edit must never overwrite another browser tab's changes.
-        if (editing && /изменилась|уже изменена/.test(e.message)) {
-          const line = form.querySelector('#vacancy-form-message');
-          if (line) line.textContent = 'Вакансия изменена в другой вкладке. Отмените редактирование и откройте её заново.';
-          conflict = true;
-        }
       }
     } finally {
       endEditorSave(form, submit);
@@ -2380,6 +2575,19 @@ async function handleDashboardClick(event) {
     if (form) {
       try { await showDraftConflictResolution(form); }
       catch(error) { setEditorStatus(form, 'Не удалось обновить сравнение: ' + error.message, true); }
+    }
+    return;
+  }
+  if (action === 'apply-published-conflict') {
+    const form = btn.closest('#vacancy-form');
+    if (form) await applyPublishedVacancyConflict(form);
+    return;
+  }
+  if (action === 'refresh-published-conflict') {
+    const form = btn.closest('#vacancy-form');
+    if (form) {
+      try { await showPublishedVacancyConflict(form); }
+      catch(error) { setEditorStatus(form,'Не удалось обновить сравнение: ' + error.message,true); }
     }
     return;
   }

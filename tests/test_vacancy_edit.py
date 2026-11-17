@@ -189,3 +189,46 @@ def test_legacy_description_and_closed_status_survive_edit(app):
         assert after["id"] == jid
         assert all(row["id"] != jid for row in visitor.get("/api/jobs").json()["jobs"])
         assert len(employer.get("/api/employer/vacancies").json()["jobs"]) == 1
+
+
+def test_owned_vacancy_detail_reconciles_revision_without_extra_updates(app):
+    """GET for the editing owner returns the exact current CAS revision."""
+    with TestClient(app) as owner, TestClient(app) as other, TestClient(app) as candidate:
+        register(owner, "owner-detail@example.test", "employer")
+        register(other, "other-detail@example.test", "employer")
+        register(candidate, "candidate-detail@example.test", "candidate")
+        job_id = create_job(owner)
+        url = f"/api/employer/vacancies/{job_id}"
+        original = owned_job(owner, job_id)
+        detail = owner.get(url)
+        assert detail.status_code == 200, detail.text
+        assert detail.headers["cache-control"] == "no-store"
+        assert detail.json()["job"]["revision"] == original["revision"]
+        assert other.get(url).status_code == 404
+        assert candidate.get(url).status_code == 403
+        assert owner.get("/api/employer/vacancies/999999").status_code == 404
+
+        # Second device saves a new city; a stale editor cannot overwrite it.
+        second_device = patch(owner, job_id, edited_body(original, city="Москва"))
+        assert second_device.status_code == 200, second_device.text
+        stale = patch(owner, job_id, edited_body(original, skills="Опыт приёмки"))
+        assert stale.status_code == 409
+        current = owner.get(url).json()["job"]
+        assert current["city"] == "Москва"
+        assert current["skills"] == original["skills"]
+        assert current["revision"] == second_device.json()["job"]["revision"]
+
+        # Only the employer's final reviewed PATCH creates the second update.
+        merged = patch(owner, job_id, edited_body(current, skills="Опыт приёмки"))
+        assert merged.status_code == 200, merged.text
+        final = owner.get(url).json()["job"]
+        assert final["id"] == original["id"]
+        assert final["created_at"] == original["created_at"]
+        assert final["city"] == "Москва"
+        assert final["skills"] == "Опыт приёмки"
+        assert len(owner.get("/api/employer/vacancies").json()["jobs"]) == 1
+        with database(app.state.db_path) as db:
+            assert db.execute(
+                "SELECT COUNT(*) FROM vacancy_updates WHERE vacancy_id=?", (job_id,)
+            ).fetchone()[0] == 2
+            assert db.execute("SELECT COUNT(*) FROM vacancies WHERE id=?", (job_id,)).fetchone()[0] == 1

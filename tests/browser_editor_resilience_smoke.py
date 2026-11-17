@@ -453,6 +453,169 @@ def exercise_forms(page):
     assert first_title not in [j["title"] for j in page.request.get(
         URL + "/api/jobs").json()["jobs"]]
 
+
+    # Published vacancy edits: reconcile local and server changes without
+    # creating a second job, losing the applicant trail or silently publishing.
+    original_description = (
+        "Обязанности:\\nУчёт товаров\\n\\nТребования:\\nЗнание 1С"
+        "\\n\\nУсловия работы:\\nГрафик 2/2"
+    )
+    original_description = original_description.replace("\\n", "\n")
+    published_payload = {
+        "title": "Специалист отдела отгрузки",
+        "city": "Подольск", "salary_min": 70000, "salary_max": 95000,
+        "schedule": "Сменный", "employment": "Полная", "skills": "1С",
+        "description": original_description,
+    }
+    created_job = page.request.post(
+        URL + "/api/employer/vacancies", headers=HEADERS, data=published_payload,
+    )
+    assert created_job.status == 201, created_job.text()
+    job_id = created_job.json()["id"]
+    edit_url = URL + f"/api/employer/vacancies/{job_id}"
+    original_job = page.request.get(edit_url).json()["job"]
+    page.locator("[data-dashboard-tab-select]").select_option("vacancies")
+    page.locator(f"[data-action='edit-job'][data-id='{job_id}']").click()
+    expect(page.locator("#vacancy-form")).to_be_visible()
+    expect(page.locator("#vacancy-form")).to_have_attribute("data-edit-id", str(job_id))
+    page.locator("#vacancy-city").fill("Тверь")
+    page.locator("#vacancy-requirements").fill("Требования на компьютере")
+    page.locator("#vacancy-show-preview").click()
+    expect(page.locator("#vacancy-publish")).to_be_enabled()
+
+    # The tablet updates the same city and independently changes conditions.
+    server_description = original_description.replace(
+        "График 2/2", "Сменный график 3/3",
+    )
+    remote_body = {
+        **{field: original_job[field] for field in [
+            "title","city","salary_min","salary_max","schedule",
+            "employment","skills","description"
+        ]},
+        "city": "Москва", "description": server_description,
+        "expected_revision": original_job["revision"],
+    }
+    remote = page.request.patch(edit_url, headers=HEADERS, data=remote_body)
+    assert remote.status == 200, remote.text()
+    with page.expect_response(lambda r: (
+        r.url.endswith(f"/api/employer/vacancies/{job_id}")
+        and r.request.method == "PATCH" and r.status == 409
+    ), timeout=15000):
+        page.locator("#vacancy-publish").click()
+    comparison = page.locator("[data-published-conflict-panel]")
+    expect(comparison).to_be_visible()
+    expect(comparison).to_contain_text("Москва")
+    expect(comparison).to_contain_text("Тверь")
+    expect(comparison).to_contain_text("Сменный график 3/3")
+    expect(comparison.locator('[data-published-conflict-choice="city"]')).to_have_value("")
+    expect(comparison.locator('[data-published-conflict-choice="conditions"]')).to_have_value("server")
+    expect(page.locator("#vacancy-publish")).to_be_disabled()
+    assert page.request.get(edit_url).json()["job"]["city"] == "Москва"
+
+    # If a new keystroke arrives during the review, selections must refresh.
+    comparison.locator('[data-published-conflict-choice="city"]').select_option("local")
+    page.locator("#vacancy-skills").fill("1С, новый локальный навык")
+    comparison.locator('[data-action="apply-published-conflict"]').click()
+    expect(comparison.locator('[data-published-conflict-choice="city"]')).to_have_value("")
+    expect(page.locator("#vacancy-skills")).to_have_value("1С, новый локальный навык")
+
+    # Another tablet edit during the comparison must not be overwritten.
+    latest_job = page.request.get(edit_url).json()["job"]
+    remote_again = {
+        **{field: latest_job[field] for field in [
+            "title","city","salary_min","salary_max","schedule",
+            "employment","skills","description"
+        ]},
+        "description": server_description.replace("График 3/3", "График 4/4"),
+        "expected_revision": latest_job["revision"],
+    }
+    remote_again["description"] = remote_again["description"].replace("Сменный график 3/3", "График 4/4")
+    remotely_changed = page.request.patch(edit_url,headers=HEADERS,data=remote_again)
+    assert remotely_changed.status == 200, remotely_changed.text()
+    comparison.locator('[data-published-conflict-choice="city"]').select_option("local")
+    comparison.locator('[data-action="apply-published-conflict"]').click()
+    expect(comparison).to_contain_text("График 4/4")
+    expect(comparison.locator('[data-published-conflict-choice="city"]')).to_have_value("")
+
+    # Deliberately choose local city; preserve server-only conditions.
+    comparison.locator('[data-published-conflict-choice="city"]').select_option("local")
+    page.set_viewport_size({"width":390,"height":844})
+    expect(comparison).to_be_visible()
+    comparison.locator('[data-action="apply-published-conflict"]').click()
+    expect(page.locator("[data-published-conflict-panel]")).to_have_count(0)
+    expect(page.locator("#vacancy-city")).to_have_value("Тверь")
+    expect(page.locator("#vacancy-requirements")).to_have_value("Требования на компьютере")
+    expect(page.locator("#vacancy-conditions")).to_have_value("График 4/4")
+    expect(page.locator("#vacancy-skills")).to_have_value("1С, новый локальный навык")
+    expect(page.locator("#vacancy-publish")).to_be_disabled()
+    expect(page.locator("#vacancy-form .editor-save-status")).to_contain_text("НЕ сохранены")
+    # Nothing is published by applying comparison alone.
+    assert page.request.get(edit_url).json()["job"]["city"] == "Москва"
+
+    page.locator("#vacancy-show-preview").click()
+    expect(page.locator("#vacancy-publish")).to_be_enabled()
+    with page.expect_response(lambda r: (
+        r.url.endswith(f"/api/employer/vacancies/{job_id}")
+        and r.request.method == "PATCH" and r.status == 200
+    ),timeout=15000):
+        page.locator("#vacancy-publish").click()
+    expect(page.locator("#vacancy-form")).to_have_count(0)
+    saved_job = page.request.get(edit_url).json()["job"]
+    assert saved_job["city"] == "Тверь"
+    assert "Требования на компьютере" in saved_job["description"]
+    assert "График 4/4" in saved_job["description"]
+    assert saved_job["skills"] == "1С, новый локальный навык"
+    assert saved_job["id"] == job_id
+    assert saved_job["created_at"] == original_job["created_at"]
+    assert sum(j["id"] == job_id for j in
+               page.request.get(URL+"/api/employer/vacancies").json()["jobs"]) == 1
+    page.set_viewport_size({"width":1280,"height":800})
+
+    # A second tab can close the vacancy while the first edits its content.
+    # The owner must acknowledge the new status; merging never reopens it.
+    # At desktop width use the visible edit control, not the mobile-only menu.
+    expect(page.locator(
+        f"[data-action='edit-job'][data-id='{job_id}']"
+    )).to_be_visible()
+    page.locator(f"[data-action='edit-job'][data-id='{job_id}']").click()
+    expect(page.locator("#vacancy-form")).to_have_attribute("data-edit-id",str(job_id))
+    page.locator("#vacancy-title").fill("Специалист отгрузки — обновлено")
+    page.locator("#vacancy-show-preview").click()
+    expect(page.locator("#vacancy-publish")).to_be_enabled()
+    status_reply = page.request.patch(
+        edit_url + "/status", headers=HEADERS, data={"status":"closed"},
+    )
+    assert status_reply.status == 200, status_reply.text()
+    with page.expect_response(lambda r: (
+        r.url.endswith(f"/api/employer/vacancies/{job_id}")
+        and r.request.method == "PATCH" and r.status == 409
+    ),timeout=15000):
+        page.locator("#vacancy-publish").click()
+    comparison = page.locator("[data-published-conflict-panel]")
+    expect(comparison).to_be_visible()
+    expect(comparison.locator("[data-published-conflict-status-ack]")).not_to_be_checked()
+    comparison.locator("[data-action='apply-published-conflict']").click()
+    expect(page.locator("#vacancy-form .editor-save-status")).to_contain_text(
+        "Подтвердите, что заметили изменение статуса"
+    )
+    assert page.request.get(edit_url).json()["job"]["status"] == "closed"
+    comparison.locator("[data-published-conflict-status-ack]").check()
+    comparison.locator("[data-action='apply-published-conflict']").click()
+    expect(page.locator("[data-published-conflict-panel]")).to_have_count(0)
+    expect(page.locator("#vacancy-title")).to_have_value("Специалист отгрузки — обновлено")
+    expect(page.locator("#vacancy-publish")).to_be_disabled()
+    assert page.request.get(edit_url).json()["job"]["title"] == saved_job["title"]
+    page.locator("#vacancy-show-preview").click()
+    with page.expect_response(lambda r: (
+        r.url.endswith(f"/api/employer/vacancies/{job_id}")
+        and r.request.method == "PATCH" and r.status == 200
+    ),timeout=15000):
+        page.locator("#vacancy-publish").click()
+    expect(page.locator("#vacancy-form")).to_have_count(0)
+    closed_result = page.request.get(edit_url).json()["job"]
+    assert closed_result["id"] == job_id and closed_result["status"] == "closed"
+    assert closed_result["title"] == "Специалист отгрузки — обновлено"
+
     assert not errors, errors
 
 
