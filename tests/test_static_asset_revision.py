@@ -1,25 +1,22 @@
-"""Keep the public app.js URL tied to its exact shipped content.
+"""Ensure browsers fetch the exact app.js shipped in each release.
 
-This prevents old browser/CDN caches from silently serving stale application
-logic after a new release. The HTML entrypoint itself is served no-store.
+The index route is no-store, and its app.js URL uses the Git blob SHA prefix.
 """
 import hashlib
-import re
 from pathlib import Path
-
 
 STATIC = Path(__file__).resolve().parents[1] / "app" / "static"
 
 
-def test_app_js_version_is_its_git_blob_prefix():
+def test_app_js_version_matches_its_git_blob_sha():
     payload = (STATIC / "app.js").read_bytes()
-    git_blob_hash = hashlib.sha1(
-        f"blob {len(payload)}\\0".replace("\\0", "\0").encode("ascii") + payload
-    ).hexdigest()
+    header = f"blob {len(payload)}".encode("ascii") + b"\0"
+    expected = hashlib.sha1(header + payload).hexdigest()[:12]
+
     html = (STATIC / "index.html").read_text(encoding="utf-8")
-    versions = re.findall(r'src="/static/app\\.js\\?v=([0-9a-f]{12})"', html)
-    assert len(versions) == 1, "app.js should have exactly one versioned script tag"
-    assert versions[0] == git_blob_hash[:12], (
-        "app.js content changed without a new HTML asset revision: "
-        "update the app.js?v= query to the new Git blob SHA prefix"
+    prefix = 'src="/static/app.js?v='
+    assert html.count(prefix) == 1, "app.js must have exactly one versioned script tag"
+    version = html.split(prefix, 1)[1].split('"', 1)[0]
+    assert version == expected, (
+        "app.js changed without updating its cache version in index.html"
     )
