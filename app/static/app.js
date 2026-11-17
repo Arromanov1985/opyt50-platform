@@ -181,6 +181,56 @@ const draftAutoWarnings = new WeakMap();
 // Original server snapshot is essential to a three-way merge. DOM only, no storage.
 const draftServerBaselines = new WeakMap();
 const draftConflictSessions = new WeakMap();
+// Published edits are never autosaved. These snapshots live only while a
+// single editing form exists. Selection is staged locally until new preview.
+const publishedVacancyBaselines = new WeakMap();
+const publishedVacancyConflictSessions = new WeakMap();
+const publishedVacancyPending = new WeakSet();
+const PUBLISHED_EDIT_FIELDS = ['title','city','salary_min','salary_max','schedule','employment','skills','description'];
+const PUBLISHED_FIELD_LABELS = {
+  title:'Должность',city:'Город',salary_min:'Зарплата от',
+  salary_max:'Зарплата до',schedule:'График',employment:'Занятость',
+  skills:'Ключевые навыки',description:'Описание вакансии',
+  responsibilities:'Обязанности',requirements:'Требования',conditions:'Условия работы'
+};
+function publishedJobSnapshot(job) {
+  return Object.fromEntries([...PUBLISHED_EDIT_FIELDS,'status','revision','id'].map(key => [key, job[key]]));
+}
+function publishedFormValues(form) {
+  const describe = window.OpytnovacancyWizard?.describe;
+  if (!describe) throw new Error('Не удалось проверить описание. Перезагрузите страницу.');
+  return {
+    title: formValue(form,'title'),city:formValue(form,'city'),
+    salary_min:parseNumber(form,'salary_min'),salary_max:parseNumber(form,'salary_max'),
+    schedule:formValue(form,'schedule'),employment:formValue(form,'employment'),
+    skills:formValue(form,'skills'),description:describe(form)
+  };
+}
+function publishedMergeDescription(parts) {
+  return ['Обязанности:', parts.responsibilities, '', 'Требования:',
+    parts.requirements, '', 'Условия работы:', parts.conditions].join('\n');
+}
+function publishedConflictDifference(base, local, server) {
+  const parse = window.OpytnovacancyWizard?.splitDescription;
+  const b = parse?.(base.description), l = parse?.(local.description), r = parse?.(server.description);
+  const detailed = Boolean(b && l && r);
+  const names = [...PUBLISHED_EDIT_FIELDS.filter(key => key !== 'description'),
+    ...(detailed ? ['responsibilities','requirements','conditions'] : ['description'])];
+  const baseFields = {...base,...(detailed ? b : {})};
+  const localFields = {...local,...(detailed ? l : {})};
+  const serverFields = {...server,...(detailed ? r : {})};
+  const differences = names.filter(key => String(localFields[key]) !== String(serverFields[key])).map(name => {
+    const localChanged = String(localFields[name]) !== String(baseFields[name]);
+    const serverChanged = String(serverFields[name]) !== String(baseFields[name]);
+    return {
+      name, baseValue:String(baseFields[name] ?? ''), localValue:String(localFields[name] ?? ''),
+      serverValue:String(serverFields[name] ?? ''), localChanged, serverChanged,
+      suggested: localChanged && serverChanged ? '' : localChanged ? 'local' : 'server'
+    };
+  });
+  return {differences,detailed,parts:r || null};
+}
+
 function cancelDraftAutosave(form) {
   const timer = draftAutoTimers.get(form);
   if (timer) clearTimeout(timer);
@@ -455,8 +505,8 @@ function currentEditor() {
   return $('#dashboard-main #profile-form, #dashboard-main #company-form, #dashboard-main #vacancy-form');
 }
 function editorIsDirty(form) {
-  return Boolean(form && editorBaselines.has(form) &&
-    editorBaselines.get(form) !== editorFingerprint(form));
+  return Boolean(form && (publishedVacancyPending.has(form) ||
+    (editorBaselines.has(form) && editorBaselines.get(form) !== editorFingerprint(form))));
 }
 function setEditorStatus(form, message, isError = false) {
   const status = form?.querySelector('.editor-save-status');
@@ -1683,6 +1733,8 @@ async function loadEmployerVacancyEdit() {
     return;
   }
   $('#dashboard-main').innerHTML = vacancyFormMarkup(job);
+  const form = $('#dashboard-main #vacancy-form');
+  if (form) publishedVacancyBaselines.set(form, publishedJobSnapshot(job));
 }
 async function loadEmployerVacancies() {
   const [jobsResult, applicationsResult, invitationsResult, draftsResult] = await Promise.all([
