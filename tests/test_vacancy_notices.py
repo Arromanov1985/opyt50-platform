@@ -193,7 +193,7 @@ def test_change_history_owner_only_invitation_next_step_and_zero_updates(app):
         invite = post(owner, "/api/employer/invitations", {
             "vacancy_id": job_id, "candidate_id": cid,
         })
-        assert invite.status_code == 200, invite.text
+        assert invite.status_code == 201, invite.text
         assert edit(owner, job_id, salary_min=76000).status_code == 200
         notice = notifications(candidate)
         assert notice["unread_count"] == 1
