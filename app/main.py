@@ -1981,6 +1981,52 @@ def create_app(db_path: str | None = None) -> FastAPI:
         ).fetchone()
         return {"ok": True, "job": {**dict(updated), "revision": vacancy_revision(updated)}}
 
+    @app.get("/api/employer/vacancies/{job_id}/updates")
+    def employer_vacancy_updates(
+        job_id: int,
+        user: dict = Depends(active_user),
+        db: sqlite3.Connection = Depends(get_connection),
+    ):
+        """Private, read-only history of edits to one employer-owned vacancy.
+
+        Recipient counts are aggregate; identities and read receipts are never
+        exposed to the employer. No historical edits are reconstructed from
+        current vacancy values.
+        """
+        allowed(user, "employer")
+        owned = db.execute(
+            "SELECT id FROM vacancies WHERE id=? AND employer_id=?",
+            (job_id, user["id"]),
+        ).fetchone()
+        if owned is None:
+            raise HTTPException(404, "Вакансия не найдена")
+        rows = db.execute(
+            """SELECT u.id,u.created_at,u.changes_json,
+                      (SELECT COUNT(*) FROM vacancy_update_recipients r
+                       WHERE r.update_id=u.id) AS recipients_total,
+                      (SELECT COUNT(*) FROM vacancy_update_recipients r
+                       WHERE r.update_id=u.id AND r.read_at IS NOT NULL) AS recipients_read
+               FROM vacancy_updates u
+               WHERE u.vacancy_id=? AND u.employer_id=?
+               ORDER BY u.id DESC LIMIT 50""",
+            (job_id, user["id"]),
+        ).fetchall()
+        count = db.execute(
+            "SELECT COUNT(*) FROM vacancy_updates WHERE vacancy_id=? AND employer_id=?",
+            (job_id, user["id"]),
+        ).fetchone()[0]
+        return {
+            "vacancy_id": job_id,
+            "total_count": count,
+            "updates": [
+                {"id": row["id"], "created_at": row["created_at"],
+                 "changes": json.loads(row["changes_json"]),
+                 "recipients_total": row["recipients_total"],
+                 "recipients_read": row["recipients_read"]}
+                for row in rows
+            ],
+        }
+
     @app.get("/api/candidate/vacancy-updates")
     def candidate_vacancy_updates(
         user: dict = Depends(active_user),
@@ -1991,7 +2037,12 @@ def create_app(db_path: str | None = None) -> FastAPI:
         rows = db.execute(
             """SELECT u.id,u.vacancy_id,u.created_at,u.changes_json,
                       v.title,v.status AS vacancy_status,e.company_name,
-                      r.read_at
+                      r.read_at,
+                      CASE WHEN EXISTS(
+                          SELECT 1 FROM job_applications a
+                          WHERE a.vacancy_id=u.vacancy_id
+                            AND a.candidate_id=r.candidate_id
+                      ) THEN 'application' ELSE 'invitation' END AS relationship
                FROM vacancy_update_recipients r
                JOIN vacancy_updates u ON u.id=r.update_id
                JOIN vacancies v ON v.id=u.vacancy_id
@@ -2009,7 +2060,7 @@ def create_app(db_path: str | None = None) -> FastAPI:
             "updates": [
                 {**{field: row[field] for field in (
                     "id", "vacancy_id", "created_at", "title",
-                    "vacancy_status", "company_name", "read_at"
+                    "vacancy_status", "company_name", "read_at", "relationship"
                 )}, "changes": json.loads(row["changes_json"])}
                 for row in rows
             ],
