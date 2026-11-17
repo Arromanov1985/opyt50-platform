@@ -2185,6 +2185,11 @@ async function handleDashboardSubmit(event) {
   }
   if (form.id === 'vacancy-form') {
     event.preventDefault();
+    if (draftConflictSessions.has(form)) {
+      toast('Сначала выберите и сохраните варианты в блоке сравнения черновика.', true);
+      form.querySelector('[data-draft-conflict-panel]')?.scrollIntoView({block:'nearest'});
+      return;
+    }
     const description = window.OpytnovacancyWizard?.getReviewedDescription(form);
     if (description === null || description === undefined) {
       toast('Сначала проверьте вакансию в предпросмотре.', true);
@@ -2226,6 +2231,14 @@ async function handleDashboardSubmit(event) {
     } catch(e) {
       if (persisted) {
         toast('Вакансия сохранена, но не удалось обновить список. Проверьте раздел «Мои вакансии».', true);
+      } else if (!editing && form.dataset.draftId && e?.httpStatus === 409) {
+        conflict = true;
+        try {
+          await showDraftConflictResolution(form);
+          toast('Перед публикацией необходимо согласовать изменения черновика.', true);
+        } catch(readError) {
+          editorSaveFailure(form, readError, true);
+        }
       } else {
         editorSaveFailure(form, e, !editing);
         // A stale edit must never overwrite another browser tab's changes.
@@ -2355,6 +2368,19 @@ async function handleDashboardClick(event) {
   if (action === 'save-vacancy-draft') {
     const form = btn.closest('#vacancy-form');
     if (form) await saveVacancyDraft(form);
+    return;
+  }
+  if (action === 'apply-draft-conflict') {
+    const form = btn.closest('#vacancy-form');
+    if (form) await applyDraftConflictResolution(form);
+    return;
+  }
+  if (action === 'refresh-draft-conflict') {
+    const form = btn.closest('#vacancy-form');
+    if (form) {
+      try { await showDraftConflictResolution(form); }
+      catch(error) { setEditorStatus(form, 'Не удалось обновить сравнение: ' + error.message, true); }
+    }
     return;
   }
   btn.disabled = true;
