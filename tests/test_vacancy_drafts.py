@@ -75,3 +75,11 @@ def test_incomplete_draft_cannot_publish(tmp_path: Path):
         assert employer.post(f"/api/employer/vacancy-drafts/{did}/publish", headers=XHR).status_code == 422
         assert employer.get("/api/employer/vacancy-drafts").json()["drafts"][0]["id"] == did
         assert employer.get("/api/employer/vacancies").json()["jobs"] == []
+        incomplete = employer.put(f"/api/employer/vacancy-drafts/{did}", json={
+            "fields": fields(requirements=""), "expected_version": 1
+        }, headers=XHR)
+        assert incomplete.status_code == 200
+        still_incomplete = employer.post(
+            f"/api/employer/vacancy-drafts/{did}/publish", headers=XHR,
+        )
+        assert still_incomplete.status_code == 422
