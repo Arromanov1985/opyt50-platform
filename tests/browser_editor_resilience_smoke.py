@@ -341,7 +341,8 @@ def exercise_forms(page):
     expect(page.locator("#vacancy-salary-min")).to_have_value("52000")
     page.locator("[data-dashboard-tab-select]").select_option("vacancies")
     expect(page.locator("#dashboard-main")).to_contain_text(draft_title)
-    expect(page.locator(".employer-draft-progress")).to_contain_text("4 из 7")
+    # Remote conditions and requirements were explicitly reconciled above.
+    expect(page.locator(".employer-draft-progress")).to_contain_text("6 из 7")
     expect(page.locator(".employer-draft-card")).to_contain_text("Последнее сохранение")
     assert page.evaluate("() => draftSavedAt('2026-11-17 09:00:00+00') !== 'время не указано'")
     assert page.evaluate("() => draftSavedAt('2026-11-17 09:00:00') !== 'время не указано'")
