@@ -84,7 +84,7 @@ jobs:
           if-no-files-found: warn
           retention-days: 7
       - name: Probe Timeweb preview reachability (GET only)
-        if: always() && github.event_name == 'pull_request'
+        if: always() && (github.event_name == 'pull_request' || github.ref == 'refs/heads/main')
         run: python scripts/probe_timeweb_preview.py
       - name: Capture actual public Timeweb homepage (no auth)
         if: always() && github.event_name == 'pull_request'
@@ -98,7 +98,7 @@ jobs:
           if-no-files-found: warn
           retention-days: 7
       - name: Upload Timeweb preview reachability report
-        if: always() && github.event_name == 'pull_request'
+        if: always() && (github.event_name == 'pull_request' || github.ref == 'refs/heads/main')
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: stazhno-preview-reachability
