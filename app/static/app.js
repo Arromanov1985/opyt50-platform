@@ -119,14 +119,45 @@ function draftFields(form) {
   const names = ['title','city','salary_min','salary_max','schedule','employment','skills','responsibilities','requirements','conditions'];
   return Object.fromEntries(names.map(name => [name, formValue(form,name)]));
 }
-async function saveVacancyDraft(form) {
+// Only drafts explicitly saved on the server are automatically updated.
+// Values are never written to browser storage. Timers belong to a live form.
+const draftAutoTimers = new WeakMap();
+const draftAutoSaving = new WeakSet();
+const draftAutoBlocked = new WeakSet();
+function cancelDraftAutosave(form) {
+  const timer = draftAutoTimers.get(form);
+  if (timer) clearTimeout(timer);
+  draftAutoTimers.delete(form);
+}
+function scheduleVacancyAutosave(form) {
+  if (!form || form.id !== 'vacancy-form' || !form.dataset.draftId || form.dataset.editId) return;
+  cancelDraftAutosave(form);
+  if (!editorIsDirty(form)) {
+    if (!draftAutoSaving.has(form)) setEditorStatus(form, 'Черновик сохранён на сервере. Автосохранение включено.');
+    return;
+  }
+  if (draftAutoBlocked.has(form)) {
+    setEditorStatus(form, 'Автосохранение остановлено после ошибки. Нажмите «Сохранить сейчас» или откройте черновик заново.', true);
+    return;
+  }
+  setEditorStatus(form, 'Есть изменения — автоматически сохраним через секунду…');
+  draftAutoTimers.set(form, setTimeout(() => {
+    draftAutoTimers.delete(form);
+    if (form.isConnected && editorIsDirty(form)) void saveVacancyDraft(form, true);
+  }, 1400));
+}
+async function saveVacancyDraft(form, automatic = false) {
   const button = form.querySelector('[data-action="save-vacancy-draft"]');
-  if (button?.disabled || editorSubmitting.has(form)) return;
-  const submit = beginEditorSave(form);
+  if (editorSubmitting.has(form) || draftAutoSaving.has(form) || (automatic && (draftAutoBlocked.has(form) || !form.dataset.draftId))) return;
+  cancelDraftAutosave(form);
+  const submit = automatic ? null : beginEditorSave(form);
+  if (automatic) draftAutoSaving.add(form);
   if (button) button.disabled = true;
+  if (automatic) setEditorStatus(form, 'Автоматически сохраняем черновик…');
+  const snapshot = editorFingerprint(form);
+  const fields = draftFields(form);
+  const id = Number(form.dataset.draftId || 0);
   try {
-    const fields = draftFields(form);
-    const id = Number(form.dataset.draftId || 0);
     const result = await api(id ? `/api/employer/vacancy-drafts/${id}` : '/api/employer/vacancy-drafts', {
       method: id ? 'PUT' : 'POST',
       body: JSON.stringify(id ? {fields, expected_version:Number(form.dataset.draftVersion)} : {fields})
@@ -134,16 +165,34 @@ async function saveVacancyDraft(form) {
     form.dataset.draftId = result.id;
     form.dataset.draftVersion = result.version;
     state.activeDraft = result;
-    editorSaved(form);
-    setEditorStatus(form, 'Черновик сохранён на сервере. Его можно открыть с другого устройства.');
-    toast('Черновик сохранён. Вакансия ещё не опубликована.');
+    draftAutoBlocked.delete(form);
+    // Mark only the exact submitted snapshot as saved, never newer keystrokes.
+    editorBaselines.set(form, snapshot);
+    if (editorFingerprint(form) === snapshot) {
+      setEditorStatus(form, 'Черновик сохранён на сервере. Автосохранение включено.');
+    } else {
+      setEditorStatus(form, 'Появились новые изменения. Автосохранение продолжится…');
+    }
+    if (!automatic) toast('Черновик сохранён. Дальнейшие изменения сохраняются автоматически.');
   } catch(e) {
-    setEditorStatus(form, 'Черновик не сохранён: ' + e.message + '. Поля остались заполнены.', true);
-    toast('Не удалось сохранить черновик: ' + e.message, true);
+    // On a network failure the HTTP request might have committed. Stop
+    // automatic retries; explicit save can safely retry versioned PUT.
+    draftAutoBlocked.add(form);
+    const warning = e?.httpStatus === 409
+      ? 'Черновик изменён на другом устройстве. Автосохранение остановлено; проверьте черновик перед повторной записью.'
+      : e?.networkFailure
+        ? (id
+          ? 'Не удалось подтвердить сохранение из-за потери связи. Текст остался на экране. После восстановления сети нажмите «Сохранить сейчас».'
+          : 'Связь прервалась: первый черновик мог сохраниться. Проверьте «Мои вакансии» перед повторным нажатием.')
+        : 'Не удалось сохранить черновик: ' + e.message + '. Текст остался на экране; автосохранение остановлено.';
+    setEditorStatus(form, warning, true);
+    if (!automatic) toast(warning, true);
   } finally {
-    endEditorSave(form, submit);
+    if (automatic) draftAutoSaving.delete(form);
+    else endEditorSave(form, submit);
     if (button?.isConnected) button.disabled = false;
   }
+  if (!draftAutoBlocked.has(form) && editorIsDirty(form) && form.isConnected) scheduleVacancyAutosave(form);
 }
 const EDITOR_IDS = new Set(['profile-form', 'company-form', 'vacancy-form']);
 function editorFingerprint(form) {
@@ -178,10 +227,17 @@ function prepareEditorForms() {
     const submit = form.querySelector('button[type="submit"]');
     if (submit) submit.before(status);
     form.dataset.editorReady = '1';
+    if (form.id === 'vacancy-form' && form.dataset.draftId) {
+      setEditorStatus(form, 'Черновик на сервере. Дальнейшие изменения сохраняются автоматически.');
+    }
   });
 }
 function editorChanged(form) {
   if (!form || !editorBaselines.has(form) || editorSubmitting.has(form)) return;
+  if (form.id === 'vacancy-form' && form.dataset.draftId && !form.dataset.editId) {
+    scheduleVacancyAutosave(form);
+    return;
+  }
   setEditorStatus(form, editorIsDirty(form)
     ? 'Есть несохранённые изменения. Нажмите «Сохранить», прежде чем уходить из раздела.'
     : '');
@@ -193,12 +249,17 @@ function editorSaved(form) {
 function mayLeaveEditor() {
   const form = currentEditor();
   if (!form) return true;
-  if (editorSubmitting.has(form)) {
+  if (editorSubmitting.has(form) || draftAutoSaving.has(form)) {
     toast('Сохранение ещё выполняется. Дождитесь результата.', true);
     return false;
   }
-  if (!editorIsDirty(form)) return true;
-  return confirm('В форме остались несохранённые изменения. Выйти без сохранения?');
+  if (!editorIsDirty(form)) {
+    cancelDraftAutosave(form);
+    return true;
+  }
+  const confirmed = confirm('В форме остались несохранённые изменения. Выйти без сохранения?');
+  if (confirmed) cancelDraftAutosave(form);
+  return confirmed;
 }
 function beginEditorSave(form) {
   if (editorSubmitting.has(form)) return null;
@@ -1338,7 +1399,7 @@ function vacancyFormMarkup(job = null, draft = null) {
         <p id="vacancy-preview-description" class="vacancy-preview-description"></p>
         <p class="vacancy-preview-note">Проверьте каждую строку. Чтобы исправить что-либо, измените поля выше и повторно откройте предпросмотр.</p>
       </section>
-      ${!isEdit ? '<div class="vacancy-draft-actions"><button type="button" class="btn btn-outline" data-action="save-vacancy-draft">Сохранить черновик</button><small>Черновик доступен только вам, с компьютера и планшета. Для публикации требуется предпросмотр.</small></div>' : ''}
+      ${!isEdit ? `<div class="vacancy-draft-actions"><button type="button" class="btn btn-outline" data-action="save-vacancy-draft">${draft ? 'Сохранить сейчас' : 'Сохранить черновик'}</button><small>${draft ? 'Дальнейшие правки автоматически сохраняются на сервере. При ошибке можно сохранить вручную.' : 'Сначала сохраните черновик. После этого правки будут сохраняться автоматически и станут доступны на планшете.'}</small></div>` : ''}
       <div class="vacancy-publish-actions">
         <button type="submit" class="btn btn-primary btn-lg" id="vacancy-publish" disabled>${isEdit ? 'Сохранить изменения ↗' : 'Опубликовать вакансию ↗'}</button>
         <p class="field-help">${isEdit ? 'Кнопка станет доступна после предпросмотра. Изменения сохранятся в той же вакансии, не удаляя отклики.' : 'Кнопка станет доступна после предварительного просмотра. Публикация отправляет вакансию в тестовую базу.'}</p>
@@ -1862,6 +1923,11 @@ async function handleDashboardSubmit(event) {
       toast('Сначала проверьте вакансию в предпросмотре.', true);
       return;
     }
+    if (draftAutoSaving.has(form)) {
+      toast('Автосохранение ещё выполняется. Повторите публикацию после его завершения.', true);
+      return;
+    }
+    cancelDraftAutosave(form);
     const submit = beginEditorSave(form);
     if (!submit) return;
     const editing = Boolean(form.dataset.editId);
