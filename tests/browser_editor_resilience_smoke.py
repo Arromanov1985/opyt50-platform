@@ -227,6 +227,100 @@ def exercise_forms(page):
     assert autosaved.json()["fields"]["salary_min"] == "52000"
     assert autosaved.json()["version"] > drafts[0]["version"]
 
+    # Two devices edited the same draft: the second save must stop with 409.
+    # The user chooses the local city, while a server-only condition is merged.
+    remote_fields = dict(autosaved.json()["fields"])
+    remote_fields["city"] = "Город со второго устройства"
+    remote_fields["conditions"] = "Условия со второго устройства"
+    remote_save = page.request.put(
+        URL + f"/api/employer/vacancy-drafts/{draft_id}",
+        headers=HEADERS,
+        data={"fields": remote_fields, "expected_version": autosaved.json()["version"]},
+    )
+    assert remote_save.status == 200, remote_save.text()
+    with page.expect_response(lambda r: (
+        r.url.endswith(f"/api/employer/vacancy-drafts/{draft_id}")
+        and r.request.method == "PUT" and r.status == 409
+    ), timeout=15000):
+        page.locator("#vacancy-city").fill("Мой город")
+    comparison = page.locator("[data-draft-conflict-panel]")
+    expect(comparison).to_be_visible()
+    expect(comparison).to_contain_text("Город со второго устройства")
+    expect(comparison).to_contain_text("Мой город")
+    expect(comparison).to_contain_text("Условия со второго устройства")
+    expect(page.locator("#vacancy-city")).to_have_value("Мой город")
+    expect(page.locator("#vacancy-publish")).to_be_disabled()
+    assert page.request.get(URL + f"/api/employer/vacancy-drafts/{draft_id}").json()["fields"]["city"] == "Город со второго устройства"
+    expect(comparison.locator('[data-draft-conflict-choice="city"]')).to_have_value("")
+
+    # A new keystroke while reviewing invalidates the old selection snapshot;
+    # comparison must refresh without losing text or writing to the server.
+    comparison.locator('[data-draft-conflict-choice="city"]').select_option("local")
+    page.locator("#vacancy-skills").fill("Новое локальное умение")
+    comparison.locator('[data-action="apply-draft-conflict"]').click()
+    expect(comparison.locator('[data-draft-conflict-choice="city"]')).to_have_value("")
+    expect(page.locator("#vacancy-skills")).to_have_value("Новое локальное умение")
+    comparison.locator('[data-draft-conflict-choice="city"]').select_option("local")
+    # While reviewing, the other device writes again. The first confirm
+    # must hit 409 and refresh the comparison, never overwrite that update.
+    during_review = page.request.get(
+        URL + f"/api/employer/vacancy-drafts/{draft_id}"
+    ).json()
+    concurrent_fields = dict(during_review["fields"])
+    concurrent_fields["conditions"] = "Обновлённые серверные условия"
+    concurrent = page.request.put(
+        URL + f"/api/employer/vacancy-drafts/{draft_id}",
+        headers=HEADERS,
+        data={"fields": concurrent_fields, "expected_version": during_review["version"]},
+    )
+    assert concurrent.status == 200, concurrent.text()
+    with page.expect_response(lambda r: (
+        r.url.endswith(f"/api/employer/vacancy-drafts/{draft_id}")
+        and r.request.method == "PUT" and r.status == 409
+    ), timeout=15000):
+        comparison.locator('[data-action="apply-draft-conflict"]').click()
+    expect(comparison).to_contain_text("Обновлённые серверные условия")
+    expect(comparison.locator('[data-draft-conflict-choice="city"]')).to_have_value("")
+    comparison.locator('[data-draft-conflict-choice="city"]').select_option("local")
+    with page.expect_response(lambda r: (
+        r.url.endswith(f"/api/employer/vacancy-drafts/{draft_id}")
+        and r.request.method == "PUT" and r.status == 200
+    ), timeout=15000):
+        comparison.locator('[data-action="apply-draft-conflict"]').click()
+    expect(page.locator("[data-draft-conflict-panel]")).to_have_count(0)
+    expect(page.locator("#vacancy-city")).to_have_value("Мой город")
+    expect(page.locator("#vacancy-conditions")).to_have_value("Обновлённые серверные условия")
+    expect(page.locator("#vacancy-publish")).to_be_disabled()
+    merged = page.request.get(URL + f"/api/employer/vacancy-drafts/{draft_id}").json()
+    assert merged["fields"]["city"] == "Мой город"
+    assert merged["fields"]["conditions"] == "Обновлённые серверные условия"
+    assert merged["fields"]["skills"] == "Новое локальное умение"
+
+    # A different overlapping field can be resolved in favor of the server.
+    remote_again = dict(merged["fields"])
+    remote_again["requirements"] = "Требования сервера"
+    updated_again = page.request.put(
+        URL + f"/api/employer/vacancy-drafts/{draft_id}",
+        headers=HEADERS,
+        data={"fields": remote_again, "expected_version": merged["version"]},
+    )
+    assert updated_again.status == 200, updated_again.text()
+    with page.expect_response(lambda r: (
+        r.url.endswith(f"/api/employer/vacancy-drafts/{draft_id}")
+        and r.request.method == "PUT" and r.status == 409
+    ), timeout=15000):
+        page.locator("#vacancy-requirements").fill("Мои требования")
+    expect(comparison).to_be_visible()
+    expect(comparison.locator('[data-draft-conflict-choice="requirements"]')).to_have_value("")
+    comparison.locator('[data-draft-conflict-choice="requirements"]').select_option("server")
+    with page.expect_response(lambda r: (
+        r.url.endswith(f"/api/employer/vacancy-drafts/{draft_id}")
+        and r.request.method == "PUT" and r.status == 200
+    ), timeout=15000):
+        comparison.locator('[data-action="apply-draft-conflict"]').click()
+    expect(page.locator("#vacancy-requirements")).to_have_value("Требования сервера")
+    assert page.request.get(URL + f"/api/employer/vacancy-drafts/{draft_id}").json()["fields"]["requirements"] == "Требования сервера"
+
     # A failed autosave stops retries, preserves the form and allows manual recovery.
     def draft_outage(route):
         if route.request.method == "PUT":
@@ -269,7 +363,8 @@ def exercise_forms(page):
     expect(page.locator("#vacancy-salary-min")).to_have_value("52000")
     page.locator("[data-dashboard-tab-select]").select_option("vacancies")
     expect(page.locator("#dashboard-main")).to_contain_text(draft_title)
-    expect(page.locator(".employer-draft-progress")).to_contain_text("4 из 7")
+    # Remote conditions and requirements were explicitly reconciled above.
+    expect(page.locator(".employer-draft-progress")).to_contain_text("6 из 7")
     expect(page.locator(".employer-draft-card")).to_contain_text("Последнее сохранение")
     assert page.evaluate("() => draftSavedAt('2026-11-17 09:00:00+00') !== 'время не указано'")
     assert page.evaluate("() => draftSavedAt('2026-11-17 09:00:00') !== 'время не указано'")
