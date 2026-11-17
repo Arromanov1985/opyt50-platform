@@ -23,7 +23,10 @@ CLIENT_ASSETS = ("app.js", "release02.js", "vacancy-wizard.js", "release09-dashb
 
 def git_blob_revision(path):
     payload = path.read_bytes()
-    return hashlib.sha1(f"blob {len(payload)}".encode("ascii") + bytes([0]) + payload).hexdigest()[:12]
+    return hashlib.sha1(
+        f"blob {len(payload)}".encode("ascii") + bytes([0]) + payload,
+        usedforsecurity=False,
+    ).hexdigest()[:12]
 
 
 
