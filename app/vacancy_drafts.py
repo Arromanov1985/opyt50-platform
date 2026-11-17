@@ -5,7 +5,7 @@ import json
 import sqlite3
 
 from fastapi import Depends, HTTPException
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ValidationError
 
 # Only form fields are persisted; no browser storage or contact data.
 DRAFT_FIELDS = (
@@ -129,14 +129,17 @@ def register_draft_routes(app, active_user, get_connection, allowed, VacancyIn):
             "Требования:", fields.get("requirements", ""), "",
             "Условия работы:", fields.get("conditions", ""),
         ))
-        data = VacancyIn(
+        try:
+            data = VacancyIn(
             title=fields.get("title", ""), city=fields.get("city", ""),
             salary_min=int(fields.get("salary_min") or 0),
             salary_max=int(fields.get("salary_max") or 0),
             schedule=fields.get("schedule") or "Любой",
             employment=fields.get("employment") or "Любая",
             skills=fields.get("skills", ""), description=description,
-        )
+            )
+        except (ValidationError, ValueError) as error:
+            raise HTTPException(422, "Заполните обязательные поля и проверьте условия перед публикацией") from error
         # Lock the draft before the vacancy insert. The optimistic UPDATE ensures
         # only one concurrent publish wins; the other transaction rolls back.
         claim = db.execute(
