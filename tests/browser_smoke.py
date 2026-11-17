@@ -340,6 +340,10 @@ def run_browser(page):
     def mock_many_applications(route):
         route.fulfill(status=200, content_type="application/json",
                       body=json.dumps({"applications":many_applications},ensure_ascii=False))
+    many_application_reads = []
+    page.on("request", lambda request: many_application_reads.append(request)
+            if request.method == "GET" and request.url.endswith("/api/employer/applications")
+            else None)
     page.route("**/api/employer/applications", mock_many_applications)
     page.locator("#dashboard-main [data-v02-action='employer-application-filter'][data-filter='all']").click()
     cards = page.locator("#employer-application-results .application-review-card")
@@ -357,12 +361,12 @@ def run_browser(page):
     expect(more).to_have_count(0)
     assert len(set(cards.evaluate_all("(rows) => rows.map(row => row.dataset.applicationId)"))) == 27
     batch_search = page.locator("#employer-application-search")
-    before_local_search = len(employer_application_reads)
+    before_local_search = len(many_application_reads)
     batch_search.fill("уникальный-нижний")
     expect(cards).to_have_count(1)
     expect(cards).to_contain_text("Уникальный-Нижний")
     expect(page.locator("#employer-application-visible-count")).to_have_text("1")
-    assert len(employer_application_reads) == before_local_search, "Search must be local across all 27 responses"
+    assert len(many_application_reads) == before_local_search, "Search must be local across all 27 responses"
     page.locator('[data-v02-action="clear-employer-application-search"]').first.click()
     expect(batch_search).to_be_focused()
     expect(cards).to_have_count(10)
