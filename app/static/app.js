@@ -2378,6 +2378,11 @@ async function handleDashboardSubmit(event) {
       form.querySelector('[data-draft-conflict-panel]')?.scrollIntoView({block:'nearest'});
       return;
     }
+    if (publishedVacancyConflictSessions.has(form)) {
+      toast('Сначала выберите и примените варианты в блоке сравнения вакансии.', true);
+      form.querySelector('[data-published-conflict-panel]')?.scrollIntoView({block:'nearest'});
+      return;
+    }
     const description = window.OpytnovacancyWizard?.getReviewedDescription(form);
     if (description === null || description === undefined) {
       toast('Сначала проверьте вакансию в предпросмотре.', true);
@@ -2427,14 +2432,16 @@ async function handleDashboardSubmit(event) {
         } catch(readError) {
           editorSaveFailure(form, readError, true);
         }
+      } else if (editing && e?.httpStatus === 409) {
+        conflict = true;
+        try {
+          await showPublishedVacancyConflict(form);
+          toast('Условия уже изменились на другом устройстве. Сравните версии перед сохранением.',true);
+        } catch(readError) {
+          editorSaveFailure(form,readError);
+        }
       } else {
         editorSaveFailure(form, e, !editing);
-        // A stale edit must never overwrite another browser tab's changes.
-        if (editing && /изменилась|уже изменена/.test(e.message)) {
-          const line = form.querySelector('#vacancy-form-message');
-          if (line) line.textContent = 'Вакансия изменена в другой вкладке. Отмените редактирование и откройте её заново.';
-          conflict = true;
-        }
       }
     } finally {
       endEditorSave(form, submit);
@@ -2568,6 +2575,19 @@ async function handleDashboardClick(event) {
     if (form) {
       try { await showDraftConflictResolution(form); }
       catch(error) { setEditorStatus(form, 'Не удалось обновить сравнение: ' + error.message, true); }
+    }
+    return;
+  }
+  if (action === 'apply-published-conflict') {
+    const form = btn.closest('#vacancy-form');
+    if (form) await applyPublishedVacancyConflict(form);
+    return;
+  }
+  if (action === 'refresh-published-conflict') {
+    const form = btn.closest('#vacancy-form');
+    if (form) {
+      try { await showPublishedVacancyConflict(form); }
+      catch(error) { setEditorStatus(form,'Не удалось обновить сравнение: ' + error.message,true); }
     }
     return;
   }
