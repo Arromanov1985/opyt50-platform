@@ -320,6 +320,58 @@ def run_browser(page):
     expect(page.locator("#dashboard-main")).to_contain_text("Отклики соискателей")
     expect(page.locator("#employer-applications-vacancy")).not_to_have_value("all")
     expect(page.locator("#dashboard-main")).to_contain_text("Кладовщик")
+    # Release 0.5.19: when the employer has many responses, render ten at
+    # a time but search ALL authorized responses, including off-screen ones.
+    # Fake only the GET response in the local browser; the seeded database stays intact.
+    real_application = page.request.get(URL + "/api/employer/applications").json()["applications"][0]
+    many_applications = []
+    for i in range(27):
+        row = dict(real_application)
+        row.update(
+            id=50000+i,
+            profession="Уникальный-Нижний" if i == 0 else f"Специалист {i}",
+            city="Тестоград",
+            title="Тестовая вакансия",
+            skills=f"Навык {i}",
+            status="applied", invitation_id=None, invitation_status=None,
+            contact_shared=False, timeline=[],
+        )
+        many_applications.append(row)
+    def mock_many_applications(route):
+        route.fulfill(status=200, content_type="application/json",
+                      body=json.dumps({"applications":many_applications},ensure_ascii=False))
+    page.route("**/api/employer/applications", mock_many_applications)
+    page.locator("#dashboard-main [data-v02-action='employer-application-filter'][data-filter='all']").click()
+    cards = page.locator("#employer-application-results .application-review-card")
+    expect(cards).to_have_count(10)
+    expect(page.locator("#employer-application-visible-count")).to_have_text("10")
+    expect(page.locator("#employer-application-total-count")).to_have_text("27")
+    more = page.locator('[data-v02-action="more-employer-applications"]')
+    expect(more).to_contain_text("10")
+    more.click()
+    expect(cards).to_have_count(20)
+    expect(cards.nth(10)).to_be_focused()
+    more.click()
+    expect(cards).to_have_count(27)
+    expect(cards.nth(20)).to_be_focused()
+    expect(more).to_have_count(0)
+    assert len(set(cards.evaluate_all("(rows) => rows.map(row => row.dataset.applicationId)"))) == 27
+    batch_search = page.locator("#employer-application-search")
+    before_local_search = len(employer_application_reads)
+    batch_search.fill("уникальный-нижний")
+    expect(cards).to_have_count(1)
+    expect(cards).to_contain_text("Уникальный-Нижний")
+    expect(page.locator("#employer-application-visible-count")).to_have_text("1")
+    assert len(employer_application_reads) == before_local_search, "Search must be local across all 27 responses"
+    page.locator('[data-v02-action="clear-employer-application-search"]').first.click()
+    expect(batch_search).to_be_focused()
+    expect(cards).to_have_count(10)
+    expect(more).to_be_visible()
+    page.unroute("**/api/employer/applications", mock_many_applications)
+    page.locator("#dashboard-main [data-v02-action='employer-application-filter'][data-filter='all']").click()
+    expect(cards).to_have_count(1)
+    expect(page.locator("#employer-application-visible-count")).to_have_text("1")
+    # The remaining test continues with the real, unchanged application.
     expect(page.locator("#dashboard-main .application-review-card").first.locator(".application-profile-strip span")).to_have_count(1)
     # Release 0.5.18: local search reads only the current employer's
     # already loaded profiles. Typing does not query the API or reveal contacts.
@@ -442,8 +494,14 @@ def run_browser(page):
     expect(page.locator("#dashboard-main")).to_contain_text("Согласие получено")
     expect(page.locator(".dashboard-tabs [data-tab='security']")).to_be_visible()
     expect(page.locator("#dashboard-main [data-v02-action='open-introductions']")).to_contain_text("Продолжить знакомство")
-    page.locator("#dashboard-main [data-v02-action='open-introductions']").click()
+    introduction_link = page.locator("#dashboard-main [data-v02-action='open-introductions']").first
+    requested_invitation_id = introduction_link.get_attribute("data-invitation-id")
+    requested_vacancy_id = introduction_link.get_attribute("data-vacancy-id")
+    assert requested_invitation_id and requested_vacancy_id
+    introduction_link.click()
     expect(page.locator("#dashboard-main [data-action='filter-employer-invitations'][data-filter='action']")).to_have_attribute("aria-pressed", "true")
+    expect(page.locator("#dashboard-main [data-employer-introduction-vacancy-filter]")).to_have_value(requested_vacancy_id)
+    expect(page.locator(f'#dashboard-main .employer-invitation-card[data-invitation-id="{requested_invitation_id}"]')).to_be_focused()
     expect(page.locator("#dashboard-main")).to_contain_text("Знакомства и контакты")
     expect(page.locator("#dashboard-main")).to_contain_text("Открыть контакт кандидата")
     page.locator(".dashboard-tabs [data-tab='vacancies']").click()
