@@ -779,9 +779,22 @@ def run_browser(page):
     )) as conflict:
         page.locator("#vacancy-publish").click()
     assert conflict.value.status == 409, conflict.value.text()
-    expect(page.locator("#vacancy-form-message")).to_contain_text("Отмените редактирование")
+    comparison = page.locator("[data-published-conflict-panel]")
+    expect(comparison).to_be_visible()
+    expect(comparison).to_contain_text("Зарплата от")
+    expect(comparison).to_contain_text(str(competing["salary_min"]))
+    expect(comparison.locator('[data-published-conflict-choice="salary_min"]')).to_have_value("server")
     expect(page.locator("#vacancy-publish")).to_be_disabled()
-    # Discarding an invalidated edit is an explicit decision, not a silent loss.
+    # Applying a selection does NOT change the published vacancy or notify
+    # candidates; it stages the server values for a new explicit preview.
+    comparison.locator('[data-action="apply-published-conflict"]').click()
+    expect(page.locator("[data-published-conflict-panel]")).to_have_count(0)
+    expect(page.locator("#vacancy-salary-min")).to_have_value(str(competing["salary_min"]))
+    expect(page.locator("#vacancy-publish")).to_be_disabled()
+    assert next(job for job in page.request.get(
+        URL + "/api/employer/vacancies").json()["jobs"]
+        if job["id"] == stale["id"])["salary_min"] == competing["salary_min"]
+    # Discarding the staged edit is a deliberate action.
     page.once("dialog", lambda dialog: dialog.accept())
     page.locator("[data-action='cancel-job-edit']").click()
     expect(page.locator("#dashboard-main")).to_contain_text("Мои вакансии")
