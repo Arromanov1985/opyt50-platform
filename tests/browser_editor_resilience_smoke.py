@@ -221,6 +221,9 @@ def exercise_forms(page):
     page.locator("#vacancy-show-preview").click()
     expect(page.locator("#vacancy-publish")).to_be_enabled()
     page.locator("#vacancy-publish").click()
+    # Wait for the actual UI transition: the draft title is already visible
+    # inside the editor, so an immediate text assertion would race publication.
+    expect(page.locator("#vacancy-form")).to_have_count(0)
     expect(page.locator("#dashboard-main")).to_contain_text(draft_title)
     retry = page.request.post(
         URL + f"/api/employer/vacancy-drafts/{draft_id}/publish",
