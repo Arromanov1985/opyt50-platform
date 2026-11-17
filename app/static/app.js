@@ -124,6 +124,7 @@ function draftFields(form) {
 const draftAutoTimers = new WeakMap();
 const draftAutoSaving = new WeakSet();
 const draftAutoBlocked = new WeakSet();
+const draftAutoWarnings = new WeakMap();
 function cancelDraftAutosave(form) {
   const timer = draftAutoTimers.get(form);
   if (timer) clearTimeout(timer);
@@ -132,12 +133,12 @@ function cancelDraftAutosave(form) {
 function scheduleVacancyAutosave(form) {
   if (!form || form.id !== 'vacancy-form' || !form.dataset.draftId || form.dataset.editId) return;
   cancelDraftAutosave(form);
-  if (!editorIsDirty(form)) {
-    if (!draftAutoSaving.has(form)) setEditorStatus(form, 'Черновик сохранён на сервере. Автосохранение включено.');
+  if (draftAutoBlocked.has(form)) {
+    setEditorStatus(form, draftAutoWarnings.get(form) || 'Автосохранение остановлено после ошибки. Нажмите «Сохранить сейчас» или откройте черновик заново.', true);
     return;
   }
-  if (draftAutoBlocked.has(form)) {
-    setEditorStatus(form, 'Автосохранение остановлено после ошибки. Нажмите «Сохранить сейчас» или откройте черновик заново.', true);
+  if (!editorIsDirty(form)) {
+    if (!draftAutoSaving.has(form)) setEditorStatus(form, 'Черновик сохранён на сервере. Автосохранение включено.');
     return;
   }
   setEditorStatus(form, 'Есть изменения — автоматически сохраним через секунду…');
@@ -167,6 +168,7 @@ async function saveVacancyDraft(form, automatic = false) {
     if (button) button.textContent = 'Сохранить сейчас';
     state.activeDraft = result;
     draftAutoBlocked.delete(form);
+    draftAutoWarnings.delete(form);
     // Mark only the exact submitted snapshot as saved, never newer keystrokes.
     editorBaselines.set(form, snapshot);
     if (editorFingerprint(form) === snapshot) {
@@ -186,6 +188,7 @@ async function saveVacancyDraft(form, automatic = false) {
           ? 'Не удалось подтвердить сохранение из-за потери связи. Текст остался на экране. После восстановления сети нажмите «Сохранить сейчас».'
           : 'Связь прервалась: первый черновик мог сохраниться. Проверьте «Мои вакансии» перед повторным нажатием.')
         : 'Не удалось сохранить черновик: ' + e.message + '. Текст остался на экране; автосохранение остановлено.';
+    draftAutoWarnings.set(form, warning);
     setEditorStatus(form, warning, true);
     if (!automatic) toast(warning, true);
   } finally {
