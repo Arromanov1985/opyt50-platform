@@ -76,6 +76,9 @@ def exercise_forms(page):
     expect(page.locator("#profile-form .editor-save-status")).to_have_text(
         "Изменения сохранены."
     )
+    # A successful HTTP response can precede the final async session refresh.
+    # Do not navigate while the form is still inert/busy.
+    expect(page.locator("#profile-form")).not_to_have_attribute("inert", "")
     # The saved form may be left without a leave dialog.
     page.locator("[data-dashboard-tab-select]").select_option("applications")
     expect(page.locator("[data-dashboard-tab-select]")).to_have_value("applications")
