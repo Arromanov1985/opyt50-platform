@@ -271,6 +271,8 @@ def exercise_forms(page):
     expect(page.locator("#dashboard-main")).to_contain_text(draft_title)
     expect(page.locator(".employer-draft-progress")).to_contain_text("4 из 7")
     expect(page.locator(".employer-draft-card")).to_contain_text("Последнее сохранение")
+    assert page.evaluate("() => draftSavedAt('2026-11-17 09:00:00+00') !== 'время не указано'")
+    assert page.evaluate("() => draftSavedAt('2026-11-17 09:00:00') !== 'время не указано'")
     page.reload(wait_until="networkidle")
     expect(page.locator("#dashboard")).to_be_visible()
     page.locator("[data-dashboard-tab-select]").select_option("vacancies")
