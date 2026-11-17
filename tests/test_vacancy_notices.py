@@ -211,3 +211,64 @@ def test_change_history_owner_only_invitation_next_step_and_zero_updates(app):
         assert "recipients_read" not in after.json()["updates"][0]
         assert stranger.get(history_url).status_code == 404
         assert candidate.get(history_url).status_code == 403
+
+
+def test_candidate_inbox_history_over_100_and_filters(app):
+    """More than 100 notices stay reachable and read actions remain private."""
+    import json
+    with TestClient(app) as employer, TestClient(app) as candidate, TestClient(app) as stranger:
+        employer_id = register(employer, "employer", "Работодатель", "pages-owner@example.test")
+        candidate_id = register(candidate, "candidate", "Кандидат", "pages-candidate@example.test")
+        register(stranger, "candidate", "Другой", "pages-stranger@example.test")
+        job_id = create_job(employer)
+        with database(app.state.db_path) as db:
+            for n in range(125):
+                inserted = db.execute(
+                    "INSERT INTO vacancy_updates(vacancy_id,employer_id,changes_json) VALUES(?,?,?)",
+                    (job_id, employer_id,
+                     json.dumps({"salary_min": {"before": 70000, "after": 70001+n}})),
+                )
+                db.execute(
+                    "INSERT INTO vacancy_update_recipients(update_id,candidate_id,read_at) VALUES(?,?,?)",
+                    (inserted.lastrowid, candidate_id,
+                     "2026-11-17 10:00:00" if n % 4 == 0 else None),
+                )
+            db.commit()
+        first = notifications(candidate)
+        assert (first["total_count"], first["unread_count"], first["read_count"]) == (125, 93, 32)
+        assert len(first["updates"]) == 20
+        assert first["has_more"] and first["next_cursor"] == first["updates"][-1]["id"]
+        for selection, expected in [("all", 125), ("unread", 93), ("read", 32)]:
+            cursor = None
+            collected = []
+            while True:
+                params = {"filter": selection, "limit": 17}
+                if cursor is not None:
+                    params["before_id"] = cursor
+                response = candidate.get("/api/candidate/vacancy-updates", params=params)
+                assert response.status_code == 200, response.text
+                page = response.json()
+                assert page["unread_count"] == 93 and page["total_count"] == 125
+                collected.extend(row["id"] for row in page["updates"])
+                if selection != "all":
+                    assert all((row["read_at"] is None) == (selection == "unread")
+                               for row in page["updates"])
+                if not page["has_more"]:
+                    assert page["next_cursor"] is None
+                    break
+                cursor = page["next_cursor"]
+            assert len(collected) == expected
+            assert len(set(collected)) == expected
+            assert collected == sorted(collected, reverse=True)
+            if selection == "unread":
+                oldest_unread = collected[-1]
+        assert post(candidate, f"/api/candidate/vacancy-updates/{oldest_unread}/read").status_code == 200
+        assert notifications(candidate)["unread_count"] == 92
+        assert candidate.get("/api/candidate/vacancy-updates",
+                             params={"filter": "read"}).json()["read_count"] == 33
+        assert notifications(stranger)["total_count"] == 0
+        assert notifications(stranger)["updates"] == []
+        assert employer.get("/api/candidate/vacancy-updates").status_code == 403
+        for invalid in [{"filter": "bad"}, {"limit": 0}, {"limit": 51},
+                        {"before_id": 0}, {"before_id": -1}]:
+            assert candidate.get("/api/candidate/vacancy-updates",params=invalid).status_code == 422
