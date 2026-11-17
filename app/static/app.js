@@ -350,9 +350,9 @@ async function showDraftConflictResolution(form) {
     return '<div class="draft-conflict-field">' +
       '<strong>' + esc(label) + '</strong><small>' + esc(description) + '</small>' +
       '<div class="draft-conflict-versions"><div><span>На этом устройстве</span><div class="draft-conflict-value">' +
-      esc(d.local[d.name] || '— Не заполнено —') + '</div></div>' +
+      esc(local[d.name] || '— Не заполнено —') + '</div></div>' +
       '<div><span>Последняя версия на сервере</span><div class="draft-conflict-value">' +
-      esc(d.server[d.name] || '— Не заполнено —') + '</div></div></div>' +
+      esc(server[d.name] || '— Не заполнено —') + '</div></div></div>' +
       '<label for="draft-conflict-' + d.name + '">Какой вариант сохранить?</label>' +
       '<select id="draft-conflict-' + d.name + '" data-draft-conflict-choice="' + d.name + '">' +
       '<option value=""' + (!d.suggested ? ' selected' : '') + '>Выберите вариант</option>' +
