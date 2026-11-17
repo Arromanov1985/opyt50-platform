@@ -1989,9 +1989,9 @@ def create_app(db_path: str | None = None) -> FastAPI:
     ):
         """Private, read-only history of edits to one employer-owned vacancy.
 
-        Recipient counts are aggregate; identities and read receipts are never
-        exposed to the employer. No historical edits are reconstructed from
-        current vacancy values.
+        Recipient totals are aggregate; candidate identities, individual read
+        receipts and read-state counts are never exposed to the employer.
+        Historical edits are not reconstructed from current vacancy values.
         """
         allowed(user, "employer")
         owned = db.execute(
@@ -2003,9 +2003,7 @@ def create_app(db_path: str | None = None) -> FastAPI:
         rows = db.execute(
             """SELECT u.id,u.created_at,u.changes_json,
                       (SELECT COUNT(*) FROM vacancy_update_recipients r
-                       WHERE r.update_id=u.id) AS recipients_total,
-                      (SELECT COUNT(*) FROM vacancy_update_recipients r
-                       WHERE r.update_id=u.id AND r.read_at IS NOT NULL) AS recipients_read
+                       WHERE r.update_id=u.id) AS recipients_total
                FROM vacancy_updates u
                WHERE u.vacancy_id=? AND u.employer_id=?
                ORDER BY u.id DESC LIMIT 50""",
@@ -2021,8 +2019,7 @@ def create_app(db_path: str | None = None) -> FastAPI:
             "updates": [
                 {"id": row["id"], "created_at": row["created_at"],
                  "changes": json.loads(row["changes_json"]),
-                 "recipients_total": row["recipients_total"],
-                 "recipients_read": row["recipients_read"]}
+                 "recipients_total": row["recipients_total"]}
                 for row in rows
             ],
         }
