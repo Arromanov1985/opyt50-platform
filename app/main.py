@@ -1874,6 +1874,25 @@ def create_app(db_path: str | None = None) -> FastAPI:
         ).fetchall()
         return {"jobs": [{**dict(row), "revision": vacancy_revision(row)} for row in rows]}
 
+    @app.get("/api/employer/vacancies/{job_id}")
+    def employer_vacancy_detail(
+        job_id: int, user: dict = Depends(active_user),
+        db: sqlite3.Connection = Depends(get_connection),
+    ):
+        """Read the latest owned vacancy for safe, read-only edit reconciliation."""
+        allowed(user, "employer")
+        row = db.execute(
+            """SELECT v.*, COALESCE(vm.status,'approved') AS moderation_status,
+                      COALESCE(vm.reason,'') AS moderation_reason
+               FROM vacancies v
+               LEFT JOIN vacancy_moderation vm ON vm.vacancy_id=v.id
+               WHERE v.id=? AND v.employer_id=?""",
+            (job_id, user["id"]),
+        ).fetchone()
+        if row is None:
+            raise HTTPException(404, "Вакансия не найдена")
+        return {"job": {**dict(row), "revision": vacancy_revision(row)}}
+
     @app.patch("/api/employer/vacancies/{job_id}")
     def edit_vacancy(
         job_id: int,
