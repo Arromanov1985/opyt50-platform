@@ -2835,3 +2835,37 @@ body.comfortable-view .draft-conflict-field select{font-size:1rem}
   .draft-conflict-actions{display:grid;grid-template-columns:minmax(0,1fr)}
   .draft-conflict-actions .btn{width:100%;white-space:normal}
 }
+
+/* Release 0.5.13: staged three-way review for already published vacancies. */
+.published-vacancy-conflict-panel{max-width:100%;overflow-wrap:anywhere}
+.published-vacancy-conflict-panel>.section-kicker{display:block;margin-bottom:7px}
+.published-vacancy-conflict-panel>h3{margin:4px 0 12px}
+.published-vacancy-conflict-panel>p{line-height:1.6}
+.published-vacancy-conflict-panel .draft-conflict-versions{
+  grid-template-columns:repeat(3,minmax(0,1fr));
+}
+.published-vacancy-status-warning{
+  padding:13px;
+  border-radius:10px;
+  border:1px solid #E1CAA3;
+  background:#FFF6E8;
+  margin-top:15px;
+  line-height:1.6;
+}
+.published-vacancy-status-warning label{
+  display:flex;
+  align-items:flex-start;
+  gap:9px;
+  margin-top:12px;
+  font-weight:700;
+}
+.published-vacancy-status-warning input{
+  width:20px;height:20px;flex-shrink:0;margin:2px 0 0;
+}
+@media(max-width:900px){
+  .published-vacancy-conflict-panel .draft-conflict-versions{
+    grid-template-columns:minmax(0,1fr);
+  }
+}
+body.comfortable-view .published-vacancy-conflict-panel>p,
+body.comfortable-view .published-vacancy-status-warning{font-size:1rem}
