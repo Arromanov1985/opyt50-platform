@@ -115,9 +115,20 @@ async function api(path, options = {}) {
 // contact details, company information or vacancy drafts to browser storage.
 const editorBaselines = new WeakMap();
 const editorSubmitting = new WeakSet();
+const DRAFT_INPUTS = ['title','city','salary_min','salary_max','schedule','employment','skills','responsibilities','requirements','conditions'];
+const DRAFT_LABELS = {
+  title:'Должность', city:'Город', salary_min:'Зарплата от',
+  salary_max:'Зарплата до', schedule:'График', employment:'Занятость',
+  skills:'Навыки', responsibilities:'Обязанности',
+  requirements:'Требования', conditions:'Условия работы'
+};
 function draftFields(form) {
-  const names = ['title','city','salary_min','salary_max','schedule','employment','skills','responsibilities','requirements','conditions'];
-  return Object.fromEntries(names.map(name => [name, formValue(form,name)]));
+  return Object.fromEntries(DRAFT_INPUTS.map(name => [name, formValue(form,name)]));
+}
+function normalizedDraftFields(fields = {}) {
+  return Object.fromEntries(DRAFT_INPUTS.map(name => [name,
+    String(fields[name] ?? (name === 'schedule' ? 'Любой' : name === 'employment' ? 'Любая' : '')).trim()
+  ]));
 }
 const DRAFT_REQUIRED_FIELDS = ['title','city','salary_min','salary_max','responsibilities','requirements','conditions'];
 function draftCompletion(draft) {
@@ -167,6 +178,9 @@ const draftAutoTimers = new WeakMap();
 const draftAutoSaving = new WeakSet();
 const draftAutoBlocked = new WeakSet();
 const draftAutoWarnings = new WeakMap();
+// Original server snapshot is essential to a three-way merge. DOM only, no storage.
+const draftServerBaselines = new WeakMap();
+const draftConflictSessions = new WeakMap();
 function cancelDraftAutosave(form) {
   const timer = draftAutoTimers.get(form);
   if (timer) clearTimeout(timer);
@@ -232,6 +246,9 @@ async function saveVacancyDraft(form, automatic = false) {
     delete form.dataset.draftCreateKey;
     if (button) button.textContent = 'Сохранить сейчас';
     state.activeDraft = result;
+    draftServerBaselines.set(form, normalizedDraftFields(result.fields));
+    draftConflictSessions.delete(form);
+    form.querySelector('[data-draft-conflict-panel]')?.remove();
     draftAutoBlocked.delete(form);
     draftAutoWarnings.delete(form);
     // Mark only the exact submitted snapshot as saved, never newer keystrokes.
@@ -246,6 +263,18 @@ async function saveVacancyDraft(form, automatic = false) {
     // On a network failure the HTTP request might have committed. Stop
     // automatic retries; explicit save can safely retry versioned PUT.
     draftAutoBlocked.add(form);
+    if (id && e?.httpStatus === 409) {
+      try {
+        await showDraftConflictResolution(form);
+        if (!automatic) toast('Найдены изменения на другом устройстве. Сравните варианты ниже.', true);
+      } catch(readError) {
+        const warning = 'Не удалось получить новую версию черновика: ' + readError.message + '. Ваш текст остался в форме.';
+        draftAutoWarnings.set(form, warning);
+        setEditorStatus(form, warning, true);
+        if (!automatic) toast(warning, true);
+      }
+      return;
+    }
     const warning = e?.httpStatus === 409
       ? 'Черновик изменён на другом устройстве. Автосохранение остановлено; проверьте черновик перед повторной записью.'
       : e?.networkFailure
@@ -304,6 +333,7 @@ function prepareEditorForms() {
     if (submit) submit.before(status);
     form.dataset.editorReady = '1';
     if (form.id === 'vacancy-form' && form.dataset.draftId) {
+      draftServerBaselines.set(form, draftFields(form));
       setEditorStatus(form, 'Черновик на сервере. Дальнейшие изменения сохраняются автоматически.');
     }
   });
