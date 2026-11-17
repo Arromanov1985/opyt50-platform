@@ -2766,3 +2766,72 @@ body.comfortable-view .editor-save-status{font-size:1rem}
   .employer-draft-card>.item-actions{display:grid;grid-template-columns:1fr 1fr;min-width:0}
   .employer-draft-card>.item-actions>.btn{width:100%;white-space:normal}
 }
+
+/* Release 0.5.12: explicit, accessible three-way review of employer drafts. */
+.draft-conflict-panel{
+  margin:20px 0;
+  padding:18px;
+  border:1px solid #DBE2E0;
+  border-left:4px solid #B66B29;
+  border-radius:16px;
+  background:#FFFDF9;
+  color:#173A30;
+}
+.draft-conflict-heading h3{margin:6px 0 10px;overflow-wrap:anywhere}
+.draft-conflict-heading p{margin:7px 0;line-height:1.55}
+.draft-conflict-fields{display:grid;gap:13px;margin-top:16px}
+.draft-conflict-field{
+  display:grid;
+  gap:9px;
+  border:1px solid #E1E8E3;
+  border-radius:12px;
+  background:white;
+  padding:14px;
+}
+.draft-conflict-field>strong{font-size:15px}
+.draft-conflict-field>small{color:#5E6C64;line-height:1.5}
+.draft-conflict-versions{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.draft-conflict-versions>div{
+  min-width:0;
+  padding:11px;
+  border:1px solid #E2EBE5;
+  border-radius:10px;
+  background:#F8FBF9;
+}
+.draft-conflict-versions span{display:block;font-size:11px;font-weight:800;margin-bottom:6px}
+.draft-conflict-value{
+  overflow:auto;
+  overflow-wrap:anywhere;
+  white-space:pre-wrap;
+  font-size:13px;
+  line-height:1.55;
+  max-height:150px;
+}
+.draft-conflict-field>label{font-weight:750;font-size:13px}
+.draft-conflict-field select{
+  width:100%;
+  max-width:430px;
+  min-height:44px;
+  padding:9px 12px;
+  border:1px solid #B9CFC4;
+  border-radius:10px;
+  background:#fff;
+  color:#173A30;
+  font-size:15px;
+}
+.draft-conflict-field select:focus-visible{
+  outline:3px solid #55A879;
+  outline-offset:2px;
+}
+.draft-conflict-actions{display:flex;flex-wrap:wrap;gap:10px;margin:16px 0 0}
+.draft-conflict-actions .btn{min-height:44px}
+.draft-conflict-note{color:#53685E;font-size:12px;margin:12px 0 0;line-height:1.5}
+body.comfortable-view .draft-conflict-value,
+body.comfortable-view .draft-conflict-field select{font-size:1rem}
+@media(max-width:700px){
+  .draft-conflict-panel{padding:13px;margin:15px 0}
+  .draft-conflict-field{padding:11px}
+  .draft-conflict-versions{grid-template-columns:minmax(0,1fr)}
+  .draft-conflict-actions{display:grid;grid-template-columns:minmax(0,1fr)}
+  .draft-conflict-actions .btn{width:100%;white-space:normal}
+}
