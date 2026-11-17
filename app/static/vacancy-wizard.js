@@ -141,5 +141,5 @@
       if (form && target.matches('[name]')) invalidate(form, true);
     });
   }
-  window.OpytnovacancyWizard = {getReviewedDescription, splitDescription};
+  window.OpytnovacancyWizard = {getReviewedDescription, splitDescription, describe};
 })();
