@@ -199,12 +199,58 @@ def exercise_forms(page):
     expect(page.locator("#vacancy-form .editor-save-status")).to_contain_text(
         "Черновик сохранён"
     )
+    # Saving an incomplete draft must not silently enable publication.
+    expect(page.locator("#vacancy-publish")).to_be_disabled()
     drafts = page.request.get(URL + "/api/employer/vacancy-drafts").json()["drafts"]
     assert len(drafts) == 1
     draft_id = drafts[0]["id"]
     assert drafts[0]["fields"]["salary_min"] == "51500"
     assert draft_title not in [job["title"] for job in
                                page.request.get(URL + "/api/jobs").json()["jobs"]]
+
+    # Only a user-created server draft is autosaved. Changes need no second click.
+    expect(page.locator("[data-action='save-vacancy-draft']")).to_have_text("Сохранить сейчас")
+    with page.expect_response(lambda r: (
+        f"/api/employer/vacancy-drafts/{draft_id}" in r.url
+        and r.request.method == "PUT" and r.status == 200
+    ), timeout=15000):
+        page.locator("#vacancy-salary-min").fill("52000")
+    expect(page.locator("#vacancy-form .editor-save-status")).to_contain_text(
+        "Черновик сохранён на сервере", timeout=10000,
+    )
+    autosaved = page.request.get(URL + f"/api/employer/vacancy-drafts/{draft_id}")
+    assert autosaved.status == 200, autosaved.text()
+    assert autosaved.json()["fields"]["salary_min"] == "52000"
+    assert autosaved.json()["version"] > drafts[0]["version"]
+
+    # A failed autosave stops retries, preserves the form and allows manual recovery.
+    def draft_outage(route):
+        if route.request.method == "PUT":
+            route.fulfill(
+                status=503, content_type="application/json",
+                body='{"detail":"Временно недоступно"}',
+            )
+        else:
+            route.continue_()
+    page.route("**/api/employer/vacancy-drafts/*", draft_outage)
+    with page.expect_response(lambda r: (
+        f"/api/employer/vacancy-drafts/{draft_id}" in r.url
+        and r.request.method == "PUT" and r.status == 503
+    ), timeout=15000):
+        page.locator("#vacancy-city").fill("Тестополис")
+    expect(page.locator("#vacancy-form .editor-save-status")).to_contain_text(
+        "автосохранение остановлено", timeout=10000,
+    )
+    expect(page.locator("#vacancy-city")).to_have_value("Тестополис")
+    page.unroute("**/api/employer/vacancy-drafts/*", draft_outage)
+    page.locator("[data-action='save-vacancy-draft']").click()
+    expect(page.locator("#vacancy-form .editor-save-status")).to_contain_text(
+        "Черновик сохранён на сервере",
+    )
+    assert page.request.get(
+        URL + f"/api/employer/vacancy-drafts/{draft_id}"
+    ).json()["fields"]["city"] == "Тестополис"
+
     page.locator("[data-dashboard-tab-select]").select_option("vacancies")
     expect(page.locator("#dashboard-main")).to_contain_text(draft_title)
     page.reload(wait_until="networkidle")
@@ -215,7 +261,8 @@ def exercise_forms(page):
     ).click()
     expect(page.locator("#vacancy-form")).to_be_visible()
     expect(page.locator("#vacancy-title")).to_have_value(draft_title)
-    expect(page.locator("#vacancy-salary-min")).to_have_value("51500")
+    expect(page.locator("#vacancy-salary-min")).to_have_value("52000")
+    expect(page.locator("#vacancy-city")).to_have_value("Тестополис")
     expect(page.locator("#vacancy-salary-max")).to_have_value("75000")
     expect(page.locator("#vacancy-schedule")).to_have_value("Сменный")
     page.locator("#vacancy-responsibilities").fill("Приём и учёт товаров")

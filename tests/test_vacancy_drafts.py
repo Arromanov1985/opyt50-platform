@@ -83,3 +83,52 @@ def test_incomplete_draft_cannot_publish(tmp_path: Path):
             f"/api/employer/vacancy-drafts/{did}/publish", headers=XHR,
         )
         assert still_incomplete.status_code == 422
+
+
+def test_draft_save_is_idempotent_after_lost_response(tmp_path: Path):
+    """A retry with the previous version must not create a false conflict."""
+    app = create_app(str(tmp_path / "retry.db"))
+    with TestClient(app) as employer, TestClient(app) as other, TestClient(app) as candidate:
+        register(employer, "draft-retry@example.test", "employer")
+        register(other, "draft-other-retry@example.test", "employer")
+        register(candidate, "draft-candidate-retry@example.test", "candidate")
+        created = employer.post(
+            "/api/employer/vacancy-drafts",
+            json={"fields": {"title": "Склад"}}, headers=XHR,
+        )
+        assert created.status_code == 201, created.text
+        did = created.json()["id"]
+        draft_url = f"/api/employer/vacancy-drafts/{did}"
+        assert other.get(draft_url).status_code == 404
+        assert candidate.get(draft_url).status_code == 403
+        initial = employer.get(draft_url)
+        assert initial.status_code == 200
+        assert initial.headers["cache-control"] == "no-store"
+        assert initial.json()["fields"]["title"] == "Склад"
+
+        payload = {"fields": fields(), "expected_version": 1}
+        saved = employer.put(draft_url, json=payload, headers=XHR)
+        assert saved.status_code == 200 and saved.json()["version"] == 2
+        # Client lost the HTTP response and resends the same payload.
+        repeated = employer.put(draft_url, json=payload, headers=XHR)
+        assert repeated.status_code == 200, repeated.text
+        assert repeated.json()["version"] == 2
+        assert repeated.json()["fields"] == fields()
+        assert employer.get(draft_url).json()["version"] == 2
+
+        # A different payload from a stale device still fails safely.
+        changed_on_other_device = employer.put(
+            draft_url,
+            json={"fields": fields(title="Складской оператор"), "expected_version": 2},
+            headers=XHR,
+        )
+        assert changed_on_other_device.status_code == 200
+        assert changed_on_other_device.json()["version"] == 3
+        stale_overwrite = employer.put(
+            draft_url,
+            json={"fields": fields(title="Несвежая копия"), "expected_version": 2},
+            headers=XHR,
+        )
+        assert stale_overwrite.status_code == 409
+        assert employer.get(draft_url).json()["fields"]["title"] == "Складской оператор"
+        assert candidate.get("/api/jobs").json()["jobs"] == []

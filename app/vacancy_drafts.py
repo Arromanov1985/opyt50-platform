@@ -69,6 +69,13 @@ def register_draft_routes(app, active_user, get_connection, allowed, VacancyIn):
         ).fetchall()
         return {"drafts": [output(row) for row in rows]}
 
+    @app.get("/api/employer/vacancy-drafts/{draft_id}")
+    def read_draft(draft_id: int, user: dict = Depends(active_user),
+                   db: sqlite3.Connection = Depends(get_connection)):
+        """Fetch one owned draft to reconcile an uncertain save or resume work."""
+        allowed(user, "employer")
+        return output(owned(db, user["id"], draft_id))
+
     @app.post("/api/employer/vacancy-drafts", status_code=201)
     def create_draft(data: DraftIn, user: dict = Depends(active_user), db: sqlite3.Connection = Depends(get_connection)):
         allowed(user, "employer")
@@ -88,6 +95,15 @@ def register_draft_routes(app, active_user, get_connection, allowed, VacancyIn):
         if data.expected_version is None:
             raise HTTPException(422, "Требуется версия черновика")
         fields = DraftIn.clean(data.fields)
+        original = owned(db, user["id"], draft_id)
+        if original["published_vacancy_id"] is not None:
+            raise HTTPException(409, "Черновик уже опубликован")
+        # Safe retry after an uncertain network result: if identical data was
+        # already saved, return its current version without another write.
+        if json.loads(original["fields_json"]) == fields:
+            return output(original)
+        if data.expected_version != original["version"]:
+            raise HTTPException(409, "Черновик изменён на другом устройстве. Обновите список.")
         result = db.execute(
             """UPDATE vacancy_drafts SET fields_json=?,version=version+1,
                  updated_at=datetime('now')
@@ -99,6 +115,8 @@ def register_draft_routes(app, active_user, get_connection, allowed, VacancyIn):
             row = owned(db, user["id"], draft_id)
             if row["published_vacancy_id"] is not None:
                 raise HTTPException(409, "Черновик уже опубликован")
+            if json.loads(row["fields_json"]) == fields:
+                return output(row)
             raise HTTPException(409, "Черновик изменён на другом устройстве. Обновите список.")
         db.commit()
         return output(owned(db, user["id"], draft_id))
