@@ -1,10 +1,12 @@
 """Private server-side employer vacancy drafts, never candidate-visible."""
 from __future__ import annotations
 
+import hashlib
 import json
 import sqlite3
+from uuid import UUID
 
-from fastapi import Depends, HTTPException
+from fastapi import Depends, HTTPException, Response
 from pydantic import BaseModel, Field, ValidationError
 
 # Only form fields are persisted; no browser storage or contact data.
@@ -22,6 +24,8 @@ DRAFT_LIMITS = {
 class DraftIn(BaseModel):
     fields: dict = Field(default_factory=dict)
     expected_version: int | None = Field(default=None, ge=1)
+    # Optional for compatibility with already cached clients; the new UI sends it.
+    request_key: UUID | None = None
 
     @staticmethod
     def clean(fields: dict) -> dict:
@@ -76,17 +80,64 @@ def register_draft_routes(app, active_user, get_connection, allowed, VacancyIn):
         allowed(user, "employer")
         return output(owned(db, user["id"], draft_id))
 
+    @app.get("/api/employer/vacancy-drafts/by-request/{request_key}")
+    def draft_by_request(request_key: UUID, user: dict = Depends(active_user),
+                         db: sqlite3.Connection = Depends(get_connection)):
+        """Recover the first draft if its POST committed but the response was lost."""
+        allowed(user, "employer")
+        row = db.execute(
+            """SELECT draft_id FROM vacancy_draft_create_requests
+               WHERE employer_id=? AND request_key=?""",
+            (user["id"], str(request_key)),
+        ).fetchone()
+        if row is None:
+            raise HTTPException(404, "Запрос на создание черновика не найден")
+        if row["draft_id"] is None:
+            raise HTTPException(410, "Черновик уже удалён")
+        return output(owned(db, user["id"], row["draft_id"]))
+
     @app.post("/api/employer/vacancy-drafts", status_code=201)
-    def create_draft(data: DraftIn, user: dict = Depends(active_user), db: sqlite3.Connection = Depends(get_connection)):
+    def create_draft(data: DraftIn, response: Response, user: dict = Depends(active_user),
+                     db: sqlite3.Connection = Depends(get_connection)):
         allowed(user, "employer")
         fields = DraftIn.clean(data.fields)
+        payload = json.dumps(fields, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+        key = str(data.request_key) if data.request_key else None
+        if key:
+            # The unique owner/key row is reserved FIRST in the same transaction
+            # as the draft insert. Concurrent POSTs cannot create two drafts.
+            digest = hashlib.sha256(payload.encode("utf-8")).hexdigest()
+            reserved = db.execute(
+                """INSERT OR IGNORE INTO vacancy_draft_create_requests
+                   (employer_id,request_key,payload_sha256) VALUES(?,?,?)""",
+                (user["id"], key, digest),
+            )
+            if reserved.rowcount == 0:
+                existing = db.execute(
+                    """SELECT draft_id,payload_sha256 FROM vacancy_draft_create_requests
+                       WHERE employer_id=? AND request_key=?""",
+                    (user["id"], key),
+                ).fetchone()
+                if existing is None:
+                    raise HTTPException(409, "Результат первого сохранения пока неизвестен")
+                if existing["payload_sha256"] != digest:
+                    raise HTTPException(409, "Черновик уже создан с другими данными")
+                if existing["draft_id"] is None:
+                    raise HTTPException(410, "Этот черновик уже удалён")
+                response.status_code = 200
+                return output(owned(db, user["id"], existing["draft_id"]))
         cursor = db.execute(
             "INSERT INTO vacancy_drafts(employer_id,fields_json) VALUES(?,?)",
             (user["id"], json.dumps(fields, ensure_ascii=False)),
         )
+        if key:
+            db.execute(
+                """UPDATE vacancy_draft_create_requests SET draft_id=?
+                   WHERE employer_id=? AND request_key=?""",
+                (cursor.lastrowid, user["id"], key),
+            )
         db.commit()
-        row = owned(db, user["id"], cursor.lastrowid)
-        return output(row)
+        return output(owned(db, user["id"], cursor.lastrowid))
 
     @app.put("/api/employer/vacancy-drafts/{draft_id}")
     def save_draft(draft_id: int, data: DraftIn, user: dict = Depends(active_user),
