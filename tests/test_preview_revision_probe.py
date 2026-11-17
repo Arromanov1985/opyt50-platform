@@ -87,3 +87,51 @@ def test_protected_endpoint_evidence_requires_json_401_or_403(monkeypatch):
 def test_public_drafts_response_is_never_marked_protected(monkeypatch):
     monkeypatch.setattr(probe, "build_opener", lambda *a: FakeOpener(FakeResponse()))
     assert probe.probe_private_draft_route()["result"] == "unexpected-public-access"
+
+
+
+def test_css_asset_fingerprint_must_match_stylesheet_mime(tmp_path, monkeypatch):
+    local = tmp_path / "release09-dashboard.css"
+    payload = b".vacancy-update-filter{min-height:44px}"
+    local.write_bytes(payload)
+    monkeypatch.setattr(
+        probe, "build_opener",
+        lambda *a: FakeOpener(FakeResponse(payload, "text/css; charset=utf-8")),
+    )
+    assert probe.probe_asset("/static/release09-dashboard.css", local)["result"] == "exact-match"
+    monkeypatch.setattr(
+        probe, "build_opener",
+        lambda *a: FakeOpener(FakeResponse(payload, "text/html")),
+    )
+    assert probe.probe_asset("/static/release09-dashboard.css", local)["result"] == "not-stylesheet"
+
+
+def test_public_html_revision_check_rejects_stale_entrypoint(tmp_path, monkeypatch):
+    assets = {}
+    for name in probe.CLIENT_ASSETS:
+        data = (name + "-new-version").encode("utf-8")
+        (tmp_path / name).write_bytes(data)
+        assets[name] = probe.git_blob_revision(tmp_path / name)
+    index = "\n".join(
+        f'<script src="/static/{name}?v={revision}"></script>'
+        for name, revision in assets.items()
+    ).encode("utf-8")
+    (tmp_path / "index.html").write_bytes(index)
+    monkeypatch.setattr(probe, "STATIC", tmp_path)
+    monkeypatch.setattr(
+        probe, "build_opener",
+        lambda *a: FakeOpener(FakeResponse(index, "text/html; charset=utf-8")),
+    )
+    exact = probe.probe_index_revisions()
+    assert exact["result"] == "exact-match"
+    assert all(exact["asset_revisions"].values())
+
+    old = index.replace(assets["release02.js"].encode("ascii"), b"stale-revision")
+    monkeypatch.setattr(
+        probe, "build_opener",
+        lambda *a: FakeOpener(FakeResponse(old, "text/html; charset=utf-8")),
+    )
+    mismatch = probe.probe_index_revisions()
+    assert mismatch["result"] == "mismatch"
+    assert mismatch["asset_revisions"]["release02.js"] is False
+    assert mismatch["asset_revisions"]["app.js"] is True
