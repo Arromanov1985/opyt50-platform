@@ -261,6 +261,27 @@ def exercise_forms(page):
     expect(comparison.locator('[data-draft-conflict-choice="city"]')).to_have_value("")
     expect(page.locator("#vacancy-skills")).to_have_value("Новое локальное умение")
     comparison.locator('[data-draft-conflict-choice="city"]').select_option("local")
+    # While reviewing, the other device writes again. The first confirm
+    # must hit 409 and refresh the comparison, never overwrite that update.
+    during_review = page.request.get(
+        URL + f"/api/employer/vacancy-drafts/{draft_id}"
+    ).json()
+    concurrent_fields = dict(during_review["fields"])
+    concurrent_fields["conditions"] = "Обновлённые серверные условия"
+    concurrent = page.request.put(
+        URL + f"/api/employer/vacancy-drafts/{draft_id}",
+        headers=HEADERS,
+        data={"fields": concurrent_fields, "expected_version": during_review["version"]},
+    )
+    assert concurrent.status == 200, concurrent.text()
+    with page.expect_response(lambda r: (
+        r.url.endswith(f"/api/employer/vacancy-drafts/{draft_id}")
+        and r.request.method == "PUT" and r.status == 409
+    ), timeout=15000):
+        comparison.locator('[data-action="apply-draft-conflict"]').click()
+    expect(comparison).to_contain_text("Обновлённые серверные условия")
+    expect(comparison.locator('[data-draft-conflict-choice="city"]')).to_have_value("")
+    comparison.locator('[data-draft-conflict-choice="city"]').select_option("local")
     with page.expect_response(lambda r: (
         r.url.endswith(f"/api/employer/vacancy-drafts/{draft_id}")
         and r.request.method == "PUT" and r.status == 200
@@ -268,10 +289,11 @@ def exercise_forms(page):
         comparison.locator('[data-action="apply-draft-conflict"]').click()
     expect(page.locator("[data-draft-conflict-panel]")).to_have_count(0)
     expect(page.locator("#vacancy-city")).to_have_value("Мой город")
-    expect(page.locator("#vacancy-conditions")).to_have_value("Условия со второго устройства")
+    expect(page.locator("#vacancy-conditions")).to_have_value("Обновлённые серверные условия")
+    expect(page.locator("#vacancy-publish")).to_be_disabled()
     merged = page.request.get(URL + f"/api/employer/vacancy-drafts/{draft_id}").json()
     assert merged["fields"]["city"] == "Мой город"
-    assert merged["fields"]["conditions"] == "Условия со второго устройства"
+    assert merged["fields"]["conditions"] == "Обновлённые серверные условия"
     assert merged["fields"]["skills"] == "Новое локальное умение"
 
     # A different overlapping field can be resolved in favor of the server.
