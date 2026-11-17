@@ -208,7 +208,11 @@ def exercise_forms(page):
 
     # Only a user-created server draft is autosaved. Changes need no second click.
     expect(page.locator("[data-action='save-vacancy-draft']")).to_have_text("Сохранить сейчас")
-    page.locator("#vacancy-salary-min").fill("52000")
+    with page.expect_response(lambda r: (
+        f"/api/employer/vacancy-drafts/{draft_id}" in r.url
+        and r.request.method == "PUT" and r.status == 200
+    ), timeout=15000):
+        page.locator("#vacancy-salary-min").fill("52000")
     expect(page.locator("#vacancy-form .editor-save-status")).to_contain_text(
         "Черновик сохранён на сервере", timeout=10000,
     )
@@ -227,7 +231,11 @@ def exercise_forms(page):
         else:
             route.continue_()
     page.route("**/api/employer/vacancy-drafts/*", draft_outage)
-    page.locator("#vacancy-city").fill("Тестополис")
+    with page.expect_response(lambda r: (
+        f"/api/employer/vacancy-drafts/{draft_id}" in r.url
+        and r.request.method == "PUT" and r.status == 503
+    ), timeout=15000):
+        page.locator("#vacancy-city").fill("Тестополис")
     expect(page.locator("#vacancy-form .editor-save-status")).to_contain_text(
         "автосохранение остановлено", timeout=10000,
     )
