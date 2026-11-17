@@ -193,7 +193,14 @@ async function saveVacancyDraft(form, automatic = false) {
     if (!automatic) toast(warning, true);
   } finally {
     if (automatic) draftAutoSaving.delete(form);
-    else endEditorSave(form, submit);
+    else {
+      endEditorSave(form, submit);
+      // Saving a draft does not approve its publication. Only the
+      // separate preview step may enable the publish button.
+      if (submit?.isConnected && form.querySelector('#vacancy-preview')?.hidden) {
+        submit.disabled = true;
+      }
+    }
     if (button?.isConnected) button.disabled = false;
   }
   if (!draftAutoBlocked.has(form) && editorIsDirty(form) && form.isConnected) scheduleVacancyAutosave(form);
