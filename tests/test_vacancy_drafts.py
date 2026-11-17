@@ -175,6 +175,21 @@ def test_first_create_replay_is_idempotent_and_owner_scoped(tmp_path: Path):
         assert other_created.json()["id"] != did
         assert employer.get(request_url).json()["id"] == did
 
+        # An existing first-POST key must also detect later edits from another
+        # device, rather than acknowledge an obsolete form snapshot.
+        modified = employer.put(
+            f"/api/employer/vacancy-drafts/{did}",
+            json={"fields": {**payload["fields"], "city": "Москва"}, "expected_version": 1},
+            headers=XHR,
+        )
+        assert modified.status_code == 200
+        assert modified.json()["version"] == 2
+        obsolete = employer.post(
+            "/api/employer/vacancy-drafts", json=payload, headers=XHR,
+        )
+        assert obsolete.status_code == 409
+        assert employer.get(request_url).json()["fields"]["city"] == "Москва"
+
         # A deleted draft is NOT recreated by a delayed retry of its first POST.
         deleted = employer.delete(f"/api/employer/vacancy-drafts/{did}", headers=XHR)
         assert deleted.status_code == 200
