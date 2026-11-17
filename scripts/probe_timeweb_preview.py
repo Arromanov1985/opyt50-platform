@@ -17,6 +17,17 @@ from urllib.request import Request, build_opener, HTTPRedirectHandler
 DEFAULT_BASE = "https://arromanov1985-opyt50-platform-fdd8.twc1.net"
 BASE = os.getenv("STAZHNO_PREVIEW_URL", DEFAULT_BASE).rstrip("/")
 REPORT = Path(os.getenv("STAZHNO_PREVIEW_REPORT", "preview-reachability.json"))
+STATIC = Path(__file__).resolve().parents[1] / "app" / "static"
+CLIENT_ASSETS = ("app.js", "release02.js", "vacancy-wizard.js", "release09-dashboard.css")
+
+
+def git_blob_revision(path):
+    payload = path.read_bytes()
+    return hashlib.sha1(
+        f"blob {len(payload)}".encode("ascii") + bytes([0]) + payload,
+        usedforsecurity=False,
+    ).hexdigest()[:12]
+
 
 
 class NoRedirect(HTTPRedirectHandler):
@@ -65,10 +76,17 @@ def probe_asset(path, local_path):
             payload = response.read(2_000_001)
             if len(payload) > 2_000_000:
                 return {"status": response.status, "result": "asset-too-large"}
-            if not response.headers.get("Content-Type", "").lower().startswith(
-                ("text/javascript", "application/javascript", "application/x-javascript")
-            ):
-                return {"status": response.status, "result": "not-javascript"}
+            content_type = response.headers.get("Content-Type", "").lower()
+            if local_path.suffix == ".css":
+                accepted = content_type.startswith("text/css")
+                error_result = "not-stylesheet"
+            else:
+                accepted = content_type.startswith(
+                    ("text/javascript", "application/javascript", "application/x-javascript")
+                )
+                error_result = "not-javascript"
+            if not accepted:
+                return {"status": response.status, "result": error_result}
             observed = hashlib.sha256(payload).hexdigest()
             return {
                 "status": response.status,
@@ -82,6 +100,43 @@ def probe_asset(path, local_path):
             "status": error.code,
             "result": "password-protected" if error.code == 401 else "http-error",
         }
+    except (URLError, OSError, ssl.SSLError, TimeoutError) as error:
+        return {"result": "connection-error", "type": type(error).__name__}
+
+
+def probe_index_revisions():
+    """Ensure the actual public HTML references the new versioned JS/CSS URLs."""
+    index = STATIC / "index.html"
+    expected = {
+        name: f"/static/{name}?v={git_blob_revision(STATIC / name)}"
+        for name in CLIENT_ASSETS
+    }
+    digest = hashlib.sha256(index.read_bytes()).hexdigest()[:16]
+    request = Request(
+        BASE + "/?revision_check=" + digest,
+        headers={
+            "User-Agent": "Stazhno-Preview-ReadOnly-Probe/1.0",
+            "Cache-Control": "no-cache", "Pragma": "no-cache",
+        },
+        method="GET",
+    )
+    try:
+        with build_opener(NoRedirect).open(request, timeout=12) as response:
+            content_type = response.headers.get("Content-Type", "").lower()
+            payload = response.read(1_000_001)
+            if len(payload) > 1_000_000:
+                return {"status": response.status, "result": "html-too-large"}
+            if not content_type.startswith("text/html"):
+                return {"status": response.status, "result": "not-html"}
+            html = payload.decode("utf-8", errors="replace")
+            matches = {name: reference in html for name, reference in expected.items()}
+            return {
+                "status": response.status,
+                "result": "exact-match" if all(matches.values()) else "mismatch",
+                "asset_revisions": matches,
+            }
+    except HTTPError as error:
+        return {"status": error.code, "result": "http-error"}
     except (URLError, OSError, ssl.SSLError, TimeoutError) as error:
         return {"result": "connection-error", "type": type(error).__name__}
 
@@ -122,26 +177,37 @@ def main():
     if result["dns"] == "resolved":
         for path in ("/api/health", "/"):
             result["paths"][path] = probe(path)
-        result["deployed_app_js"] = probe_asset(
-            "/static/app.js", Path(__file__).resolve().parents[1] / "app" / "static" / "app.js",
-        )
+        result["deployed_assets"] = {
+            name: probe_asset("/static/" + name, STATIC / name)
+            for name in CLIENT_ASSETS
+        }
+        # Retain the original field for existing dashboards and logs.
+        result["deployed_app_js"] = result["deployed_assets"]["app.js"]
+        result["index_asset_revisions"] = probe_index_revisions()
         result["drafts_api"] = probe_private_draft_route()
     else:
         result["paths"] = {
             "/api/health": {"result": "not-tested-dns-failure"},
             "/": {"result": "not-tested-dns-failure"},
         }
-        result["deployed_app_js"] = {"result": "not-tested-dns-failure"}
+        result["deployed_assets"] = {
+            name: {"result": "not-tested-dns-failure"} for name in CLIENT_ASSETS
+        }
+        result["deployed_app_js"] = result["deployed_assets"]["app.js"]
+        result["index_asset_revisions"] = {"result": "not-tested-dns-failure"}
         result["drafts_api"] = {"result": "not-tested-dns-failure"}
     result["assessment"] = (
         "preview-health-reachable"
         if result["paths"]["/api/health"].get("status") == 200
         else "preview-unverified"
     )
-    if (result["deployed_app_js"]["result"] == "exact-match"
+    asset_results = [item["result"] for item in result["deployed_assets"].values()]
+    html_result = result["index_asset_revisions"]["result"]
+    if (all(value == "exact-match" for value in asset_results)
+            and html_result == "exact-match"
             and result["drafts_api"]["result"] == "present-and-protected"):
         result["release_evidence"] = "frontend-match-and-protected-drafts-api"
-    elif result["deployed_app_js"]["result"] == "mismatch":
+    elif "mismatch" in asset_results or html_result == "mismatch":
         result["release_evidence"] = "frontend-version-mismatch"
     else:
         result["release_evidence"] = "unverified"
