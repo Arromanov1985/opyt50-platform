@@ -132,3 +132,77 @@ def test_draft_save_is_idempotent_after_lost_response(tmp_path: Path):
         assert stale_overwrite.status_code == 409
         assert employer.get(draft_url).json()["fields"]["title"] == "Складской оператор"
         assert candidate.get("/api/jobs").json()["jobs"] == []
+
+
+
+def test_first_create_replay_is_idempotent_and_owner_scoped(tmp_path: Path):
+    """Retrying POST after a lost HTTP response reuses the same draft ID."""
+    app = create_app(str(tmp_path / "first-create-retry.db"))
+    key = "f7ea5179-84b7-4363-8e39-9bbc7a958eb2"
+    payload = {"fields": {"title": "Помощник на складе", "city": "Подольск"},
+               "request_key": key}
+    with TestClient(app) as employer, TestClient(app) as other, TestClient(app) as candidate:
+        register(employer, "create-owner@example.test", "employer")
+        register(other, "create-other@example.test", "employer")
+        register(candidate, "create-candidate@example.test", "candidate")
+        first = employer.post("/api/employer/vacancy-drafts", json=payload, headers=XHR)
+        assert first.status_code == 201, first.text
+        did = first.json()["id"]
+        assert first.json()["version"] == 1
+
+        # The first transaction committed but the browser never saw the 201.
+        replay = employer.post("/api/employer/vacancy-drafts", json=payload, headers=XHR)
+        assert replay.status_code == 200, replay.text
+        assert replay.json() == first.json()
+        assert len(employer.get("/api/employer/vacancy-drafts").json()["drafts"]) == 1
+
+        request_url = f"/api/employer/vacancy-drafts/by-request/{key}"
+        assert employer.get(request_url).json()["id"] == did
+        assert other.get(request_url).status_code == 404
+        assert candidate.get(request_url).status_code == 403
+
+        # A changed payload must not silently overwrite the original create.
+        changed = employer.post("/api/employer/vacancy-drafts", json={
+            **payload, "fields": {"title": "Изменённый заголовок"}
+        }, headers=XHR)
+        assert changed.status_code == 409
+        assert employer.get(request_url).json()["fields"] == payload["fields"]
+        assert len(employer.get("/api/employer/vacancy-drafts").json()["drafts"]) == 1
+
+        # The same random key has a separate namespace for each employer.
+        other_created = other.post("/api/employer/vacancy-drafts", json=payload, headers=XHR)
+        assert other_created.status_code == 201
+        assert other_created.json()["id"] != did
+        assert employer.get(request_url).json()["id"] == did
+
+        # A deleted draft is NOT recreated by a delayed retry of its first POST.
+        deleted = employer.delete(f"/api/employer/vacancy-drafts/{did}", headers=XHR)
+        assert deleted.status_code == 200
+        assert employer.post("/api/employer/vacancy-drafts", json=payload, headers=XHR).status_code == 410
+        assert employer.get(request_url).status_code == 410
+        assert employer.get("/api/employer/vacancy-drafts").json()["drafts"] == []
+
+
+def test_first_create_key_survives_restart_and_rejects_invalid_uuid(tmp_path: Path):
+    path = tmp_path / "restart-create.db"
+    key = "f412d50a-4e6d-47c0-9fb5-2cf400001997"
+    payload = {"fields": {"title": "Временная вакансия"}, "request_key": key}
+    with TestClient(create_app(str(path))) as employer:
+        register(employer, "create-restart@example.test", "employer")
+        first = employer.post("/api/employer/vacancy-drafts", json=payload, headers=XHR)
+        assert first.status_code == 201
+        did = first.json()["id"]
+        invalid = employer.post("/api/employer/vacancy-drafts", json={
+            "fields": {"title": "Раз"}, "request_key": "not-a-uuid",
+        }, headers=XHR)
+        assert invalid.status_code == 422
+
+    with TestClient(create_app(str(path))) as reopened:
+        login = reopened.post("/api/login", json={
+            "email": "create-restart@example.test", "password": "StrongPass2026!"
+        }, headers=XHR)
+        assert login.status_code == 200, login.text
+        retry = reopened.post("/api/employer/vacancy-drafts", json=payload, headers=XHR)
+        assert retry.status_code == 200
+        assert retry.json()["id"] == did
+        assert len(reopened.get("/api/employer/vacancy-drafts").json()["drafts"]) == 1
