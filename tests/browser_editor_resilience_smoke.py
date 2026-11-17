@@ -199,6 +199,8 @@ def exercise_forms(page):
     expect(page.locator("#vacancy-form .editor-save-status")).to_contain_text(
         "Черновик сохранён"
     )
+    # Saving an incomplete draft must not silently enable publication.
+    expect(page.locator("#vacancy-publish")).to_be_disabled()
     drafts = page.request.get(URL + "/api/employer/vacancy-drafts").json()["drafts"]
     assert len(drafts) == 1
     draft_id = drafts[0]["id"]
