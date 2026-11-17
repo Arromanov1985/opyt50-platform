@@ -204,6 +204,11 @@ function scheduleVacancyAutosave(form) {
   }, 1400));
 }
 async function saveVacancyDraft(form, automatic = false) {
+  if (draftConflictSessions.has(form)) {
+    setEditorStatus(form, 'Сначала выберите варианты в сравнении изменений ниже.', true);
+    form.querySelector('[data-draft-conflict-panel]')?.scrollIntoView({block:'nearest'});
+    return;
+  }
   const button = form.querySelector('[data-action="save-vacancy-draft"]');
   if (editorSubmitting.has(form) || draftAutoSaving.has(form) || (automatic && (draftAutoBlocked.has(form) || !form.dataset.draftId))) return;
   cancelDraftAutosave(form);
@@ -298,6 +303,145 @@ async function saveVacancyDraft(form, automatic = false) {
     if (button?.isConnected) button.disabled = false;
   }
   if (!draftAutoBlocked.has(form) && editorIsDirty(form) && form.isConnected) scheduleVacancyAutosave(form);
+}
+
+function draftDifference(base, local, server) {
+  return DRAFT_INPUTS.filter(name => local[name] !== server[name]).map(name => {
+    const localChanged = local[name] !== base[name];
+    const serverChanged = server[name] !== base[name];
+    return {
+      name, localChanged, serverChanged,
+      suggested: localChanged && serverChanged ? '' : (localChanged ? 'local' : 'server')
+    };
+  });
+}
+async function showDraftConflictResolution(form) {
+  const id = Number(form?.dataset.draftId || 0);
+  const base = draftServerBaselines.get(form);
+  if (!id || !base) throw new Error('Не удалось установить исходную версию. Откройте черновик снова.');
+  cancelDraftAutosave(form);
+  draftAutoBlocked.add(form);
+  const latest = await api('/api/employer/vacancy-drafts/' + id);
+  if (latest.published_vacancy_id != null) {
+    throw new Error('Черновик уже опубликован. Он не будет перезаписан.');
+  }
+  const local = draftFields(form);
+  const server = normalizedDraftFields(latest.fields);
+  const differences = draftDifference(base, local, server);
+  const snapshot = editorFingerprint(form);
+  draftConflictSessions.set(form, {id, version:latest.version, base, local, server, differences, snapshot});
+  const warning = 'Черновик изменён на другом устройстве. Автосохранение остановлено. Проверьте варианты и подтвердите, что оставить.';
+  draftAutoWarnings.set(form, warning);
+  setEditorStatus(form, warning, true);
+  const old = form.querySelector('[data-draft-conflict-panel]');
+  if (old) old.remove();
+  const panel = document.createElement('section');
+  panel.className = 'draft-conflict-panel';
+  panel.dataset.draftConflictPanel = 'true';
+  panel.setAttribute('role', 'region');
+  panel.setAttribute('aria-labelledby', 'draft-conflict-title');
+  const overlap = differences.filter(d => d.localChanged && d.serverChanged).length;
+  const details = differences.map(d => {
+    const label = DRAFT_LABELS[d.name] || d.name;
+    const description = d.localChanged && d.serverChanged
+      ? 'Изменено на обоих устройствах — выберите вариант.'
+      : d.localChanged ? 'Менялось только здесь. Предлагаем оставить вашу версию.'
+        : 'Менялось на другом устройстве. Предлагаем сохранить серверную версию.';
+    return '<div class="draft-conflict-field">' +
+      '<strong>' + esc(label) + '</strong><small>' + esc(description) + '</small>' +
+      '<div class="draft-conflict-versions"><div><span>На этом устройстве</span><div class="draft-conflict-value">' +
+      esc(d.local[d.name] || '— Не заполнено —') + '</div></div>' +
+      '<div><span>Последняя версия на сервере</span><div class="draft-conflict-value">' +
+      esc(d.server[d.name] || '— Не заполнено —') + '</div></div></div>' +
+      '<label for="draft-conflict-' + d.name + '">Какой вариант сохранить?</label>' +
+      '<select id="draft-conflict-' + d.name + '" data-draft-conflict-choice="' + d.name + '">' +
+      '<option value=""' + (!d.suggested ? ' selected' : '') + '>Выберите вариант</option>' +
+      '<option value="local"' + (d.suggested === 'local' ? ' selected' : '') + '>Мои изменения</option>' +
+      '<option value="server"' + (d.suggested === 'server' ? ' selected' : '') + '>С сервера</option>' +
+      '</select></div>';
+  }).join('');
+  panel.innerHTML = '<div class="draft-conflict-heading"><span class="section-kicker">СРАВНЕНИЕ ИЗМЕНЕНИЙ</span>' +
+    '<h3 id="draft-conflict-title">Черновик изменился на другом устройстве</h3>' +
+    '<p>Ваш текст остался в форме. Данные на сервере не перезаписаны. Проверьте выбор для каждого различающегося поля.</p>' +
+    '<p class="muted">' + (overlap ? 'Совпадающих правок с разными значениями: ' + overlap + '. ' : '') +
+    'Ни одно объединение не сохранится без вашего подтверждения.</p></div>' +
+    (differences.length ? '<div class="draft-conflict-fields">' + details + '</div>' :
+      '<p class="muted">Значения совпадают. Можно подтвердить актуальную версию.</p>') +
+    '<div class="draft-conflict-actions"><button type="button" class="btn btn-primary" data-action="apply-draft-conflict">Сохранить выбранные изменения</button>' +
+    '<button type="button" class="btn btn-outline" data-action="refresh-draft-conflict">Обновить сравнение</button></div>' +
+    '<p class="draft-conflict-note" role="status" aria-live="polite">После сохранения проверьте вакансию в предпросмотре перед публикацией.</p>';
+  (form.querySelector('.vacancy-draft-actions') || form.querySelector('.vacancy-publish-actions')).before(panel);
+  const preview = form.querySelector('#vacancy-preview');
+  if (preview) preview.hidden = true;
+  const publish = form.querySelector('#vacancy-publish');
+  if (publish) publish.disabled = true;
+}
+async function applyDraftConflictResolution(form) {
+  const session = draftConflictSessions.get(form);
+  const panel = form?.querySelector('[data-draft-conflict-panel]');
+  if (!session || !panel || editorSubmitting.has(form) || draftAutoSaving.has(form)) return;
+  if (editorFingerprint(form) !== session.snapshot) {
+    await showDraftConflictResolution(form);
+    toast('В форме появились новые правки. Сравнение обновлено — проверьте варианты снова.', true);
+    return;
+  }
+  const merged = {...session.server};
+  for (const difference of session.differences) {
+    const select = panel.querySelector('[data-draft-conflict-choice="' + difference.name + '"]');
+    const choice = select?.value;
+    if (choice !== 'local' && choice !== 'server') {
+      setEditorStatus(form, 'Выберите, какой вариант оставить для поля «' + DRAFT_LABELS[difference.name] + '».', true);
+      select?.focus();
+      return;
+    }
+    merged[difference.name] = choice === 'local' ? session.local[difference.name] : session.server[difference.name];
+  }
+  const button = panel.querySelector('[data-action="apply-draft-conflict"]');
+  const submit = beginEditorSave(form);
+  if (!submit) return;
+  if (button) button.disabled = true;
+  try {
+    const saved = await api('/api/employer/vacancy-drafts/' + session.id, {
+      method:'PUT',
+      body:JSON.stringify({fields:merged, expected_version:session.version})
+    });
+    if (!DRAFT_INPUTS.every(name => String(saved.fields?.[name] ?? '') === merged[name])) {
+      throw new Error('Сервер не подтвердил выбранные значения. Текст остаётся в форме.');
+    }
+    for (const name of DRAFT_INPUTS) {
+      const control = form.elements.namedItem(name);
+      if (control) control.value = merged[name];
+    }
+    // Invalidate an earlier publication preview, without scheduling autosave.
+    form.elements.namedItem('title')?.dispatchEvent(new Event('input', {bubbles:true}));
+    form.dataset.draftVersion = saved.version;
+    state.activeDraft = saved;
+    draftServerBaselines.set(form, {...merged});
+    editorBaselines.set(form, editorFingerprint(form));
+    draftConflictSessions.delete(form);
+    draftAutoBlocked.delete(form);
+    draftAutoWarnings.delete(form);
+    panel.remove();
+    setEditorStatus(form, 'Выбранные изменения сохранены. Автосохранение снова работает.');
+    toast('Черновик объединён и сохранён. Перед публикацией повторите предпросмотр.');
+  } catch(error) {
+    draftAutoBlocked.add(form);
+    if (error?.httpStatus === 409) {
+      try {
+        await showDraftConflictResolution(form);
+        toast('За время сравнения черновик снова изменился. Выберите варианты ещё раз.', true);
+      } catch(readError) {
+        setEditorStatus(form, 'Не удалось обновить сравнение: ' + readError.message + '. Локальные данные сохранены на экране.', true);
+      }
+    } else {
+      setEditorStatus(form, 'Не удалось сохранить выбор: ' + error.message + '. Ваш текст остался в форме.', true);
+      toast('Изменения не сохранены. Проверьте соединение и повторите попытку.', true);
+    }
+  } finally {
+    endEditorSave(form, submit);
+    if (submit?.isConnected && (draftConflictSessions.has(form) || form.querySelector('#vacancy-preview')?.hidden)) submit.disabled = true;
+    if (button?.isConnected) button.disabled = false;
+  }
 }
 const EDITOR_IDS = new Set(['profile-form', 'company-form', 'vacancy-form']);
 function editorFingerprint(form) {
