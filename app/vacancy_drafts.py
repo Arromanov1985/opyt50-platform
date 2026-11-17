@@ -124,8 +124,13 @@ def register_draft_routes(app, active_user, get_connection, allowed, VacancyIn):
                     raise HTTPException(409, "Черновик уже создан с другими данными")
                 if existing["draft_id"] is None:
                     raise HTTPException(410, "Этот черновик уже удалён")
+                row = owned(db, user["id"], existing["draft_id"])
+                # Another device may have edited the original after creation.
+                # Never acknowledge an old snapshot as saved if the DB differs.
+                if json.loads(row["fields_json"]) != fields:
+                    raise HTTPException(409, "Черновик изменён после первого сохранения")
                 response.status_code = 200
-                return output(owned(db, user["id"], existing["draft_id"]))
+                return output(row)
         cursor = db.execute(
             "INSERT INTO vacancy_drafts(employer_id,fields_json) VALUES(?,?)",
             (user["id"], json.dumps(fields, ensure_ascii=False)),
