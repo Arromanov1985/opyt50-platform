@@ -1983,6 +1983,23 @@ function employerMatchBreakdownMarkup(item) {
   const cautionMarkup = cautions.length ? `<div class="match-cautions"><strong>Что уточнить до приглашения</strong>${cautions.slice(0,3).map(text=>`<span>! ${esc(text)}</span>`).join('')}</div>` : '';
   return `<div class="match-breakdown compact">${rows}${cautionMarkup}<p class="match-method-note">Оценка строится только по профессиональному профилю и условиям вакансии. Возраст не используется.</p></div>`;
 }
+function employerVacancyHistoryEntries(updates, view) {
+  return updates.map(update=>`
+    <article class="employer-vacancy-history-entry" data-history-update-id="${Number(update.id)}">
+      <div class="employer-vacancy-history-meta">
+        <strong>Изменение от ${esc(view.date(update.created_at))}</strong>
+        <span class="muted">${Number(update.recipients_total)>0
+          ? 'Получателей в личных кабинетах: '+Number(update.recipients_total)
+          : 'На момент изменения получателей не было'}</span>
+      </div>
+      <div class="vacancy-changes-list">${view.markup(update.changes)}</div>
+    </article>`).join('');
+}
+function employerVacancyHistoryPager(result) {
+  return result.has_more && result.next_cursor
+    ? `<button type="button" class="btn btn-outline" data-action="more-vacancy-history" data-id="${Number(result.vacancy_id)}" data-before-id="${Number(result.next_cursor)}">Показать более ранние изменения</button>`
+    : '';
+}
 async function toggleEmployerVacancyHistory(btn,jobId) {
   const card = btn.closest('.employer-vacancy-card');
   const history = card?.querySelector('#employer-vacancy-history-' + jobId);
@@ -1996,29 +2013,51 @@ async function toggleEmployerVacancyHistory(btn,jobId) {
   if (!view || typeof view.markup !== 'function') {
     throw new Error('История изменений временно недоступна. Обновите страницу.');
   }
-  const result = await api('/api/employer/vacancies/' + jobId + '/updates');
-  const updates = result.updates || [];
-  history.innerHTML = `<div class="employer-vacancy-history-heading">
-      <div><span class="section-kicker">СОХРАНЁННАЯ ИСТОРИЯ</span>
-        <h5>Изменения условий</h5>
-        <p class="muted">Всего изменений: ${Number(result.total_count||0)}.
-          ${Number(result.total_count||0)>50?'Показаны последние 50.':''}
-          Уведомления сохраняются в кабинетах соискателей, которым они предназначены.</p></div>
-      </div>
-      ${updates.length ? `<div class="employer-vacancy-history-list">${updates.map(update=>`
-        <article class="employer-vacancy-history-entry">
-          <div class="employer-vacancy-history-meta">
-            <strong>Изменение от ${esc(view.date(update.created_at))}</strong>
-            <span class="muted">${Number(update.recipients_total)>0
-              ? 'Получателей в личных кабинетах: '+Number(update.recipients_total)
-              : 'На момент изменения получателей не было'}</span>
-          </div>
-          <div class="vacancy-changes-list">${view.markup(update.changes)}</div>
-        </article>`).join('')}</div>`
-        : '<p class="muted">Условия этой вакансии ещё не изменялись после публикации.</p>'}`;
-  history.hidden = false;
-  btn.setAttribute('aria-expanded','true');
-  history.scrollIntoView({block:'nearest'});
+  btn.disabled = true;
+  try {
+    const result = await api('/api/employer/vacancies/' + jobId + '/updates');
+    // The user may have navigated to another tab while the request was pending.
+    if (!history.isConnected) return;
+    const updates = result.updates || [];
+    history.innerHTML = `<div class="employer-vacancy-history-heading">
+        <div><span class="section-kicker">СОХРАНЁННАЯ ИСТОРИЯ</span>
+          <h5>Изменения условий</h5>
+          <p class="muted">Всего изменений: ${Number(result.total_count||0)}.
+            Историю можно просмотреть полностью, по 20 записей.
+            Уведомления сохраняются в кабинетах соискателей, которым они предназначены.</p></div>
+        </div>
+        ${updates.length ? `<div class="employer-vacancy-history-list">${employerVacancyHistoryEntries(updates,view)}</div>`
+          : '<p class="muted">Условия этой вакансии ещё не изменялись после публикации.</p>'}
+        <div class="employer-vacancy-history-pagination">${employerVacancyHistoryPager(result)}</div>`;
+    history.hidden = false;
+    btn.setAttribute('aria-expanded','true');
+    history.scrollIntoView({block:'nearest'});
+  } finally {
+    if (btn.isConnected) btn.disabled = false;
+  }
+}
+async function loadMoreEmployerVacancyHistory(btn,jobId) {
+  const history = btn.closest('.employer-vacancy-history');
+  const list = history?.querySelector('.employer-vacancy-history-list');
+  const pager = history?.querySelector('.employer-vacancy-history-pagination');
+  const cursor = Number(btn.dataset.beforeId);
+  if (!list || !pager || !Number.isSafeInteger(jobId) || jobId <= 0 ||
+      !Number.isSafeInteger(cursor) || cursor <= 0) return;
+  const view = window.StazhnoVacancyChanges;
+  if (!view || typeof view.markup !== 'function') return;
+  btn.disabled = true;
+  try {
+    const result = await api('/api/employer/vacancies/' + jobId +
+      '/updates?before_id=' + cursor);
+    if (!history.isConnected || history.hidden || !pager.contains(btn)) return;
+    const existing = new Set(Array.from(list.querySelectorAll('[data-history-update-id]'))
+      .map(item=>item.dataset.historyUpdateId));
+    const newUpdates = (result.updates||[]).filter(item=>!existing.has(String(item.id)));
+    list.insertAdjacentHTML('beforeend',employerVacancyHistoryEntries(newUpdates,view));
+    pager.innerHTML = employerVacancyHistoryPager(result);
+  } finally {
+    if (btn.isConnected) btn.disabled = false;
+  }
 }
 async function loadMatches(jobId) {
   const target = $('#employer-matches');
@@ -2741,6 +2780,10 @@ async function handleDashboardClick(event) {
     }
     if (action === 'vacancy-history') {
       await toggleEmployerVacancyHistory(btn,id);
+      return;
+    }
+    if (action === 'more-vacancy-history') {
+      await loadMoreEmployerVacancyHistory(btn,id);
       return;
     }
     if (action === 'filter-employer-jobs') {
