@@ -3062,3 +3062,53 @@ body.comfortable-view .employer-vacancy-result-count{font-size:1rem}
   .employer-vacancy-find-row input{width:100%;flex:auto}
   .employer-vacancy-find-row .btn{width:100%}
 }
+
+
+/* Release 0.5.18: concise application triage and local search */
+.employer-application-search{
+  margin:12px 0 6px;
+  padding:13px 14px;
+  background:#F8FBF9;
+  border:1px solid #DFEAE3;
+  border-radius:13px;
+}
+.employer-application-search label{
+  display:block;
+  margin-bottom:8px;
+  font-size:13px;
+  color:#335347;
+  font-weight:750;
+}
+.employer-application-search-row{
+  display:flex;
+  flex-wrap:wrap;
+  align-items:stretch;
+  gap:10px;
+}
+.employer-application-search-row input{
+  min-width:0;
+  min-height:44px;
+  padding:9px 12px;
+  flex:1 1 220px;
+  font:inherit;
+  color:#0B2D26;
+  background:#fff;
+  border:1px solid #C6D7CD;
+  border-radius:10px;
+}
+.employer-application-search-row input:focus-visible{
+  outline:3px solid #A9E4BD;
+  outline-offset:2px;
+}
+.employer-application-search-row .btn{min-height:44px}
+.application-review-card .item-actions .btn{min-height:44px}
+#employer-application-results .application-review-card[hidden],
+#employer-application-search-empty[hidden]{display:none !important}
+body.comfortable-view .employer-application-search label{font-size:1rem}
+@media(max-width:430px){
+  .employer-application-search{padding:11px}
+  .employer-application-search-row{display:grid;grid-template-columns:minmax(0,1fr)}
+  .employer-application-search-row input{width:100%;flex:auto}
+  .employer-application-search-row .btn{width:100%}
+  .application-review-card .item-actions .btn{width:100%}
+}
