@@ -191,6 +191,11 @@ async function saveVacancyDraft(form, automatic = false) {
         method:'PUT', body:JSON.stringify({fields, expected_version:recovered.version})
       });
     }
+    // A replay can return a draft changed on another device; never mark
+    // this form as saved unless the server confirms the exact submitted fields.
+    if (!Object.entries(fields).every(([name, value]) => result.fields?.[name] === value)) {
+      throw new Error('Черновик уже изменён на другом устройстве. Откройте его заново перед сохранением.');
+    }
     form.dataset.draftId = result.id;
     form.dataset.draftVersion = result.version;
     delete form.dataset.draftCreateKey;
