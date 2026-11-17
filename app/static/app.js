@@ -119,6 +119,17 @@ function draftFields(form) {
   const names = ['title','city','salary_min','salary_max','schedule','employment','skills','responsibilities','requirements','conditions'];
   return Object.fromEntries(names.map(name => [name, formValue(form,name)]));
 }
+// One random request key per NEW form, kept only in memory/DOM. Never persist
+// draft text or the key in browser storage. Key survives network retries in this tab.
+function newDraftCreateKey() {
+  if (typeof window.crypto?.randomUUID === 'function') return window.crypto.randomUUID();
+  const bytes = new Uint8Array(16);
+  window.crypto.getRandomValues(bytes);
+  bytes[6] = (bytes[6] & 15) | 64;
+  bytes[8] = (bytes[8] & 63) | 128;
+  const hex = Array.from(bytes, byte => byte.toString(16).padStart(2, '0')).join('');
+  return `${hex.slice(0,8)}-${hex.slice(8,12)}-${hex.slice(12,16)}-${hex.slice(16,20)}-${hex.slice(20)}`;
+}
 // Only drafts explicitly saved on the server are automatically updated.
 // Values are never written to browser storage. Timers belong to a live form.
 const draftAutoTimers = new WeakMap();
@@ -159,12 +170,30 @@ async function saveVacancyDraft(form, automatic = false) {
   const fields = draftFields(form);
   const id = Number(form.dataset.draftId || 0);
   try {
-    const result = await api(id ? `/api/employer/vacancy-drafts/${id}` : '/api/employer/vacancy-drafts', {
-      method: id ? 'PUT' : 'POST',
-      body: JSON.stringify(id ? {fields, expected_version:Number(form.dataset.draftVersion)} : {fields})
-    });
+    // The first POST keeps the same unpredictable idempotency key until
+    // confirmed. If its reply is lost, repeating it cannot create a duplicate.
+    const requestKey = id ? null : (form.dataset.draftCreateKey || (form.dataset.draftCreateKey = newDraftCreateKey()));
+    let result;
+    try {
+      result = await api(id ? `/api/employer/vacancy-drafts/${id}` : '/api/employer/vacancy-drafts', {
+        method: id ? 'PUT' : 'POST',
+        body: JSON.stringify(id ? {fields, expected_version:Number(form.dataset.draftVersion)} : {fields, request_key:requestKey})
+      });
+    } catch (error) {
+      if (id || error?.httpStatus !== 409 || !requestKey) throw error;
+      // The user edited the form after the FIRST POST was saved but its
+      // response was lost. Recover the owned original; never create another.
+      const recovered = await api(`/api/employer/vacancy-drafts/by-request/${requestKey}`);
+      if (recovered.published_vacancy_id != null || recovered.version !== 1) {
+        throw new Error('Черновик уже изменился. Откройте его из «Мои вакансии», чтобы избежать перезаписи.');
+      }
+      result = await api(`/api/employer/vacancy-drafts/${recovered.id}`, {
+        method:'PUT', body:JSON.stringify({fields, expected_version:recovered.version})
+      });
+    }
     form.dataset.draftId = result.id;
     form.dataset.draftVersion = result.version;
+    delete form.dataset.draftCreateKey;
     if (button) button.textContent = 'Сохранить сейчас';
     state.activeDraft = result;
     draftAutoBlocked.delete(form);
@@ -186,7 +215,7 @@ async function saveVacancyDraft(form, automatic = false) {
       : e?.networkFailure
         ? (id
           ? 'Не удалось подтвердить сохранение из-за потери связи. Текст остался на экране. После восстановления сети нажмите «Сохранить сейчас».'
-          : 'Связь прервалась: первый черновик мог сохраниться. Проверьте «Мои вакансии» перед повторным нажатием.')
+          : 'Связь прервалась: первый черновик мог сохраниться. Повторите сохранение — дубликат не создастся. Текст остаётся на экране.')
         : 'Не удалось сохранить черновик: ' + e.message + '. Текст остался на экране; автосохранение остановлено.';
     draftAutoWarnings.set(form, warning);
     setEditorStatus(form, warning, true);
