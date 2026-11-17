@@ -3112,3 +3112,24 @@ body.comfortable-view .employer-application-search label{font-size:1rem}
   .employer-application-search-row .btn{width:100%}
   .application-review-card .item-actions .btn{width:100%}
 }
+
+/* Release 0.5.19: application triage in digestible, keyboard-accessible batches */
+.employer-application-more{
+  display:flex;
+  justify-content:center;
+  margin:14px 0 4px;
+}
+.employer-application-more .btn{
+  min-height:44px;
+  max-width:100%;
+  white-space:normal;
+  text-align:center;
+}
+.application-review-card:focus-visible,
+.employer-invitation-card:focus-visible{
+  outline:3px solid #8CC9A8;
+  outline-offset:3px;
+}
+@media(max-width:430px){
+  .employer-application-more .btn{width:100%}
+}
