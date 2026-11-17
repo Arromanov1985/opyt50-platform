@@ -182,6 +182,56 @@ def exercise_forms(page):
     jobs = page.request.get(URL + "/api/employer/vacancies").json()["jobs"]
     assert sum(job["title"] == title for job in jobs) == 1
 
+
+    # New employer feature: a partial draft remains private and survives a tab reload.
+    page.locator("[data-dashboard-tab-select]").select_option("create")
+    expect(page.locator("#vacancy-form")).to_be_visible()
+    draft_title = "Оператор склада — серверный черновик"
+    page.locator("#vacancy-title").fill(draft_title)
+    page.locator("#vacancy-city").fill("Тестоград")
+    page.locator("#vacancy-salary-min").fill("51500")
+    page.locator("#vacancy-salary-max").fill("75000")
+    page.locator("#vacancy-schedule").select_option("Сменный")
+    page.locator("[data-action='save-vacancy-draft']").click()
+    expect(page.locator("#vacancy-form .editor-save-status")).to_contain_text(
+        "Черновик сохранён"
+    )
+    drafts = page.request.get(URL + "/api/employer/vacancy-drafts").json()["drafts"]
+    assert len(drafts) == 1
+    draft_id = drafts[0]["id"]
+    assert drafts[0]["fields"]["salary_min"] == "51500"
+    assert draft_title not in [job["title"] for job in
+                               page.request.get(URL + "/api/jobs").json()["jobs"]]
+    page.locator("[data-dashboard-tab-select]").select_option("vacancies")
+    expect(page.locator("#dashboard-main")).to_contain_text(draft_title)
+    page.reload(wait_until="networkidle")
+    expect(page.locator("#dashboard")).to_be_visible()
+    page.locator("[data-dashboard-tab-select]").select_option("vacancies")
+    page.locator(
+        f"[data-action='resume-vacancy-draft'][data-id='{draft_id}']"
+    ).click()
+    expect(page.locator("#vacancy-form")).to_be_visible()
+    expect(page.locator("#vacancy-title")).to_have_value(draft_title)
+    expect(page.locator("#vacancy-salary-min")).to_have_value("51500")
+    expect(page.locator("#vacancy-salary-max")).to_have_value("75000")
+    expect(page.locator("#vacancy-schedule")).to_have_value("Сменный")
+    page.locator("#vacancy-responsibilities").fill("Приём и учёт товаров")
+    page.locator("#vacancy-requirements").fill("Навыки складского учёта")
+    page.locator("#vacancy-conditions").fill("График 2/2, обучение")
+    page.locator("#vacancy-show-preview").click()
+    expect(page.locator("#vacancy-publish")).to_be_enabled()
+    page.locator("#vacancy-publish").click()
+    expect(page.locator("#dashboard-main")).to_contain_text(draft_title)
+    retry = page.request.post(
+        URL + f"/api/employer/vacancy-drafts/{draft_id}/publish",
+        headers=HEADERS,
+    )
+    assert retry.status == 200, retry.text()
+    assert retry.json()["already_published"]
+    published_jobs = page.request.get(URL + "/api/employer/vacancies").json()["jobs"]
+    assert sum(job["title"] == draft_title for job in published_jobs) == 1
+    assert page.request.get(URL + "/api/employer/vacancy-drafts").json()["drafts"] == []
+
     assert not errors, errors
 
 
