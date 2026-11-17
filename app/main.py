@@ -2047,15 +2047,9 @@ def create_app(db_path: str | None = None) -> FastAPI:
         ).fetchone()
         total_count = int(counter["total_count"])
         unread_count = int(counter["unread_count"] or 0)
-        conditions = ["r.candidate_id=?"]
-        params: list[int] = [user["id"]]
-        if filter == "unread":
-            conditions.append("r.read_at IS NULL")
-        elif filter == "read":
-            conditions.append("r.read_at IS NOT NULL")
-        if before_id is not None:
-            conditions.append("u.id<?")
-            params.append(before_id)
+        # Keep the entire statement static. Even the filter condition and
+        # keyset cursor are bound values: no SQL fragments from request data.
+        cursor = before_id or 0
         rows = db.execute(
             """SELECT u.id,u.vacancy_id,u.created_at,u.changes_json,
                       v.title,v.status AS vacancy_status,e.company_name,
@@ -2069,9 +2063,12 @@ def create_app(db_path: str | None = None) -> FastAPI:
                JOIN vacancy_updates u ON u.id=r.update_id
                JOIN vacancies v ON v.id=u.vacancy_id
                JOIN employer_profiles e ON e.user_id=u.employer_id
-               WHERE """ + " AND ".join(conditions) +
-            """ ORDER BY u.id DESC LIMIT ?""",
-            tuple(params + [limit + 1]),
+               WHERE r.candidate_id=?
+                 AND (?='all' OR (?='unread' AND r.read_at IS NULL)
+                                 OR (?='read' AND r.read_at IS NOT NULL))
+                 AND (?=0 OR u.id<?)
+               ORDER BY u.id DESC LIMIT ?""",
+            (user["id"], filter, filter, filter, cursor, cursor, limit + 1),
         ).fetchall()
         has_more = len(rows) > limit
         page = rows[:limit]
