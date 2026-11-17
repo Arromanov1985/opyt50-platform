@@ -121,7 +121,8 @@ function draftFields(form) {
 }
 async function saveVacancyDraft(form) {
   const button = form.querySelector('[data-action="save-vacancy-draft"]');
-  if (button?.disabled) return;
+  if (button?.disabled || editorSubmitting.has(form)) return;
+  const submit = beginEditorSave(form);
   if (button) button.disabled = true;
   try {
     const fields = draftFields(form);
@@ -139,7 +140,10 @@ async function saveVacancyDraft(form) {
   } catch(e) {
     setEditorStatus(form, 'Черновик не сохранён: ' + e.message + '. Поля остались заполнены.', true);
     toast('Не удалось сохранить черновик: ' + e.message, true);
-  } finally { if (button?.isConnected) button.disabled = false; }
+  } finally {
+    endEditorSave(form, submit);
+    if (button?.isConnected) button.disabled = false;
+  }
 }
 const EDITOR_IDS = new Set(['profile-form', 'company-form', 'vacancy-form']);
 function editorFingerprint(form) {
