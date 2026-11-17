@@ -68,7 +68,8 @@ def register_draft_routes(app, active_user, get_connection, allowed, VacancyIn):
         allowed(user, "employer")
         rows = db.execute(
             """SELECT * FROM vacancy_drafts WHERE employer_id=?
-               AND published_vacancy_id IS NULL ORDER BY id DESC""",
+               AND published_vacancy_id IS NULL
+               ORDER BY updated_at DESC, id DESC""",
             (user["id"],),
         ).fetchall()
         return {"drafts": [output(row) for row in rows]}

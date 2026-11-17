@@ -119,6 +119,37 @@ function draftFields(form) {
   const names = ['title','city','salary_min','salary_max','schedule','employment','skills','responsibilities','requirements','conditions'];
   return Object.fromEntries(names.map(name => [name, formValue(form,name)]));
 }
+const DRAFT_REQUIRED_FIELDS = ['title','city','salary_min','salary_max','responsibilities','requirements','conditions'];
+function draftCompletion(draft) {
+  const fields = draft?.fields || {};
+  const filled = DRAFT_REQUIRED_FIELDS.filter(name => String(fields[name] ?? '').trim() !== '').length;
+  return {filled, total:DRAFT_REQUIRED_FIELDS.length};
+}
+function draftSavedAt(value) {
+  const raw = String(value || '').trim();
+  if (!raw) return 'время не указано';
+  // Database values are UTC; render them in the browser's local timezone.
+  const iso = raw.replace(' ', 'T');
+  // PostgreSQL may stringify the UTC offset as "+00" rather than "+00:00".
+  const normalized = iso.replace(/([+-][0-9]{2})$/, '$1:00');
+  const qualified = /(?:Z|[+-][0-9]{2}:?[0-9]{2})$/i.test(normalized) ? normalized : normalized + 'Z';
+  const date = new Date(qualified);
+  if (Number.isNaN(date.getTime())) return 'время не указано';
+  return new Intl.DateTimeFormat('ru-RU', {day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'}).format(date);
+}
+function employerDraftCard(draft) {
+  const {filled,total} = draftCompletion(draft);
+  const name = String(draft?.fields?.title || '').trim() || 'Без названия';
+  const city = String(draft?.fields?.city || '').trim();
+  return `<article class="item-card employer-draft-card">
+    <header class="employer-draft-card-head"><div><span class="card-eyebrow">НЕ ОПУБЛИКОВАНО</span><h4>${esc(name)}</h4>${city ? `<p class="muted">${esc(city)}</p>` : ''}</div></header>
+    <div class="employer-draft-progress"><span>Обязательные поля: <strong>${filled} из ${total}</strong></span>
+      <progress max="${total}" value="${filled}" aria-label="Заполнено обязательных полей"></progress></div>
+    <p class="muted employer-draft-updated">Последнее сохранение: ${esc(draftSavedAt(draft.updated_at))}</p>
+    <div class="item-actions"><button type="button" class="btn btn-primary btn-tiny" data-action="resume-vacancy-draft" data-id="${Number(draft.id)}">Продолжить заполнение</button>
+      <button type="button" class="btn btn-outline btn-tiny" data-action="delete-vacancy-draft" data-id="${Number(draft.id)}">Удалить</button></div>
+  </article>`;
+}
 // One random request key per NEW form, kept only in memory/DOM. Never persist
 // draft text or the key in browser storage. Key survives network retries in this tab.
 function newDraftCreateKey() {
@@ -1287,12 +1318,15 @@ async function renderEmployer() {
   const target = $('#dashboard-main');
   try {
     if (state.tab === 'overview') {
-      const [jobsResult, applicationsResult, invitationsResult, companyResult] = await Promise.all([
+      const [jobsResult, applicationsResult, invitationsResult, companyResult, draftsResult] = await Promise.all([
         api('/api/employer/vacancies'),
         api('/api/employer/applications'),
         api('/api/employer/invitations'),
-        api('/api/employer/company')
+        api('/api/employer/company'),
+        api('/api/employer/vacancy-drafts')
       ]);
+      const drafts = draftsResult.drafts || [];
+      const recentDraft = drafts[0];
       const jobs = jobsResult.jobs || [];
       const applications = applicationsResult.applications || [];
       const invitations = invitationsResult.invitations || [];
@@ -1330,12 +1364,23 @@ async function renderEmployer() {
         nextTitle = 'Запустите подбор по открытой вакансии';
         nextText = 'Посмотрите подходящие обезличенные профили и пригласите тех, кто подходит.';
         nextAction = '<button class="btn btn-primary" data-tab="vacancies">К вакансиям →</button>';
+      } else if (recentDraft) {
+        nextTitle = 'Продолжите черновик вакансии';
+        nextText = `Последняя незавершённая вакансия: ${String(recentDraft.fields?.title || '').trim() || 'без названия'}. Она пока не видна соискателям.`;
+        nextAction = `<button class="btn btn-primary" data-action="resume-vacancy-draft" data-id="${Number(recentDraft.id)}">Продолжить заполнение →</button>`;
       }
+      const showDraftReminder = drafts.length && nextTitle !== 'Продолжите черновик вакансии';
       target.innerHTML = `<div class="overview-stack">
         <section class="panel dashboard-overview-hero employer-overview-hero">
           <span class="section-kicker">ПРИОРИТЕТ СЕЙЧАС</span>
           <div class="overview-priority"><div><h3>${esc(nextTitle)}</h3><p class="muted">${esc(nextText)}</p></div>${nextAction}</div>
         </section>
+        ${showDraftReminder ? `<section class="panel employer-draft-reminder">
+          <div><span class="section-kicker">НЕЗАВЕРШЁННАЯ ВАКАНСИЯ</span><h3>Черновики: ${drafts.length}</h3>
+          <p class="muted">${esc(String(recentDraft.fields?.title || '').trim() || 'Без названия')} · Последнее сохранение: ${esc(draftSavedAt(recentDraft.updated_at))}</p>
+          <p class="muted">Они доступны только вашей компании и не опубликованы.</p></div>
+          <button type="button" class="btn btn-outline" data-action="resume-vacancy-draft" data-id="${Number(recentDraft.id)}">Продолжить последний</button>
+        </section>` : ''}
         <section class="panel employer-trust-overview">
           <div class="split-header"><div><span class="section-kicker">ДОВЕРИЕ К КОМПАНИИ</span><h3>${esc(companyResult.company?.company_name || 'Компания')}</h3></div><button class="btn btn-outline btn-tiny" data-tab="company">Настроить компанию →</button></div>
           ${companyTrustMarkup(companyTrust)}
@@ -1523,7 +1568,10 @@ async function loadEmployerVacancies() {
     nextAction = '<div class="employer-next employer-next-ok"><div><span>Воронка под контролем</span><strong>Продолжайте работу с вакансиями</strong><small>Статусы и следующие действия собраны в одном кабинете.</small></div></div>';
   }
   const draftsMarkup = drafts.length
-    ? `<section class="panel"><div class="split-header"><h3>Черновики (${drafts.length})</h3></div><p class="muted">Черновики не видны соискателям до публикации.</p><div class="dashboard-list">${drafts.map(d => `<article class="item-card"><h4>${esc(d.fields.title || 'Без названия')}</h4><p class="muted">Изменён: ${esc(d.updated_at || '')}</p><div class="item-actions"><button type="button" class="btn btn-primary btn-tiny" data-action="resume-vacancy-draft" data-id="${d.id}">Продолжить</button><button type="button" class="btn btn-outline btn-tiny" data-action="delete-vacancy-draft" data-id="${d.id}">Удалить</button></div></article>`).join('')}</div></section>`
+    ? `<section class="panel employer-draft-workspace"><div class="split-header"><div><span class="section-kicker">СОХРАНЁННЫЕ НА СЕРВЕРЕ</span><h3>Черновики (${drafts.length})</h3></div></div>
+        <p class="muted">Сначала самые недавно изменённые. Черновики видны только вам; соискатели увидят вакансию после публикации.</p>
+        <div class="dashboard-list">${drafts.map(employerDraftCard).join('')}</div>
+      </section>`
     : '';
   view.innerHTML = draftsMarkup + `<div class="panel">${nextAction}<div class="split-header"><div><h3>Мои вакансии</h3><p class="muted">После размещения получите список обезличенных профилей.</p></div><button class="btn btn-primary btn-tiny" data-action="new-job">+ Добавить</button></div><div class="stat-grid" aria-label="Статистика вакансий"><div class="stat-tile"><strong>${jobs.length}</strong><span>Всего вакансий</span></div><div class="stat-tile"><strong>${openCount}</strong><span>Открыты</span></div><div class="stat-tile"><strong>${closedCount}</strong><span>Закрыты</span></div></div><div class="stat-grid" aria-label="Воронка подбора"><div class="stat-tile"><strong>${applications.length}</strong><span>Отклики</span></div><div class="stat-tile"><strong>${invitationCount}</strong><span>Запросы на знакомство</span></div><div class="stat-tile"><strong>${introducedCount}</strong><span>Открытые контакты</span></div></div><div class="item-actions" role="group" aria-label="Фильтр вакансий"><button type="button" class="btn btn-tiny ${filter === 'all' ? 'btn-dark' : 'btn-outline'}" data-action="filter-employer-jobs" data-filter="all" aria-pressed="${filter === 'all'}">Все (${jobs.length})</button><button type="button" class="btn btn-tiny ${filter === 'open' ? 'btn-dark' : 'btn-outline'}" data-action="filter-employer-jobs" data-filter="open" aria-pressed="${filter === 'open'}">Открытые (${openCount})</button><button type="button" class="btn btn-tiny ${filter === 'closed' ? 'btn-dark' : 'btn-outline'}" data-action="filter-employer-jobs" data-filter="closed" aria-pressed="${filter === 'closed'}">Закрытые (${closedCount})</button></div><div class="dashboard-list">${visibleJobs.length ? visibleJobs.map(job => jobEmployerMarkup(job, applicationsByJob.get(Number(job.id)))).join('') : '<div class="empty-state">В выбранной категории вакансий нет.</div>'}</div></div><div id="employer-matches" class="hidden"></div>`;
   if (state.activeVacancy && jobs.some(j=>j.id===state.activeVacancy)) await loadMatches(state.activeVacancy);
@@ -2138,9 +2186,9 @@ async function handleDashboardClick(event) {
   btn.disabled = true;
   try {
     if (action === 'resume-vacancy-draft') {
-      const result = await api('/api/employer/vacancy-drafts');
-      const draft = (result.drafts || []).find(d => Number(d.id) === id);
-      if (!draft) throw new Error('Черновик больше не найден');
+      // Always read the latest server version, not a stale cached list entry.
+      const draft = await api(`/api/employer/vacancy-drafts/${id}`);
+      if (draft.published_vacancy_id != null) throw new Error('Вакансия уже опубликована');
       state.activeDraft = draft;
       state.tab = 'create';
       await showDashboard();

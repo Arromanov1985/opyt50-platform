@@ -255,8 +255,24 @@ def exercise_forms(page):
         URL + f"/api/employer/vacancy-drafts/{draft_id}"
     ).json()["fields"]["city"] == "Тестополис"
 
+    # New overview reminder: employer can resume the latest private draft
+    # without hunting for it in "My vacancies", including at 390 px.
+    expect(page.locator("#vacancy-form")).not_to_have_attribute("inert", "")
+    page.locator("[data-dashboard-tab-select]").select_option("overview")
+    reminder = page.locator(".employer-draft-reminder")
+    expect(reminder).to_be_visible()
+    expect(reminder).to_contain_text(draft_title)
+    expect(reminder).to_contain_text("Черновики: 1")
+    reminder.locator("[data-action='resume-vacancy-draft']").click()
+    expect(page.locator("#vacancy-form")).to_be_visible()
+    expect(page.locator("#vacancy-title")).to_have_value(draft_title)
+    expect(page.locator("#vacancy-salary-min")).to_have_value("52000")
     page.locator("[data-dashboard-tab-select]").select_option("vacancies")
     expect(page.locator("#dashboard-main")).to_contain_text(draft_title)
+    expect(page.locator(".employer-draft-progress")).to_contain_text("4 из 7")
+    expect(page.locator(".employer-draft-card")).to_contain_text("Последнее сохранение")
+    assert page.evaluate("() => draftSavedAt('2026-11-17 09:00:00+00') !== 'время не указано'")
+    assert page.evaluate("() => draftSavedAt('2026-11-17 09:00:00') !== 'время не указано'")
     page.reload(wait_until="networkidle")
     expect(page.locator("#dashboard")).to_be_visible()
     page.locator("[data-dashboard-tab-select]").select_option("vacancies")
