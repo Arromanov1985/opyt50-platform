@@ -178,6 +178,9 @@ def exercise_forms(page):
         }""")
     assert created.value.status == 201, created.value.text()
     assert len(sent) == 1, sent
+    # The API response can arrive before the async dashboard transition.
+    # Do not start another form while the prior one is still inert/saving.
+    expect(page.locator("#vacancy-form")).to_have_count(0)
     expect(page.locator("#dashboard-main")).to_contain_text(title)
     jobs = page.request.get(URL + "/api/employer/vacancies").json()["jobs"]
     assert sum(job["title"] == title for job in jobs) == 1
