@@ -2706,3 +2706,63 @@ body.comfortable-view .admin-mail-event-grid strong{font-size:1.4rem}
   padding:10px 12px;
 }
 body.comfortable-view .editor-save-status{font-size:1rem}
+
+/* Employer draft workspace: calm, scannable progress and accessible actions. */
+.employer-draft-reminder{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:18px;
+  border:1px solid #D9E8DE;
+}
+.employer-draft-reminder h3{margin:5px 0}
+.employer-draft-reminder p{margin:5px 0 0;line-height:1.5}
+.employer-draft-reminder>.btn{flex:0 0 auto}
+.employer-draft-workspace>.split-header{margin-bottom:12px}
+.employer-draft-workspace>.muted{margin-bottom:17px}
+.employer-draft-card{
+  display:grid;
+  grid-template-columns:minmax(0,1fr) auto;
+  column-gap:14px;
+  row-gap:9px;
+  align-items:center;
+  padding:17px 19px;
+}
+.employer-draft-card-head{grid-column:1}
+.employer-draft-card-head h4{overflow-wrap:anywhere}
+.employer-draft-card-head .muted{margin:5px 0 0}
+.employer-draft-progress{display:grid;gap:8px;grid-column:1}
+.employer-draft-progress span{color:#53685E;font-size:12px}
+.employer-draft-progress strong{color:#0B2D26}
+.employer-draft-progress progress{
+  display:block;
+  width:100%;
+  height:9px;
+  border:0;
+  border-radius:9px;
+  overflow:hidden;
+  accent-color:#168346;
+  background:#E4EFE8;
+}
+.employer-draft-progress progress::-webkit-progress-bar{background:#E4EFE8;border-radius:9px}
+.employer-draft-progress progress::-webkit-progress-value{background:#168346;border-radius:9px}
+.employer-draft-progress progress::-moz-progress-bar{background:#168346;border-radius:9px}
+.employer-draft-updated{grid-column:1;margin:0;font-size:11px}
+.employer-draft-card>.item-actions{
+  grid-column:2;
+  grid-row:1/4;
+  display:flex;
+  flex-direction:column;
+  align-items:stretch;
+  min-width:160px;
+}
+.employer-draft-card>.item-actions>.btn{min-height:44px}
+@media(max-width:700px){
+  .employer-draft-reminder{align-items:stretch;flex-direction:column}
+  .employer-draft-reminder>.btn{width:100%}
+  .employer-draft-card{grid-template-columns:minmax(0,1fr);gap:10px;padding:15px}
+  .employer-draft-card-head,.employer-draft-progress,.employer-draft-updated,
+  .employer-draft-card>.item-actions{grid-column:1;grid-row:auto}
+  .employer-draft-card>.item-actions{display:grid;grid-template-columns:1fr 1fr;min-width:0}
+  .employer-draft-card>.item-actions>.btn{width:100%;white-space:normal}
+}
