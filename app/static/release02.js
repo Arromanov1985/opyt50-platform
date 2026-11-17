@@ -632,7 +632,11 @@
     document.addEventListener('change', event => {
       if (event.target?.id !== 'employer-applications-vacancy') return;
       state.employerApplicationsVacancyFilter = event.target.value;
-      if (state.user?.role === 'employer' && state.tab === 'applications') renderEmployer().catch(error => toast(error.message,true));
+      if (state.user?.role === 'employer' && state.tab === 'applications') {
+        renderEmployer().then(() => {
+          document.querySelector('#employer-applications-vacancy')?.focus({preventScroll:true});
+        }).catch(error => toast(error.message,true));
+      }
     });
 
     async function showJobDetails(id) {
@@ -798,6 +802,7 @@
           if(!Object.hasOwn(employerApplicationFilterLabels,btn.dataset.filter))return;
           state.employerApplicationsStatusFilter=btn.dataset.filter;
           await renderEmployer();
+          document.querySelector('[data-v02-action="employer-application-filter"][data-filter="' + state.employerApplicationsStatusFilter + '"]')?.focus({preventScroll:true});
         }
         else if(type==='reset-application-filters'){
           state.employerApplicationsVacancyFilter='all';
