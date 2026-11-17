@@ -2,7 +2,7 @@
 'use strict';
 const $ = (selector, root = document) => root.querySelector(selector);
 const $$ = (selector, root = document) => [...root.querySelectorAll(selector)];
-const state = { user: null, mode: 'register', role: 'candidate', tab: 'overview', activeVacancy: null, editVacancy: null, activeDraft: null, employerVacancyFilter: 'all', employerApplicationsVacancyFilter: 'all', employerApplicationsStatusFilter: 'all', employerInvitationsFilter: 'all', employerInvitationsVacancyFilter: 'all', employerInvitationsQuery: '', employerInvitationsData: null, candidateInvitationsFilter: 'all', candidateInvitationsQuery: '', candidateInvitationsData: null, pendingApplicationVacancyId: null, mfaChallenge: null, mfaMethod: null, mfaCodeLength: 8, mfaPublicKey: null, mfaTotpFallback: false, actionSummary: null };
+const state = { user: null, mode: 'register', role: 'candidate', tab: 'overview', activeVacancy: null, editVacancy: null, activeDraft: null, employerVacancyFilter: 'all', employerVacancySearch: '', employerApplicationsVacancyFilter: 'all', employerApplicationsStatusFilter: 'all', employerInvitationsFilter: 'all', employerInvitationsVacancyFilter: 'all', employerInvitationsQuery: '', employerInvitationsData: null, candidateInvitationsFilter: 'all', candidateInvitationsQuery: '', candidateInvitationsData: null, pendingApplicationVacancyId: null, mfaChallenge: null, mfaMethod: null, mfaCodeLength: 8, mfaPublicKey: null, mfaTotpFallback: false, actionSummary: null };
 const esc = value => String(value ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const money = value => Number(value || 0).toLocaleString('ru-RU') + ' ₽';
 const formatPay = job => job.salary_min === job.salary_max ? money(job.salary_min) : `${money(job.salary_min)} — ${money(job.salary_max)}`;
@@ -1872,6 +1872,29 @@ async function loadEmployerVacancyEdit() {
   const form = $('#dashboard-main #vacancy-form');
   if (form) publishedVacancyBaselines.set(form, publishedJobSnapshot(job));
 }
+function employerVacancyPriority(job, stats = {}) {
+  if (Number(stats.outcome || 0) > 0) return 0;
+  if (job.status === 'open' && Number(stats.ready || 0) > 0) return 1;
+  if (job.status === 'open' && Number(stats.attention || 0) > 0) return 2;
+  if (job.status === 'open' && Number(stats.waiting || 0) > 0) return 3;
+  return job.status === 'open' ? 4 : 5;
+}
+function applyEmployerVacancySearch() {
+  const list = $('#employer-vacancy-results');
+  if (!list) return;
+  const query = String(state.employerVacancySearch || '').trim().toLocaleLowerCase('ru-RU');
+  const cards = $('.employer-vacancy-card', list);
+  let count = 0;
+  for (const card of cards) {
+    const haystack = String(card.dataset.vacancySearch || '').toLocaleLowerCase('ru-RU');
+    card.hidden = Boolean(query && !haystack.includes(query));
+    if (!card.hidden) count += 1;
+  }
+  const summary = $('#employer-vacancy-count');
+  if (summary) summary.textContent = 'Показываем ' + count + ' из ' + cards.length + ' вакансий.';
+  const empty = $('#employer-vacancy-empty');
+  if (empty) empty.hidden = count !== 0;
+}
 async function loadEmployerVacancies() {
   const [jobsResult, applicationsResult, invitationsResult, draftsResult] = await Promise.all([
     api('/api/employer/vacancies'),
@@ -1905,8 +1928,16 @@ async function loadEmployerVacancies() {
   const view = $('#dashboard-main');
   const openCount = jobs.filter(job => job.status === 'open').length;
   const closedCount = jobs.length - openCount;
-  const filter = ['all', 'open', 'closed'].includes(state.employerVacancyFilter) ? state.employerVacancyFilter : 'all';
-  const visibleJobs = filter === 'all' ? jobs : jobs.filter(job => job.status === filter);
+  const filter = ['all', 'open', 'closed', 'attention'].includes(state.employerVacancyFilter) ? state.employerVacancyFilter : 'all';
+  const attentionCount = jobs.filter(job => employerVacancyPriority(job, applicationsByJob.get(Number(job.id))) <= 2).length;
+  const filteredJobs = jobs.filter(job => filter === 'all' ||
+    (filter === 'attention'
+      ? employerVacancyPriority(job, applicationsByJob.get(Number(job.id))) <= 2
+      : job.status === filter));
+  const visibleJobs = filteredJobs.map((job,index)=>({job,index})).sort((a,b)=>
+    employerVacancyPriority(a.job, applicationsByJob.get(Number(a.job.id))) -
+    employerVacancyPriority(b.job, applicationsByJob.get(Number(b.job.id))) ||
+    a.index - b.index).map(entry=>entry.job);
   const invitationCount = invitations.length;
   const introducedCount = invitations.filter(item => item.contact_shared).length;
   const activeOpenedContacts = invitations.filter(item => item.application_id && item.contact_shared && !['hired','rejected'].includes(item.application_status));
@@ -1935,7 +1966,20 @@ async function loadEmployerVacancies() {
         <div class="dashboard-list">${drafts.map(employerDraftCard).join('')}</div>
       </section>`
     : '';
-  view.innerHTML = draftsMarkup + `<div class="panel">${nextAction}<div class="split-header"><div><h3>Мои вакансии</h3><p class="muted">После размещения получите список обезличенных профилей.</p></div><button class="btn btn-primary btn-tiny" data-action="new-job">+ Добавить</button></div><div class="stat-grid" aria-label="Статистика вакансий"><div class="stat-tile"><strong>${jobs.length}</strong><span>Всего вакансий</span></div><div class="stat-tile"><strong>${openCount}</strong><span>Открыты</span></div><div class="stat-tile"><strong>${closedCount}</strong><span>Закрыты</span></div></div><div class="stat-grid" aria-label="Воронка подбора"><div class="stat-tile"><strong>${applications.length}</strong><span>Отклики</span></div><div class="stat-tile"><strong>${invitationCount}</strong><span>Запросы на знакомство</span></div><div class="stat-tile"><strong>${introducedCount}</strong><span>Открытые контакты</span></div></div><div class="item-actions" role="group" aria-label="Фильтр вакансий"><button type="button" class="btn btn-tiny ${filter === 'all' ? 'btn-dark' : 'btn-outline'}" data-action="filter-employer-jobs" data-filter="all" aria-pressed="${filter === 'all'}">Все (${jobs.length})</button><button type="button" class="btn btn-tiny ${filter === 'open' ? 'btn-dark' : 'btn-outline'}" data-action="filter-employer-jobs" data-filter="open" aria-pressed="${filter === 'open'}">Открытые (${openCount})</button><button type="button" class="btn btn-tiny ${filter === 'closed' ? 'btn-dark' : 'btn-outline'}" data-action="filter-employer-jobs" data-filter="closed" aria-pressed="${filter === 'closed'}">Закрытые (${closedCount})</button></div><div class="dashboard-list">${visibleJobs.length ? visibleJobs.map(job => jobEmployerMarkup(job, applicationsByJob.get(Number(job.id)))).join('') : '<div class="empty-state">В выбранной категории вакансий нет.</div>'}</div></div><div id="employer-matches" class="hidden"></div>`;
+  view.innerHTML = draftsMarkup + `<div class="panel">${nextAction}<div class="split-header"><div><h3>Мои вакансии</h3><p class="muted">После размещения получите список обезличенных профилей.</p></div><button class="btn btn-primary btn-tiny" data-action="new-job">+ Добавить</button></div><div class="stat-grid" aria-label="Статистика вакансий"><div class="stat-tile"><strong>${jobs.length}</strong><span>Всего вакансий</span></div><div class="stat-tile"><strong>${openCount}</strong><span>Открыты</span></div><div class="stat-tile"><strong>${closedCount}</strong><span>Закрыты</span></div></div><div class="stat-grid" aria-label="Воронка подбора"><div class="stat-tile"><strong>${applications.length}</strong><span>Отклики</span></div><div class="stat-tile"><strong>${invitationCount}</strong><span>Запросы на знакомство</span></div><div class="stat-tile"><strong>${introducedCount}</strong><span>Открытые контакты</span></div></div><div class="item-actions" role="group" aria-label="Фильтр вакансий"><button type="button" class="btn btn-tiny ${filter === 'all' ? 'btn-dark' : 'btn-outline'}" data-action="filter-employer-jobs" data-filter="all" aria-pressed="${filter === 'all'}">Все (${jobs.length})</button><button type="button" class="btn btn-tiny ${filter === 'open' ? 'btn-dark' : 'btn-outline'}" data-action="filter-employer-jobs" data-filter="open" aria-pressed="${filter === 'open'}">Открытые (${openCount})</button><button type="button" class="btn btn-tiny ${filter === 'closed' ? 'btn-dark' : 'btn-outline'}" data-action="filter-employer-jobs" data-filter="closed" aria-pressed="${filter === 'closed'}">Закрытые (${closedCount})</button><button type="button" class="btn btn-tiny ${filter === 'attention' ? 'btn-dark' : 'btn-outline'}" data-action="filter-employer-jobs" data-filter="attention" aria-pressed="${filter === 'attention'}">Требуют внимания (${attentionCount})</button></div><div class="employer-vacancy-find">
+    <label for="employer-vacancy-search">Поиск по названию и городу</label>
+    <div class="employer-vacancy-find-row">
+      <input id="employer-vacancy-search" type="search" data-employer-vacancy-search
+        autocomplete="off" value="${esc(state.employerVacancySearch)}"
+        placeholder="Например, кладовщик или Подольск">
+      <button type="button" class="btn btn-outline btn-tiny" data-action="clear-employer-job-search">Сбросить поиск</button>
+    </div>
+    <p class="muted employer-vacancy-result-count" id="employer-vacancy-count" role="status" aria-live="polite"></p>
+  </div>
+  <div class="dashboard-list" id="employer-vacancy-results">${visibleJobs.map(job =>
+    jobEmployerMarkup(job, applicationsByJob.get(Number(job.id)))).join('')}</div>
+  <div class="empty-state" id="employer-vacancy-empty" hidden>Вакансий по выбранным условиям не найдено. Измените поиск или фильтр.</div></div><div id="employer-matches" class="hidden"></div>`;
+  applyEmployerVacancySearch();
   if (state.activeVacancy && jobs.some(j=>j.id===state.activeVacancy)) await loadMatches(state.activeVacancy);
 }
 function vacancyQuality(job = {}) {
@@ -1962,7 +2006,7 @@ function jobEmployerMarkup(x, stats = {total: 0, interested: 0, attention: 0, re
   const nextLabel = needsOutcome ? 'Нужно зафиксировать итог' : hasReadyIntroduction ? 'Есть согласие кандидата' : needsAttention ? 'Есть отклики для разбора' : stats.waiting > 0 ? 'Ждём решения кандидата' : (x.status === 'open' ? 'Ищем кандидатов' : 'Вакансия закрыта');
   const quality = vacancyQuality(x);
   const qualityClass = quality.percent >= 88 ? 'high' : quality.percent >= 63 ? 'medium' : 'low';
-  return `<article class="item-card employer-vacancy-card ${(needsAttention || hasReadyIntroduction || needsOutcome) ? 'needs-attention' : ''}" data-employer-vacancy-id="${Number(x.id)}">
+  return `<article class="item-card employer-vacancy-card ${(needsAttention || hasReadyIntroduction || needsOutcome) ? 'needs-attention' : ''}" data-employer-vacancy-id="${Number(x.id)}" data-vacancy-search="${esc(x.title + ' ' + x.city)}">
     <header><div><span class="card-eyebrow">${esc(nextLabel)}</span><h4>${esc(x.title)}</h4><p>${esc(x.city)} · ${formatPay(x)} · ${esc(x.schedule)}</p><div class="vacancy-moderation-state ${esc(x.moderation_status||'approved')}"><strong>${x.moderation_status==='pending'?'На проверке':x.moderation_status==='rejected'?'Отклонена модератором':'Опубликована'}</strong>${x.moderation_reason?`<small>${esc(x.moderation_reason)}</small>`:''}</div></div><span class="mini-badge ${x.status === 'open' ? '' : 'gray'}">${x.status === 'open' ? 'Открыта' : 'Закрыта'}</span></header>
     <div class="vacancy-pipeline-mini"><span><strong>${stats.total}</strong><small>Отклики</small></span><span><strong>${stats.outcome}</strong><small>Ждут итога</small></span><span><strong>${stats.hired}</strong><small>Выбраны</small></span><span><strong>${stats.rejected}</strong><small>Не договорились</small></span></div>
     <div class="vacancy-quality ${qualityClass}"><div class="vacancy-quality-head"><span>Качество объявления</span><strong>${quality.percent}%</strong></div><div class="vacancy-quality-track"><span style="width:${quality.percent}%"></span></div>${quality.suggestions.length?`<p>${esc(quality.suggestions.slice(0,2).join(' · '))}</p>`:'<p>Основные условия заполнены хорошо.</p>'}</div>
@@ -2530,6 +2574,12 @@ async function handleDashboardSubmit(event) {
 let employerInvitationSearchTimer = null;
 let candidateInvitationSearchTimer = null;
 function handleDashboardInput(event) {
+  const vacancySearch = event.target.closest('[data-employer-vacancy-search]');
+  if (vacancySearch && state.user?.role === 'employer' && state.tab === 'vacancies') {
+    state.employerVacancySearch = vacancySearch.value;
+    applyEmployerVacancySearch();
+    return;
+  }
   editorChanged(editorForControl(event.target));
   const employerSearch = event.target.closest('[data-employer-introduction-search]');
   if (employerSearch) {
@@ -2787,10 +2837,18 @@ async function handleDashboardClick(event) {
       return;
     }
     if (action === 'filter-employer-jobs') {
-      if (!['all', 'open', 'closed'].includes(btn.dataset.filter)) return;
+      if (!['all', 'open', 'closed', 'attention'].includes(btn.dataset.filter)) return;
       state.employerVacancyFilter = btn.dataset.filter;
       state.activeVacancy = null;
       await loadEmployerVacancies();
+      $('#dashboard-main [data-action="filter-employer-jobs"][data-filter="' + state.employerVacancyFilter + '"]')?.focus({preventScroll:true});
+      return;
+    }
+    if (action === 'clear-employer-job-search') {
+      state.employerVacancySearch = '';
+      const input = $('#employer-vacancy-search');
+      if (input) { input.value = ''; input.focus({preventScroll:true}); }
+      applyEmployerVacancySearch();
       return;
     }
     if (action === 'vacancy-applications' || action === 'vacancy-applications-primary') {
