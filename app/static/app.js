@@ -130,7 +130,9 @@ function draftSavedAt(value) {
   if (!raw) return 'время не указано';
   // Database values are UTC; render them in the browser's local timezone.
   const iso = raw.replace(' ', 'T');
-  const qualified = /(?:Z|[+-][0-9]{2}:?[0-9]{2})$/i.test(iso) ? iso : iso + 'Z';
+  // PostgreSQL may stringify the UTC offset as "+00" rather than "+00:00".
+  const normalized = iso.replace(/([+-][0-9]{2})$/, '$1:00');
+  const qualified = /(?:Z|[+-][0-9]{2}:?[0-9]{2})$/i.test(normalized) ? normalized : normalized + 'Z';
   const date = new Date(qualified);
   if (Number.isNaN(date.getTime())) return 'время не указано';
   return new Intl.DateTimeFormat('ru-RU', {day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'}).format(date);
