@@ -1883,7 +1883,7 @@ function applyEmployerVacancySearch() {
   const list = $('#employer-vacancy-results');
   if (!list) return;
   const query = String(state.employerVacancySearch || '').trim().toLocaleLowerCase('ru-RU');
-  const cards = $('.employer-vacancy-card', list);
+  const cards = Array.from(list.querySelectorAll('.employer-vacancy-card'));
   let count = 0;
   for (const card of cards) {
     const haystack = String(card.dataset.vacancySearch || '').toLocaleLowerCase('ru-RU');
