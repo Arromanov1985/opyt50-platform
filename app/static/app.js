@@ -57,6 +57,7 @@ function interactionStageMarkup(x, kind='application') {
   const awaiting = x.introduction_stage === 'awaiting_consent' || x.invitation_status === 'sent' || x.status === 'interview';
   const finalOutcome =
     ['hired','rejected','withdrawn'].includes(x.application_status) ||
+    ['hired','rejected'].includes(x.direct_outcome) ||
     ['hired','rejected','withdrawn'].includes(x.status) ||
     (kind === 'invitation' && x.status === 'declined');
   const reviewing = ['reviewing','interview'].includes(x.status) || awaiting || consented || introduced;
@@ -66,7 +67,7 @@ function interactionStageMarkup(x, kind='application') {
     ['Согласие', consented || introduced],
     ['Контакт', introduced]
   ];
-  if (x.application_id || x.status === 'declined') invitationSteps.push(['Итог', finalOutcome]);
+  if (x.application_id || x.status === 'declined' || x.direct_outcome) invitationSteps.push(['Итог', finalOutcome]);
   const steps = kind === 'invitation'
     ? invitationSteps
     : [
@@ -1427,7 +1428,7 @@ async function renderCandidate() {
       const pendingInvitations = pendingInvitationsList.length;
       const waitingEmployerInvitations = invitations.filter(item => item.status === 'accepted' && !item.contact_shared);
       const completedIntroductions = invitations
-        .filter(item => ['hired','rejected'].includes(item.application_status))
+        .filter(item => ['hired','rejected'].includes(item.application_status) || ['hired','rejected'].includes(item.direct_outcome))
         .sort((a,b) => invitationLastActivity(b) - invitationLastActivity(a));
       const latestCompletedIntroduction = completedIntroductions.find(item =>
         Date.now() - invitationLastActivity(item) <= 14 * 24 * 60 * 60 * 1000
@@ -1488,7 +1489,7 @@ async function renderCandidate() {
           </div>
         </section>
         ${unreadChanges ? `<section class="overview-alert" role="status"><div><strong>Изменились условия вакансий</strong><span>Непрочитанных изменений: ${unreadChanges}</span></div><button class="btn btn-outline btn-tiny" data-tab="changes">Проверить изменения</button></section>` : ''}
-        ${latestCompletedIntroduction ? `<section class="overview-alert candidate-outcome-alert ${latestCompletedIntroduction.application_status==='hired'?'is-positive':'is-neutral'}" role="status"><div><strong>${latestCompletedIntroduction.application_status==='hired'?'Положительный итог знакомства':'Знакомство завершено'}</strong><span>${latestCompletedIntroduction.application_status==='hired'?'Компания хочет продолжить общение. Это не подтверждение трудоустройства.':'По итогам знакомства договориться не удалось.'}</span></div><button class="btn btn-outline btn-tiny" data-action="open-candidate-invitations" data-filter="closed">Посмотреть итог</button></section>` : ''}
+        ${latestCompletedIntroduction ? `<section class="overview-alert candidate-outcome-alert ${(latestCompletedIntroduction.application_status || latestCompletedIntroduction.direct_outcome)==='hired'?'is-positive':'is-neutral'}" role="status"><div><strong>${latestCompletedIntroduction.application_status==='hired'?'Положительный итог знакомства':'Знакомство завершено'}</strong><span>${latestCompletedIntroduction.application_status==='hired'?'Компания хочет продолжить общение. Это не подтверждение трудоустройства.':'По итогам знакомства договориться не удалось.'}</span></div><button class="btn btn-outline btn-tiny" data-action="open-candidate-invitations" data-filter="closed">Посмотреть итог</button></section>` : ''}
         <section class="overview-stat-grid" aria-label="Сводка соискателя">
           <button type="button" class="overview-stat-card" data-tab="offers"><strong>${jobs.length}</strong><span>Подходящие вакансии</span><small>По вашему профилю</small></button>
           <button type="button" class="overview-stat-card" data-tab="applications"><strong>${activeApplications}</strong><span>Активные отклики</span><small>В процессе</small></button>
@@ -1617,7 +1618,7 @@ const candidateInvitationFilterLabels = {
   closed:'Завершённые'
 };
 function candidateInvitationBucket(x) {
-  if (['hired','rejected'].includes(x.application_status)) return 'closed';
+  if (['hired','rejected'].includes(x.application_status) || ['hired','rejected'].includes(x.direct_outcome)) return 'closed';
   if (x.contact_shared) return 'introduced';
   if (x.status === 'sent') return 'decision';
   if (x.status === 'accepted') return 'waiting';
@@ -1628,8 +1629,8 @@ function candidateInvitationStageLabel(x) {
   if (bucket === 'decision') return 'Требует ответа';
   if (bucket === 'waiting') return 'Согласие отправлено';
   if (bucket === 'introduced') return 'Знакомство состоялось';
-  if (x.application_status === 'hired') return 'Положительный итог';
-  if (x.application_status === 'rejected') return 'Не договорились';
+  if (x.application_status === 'hired' || x.direct_outcome === 'hired') return 'Положительный итог';
+  if (x.application_status === 'rejected' || x.direct_outcome === 'rejected') return 'Не договорились';
   if (x.status === 'declined') return 'Вы отказались';
   return workflowStatus(x,statusTitle[x.status] || x.status);
 }
@@ -1642,9 +1643,9 @@ function invitationCandidateMarkup(x) {
     action = '<div class="candidate-introduction-note is-waiting"><strong>Согласие отправлено</strong><span>Теперь ждём работодателя. Повторно подтверждать знакомство или передавать контакты не нужно.</span></div>';
   } else if (bucket === 'introduced') {
     action = '<div class="info-box contact-opened-note"><strong>✓ Знакомство состоялось</strong><span>Работодатель получил ваши контакты после вашего согласия и теперь может связаться с вами напрямую. На СТАЖНО дополнительных действий не требуется.</span></div>';
-  } else if (x.application_status === 'hired') {
+  } else if (x.application_status === 'hired' || x.direct_outcome === 'hired') {
     action = '<div class="candidate-introduction-note is-complete"><strong>Положительный итог знакомства</strong><span>Компания хочет продолжить общение. Это не подтверждение трудоустройства. Условия работы обсудите напрямую с компанией.</span></div>';
-  } else if (x.application_status === 'rejected') {
+  } else if (x.application_status === 'rejected' || x.direct_outcome === 'rejected') {
     action = '<div class="candidate-introduction-note is-closed"><strong>По итогам знакомства не договорились</strong><span>Это знакомство завершено. Дополнительных действий на СТАЖНО не требуется.</span></div>';
   } else if (x.status === 'declined') {
     action = '<div class="candidate-introduction-note is-closed"><strong>Вы отказались от знакомства</strong><span>Контакты этой компании не переданы. Дополнительных действий нет.</span></div>';
@@ -1747,8 +1748,8 @@ async function renderEmployer() {
       );
       const consentedInvitations = invitations.filter(item => item.status === 'accepted' || item.contact_shared).length;
       const openedContacts = invitations.filter(item => item.contact_shared).length;
-      const hiredIntroductions = invitations.filter(item => item.application_status === 'hired').length;
-      const rejectedIntroductions = invitations.filter(item => item.application_status === 'rejected').length;
+      const hiredIntroductions = invitations.filter(item => item.application_status === 'hired' || item.direct_outcome === 'hired').length;
+      const rejectedIntroductions = invitations.filter(item => item.application_status === 'rejected' || item.direct_outcome === 'rejected').length;
       const completedIntroductions = hiredIntroductions + rejectedIntroductions;
       const hireConversion = completedIntroductions ? Math.round(hiredIntroductions / completedIntroductions * 100) : 0;
       let nextTitle = 'Создайте первую вакансию';
@@ -1967,8 +1968,8 @@ async function loadEmployerVacancies() {
     const stats = applicationsByJob.get(id);
     if (invitation.status === 'accepted' && !invitation.contact_shared) stats.ready += 1;
     if (invitation.status === 'sent' && !invitation.contact_shared) stats.waiting += 1;
-    if (invitation.application_id && invitation.contact_shared && invitation.application_status === 'hired') stats.hired += 1;
-    else if (invitation.application_id && invitation.contact_shared && invitation.application_status === 'rejected') stats.rejected += 1;
+    if (invitation.contact_shared && (invitation.application_status === 'hired' || invitation.direct_outcome === 'hired')) stats.hired += 1;
+    else if (invitation.contact_shared && (invitation.application_status === 'rejected' || invitation.direct_outcome === 'rejected')) stats.rejected += 1;
     else if (invitation.application_id && invitation.contact_shared) stats.outcome += 1;
   }
   const view = $('#dashboard-main');
@@ -2186,7 +2187,7 @@ const employerInvitationFilterLabels = {
   closed:'Завершённые'
 };
 function employerInvitationBucket(x) {
-  if (['hired','rejected'].includes(x.application_status)) return 'closed';
+  if (['hired','rejected'].includes(x.application_status) || ['hired','rejected'].includes(x.direct_outcome)) return 'closed';
   if (x.contact_shared || x.contact) return 'introduced';
   if (x.status === 'accepted') return 'action';
   if (x.status === 'sent') return 'waiting';
@@ -2195,8 +2196,8 @@ function employerInvitationBucket(x) {
 function employerInvitationStageLabel(x) {
   const bucket = employerInvitationBucket(x);
   if (bucket === 'introduced') return 'Знакомство состоялось';
-  if (x.application_status === 'hired') return 'Положительный итог';
-  if (x.application_status === 'rejected') return 'Не договорились';
+  if (x.application_status === 'hired' || x.direct_outcome === 'hired') return 'Положительный итог';
+  if (x.application_status === 'rejected' || x.direct_outcome === 'rejected') return 'Не договорились';
   if (bucket === 'action') return 'Есть согласие';
   if (bucket === 'waiting') return 'Ждём решения кандидата';
   if (x.status === 'declined') return 'Кандидат отказался';
@@ -2269,9 +2270,10 @@ async function loadEmployerInvitations(force=false) {
   const counts = {action:0,waiting:0,introduced:0,closed:0};
   searchScoped.forEach(item => { counts[employerInvitationBucket(item)] += 1; });
   const completedResults = {
-    hired: searchScoped.filter(item => item.application_status === 'hired').length,
-    rejected: searchScoped.filter(item => item.application_status === 'rejected').length,
-    other: searchScoped.filter(item => employerInvitationBucket(item) === 'closed' && !['hired','rejected'].includes(item.application_status)).length
+    hired: searchScoped.filter(item => item.application_status === 'hired' || item.direct_outcome === 'hired').length,
+    rejected: searchScoped.filter(item => item.application_status === 'rejected' || item.direct_outcome === 'rejected').length,
+    other: searchScoped.filter(item => employerInvitationBucket(item) === 'closed' &&
+      !['hired','rejected'].includes(item.application_status) && !['hired','rejected'].includes(item.direct_outcome)).length
   };
   const ordered = [...searchScoped].sort((a,b) => {
     const priority = {introduced:0,action:1,waiting:2,closed:3};
@@ -2336,9 +2338,9 @@ function invitationEmployerMarkup(x) {
       <div class="contact-card-details">${email ? `<a href="mailto:${encodeURIComponent(email)}">${esc(email)}</a>` : '<span>Email не указан</span>'}<b>·</b><span>${esc(phone || 'Телефон не указан')}</span></div>
       <div class="contact-card-next"><strong>Следующий шаг — свяжитесь с кандидатом</strong><span>Согласие уже получено. После разговора зафиксируйте итог знакомства. Положительный итог на СТАЖНО не означает оформленного трудоустройства.</span></div>
       ${contactActions ? `<div class="contact-card-actions">${contactActions}</div>` : ''}
-      ${x.application_id ? `<div class="contact-card-actions introduction-outcome-actions"><button class="btn btn-primary btn-tiny" data-action="introduction-outcome" data-id="${Number(x.application_id)}" data-status="hired">Положительный итог</button><button class="btn btn-outline btn-tiny" data-action="introduction-outcome" data-id="${Number(x.application_id)}" data-status="rejected">Не договорились</button></div>` : '<div class="interaction-note is-waiting"><strong>Прямое приглашение</strong><span>Это знакомство началось без отклика кандидата, поэтому итог отклика здесь не фиксируется. Контакт и история знакомства остаются доступны.</span></div>'}
+      ${x.application_id ? `<div class="contact-card-actions introduction-outcome-actions"><button class="btn btn-primary btn-tiny" data-action="introduction-outcome" data-id="${Number(x.application_id)}" data-status="hired">Положительный итог</button><button class="btn btn-outline btn-tiny" data-action="introduction-outcome" data-id="${Number(x.application_id)}" data-status="rejected">Не договорились</button></div>` : `<div class="contact-card-actions introduction-outcome-actions"><button type="button" class="btn btn-primary btn-tiny" data-action="direct-introduction-outcome" data-id="${Number(x.id)}" data-status="hired">Положительный итог</button><button type="button" class="btn btn-outline btn-tiny" data-action="direct-introduction-outcome" data-id="${Number(x.id)}" data-status="rejected">Не договорились</button></div>`}
     </div>`;
-  } else if (bucket === 'closed' && x.contact && ['hired','rejected'].includes(x.application_status)) {
+  } else if (bucket === 'closed' && x.contact && (['hired','rejected'].includes(x.application_status) || ['hired','rejected'].includes(x.direct_outcome))) {
     const email = String(x.contact.email || '').trim();
     const phone = String(x.contact.phone || '').trim();
     const phoneHref = phone.replace(/[^+\d]/g,'');
@@ -2346,7 +2348,7 @@ function invitationEmployerMarkup(x) {
       email ? `<a class="btn btn-primary btn-tiny" href="mailto:${encodeURIComponent(email)}">Написать кандидату →</a>` : '',
       phoneHref ? `<a class="btn btn-outline btn-tiny" href="tel:${esc(phoneHref)}">Позвонить</a>` : ''
     ].filter(Boolean).join('');
-    const outcomeNote = x.application_status === 'hired'
+    const outcomeNote = (x.application_status || x.direct_outcome) === 'hired'
       ? '<div class="interaction-note is-complete"><strong>Положительный итог</strong><span>Работодатель отметил интерес к продолжению общения. Это не подтверждение трудоустройства.</span></div>'
       : '<div class="interaction-note is-closed"><strong>Не договорились</strong><span>Знакомство завершено без продолжения.</span></div>';
     next = `${outcomeNote}<div class="contact-card contact-card-completed">
@@ -2360,9 +2362,9 @@ function invitationEmployerMarkup(x) {
     next = `<div class="application-next-action"><span>Следующее действие</span><strong>Открыть контакт кандидата</strong><small>Согласие уже получено · демо-стоимость: ${money(x.price_rub)}</small></div><button class="btn btn-primary" data-action="demo-pay" data-id="${x.id}">Открыть контакт (демо) →</button>`;
   } else if (bucket === 'waiting') {
     next = '<div class="interaction-note is-waiting"><strong>Ждём решения кандидата</strong><span>Запрос уже отправлен. Повторных действий от работодателя сейчас не требуется.</span></div>';
-  } else if (x.application_status === 'hired') {
+  } else if (x.application_status === 'hired' || x.direct_outcome === 'hired') {
     next = '<div class="interaction-note is-complete"><strong>Положительный итог</strong><span>Работодатель отметил интерес к продолжению общения. Это не подтверждение трудоустройства.</span></div>';
-  } else if (x.application_status === 'rejected') {
+  } else if (x.application_status === 'rejected' || x.direct_outcome === 'rejected') {
     next = '<div class="interaction-note is-closed"><strong>Не договорились</strong><span>Знакомство завершено без продолжения.</span></div>';
   } else if (x.status === 'declined') {
     next = '<div class="interaction-note is-closed"><strong>Кандидат отказался от знакомства</strong><span>Знакомство завершено. Повторных действий по этому приглашению нет.</span></div>';
@@ -2817,11 +2819,11 @@ async function handleDashboardClick(event) {
     return;
   }
   const introCard = btn.closest('.employer-invitation-card');
-  const introBusyId = ['demo-pay','introduction-outcome'].includes(action) && introCard
+  const introBusyId = ['demo-pay','introduction-outcome','direct-introduction-outcome'].includes(action) && introCard
     ? Number(introCard.dataset.invitationId || 0) : 0;
   if (introBusyId && pendingEmployerIntroductionActions.has(introBusyId)) return;
   if (introBusyId) pendingEmployerIntroductionActions.add(introBusyId);
-  const introButtons = introBusyId ? Array.from(introCard.querySelectorAll('[data-action="demo-pay"],[data-action="introduction-outcome"]')) : [];
+  const introButtons = introBusyId ? Array.from(introCard.querySelectorAll('[data-action="demo-pay"],[data-action="introduction-outcome"],[data-action="direct-introduction-outcome"]')) : [];
   for (const button of introButtons) {
     button.disabled = true;
     button.setAttribute('aria-busy','true');
@@ -3081,6 +3083,33 @@ async function handleDashboardClick(event) {
       }
       refreshActionSummary().catch(() => {});
       toast(accepted ? 'Согласие сохранено. Ждём работодателя.' : 'Отказ сохранён. Контакты не переданы.');
+    }
+    if (action === 'direct-introduction-outcome') {
+      const outcome = btn.dataset.status;
+      if (!['hired','rejected'].includes(outcome)) return;
+      const question = outcome === 'hired'
+        ? 'Отметить положительный итог прямого знакомства? Это не подтверждение трудоустройства. Изменить результат нельзя.'
+        : 'Зафиксировать результат прямого знакомства «Не договорились»? Изменить результат нельзя.';
+      if (!confirm(question)) return;
+      await api(`/api/employer/invitations/${id}/outcome`, {
+        method:'PATCH',body:JSON.stringify({status:outcome})
+      });
+      employerIntroductionSavedReceipt(btn, outcome);
+      state.employerInvitationsData = null;
+      state.employerInvitationsFilter = 'closed';
+      state.employerInvitationsQuery = '';
+      state.employerInvitationsVacancyFilter = 'all';
+      employerInvitationVisibleLimit = employerInvitationPageSize;
+      state.employerInvitationsTargetId = id;
+      try {
+        await loadEmployerInvitations(true);
+      } catch (refreshError) {
+        toast('Итог сохранён, но список пока не обновился. Используйте кнопку «Обновить список».', true);
+        return;
+      }
+      refreshActionSummary().catch(() => {});
+      toast(outcome === 'hired' ? 'Положительный итог прямого знакомства сохранён.' : 'Прямое знакомство завершено: не договорились.');
+      return;
     }
     if (action === 'introduction-outcome') {
       const outcome = btn.dataset.status;
