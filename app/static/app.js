@@ -2169,6 +2169,9 @@ function invitationLastActivityMarkup(x) {
   const label = activityLabels[last.event] || last.event || 'Обновление';
   return `<div class="invitation-last-activity"><span>Последнее действие</span><strong>${esc(label)}</strong><small>${esc(formatActivityTimestamp(last.created_at))}</small></div>`;
 }
+const employerInvitationPageSize = 20;
+let employerInvitationVisibleLimit = employerInvitationPageSize;
+const pendingEmployerIntroductionActions = new Set();
 async function loadEmployerInvitations(force=false) {
   if (force || !Array.isArray(state.employerInvitationsData)) {
     const result = await api('/api/employer/invitations');
@@ -2212,6 +2215,13 @@ async function loadEmployerInvitations(force=false) {
     return invitationLastActivity(b) - invitationLastActivity(a);
   });
   const shown = selected === 'all' ? ordered : ordered.filter(item => employerInvitationBucket(item) === selected);
+  // A link from a particular application must open that exact introduction.
+  // Put it first within the selected stage without exposing any new data.
+  const targetInvitationId = Number(state.employerInvitationsTargetId || 0);
+  const targetIndex = targetInvitationId > 0
+    ? shown.findIndex(item => Number(item.id) === targetInvitationId) : -1;
+  if (targetIndex > 0) shown.unshift(shown.splice(targetIndex, 1)[0]);
+  const visible = shown.slice(0, employerInvitationVisibleLimit);
   const filterButtons = [
     ['all',searchScoped.length],
     ['action',counts.action],
@@ -2228,11 +2238,21 @@ async function loadEmployerInvitations(force=false) {
   $('#dashboard-main').innerHTML = `<div class="panel invitation-center">
     <div class="split-header"><div><span class="section-kicker">ЗНАКОМСТВА</span><h3>Знакомства и контакты</h3><p class="muted">Здесь продолжается работа после отклика: сначала показываем знакомства, где нужен ваш следующий шаг. Контакты открываются только после согласия кандидата.</p></div>${vacancySelector}</div>
     <div class="employer-invitation-stage-filter" role="group" aria-label="Фильтр знакомств по этапу">${filterButtons}</div>
-    <div class="employer-invitation-result-line"><span role="status">Показываем <strong>${shown.length}</strong> из <strong>${searchScoped.length}</strong>${selected==='all'&&searchScoped.length>1?' · сначала знакомства, где нужно ваше действие':''}</span>${selected!=='all'||selectedVacancy!=='all'||query?'<button type="button" class="link-button" data-action="reset-employer-invitation-filters">Сбросить фильтры</button>':''}</div>
+    <div class="employer-invitation-result-line"><span role="status" aria-live="polite">Показываем <strong>${visible.length}</strong> из <strong>${shown.length}</strong> по выбранному этапу (всего по поиску: ${searchScoped.length})${selected==='all'&&searchScoped.length>1?' · сначала знакомства, где нужно ваше действие':''}</span>${selected!=='all'||selectedVacancy!=='all'||query?'<button type="button" class="link-button" data-action="reset-employer-invitation-filters">Сбросить фильтры</button>':''}</div>
     ${counts.closed ? `<div class="completed-introduction-summary" aria-label="Итоги завершённых знакомств"><span><strong>${completedResults.hired}</strong> Выбраны</span><span><strong>${completedResults.rejected}</strong> Не договорились</span>${completedResults.other ? `<span><strong>${completedResults.other}</strong> Другие завершённые</span>` : ''}</div>` : ''}
     ${counts.action ? '<div class="demo-note"><strong>Тестовый режим</strong><span>Открытие контакта имитирует оплату и не списывает деньги.</span></div>' : ''}
-    <div class="dashboard-list">${shown.length ? shown.map(invitationEmployerMarkup).join('') : empty}</div>
+    <div class="dashboard-list" id="employer-invitation-results">${visible.length ? visible.map(invitationEmployerMarkup).join('') : empty}</div>
+    ${visible.length < shown.length ? `<div class="employer-invitation-pagination"><button type="button" class="btn btn-outline" data-action="more-employer-invitations">Показать следующие ${Math.min(employerInvitationPageSize, shown.length - visible.length)} знакомств</button></div>` : ''}
   </div>`;
+  if (targetIndex >= 0) {
+    const target = document.querySelector('#employer-invitation-results .employer-invitation-card[data-invitation-id="' + targetInvitationId + '"]');
+    if (target) {
+      target.tabIndex = -1;
+      target.focus({preventScroll:true});
+      target.scrollIntoView({block:'nearest'});
+    }
+  }
+  state.employerInvitationsTargetId = null;
 }
 function invitationEmployerMarkup(x) {
   const bucket = employerInvitationBucket(x);
@@ -2584,6 +2604,8 @@ function handleDashboardInput(event) {
   const employerSearch = event.target.closest('[data-employer-introduction-search]');
   if (employerSearch) {
     state.employerInvitationsQuery = String(employerSearch.value || '');
+    employerInvitationVisibleLimit = employerInvitationPageSize;
+    state.employerInvitationsTargetId = null;
     clearTimeout(employerInvitationSearchTimer);
     employerInvitationSearchTimer = setTimeout(async () => {
       if (state.user?.role !== 'employer' || state.tab !== 'invitations') return;
@@ -2621,6 +2643,8 @@ async function handleDashboardChange(event) {
   const introductionVacancy = event.target.closest('[data-employer-introduction-vacancy-filter]');
   if (introductionVacancy) {
     state.employerInvitationsVacancyFilter = String(introductionVacancy.value || 'all');
+    employerInvitationVisibleLimit = employerInvitationPageSize;
+    state.employerInvitationsTargetId = null;
     state.employerInvitationsFilter = 'all';
     await loadEmployerInvitations();
     return;
@@ -2717,6 +2741,16 @@ async function handleDashboardClick(event) {
       catch(error) { setEditorStatus(form,'Не удалось обновить сравнение: ' + error.message,true); }
     }
     return;
+  }
+  const introCard = btn.closest('.employer-invitation-card');
+  const introBusyId = ['demo-pay','introduction-outcome'].includes(action) && introCard
+    ? Number(introCard.dataset.invitationId || 0) : 0;
+  if (introBusyId && pendingEmployerIntroductionActions.has(introBusyId)) return;
+  if (introBusyId) pendingEmployerIntroductionActions.add(introBusyId);
+  const introButtons = introBusyId ? Array.from(introCard.querySelectorAll('[data-action="demo-pay"],[data-action="introduction-outcome"]')) : [];
+  for (const button of introButtons) {
+    button.disabled = true;
+    button.setAttribute('aria-busy','true');
   }
   btn.disabled = true;
   try {
@@ -2861,18 +2895,36 @@ async function handleDashboardClick(event) {
     }
     if (action === 'filter-employer-invitations') {
       if (!Object.hasOwn(employerInvitationFilterLabels,btn.dataset.filter)) return;
+      state.employerInvitationsTargetId = null;
+      employerInvitationVisibleLimit = employerInvitationPageSize;
       state.employerInvitationsFilter = btn.dataset.filter;
       await loadEmployerInvitations();
       return;
     }
     if (action === 'reset-employer-invitation-filters') {
+      state.employerInvitationsTargetId = null;
+      employerInvitationVisibleLimit = employerInvitationPageSize;
       state.employerInvitationsFilter = 'all';
       state.employerInvitationsVacancyFilter = 'all';
       state.employerInvitationsQuery = '';
       await loadEmployerInvitations();
       return;
     }
+    if (action === 'more-employer-invitations') {
+      const previous = employerInvitationVisibleLimit;
+      employerInvitationVisibleLimit += employerInvitationPageSize;
+      await loadEmployerInvitations();
+      const next = document.querySelectorAll('#employer-invitation-results .employer-invitation-card')[previous];
+      if (next) {
+        next.tabIndex = -1;
+        next.focus({preventScroll:true});
+        next.scrollIntoView({block:'nearest'});
+      }
+      return;
+    }
     if (action === 'open-employer-invitations') {
+      employerInvitationVisibleLimit = employerInvitationPageSize;
+      state.employerInvitationsTargetId = null;
       const filter = Object.hasOwn(employerInvitationFilterLabels,btn.dataset.filter) ? btn.dataset.filter : 'all';
       state.employerInvitationsFilter = filter;
       state.employerInvitationsVacancyFilter = btn.dataset.vacancyId ? String(btn.dataset.vacancyId) : 'all';
@@ -2906,6 +2958,10 @@ async function handleDashboardClick(event) {
       if (!confirm(question)) return;
       await api(`/api/employer/applications/${id}/status`,{method:'PATCH',body:JSON.stringify({status:outcome})});
       state.employerInvitationsFilter = 'closed';
+      state.employerInvitationsQuery = '';
+      state.employerInvitationsVacancyFilter = 'all';
+      employerInvitationVisibleLimit = employerInvitationPageSize;
+      state.employerInvitationsTargetId = Number(btn.closest('.employer-invitation-card')?.dataset.invitationId || 0);
       await loadEmployerInvitations(true);
       const completedCard = document.querySelector(`#dashboard-main .employer-invitation-card[data-application-id="${Number(id)}"]`);
       if (completedCard) {
@@ -2920,10 +2976,21 @@ async function handleDashboardClick(event) {
       if (!confirm('Это тестовая оплата — реальные средства НЕ списываются. Открыть контакт согласившегося кандидата?')) return;
       const result = await api(`/api/employer/invitations/${id}/demo-pay`,{method:'POST'});
       state.employerInvitationsFilter = 'introduced';
+      state.employerInvitationsQuery = '';
+      state.employerInvitationsVacancyFilter = 'all';
+      employerInvitationVisibleLimit = employerInvitationPageSize;
+      state.employerInvitationsTargetId = id;
+      state.employerInvitationsData = null;
       await showDashboard();
       toast(`Демо-платёж ${money(result.amount_rub)} проведён без списания средств.`);
     }
-  } catch(e) { toast(e.message,true); } finally { if (btn.isConnected) btn.disabled = false; }
+  } catch(e) { toast(e.message,true); } finally {
+    if (introBusyId) pendingEmployerIntroductionActions.delete(introBusyId);
+    for (const button of introButtons) {
+      if (button.isConnected) {button.disabled = false; button.removeAttribute('aria-busy');}
+    }
+    if (btn.isConnected) btn.disabled = false;
+  }
 }
 async function start() {
   $('#login-open').addEventListener('click',()=>openAuth('login'));

@@ -44,16 +44,16 @@
     function employerIntroBadge(a) {
       if (!a.invitation_id) return '';
       if (a.contact_shared && a.status === 'hired') {
-        return '<div class="interaction-note is-complete"><strong>Положительный итог</strong><span>Компания хочет продолжить общение. Это не подтверждение трудоустройства.</span></div><button class="btn btn-outline btn-tiny" data-v02-action="open-introductions" data-filter="closed">Открыть завершённое знакомство →</button>';
+        return '<div class="interaction-note is-complete"><strong>Положительный итог</strong><span>Компания хочет продолжить общение. Это не подтверждение трудоустройства.</span></div><button class="btn btn-outline btn-tiny" data-v02-action="open-introductions" data-filter="closed" data-invitation-id="'+Number(a.invitation_id)+'">Открыть завершённое знакомство →</button>';
       }
       if (a.contact_shared && a.status === 'rejected') {
-        return '<div class="interaction-note is-closed"><strong>Не договорились</strong><span>Знакомство завершено без продолжения.</span></div><button class="btn btn-outline btn-tiny" data-v02-action="open-introductions" data-filter="closed">Открыть завершённое знакомство →</button>';
+        return '<div class="interaction-note is-closed"><strong>Не договорились</strong><span>Знакомство завершено без продолжения.</span></div><button class="btn btn-outline btn-tiny" data-v02-action="open-introductions" data-filter="closed" data-invitation-id="'+Number(a.invitation_id)+'">Открыть завершённое знакомство →</button>';
       }
       if (a.contact_shared) {
-        return '<div class="interaction-note is-complete"><strong>Знакомство состоялось</strong><span>Контакт уже открыт. История и контакт доступны в разделе знакомств.</span></div><button class="btn btn-outline btn-tiny" data-v02-action="open-introductions" data-filter="introduced">Открыть контакт →</button>';
+        return '<div class="interaction-note is-complete"><strong>Знакомство состоялось</strong><span>Контакт уже открыт. История и контакт доступны в разделе знакомств.</span></div><button class="btn btn-outline btn-tiny" data-v02-action="open-introductions" data-filter="introduced" data-invitation-id="'+Number(a.invitation_id)+'">Открыть контакт →</button>';
       }
       if (a.invitation_status === 'accepted') {
-        return '<div class="interaction-note is-ready"><strong>Согласие получено</strong><span>Кандидат разрешил продолжить знакомство. Следующий шаг — открыть контакт.</span></div><button class="btn btn-primary btn-tiny" data-v02-action="open-introductions" data-filter="action">Продолжить знакомство →</button>';
+        return '<div class="interaction-note is-ready"><strong>Согласие получено</strong><span>Кандидат разрешил продолжить знакомство. Следующий шаг — открыть контакт.</span></div><button class="btn btn-primary btn-tiny" data-v02-action="open-introductions" data-filter="action" data-invitation-id="'+Number(a.invitation_id)+'">Продолжить знакомство →</button>';
       }
       if (a.invitation_status === 'sent') {
         return '<div class="interaction-note is-waiting"><strong>Запрос отправлен</strong><span>Ждём решения кандидата. Повторно отправлять запрос не нужно.</span></div>';
@@ -1015,8 +1015,16 @@
           toast(data.created?'Кандидату направлен запрос на знакомство (демо)':'Запрос уже существует — повторно не отправлен');
         }
         else if(type==='open-introductions'){
-          if(state.user?.role==='candidate') state.candidateInvitationsFilter=btn.dataset.filter||'decision';
-          else state.employerInvitationsFilter=btn.dataset.filter||'all';
+          if(state.user?.role==='candidate') {
+            state.candidateInvitationsFilter=btn.dataset.filter||'decision';
+          } else {
+            state.employerInvitationsFilter=btn.dataset.filter||'all';
+            const targetId=Number(btn.dataset.invitationId||0);
+            state.employerInvitationsTargetId=Number.isSafeInteger(targetId)&&targetId>0?targetId:null;
+            state.employerInvitationsVacancyFilter='all';
+            state.employerInvitationsQuery='';
+            state.employerInvitationsData=null;
+          }
           state.tab='invitations';
           await showDashboard();
         }
