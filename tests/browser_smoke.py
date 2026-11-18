@@ -225,6 +225,91 @@ def run_browser(page):
     page.locator(".dashboard-tabs [data-tab='applications']").click()
     expect(page.locator("#dashboard-main")).to_contain_text("История откликов")
     expect(page.locator("#dashboard-main")).to_contain_text("Отправлен")
+    # Release 0.5.20: candidate queue uses locally held application metadata
+    # and prioritizes invitations. 45 records are fictional response fixtures.
+    original_candidate_apps = page.request.get(URL + "/api/candidate/applications").json()
+    sample_candidate_app = original_candidate_apps["applications"][0]
+    fictional_apps = []
+    for idx in range(45):
+        entry = dict(sample_candidate_app)
+        entry["id"] = 70000 + idx
+        entry["vacancy_id"] = 90000 + idx
+        entry["title"] = f"Тестовая вакансия {idx:02d}"
+        entry["company_name"] = "Учебная компания"
+        entry["city"] = "Подольск"
+        entry["status"] = "applied"
+        entry["contact_shared"] = False
+        entry["invitation_id"] = None
+        entry["invitation_status"] = None
+        entry["timeline"] = []
+        if idx == 44:
+            entry["invitation_id"] = 80044
+            entry["invitation_status"] = "sent"
+        if idx == 43:
+            entry["status"] = "rejected"
+        fictional_apps.append(entry)
+
+    def fake_candidate_applications(route):
+        route.fulfill(status=200, content_type="application/json",
+                      body=json.dumps({"applications": fictional_apps}, ensure_ascii=False))
+
+    page.route("**/api/candidate/applications", fake_candidate_applications)
+    page.locator(".dashboard-tabs [data-tab='favorites']").click()
+    page.locator(".dashboard-tabs [data-tab='applications']").click()
+    candidate_cards = page.locator("#candidate-application-results .candidate-application-card:visible")
+    expect(candidate_cards).to_have_count(20)
+    expect(page.locator("#candidate-application-visible-count")).to_have_text("20")
+    expect(page.locator("#candidate-application-matched-count")).to_have_text("45")
+    expect(candidate_cards.first).to_contain_text("Тестовая вакансия 44")
+    candidate_next = page.locator("[data-candidate-app-action='more']")
+    expect(candidate_next).to_contain_text("20")
+    candidate_next.click()
+    expect(candidate_cards).to_have_count(40)
+    expect(page.locator("#candidate-application-results .candidate-application-card").nth(20)).to_be_focused()
+    expect(candidate_next).to_contain_text("5")
+    candidate_next.click()
+    expect(candidate_cards).to_have_count(45)
+    expect(page.locator("#candidate-application-pagination")).to_be_hidden()
+
+    candidate_search = page.locator("#candidate-application-search")
+    candidate_reads = []
+    page.on("request", lambda request: candidate_reads.append(request)
+            if request.method == "GET" and request.url.endswith("/api/candidate/applications")
+            else None)
+    candidate_search.fill("ваКАнсия 00")
+    expect(candidate_cards).to_have_count(1)
+    expect(candidate_cards).to_contain_text("Тестовая вакансия 00")
+    candidate_search.fill("несуществующая-компания-abcdef")
+    expect(candidate_cards).to_have_count(0)
+    expect(page.locator("#candidate-application-empty")).to_be_visible()
+    assert not candidate_reads, "Typing in candidate queue must not request applications"
+    page.locator("[data-candidate-app-action='reset']").click()
+    expect(candidate_search).to_be_focused()
+    expect(candidate_search).to_have_value("")
+    expect(candidate_cards).to_have_count(20)
+
+    page.locator("[data-candidate-app-action='filter'][data-filter='reply']").click()
+    expect(candidate_cards).to_have_count(1)
+    expect(candidate_cards).to_contain_text("Тестовая вакансия 44")
+    expect(page.locator("[data-candidate-app-action='filter'][data-filter='reply']")).to_have_attribute("aria-pressed", "true")
+    page.locator("[data-candidate-app-action='filter'][data-filter='closed']").click()
+    expect(candidate_cards).to_have_count(1)
+    expect(candidate_cards).to_contain_text("Тестовая вакансия 43")
+    page.locator("[data-candidate-app-action='filter'][data-filter='all']").click()
+    page.set_viewport_size({"width": 390, "height": 844})
+    assert page.evaluate("""() => {
+      const root = document.querySelector('#dashboard-main');
+      const filters = document.querySelector('.candidate-application-filters');
+      return root.scrollWidth <= root.clientWidth + 3 &&
+        getComputedStyle(filters).gridTemplateColumns.trim().split(/\s+/).length === 2;
+    }"""), "Candidate application queue must fit 390px"
+    page.set_viewport_size({"width": 1280, "height": 800})
+    page.unroute("**/api/candidate/applications", fake_candidate_applications)
+    page.locator(".dashboard-tabs [data-tab='favorites']").click()
+    page.locator(".dashboard-tabs [data-tab='applications']").click()
+    expect(candidate_cards).to_have_count(1)
+    expect(candidate_cards).to_contain_text("Кладовщик")
+    # Continue with actual API state, never mutation on fictional entries.
     with page.expect_response(lambda response: (
         "/api/candidate/applications/" in response.url and
         response.url.endswith("/withdraw") and response.request.method == "POST"
