@@ -141,6 +141,19 @@ def resume_contains_contact(value: str) -> bool:
     )
 
 
+class ResumeCourseEntry(BaseModel):
+    title: str = Field(min_length=2, max_length=140)
+    provider: str = Field(default="", max_length=120)
+    year: int | None = Field(default=None, ge=1950, le=2100)
+    has_certificate: bool = False
+
+    @model_validator(mode="after")
+    def no_contacts(self):
+        if resume_contains_contact(self.title) or resume_contains_contact(self.provider):
+            raise ValueError("Не указывайте контакты или ссылки в публичных сведениях об обучении")
+        return self
+
+
 class CandidateProfile(BaseModel):
     profession: str = Field(min_length=2, max_length=120)
     city: str = Field(min_length=2, max_length=100)
@@ -156,12 +169,14 @@ class CandidateProfile(BaseModel):
     education: str | None = Field(default=None, max_length=240)
     achievements: str | None = Field(default=None, max_length=500)
     work_history: list[ResumeWorkEntry] | None = Field(default=None, max_length=5)
+    specializations: str | None = Field(default=None, max_length=240)
+    courses: list[ResumeCourseEntry] | None = Field(default=None, max_length=6)
 
     @model_validator(mode="after")
     def check_options(self):
         if self.schedule not in SCHEDULES or self.employment not in EMPLOYMENTS:
             raise ValueError("Недопустимый график или формат занятости")
-        if any(resume_contains_contact(value or "") for value in (self.education, self.achievements)):
+        if any(resume_contains_contact(value or "") for value in (self.education, self.achievements, self.specializations)):
             raise ValueError("Не указывайте телефон, email или ссылки в публичном резюме")
         return self
 
@@ -621,26 +636,31 @@ def allowed(user: dict, role: str) -> None:
 
 
 def professional_resume(db: sqlite3.Connection, user_id: int) -> dict:
-    """Only validated professional fields; no name, company contacts or emails."""
+    """Only vetted public professional fields: no name, phone or email."""
     row = db.execute(
         "SELECT experience_years,education,achievements,work_history_json "
         "FROM candidate_resume_details WHERE user_id=?", (user_id,),
     ).fetchone()
-    if not row:
-        return {"experience_years": 0, "education": "", "achievements": "", "work_history": []}
-    try:
-        history = json.loads(row["work_history_json"] or "[]")
-        if not isinstance(history, list):
-            history = []
-    except (ValueError, TypeError):
-        history = []
-    return {
-        "experience_years": row["experience_years"],
-        "education": row["education"],
-        "achievements": row["achievements"],
-        "work_history": history[:5],
-    }
+    qualification = db.execute(
+        "SELECT specializations,courses_json "
+        "FROM candidate_resume_qualifications WHERE user_id=?", (user_id,),
+    ).fetchone()
 
+    def history_json(value: str, limit: int) -> list:
+        try:
+            items = json.loads(value or "[]")
+            return items[:limit] if isinstance(items, list) else []
+        except (ValueError, TypeError):
+            return []
+
+    return {
+        "experience_years": row["experience_years"] if row else 0,
+        "education": row["education"] if row else "",
+        "achievements": row["achievements"] if row else "",
+        "work_history": history_json(row["work_history_json"], 5) if row else [],
+        "specializations": qualification["specializations"] if qualification else "",
+        "courses": history_json(qualification["courses_json"], 6) if qualification else [],
+    }
 
 def candidate_view(db: sqlite3.Connection, user_id: int) -> dict | None:
     row = db.execute("SELECT * FROM candidate_profiles WHERE user_id=?", (user_id,)).fetchone()
@@ -1767,6 +1787,22 @@ def create_app(db_path: str | None = None) -> FastAPI:
                      work_history_json=excluded.work_history_json,
                      updated_at=datetime('now')""",
                 (user["id"], years, education, achievements, json.dumps(history, ensure_ascii=False)),
+            )
+        if any(field in data.model_fields_set for field in ("specializations", "courses")):
+            current = professional_resume(db, user["id"])
+            specializations = (data.specializations.strip()
+                               if data.specializations is not None else current["specializations"])
+            courses = ([item.model_dump() for item in data.courses]
+                       if data.courses is not None else current["courses"])
+            db.execute(
+                """INSERT INTO candidate_resume_qualifications(
+                      user_id,specializations,courses_json
+                   ) VALUES(?,?,?)
+                   ON CONFLICT(user_id) DO UPDATE SET
+                     specializations=excluded.specializations,
+                     courses_json=excluded.courses_json,
+                     updated_at=datetime('now')""",
+                (user["id"], specializations, json.dumps(courses, ensure_ascii=False)),
             )
         db.execute("UPDATE users SET phone=? WHERE id=?", (data.phone.strip(), user["id"]))
         # Commit before the HTTP response: a new dashboard request may arrive immediately.
