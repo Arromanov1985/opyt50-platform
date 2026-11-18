@@ -64,6 +64,10 @@ SCHEDULES = {"Любой", "Полный день", "Сменный", "Гибк�
 EMPLOYMENTS = {"Любая", "Полная", "Частичная", "Проектная"}
 
 
+class DirectInvitationOutcomeIn(BaseModel):
+    status: Literal["hired", "rejected"]
+
+
 class AdminSmtpTestEmailIn(BaseModel):
     scenario: Literal["connection", "employer_application", "candidate_invitation"] = "connection"
 
@@ -2208,13 +2212,15 @@ def create_app(db_path: str | None = None) -> FastAPI:
                CASE WHEN length(e.inn)>0 THEN 1 ELSE 0 END AS employer_inn_provided,
                COALESCE(ac.email_verified,0) AS employer_email_verified,
                eu.created_at AS employer_created_at,
-               a.id AS application_id,a.status AS application_status
+               a.id AS application_id,a.status AS application_status,
+               io.outcome AS direct_outcome
                FROM invitations i JOIN vacancies v ON i.vacancy_id=v.id
                JOIN employer_profiles e ON e.user_id=i.employer_id
                JOIN users eu ON eu.id=e.user_id
                LEFT JOIN account_controls ac ON ac.user_id=e.user_id
                LEFT JOIN job_applications a
                     ON a.vacancy_id=i.vacancy_id AND a.candidate_id=i.candidate_id
+               LEFT JOIN invitation_outcomes io ON io.invitation_id=i.id
                WHERE i.candidate_id=? ORDER BY i.id DESC""", (user["id"],)
         ).fetchall()
         from .release02 import introduction_stage, interaction_timeline
@@ -2267,12 +2273,13 @@ def create_app(db_path: str | None = None) -> FastAPI:
             """SELECT i.*,v.title AS vacancy_title,u.name AS candidate_name,
                u.email AS candidate_email,u.phone AS candidate_phone,
                c.profession AS candidate_profession,a.id AS application_id,
-               a.status AS application_status
+               a.status AS application_status,io.outcome AS direct_outcome
                FROM invitations i JOIN vacancies v ON v.id=i.vacancy_id
                JOIN users u ON u.id=i.candidate_id
                JOIN candidate_profiles c ON c.user_id=i.candidate_id
                LEFT JOIN job_applications a
                     ON a.vacancy_id=i.vacancy_id AND a.candidate_id=i.candidate_id
+               LEFT JOIN invitation_outcomes io ON io.invitation_id=i.id
                WHERE i.employer_id=? ORDER BY i.id DESC""", (user["id"],)
         ).fetchall()
         from .release02 import introduction_stage, interaction_timeline
@@ -2281,7 +2288,7 @@ def create_app(db_path: str | None = None) -> FastAPI:
             item = {key: row[key] for key in (
                 "id", "vacancy_id", "candidate_id", "status", "price_rub",
                 "contact_shared", "vacancy_title", "candidate_profession", "created_at",
-                "application_id", "application_status",
+                "application_id", "application_status", "direct_outcome",
             )}
             item["introduction_stage"] = introduction_stage(row["status"], row["contact_shared"])
             item["timeline"] = interaction_timeline(db, row["application_id"], row["id"])
@@ -2293,6 +2300,54 @@ def create_app(db_path: str | None = None) -> FastAPI:
                 }
             result.append(item)
         return {"invitations": result}
+
+    @app.patch("/api/employer/invitations/{invitation_id}/outcome")
+    def direct_invitation_outcome(
+        invitation_id: int, data: DirectInvitationOutcomeIn,
+        user: dict = Depends(active_user),
+        db: sqlite3.Connection = Depends(get_connection),
+    ):
+        """Final result for a direct invitation with no candidate application.
+
+        A status on a real application must be updated through its existing
+        endpoint instead; never create a fictitious candidate application.
+        """
+        allowed(user, "employer")
+        invitation = db.execute(
+            """SELECT id,vacancy_id,candidate_id,status,share_consent,contact_shared
+               FROM invitations WHERE id=? AND employer_id=?""",
+            (invitation_id, user["id"]),
+        ).fetchone()
+        if invitation is None:
+            raise HTTPException(404, "Знакомство не найдено")
+        if invitation["status"] != "accepted" or not invitation["share_consent"] or not invitation["contact_shared"]:
+            raise HTTPException(409, "Итог доступен только после согласия и открытия контакта")
+        application = db.execute(
+            "SELECT id FROM job_applications WHERE vacancy_id=? AND candidate_id=?",
+            (invitation["vacancy_id"], invitation["candidate_id"]),
+        ).fetchone()
+        if application is not None:
+            raise HTTPException(409, "Для этого знакомства итог фиксируется через отклик кандидата")
+        inserted = db.execute(
+            """INSERT OR IGNORE INTO invitation_outcomes(invitation_id,outcome,recorded_at)
+               VALUES(?,?,datetime('now'))""",
+            (invitation_id, data.status),
+        )
+        if inserted.rowcount == 0:
+            raise HTTPException(409, "Итог этого знакомства уже зафиксирован")
+        from .release02 import enqueue_notice
+        result_text = (
+            "Работодатель отметил положительный итог знакомства. "
+            "Это не подтверждает трудоустройство."
+            if data.status == "hired"
+            else "Работодатель сообщил, что по итогам знакомства договориться не удалось."
+        )
+        enqueue_notice(
+            db, invitation["candidate_id"], "introduction_outcome",
+            "Итог знакомства — СТАЖНО", result_text,
+        )
+        db.commit()
+        return {"ok": True, "status": data.status}
 
     @app.post("/api/employer/invitations/{invitation_id}/demo-pay")
     def demo_pay(invitation_id: int, user: dict = Depends(active_user), db: sqlite3.Connection = Depends(get_connection)):
