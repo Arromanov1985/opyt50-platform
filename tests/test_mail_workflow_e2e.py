@@ -87,7 +87,7 @@ def notice_rows(app):
             "SELECT event,to_email,subject,body FROM email_outbox "
             "WHERE event IN ('new_application','invitation',"
             "'application_status','invitation_response','contact_opened',"
-            "'application_withdrawn') "
+            "'application_withdrawn','introduction_outcome') "
             "ORDER BY id"
         )]
 
