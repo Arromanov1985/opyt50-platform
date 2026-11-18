@@ -144,6 +144,21 @@ def run_browser(page):
     expect(page.locator("#profile-profession")).to_have_value("Кладовщик")
     expect(page.locator(".profile-optional")).not_to_have_attribute("open", "")
     expect(page.locator("#profile-phone")).not_to_be_visible()
+    # Release 0.5.31: structured work experience does not require a long CV.
+    page.locator("#resume-years").fill("24")
+    page.locator("#resume-education").fill("Среднее профессиональное — логистика")
+    page.locator("#resume-achievements").fill("Настроил складской учёт")
+    page.locator("#resume-add-role").click()
+    first_role = page.locator("#resume-work-list [data-resume-role]").first
+    expect(first_role.locator("[data-role-position]")).to_be_focused()
+    first_role.locator("[data-role-position]").fill("Старший кладовщик")
+    first_role.locator("[data-role-period]").fill("2014–2024")
+    first_role.locator("[data-role-duties]").fill("Приёмка и инвентаризация")
+    page.locator("#resume-add-role").click()
+    expect(page.locator("#resume-work-list [data-resume-role]")).to_have_count(2)
+    page.locator("#resume-work-list [data-resume-role]").last.locator(
+        "[data-action='remove-resume-role']").click()
+    expect(page.locator("#resume-work-list [data-resume-role]")).to_have_count(1)
     # The guide is reachable directly from the main profile fields:
     # one click opens both optional sections and focuses the first question.
     page.locator("#experience-start").click()
@@ -195,11 +210,21 @@ def run_browser(page):
     saved_profile = page.request.get(URL + "/api/me").json()["user"]["profile"]
     assert saved_profile["about"].startswith("Ранее записанный опыт.\n\nНаправление работы:")
     assert "1С и ведение документов" in saved_profile["about"]
+    assert saved_profile["experience_years"] == 24
+    assert saved_profile["education"] == "Среднее профессиональное — логистика"
+    assert len(saved_profile["work_history"]) == 1
+    assert saved_profile["work_history"][0]["position"] == "Старший кладовщик"
     # A full browser reload returns to the overview; profile data must remain intact.
     page.reload(wait_until="networkidle")
     expect(page.locator("#dashboard-main")).to_contain_text("ВАШ СЛЕДУЮЩИЙ ШАГ")
     page.locator(".dashboard-tabs [data-tab='profile']").click()
     expect(page.locator("#profile-about")).to_have_value(saved_profile["about"])
+    expect(page.locator("#resume-years")).to_have_value("24")
+    expect(page.locator("#resume-education")).to_have_value(saved_profile["education"])
+    expect(page.locator("#resume-work-list [data-resume-role]")).to_have_count(1)
+    expect(page.locator(".profile-public-preview")).to_contain_text("Старший кладовщик")
+    expect(page.locator(".profile-public-preview")).to_contain_text("Настроил складской учёт")
+    expect(page.locator(".profile-public-preview")).not_to_contain_text("kladovshik@demo.example")
     expect(page.locator(".profile-optional")).not_to_have_attribute("open", "")
     expect(page.locator("#experience-start")).to_contain_text("Помочь описать опыт")
     # Open the editor again; the description must still be available.
@@ -782,6 +807,10 @@ def run_browser(page):
     expect(page.locator("#employer-matches")).to_contain_text("%")
     employer_match = page.locator("#employer-matches .candidate-match-card").first
     expect(employer_match.locator(".candidate-match-explanation")).to_be_visible()
+    employer_match.locator(".candidate-resume-details summary").click()
+    expect(employer_match.locator(".candidate-resume-details")).to_contain_text("Старший кладовщик")
+    expect(employer_match.locator(".candidate-resume-details")).to_contain_text("Среднее профессиональное")
+    expect(employer_match.locator(".candidate-resume-details")).not_to_contain_text("kladovshik@demo.example")
     employer_match.locator(".candidate-match-explanation summary").click()
     expect(employer_match.locator(".match-factor-row")).to_have_count(6)
     expect(employer_match).to_contain_text("Возраст не используется")
