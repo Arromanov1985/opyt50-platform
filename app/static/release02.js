@@ -824,6 +824,7 @@
     });
 
     const pendingEmployerReviewRequests = new Set();
+    const pendingCandidateWithdrawals = new Set();
     document.addEventListener('click',async(event)=>{
       const btn=event.target.closest('[data-v02-action]');
       if(!btn)return;
@@ -831,6 +832,12 @@
       if (btn.disabled) return;
       if (type==='application-status' && btn.dataset.status==='rejected' &&
           !window.confirm('Отказать по этому отклику? Кандидат увидит ваш отказ.')) return;
+      if (type==='withdraw' &&
+          !window.confirm('Отозвать отклик на вакансию? Работодатель увидит изменение статуса.')) return;
+      const tracksCandidateWithdrawal = type==='withdraw' && state.user?.role==='candidate' &&
+        Number.isSafeInteger(id) && id>0;
+      if (tracksCandidateWithdrawal && pendingCandidateWithdrawals.has(id)) return;
+      if (tracksCandidateWithdrawal) pendingCandidateWithdrawals.add(id);
       const tracksEmployerReview = ['application-status','express-interest'].includes(type) &&
         state.user?.role === 'employer' && Number.isSafeInteger(id) && id > 0;
       if (tracksEmployerReview && pendingEmployerReviewRequests.has(id)) return;
@@ -1040,6 +1047,7 @@
             }
           }
         }
+        if (tracksCandidateWithdrawal) pendingCandidateWithdrawals.delete(id);
         if (tracksApplication) {
           pendingApplicationRequests.delete(id);
           setApplicationPending(id, false);
