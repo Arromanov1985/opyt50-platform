@@ -581,6 +581,8 @@ def run_browser(page):
     expect(candidate_intro_next).to_contain_text("20")
     candidate_intro_next.click()
     expect(invited_cards).to_have_count(40)
+    # The selected introduction stays first when later pages become visible.
+    expect(invited_cards.first).to_have_attribute("data-invitation-id", str(real_candidate_invite["id"]))
     expect(invited_cards.nth(20)).to_be_focused()
     expect(candidate_intro_next).to_contain_text("5")
     candidate_intro_next.click()
