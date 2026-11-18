@@ -1571,7 +1571,9 @@ async function loadCandidateInvitations(target=$('#dashboard-main'), force=false
   const shown = selected === 'all' ? ordered : ordered.filter(item => candidateInvitationBucket(item) === selected);
   // Links from an application or preview must bring the selected invitation
   // directly into view even when it is beyond the first page.
-  const selectedInvitationId = Number(state.candidateInvitationTargetId || 0);
+  const requestedInvitationId = Number(state.candidateInvitationTargetId || 0);
+  if (requestedInvitationId > 0) state.candidateInvitationPinnedId = requestedInvitationId;
+  const selectedInvitationId = Number(state.candidateInvitationPinnedId || 0);
   const selectedIndex = selectedInvitationId > 0
     ? shown.findIndex(item => Number(item.id) === selectedInvitationId)
     : -1;
@@ -2687,6 +2689,7 @@ function handleDashboardInput(event) {
   const candidateSearch = event.target.closest('[data-candidate-introduction-search]');
   if (!candidateSearch) return;
   state.candidateInvitationsQuery = String(candidateSearch.value || '');
+  state.candidateInvitationPinnedId = null;
   state.candidateInvitationTargetId = null;
   candidateInvitationVisibleLimit = candidateInvitationPageSize;
   clearTimeout(candidateInvitationSearchTimer);
@@ -2735,6 +2738,7 @@ async function handleDashboardChange(event) {
   if (state.user?.role === 'candidate' && nextTab === 'invitations') {
     candidateInvitationVisibleLimit = candidateInvitationPageSize;
     state.candidateInvitationTargetId = null;
+    state.candidateInvitationPinnedId = null;
     state.candidateInvitationsFilter = 'all';
     state.candidateInvitationsQuery = '';
     state.candidateInvitationsData = null;
@@ -2767,6 +2771,7 @@ async function handleDashboardClick(event) {
     if (state.user?.role === 'candidate' && tab.dataset.tab === 'invitations') {
       candidateInvitationVisibleLimit = candidateInvitationPageSize;
       state.candidateInvitationTargetId = null;
+      state.candidateInvitationPinnedId = null;
       state.candidateInvitationsFilter = 'all';
       state.candidateInvitationsQuery = '';
       state.candidateInvitationsData = null;
@@ -2925,6 +2930,7 @@ async function handleDashboardClick(event) {
       if (!Object.hasOwn(candidateInvitationFilterLabels,btn.dataset.filter)) return;
       candidateInvitationVisibleLimit = candidateInvitationPageSize;
       state.candidateInvitationTargetId = null;
+      state.candidateInvitationPinnedId = null;
       state.candidateInvitationsFilter = btn.dataset.filter;
       await loadCandidateInvitations();
       return;
@@ -2932,6 +2938,7 @@ async function handleDashboardClick(event) {
     if (action === 'reset-candidate-invitation-filters') {
       candidateInvitationVisibleLimit = candidateInvitationPageSize;
       state.candidateInvitationTargetId = null;
+      state.candidateInvitationPinnedId = null;
       state.candidateInvitationsFilter = 'all';
       state.candidateInvitationsQuery = '';
       await loadCandidateInvitations();
@@ -2953,6 +2960,7 @@ async function handleDashboardClick(event) {
       candidateInvitationVisibleLimit = candidateInvitationPageSize;
       const linkId = Number(btn.dataset.invitationId || 0);
       state.candidateInvitationTargetId = Number.isSafeInteger(linkId) && linkId > 0 ? linkId : null;
+      state.candidateInvitationPinnedId = state.candidateInvitationTargetId;
       const filter = Object.hasOwn(candidateInvitationFilterLabels,btn.dataset.filter) ? btn.dataset.filter : 'all';
       state.candidateInvitationsFilter = filter;
       state.candidateInvitationsQuery = '';
