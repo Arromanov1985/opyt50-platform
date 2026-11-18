@@ -3228,3 +3228,21 @@ body.comfortable-view .candidate-application-counter {font-size: 1rem}
 @media(max-width:430px) {
   .employer-invitation-pagination .btn {width: 100%}
 }
+
+
+/* Release 0.5.22: committed server-side action remains visible after GET errors. */
+.employer-introduction-saved-receipt {
+  display: grid;
+  align-items: start;
+  justify-items: start;
+  gap: 8px;
+  margin-top: 10px;
+}
+.employer-introduction-saved-receipt .btn {
+  min-height: 44px;
+  max-width: 100%;
+  white-space: normal;
+}
+@media(max-width:430px) {
+  .employer-introduction-saved-receipt .btn {width: 100%}
+}
