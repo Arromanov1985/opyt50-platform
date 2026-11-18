@@ -1300,16 +1300,31 @@ function resumeRoleFields(item = {}, index = 0) {
     <button type="button" class="btn btn-outline btn-tiny" data-action="remove-resume-role">Удалить эту запись</button>
   </fieldset>`;
 }
+function resumeCourseFields(item = {}, index = 0) {
+  return `<fieldset class="resume-course-entry" data-resume-course>
+    <legend>Обучение ${index + 1}</legend>
+    <div class="form-grid">
+      <div class="field"><label>Название курса или программы<input data-course-title maxlength="140" value="${esc(item.title || '')}" placeholder="Например, Бухгалтерский учёт в 1С" autocomplete="off"></label></div>
+      <div class="field"><label>Организация (необязательно)<input data-course-provider maxlength="120" value="${esc(item.provider || '')}" placeholder="Например, учебный центр" autocomplete="off"></label></div>
+      <div class="field"><label>Год завершения (необязательно)<input data-course-year type="number" inputmode="numeric" min="1950" max="2100" value="${item.year == null ? '' : Number(item.year)}" placeholder="Например, 2021"></label></div>
+      <div class="field"><label class="resume-certificate-check"><input data-course-certificate type="checkbox" ${item.has_certificate ? 'checked' : ''}>Есть сертификат или удостоверение</label></div>
+    </div>
+    <button type="button" class="btn btn-outline btn-tiny" data-action="remove-resume-course">Удалить эту запись</button>
+  </fieldset>`;
+}
 function professionalResumeMarkup(profile = {}) {
   const positions = Array.isArray(profile.work_history) ? profile.work_history.slice(0,5) : [];
+  const courses = Array.isArray(profile.courses) ? profile.courses.slice(0,6) : [];
   const hasInfo = Number(profile.experience_years || 0) > 0 || profile.education ||
-    profile.achievements || positions.length;
+    profile.achievements || positions.length || profile.specializations || courses.length;
   if (!hasInfo) return '<p class="muted">Добавьте историю работы, образование и достижения, чтобы резюме было содержательнее.</p>';
   return `<div class="resume-professional-summary">
     ${Number(profile.experience_years || 0) > 0 ? `<p><strong>Общий стаж:</strong> ${Number(profile.experience_years)} лет</p>` : ''}
     ${profile.education ? `<p><strong>Образование:</strong> ${esc(profile.education)}</p>` : ''}
+    ${profile.specializations ? `<p><strong>Специализации:</strong> ${esc(profile.specializations)}</p>` : ''}
     ${positions.length ? `<div class="resume-public-history"><strong>Опыт работы</strong>${positions.map(r=>`<div class="resume-public-job"><b>${esc(r.position)}</b> <span>${esc(r.period)}</span>${r.duties ? `<p>${esc(r.duties)}</p>` : ''}</div>`).join('')}</div>` : ''}
     ${profile.achievements ? `<p><strong>Достижения:</strong> ${esc(profile.achievements)}</p>` : ''}
+    ${courses.length ? `<div class="resume-public-courses"><strong>Курсы и повышение квалификации</strong>${courses.map(course=>`<div class="resume-public-course"><b>${esc(course.title)}</b>${course.provider ? `<span>${esc(course.provider)}</span>` : ''}${course.year ? `<span>${Number(course.year)}</span>` : ''}${course.has_certificate ? '<small>Есть документ об обучении (со слов соискателя, не проверен)</small>' : ''}</div>`).join('')}</div>` : ''}
   </div>`;
 }
 function profileMarkup(profile = {}, user = {}) {
@@ -1358,6 +1373,17 @@ function profileMarkup(profile = {}, user = {}) {
             <div class="resume-work-list" id="resume-work-list">${(Array.isArray(profile.work_history) ? profile.work_history : []).map(resumeRoleFields).join('')}</div>
             <button type="button" class="btn btn-outline" data-action="add-resume-role" id="resume-add-role">Добавить место работы</button>
             <p class="field-help">До 5 мест работы. Можно указать только должность, период и основные задачи. Не добавляйте телефон, email или ссылки.</p>
+          </details>
+        </div>
+        <div class="field wide">
+          <details class="resume-training-section" id="resume-training-section">
+            <summary>Специализации, курсы и сертификаты (по желанию)</summary>
+            <p class="field-help">Можно добавить профессиональные направления и обучение. Подтверждающие документы загружать не нужно; они не проверяются платформой.</p>
+            <div class="field"><label for="resume-specializations">В каких направлениях специализируетесь?</label>
+              <textarea id="resume-specializations" name="specializations" maxlength="240" rows="2" placeholder="Например: кадровый учёт, зарплата, отчётность">${esc(profile.specializations || '')}</textarea></div>
+            <div class="resume-course-list" id="resume-course-list">${(Array.isArray(profile.courses) ? profile.courses : []).map(resumeCourseFields).join('')}</div>
+            <button type="button" class="btn btn-outline" data-action="add-resume-course" id="resume-add-course">Добавить курс или сертификат</button>
+            <p class="field-help">Можно добавить до шести записей. Достаточно названия курса; организация и год необязательны. Не указывайте контакты и ссылки.</p>
           </details>
         </div>
         <div class="field wide experience-entry">
@@ -2635,9 +2661,22 @@ async function handleDashboardSubmit(event) {
       toast('В каждом месте работы укажите должность и период. Либо удалите незаполненную запись.',true);
       return;
     }
+    const courses = Array.from(form.querySelectorAll('[data-resume-course]')).map(entry=>({
+      title:String(entry.querySelector('[data-course-title]')?.value || '').trim(),
+      provider:String(entry.querySelector('[data-course-provider]')?.value || '').trim(),
+      year:entry.querySelector('[data-course-year]')?.value
+        ? Number(entry.querySelector('[data-course-year]').value) : null,
+      has_certificate:Boolean(entry.querySelector('[data-course-certificate]')?.checked)
+    })).filter(course=>course.title || course.provider || course.year || course.has_certificate);
+    if (courses.some(course=>course.title.length < 2)) {
+      endEditorSave(form, submit);
+      toast('Для каждого курса укажите название либо удалите пустую запись.',true);
+      return;
+    }
     const body = {profession:formValue(form,'profession'),city:formValue(form,'city'),skills:formValue(form,'skills'),salary_min:parseNumber(form,'salary_min'),phone:formValue(form,'phone'),schedule:formValue(form,'schedule'),employment:formValue(form,'employment'),about:formValue(form,'about'),is_active:form.elements.namedItem('is_active').checked,
       experience_years:parseNumber(form,'experience_years')||0,
-      education:formValue(form,'education'),achievements:formValue(form,'achievements'),work_history};
+      education:formValue(form,'education'),achievements:formValue(form,'achievements'),work_history,
+      specializations:formValue(form,'specializations'),courses};
     try {
       await api('/api/candidate/profile',{method:'PUT',body:JSON.stringify(body)});
       editorSaved(form);
@@ -2877,6 +2916,26 @@ async function handleDashboardClick(event) {
   const btn = event.target.closest('[data-action]'); if (!btn) return;
   const action = btn.dataset.action, id = Number(btn.dataset.id);
   if (btn.disabled) return;
+  if (action === 'add-resume-course') {
+    const list = document.querySelector('#profile-form #resume-course-list');
+    if (!list || list.children.length >= 6) return;
+    list.insertAdjacentHTML('beforeend', resumeCourseFields({}, list.children.length));
+    list.lastElementChild?.querySelector('[data-course-title]')?.focus();
+    btn.disabled = list.children.length >= 6;
+    return;
+  }
+  if (action === 'remove-resume-course') {
+    const form = btn.closest('#profile-form');
+    const list = form?.querySelector('#resume-course-list');
+    btn.closest('[data-resume-course]')?.remove();
+    Array.from(list?.children || []).forEach((entry,index)=>{
+      const legend = entry.querySelector('legend');
+      if (legend) legend.textContent = 'Обучение ' + (index+1);
+    });
+    const add = form?.querySelector('#resume-add-course');
+    if (add) add.disabled = false;
+    return;
+  }
   if (action === 'add-resume-role') {
     const list = document.querySelector('#profile-form #resume-work-list');
     if (!list || list.children.length >= 5) return;
