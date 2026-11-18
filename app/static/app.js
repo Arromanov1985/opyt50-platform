@@ -2172,6 +2172,25 @@ function invitationLastActivityMarkup(x) {
 const employerInvitationPageSize = 20;
 let employerInvitationVisibleLimit = employerInvitationPageSize;
 const pendingEmployerIntroductionActions = new Set();
+// A successful mutation is final even when the following read-only refresh
+// fails. Replace its action buttons with a receipt before attempting GET,
+// so users never retry an already-confirmed operation by mistake.
+function employerIntroductionSavedReceipt(button, outcome) {
+  const destination = button.closest('.introduction-outcome-actions') || button;
+  const receipt = document.createElement('div');
+  receipt.className = 'interaction-note is-complete employer-introduction-saved-receipt';
+  receipt.setAttribute('role', 'status');
+  const label = outcome === 'opened' ? 'Контакт открыт (демо)'
+    : outcome === 'hired' ? 'Положительный итог сохранён'
+    : 'Итог «Не договорились» сохранён';
+  const detail = outcome === 'opened'
+    ? 'Знакомство подтверждено сервером. Обновите список, чтобы посмотреть контакт.'
+    : 'Итог подтверждён сервером. Повторно отправлять решение не нужно.';
+  receipt.innerHTML = '<strong>' + label + '</strong><span>' + detail +
+    '</span><button type="button" class="btn btn-outline btn-tiny" ' +
+    'data-action="refresh-employer-introductions">Обновить список</button>';
+  destination.replaceWith(receipt);
+}
 async function loadEmployerInvitations(force=false) {
   if (force || !Array.isArray(state.employerInvitationsData)) {
     const result = await api('/api/employer/invitations');
@@ -2922,6 +2941,10 @@ async function handleDashboardClick(event) {
       }
       return;
     }
+    if (action === 'refresh-employer-introductions') {
+      await loadEmployerInvitations(true);
+      return;
+    }
     if (action === 'open-employer-invitations') {
       employerInvitationVisibleLimit = employerInvitationPageSize;
       state.employerInvitationsTargetId = null;
@@ -2957,12 +2980,21 @@ async function handleDashboardClick(event) {
         : 'Зафиксировать результат «Не договорились»? После сохранения изменить итог нельзя.';
       if (!confirm(question)) return;
       await api(`/api/employer/applications/${id}/status`,{method:'PATCH',body:JSON.stringify({status:outcome})});
+      const completedInvitationId = Number(btn.closest('.employer-invitation-card')?.dataset.invitationId || 0);
+      employerIntroductionSavedReceipt(btn, outcome);
+      state.employerInvitationsData = null;
       state.employerInvitationsFilter = 'closed';
       state.employerInvitationsQuery = '';
       state.employerInvitationsVacancyFilter = 'all';
       employerInvitationVisibleLimit = employerInvitationPageSize;
-      state.employerInvitationsTargetId = Number(btn.closest('.employer-invitation-card')?.dataset.invitationId || 0);
-      await loadEmployerInvitations(true);
+      state.employerInvitationsTargetId = completedInvitationId;
+      try {
+        await loadEmployerInvitations(true);
+      } catch (refreshError) {
+        toast('Итог сохранён, но список пока не обновился. Используйте кнопку «Обновить список».', true);
+        return;
+      }
+      refreshActionSummary().catch(() => {});
       const completedCard = document.querySelector(`#dashboard-main .employer-invitation-card[data-application-id="${Number(id)}"]`);
       if (completedCard) {
         completedCard.setAttribute('tabindex','-1');
@@ -2975,13 +3007,20 @@ async function handleDashboardClick(event) {
     if (action === 'demo-pay') {
       if (!confirm('Это тестовая оплата — реальные средства НЕ списываются. Открыть контакт согласившегося кандидата?')) return;
       const result = await api(`/api/employer/invitations/${id}/demo-pay`,{method:'POST'});
+      employerIntroductionSavedReceipt(btn, 'opened');
       state.employerInvitationsFilter = 'introduced';
       state.employerInvitationsQuery = '';
       state.employerInvitationsVacancyFilter = 'all';
       employerInvitationVisibleLimit = employerInvitationPageSize;
       state.employerInvitationsTargetId = id;
       state.employerInvitationsData = null;
-      await showDashboard();
+      try {
+        await loadEmployerInvitations(true);
+      } catch (refreshError) {
+        toast('Контакт открыт без реального списания. Список пока не обновился — нажмите «Обновить список».', true);
+        return;
+      }
+      refreshActionSummary().catch(() => {});
       toast(`Демо-платёж ${money(result.amount_rub)} проведён без списания средств.`);
     }
   } catch(e) { toast(e.message,true); } finally {
