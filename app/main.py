@@ -2414,10 +2414,11 @@ def create_app(db_path: str | None = None) -> FastAPI:
         types = (
             "new_application", "invitation", "invitation_response",
             "contact_opened", "application_status", "introduction_outcome",
+            "application_withdrawn",
         )
         rows = db.execute(
             """SELECT event,COUNT(*) AS total,MAX(created_at) AS last_created_at
-               FROM email_outbox WHERE event IN (?,?,?,?,?,?)
+               FROM email_outbox WHERE event IN (?,?,?,?,?,?,?)
                GROUP BY event""",
             types,
         ).fetchall()

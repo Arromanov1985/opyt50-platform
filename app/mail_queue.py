@@ -24,6 +24,7 @@ logger = logging.getLogger(__name__)
 WORKFLOW_EVENTS = frozenset({
     "new_application", "invitation", "invitation_response",
     "contact_opened", "application_status", "introduction_outcome",
+    "application_withdrawn",
 })
 MAX_ATTEMPTS = 4  # First attempt plus at most three automatic retries.
 RETRY_DELAYS = (30, 120, 600)  # Seconds following failures 1, 2 and 3.
