@@ -310,6 +310,12 @@ def run_browser(page):
     expect(candidate_cards).to_have_count(1)
     expect(candidate_cards).to_contain_text("Кладовщик")
     # Continue with actual API state, never mutation on fictional entries.
+    before_withdraw = page.request.get(URL + "/api/candidate/applications").json()["applications"][0]
+    page.once("dialog", lambda dialog: dialog.dismiss())
+    page.locator("#dashboard-main [data-v02-action='withdraw']").click()
+    after_cancel = page.request.get(URL + "/api/candidate/applications").json()["applications"][0]
+    assert before_withdraw["status"] == after_cancel["status"] == "applied"
+    page.once("dialog", lambda dialog: dialog.accept())
     with page.expect_response(lambda response: (
         "/api/candidate/applications/" in response.url and
         response.url.endswith("/withdraw") and response.request.method == "POST"
