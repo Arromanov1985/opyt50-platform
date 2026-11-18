@@ -120,6 +120,27 @@ class AdminWebAuthnFallback(BaseModel):
     challenge_id: str = Field(min_length=20, max_length=160)
 
 
+class ResumeWorkEntry(BaseModel):
+    position: str = Field(min_length=2, max_length=120)
+    period: str = Field(min_length=2, max_length=80)
+    duties: str = Field(default="", max_length=350)
+
+    @model_validator(mode="after")
+    def no_contacts(self):
+        for value in (self.position, self.period, self.duties):
+            if resume_contains_contact(value):
+                raise ValueError("Не указывайте контакты или ссылки в публичном опыте работы")
+        return self
+
+
+def resume_contains_contact(value: str) -> bool:
+    return bool(
+        CONTACT_EMAIL_PATTERN.search(value)
+        or CONTACT_PHONE_PATTERN.search(value)
+        or re.search(r"(?:https?://|www\.|t\.me/|@[A-Za-z0-9_]{4,})", value, re.I)
+    )
+
+
 class CandidateProfile(BaseModel):
     profession: str = Field(min_length=2, max_length=120)
     city: str = Field(min_length=2, max_length=100)
@@ -130,11 +151,18 @@ class CandidateProfile(BaseModel):
     about: str = Field(default="", max_length=700)
     is_active: bool = True
     phone: str = Field(default="", max_length=30)
+    # Optional to preserve old clients: omitting these never erases an existing resume.
+    experience_years: int | None = Field(default=None, ge=0, le=70)
+    education: str | None = Field(default=None, max_length=240)
+    achievements: str | None = Field(default=None, max_length=500)
+    work_history: list[ResumeWorkEntry] | None = Field(default=None, max_length=5)
 
     @model_validator(mode="after")
     def check_options(self):
         if self.schedule not in SCHEDULES or self.employment not in EMPLOYMENTS:
             raise ValueError("Недопустимый график или формат занятости")
+        if any(resume_contains_contact(value or "") for value in (self.education, self.achievements)):
+            raise ValueError("Не указывайте телефон, email или ссылки в публичном резюме")
         return self
 
 
@@ -592,9 +620,31 @@ def allowed(user: dict, role: str) -> None:
         raise HTTPException(403, "Нет доступа к этому разделу")
 
 
+def professional_resume(db: sqlite3.Connection, user_id: int) -> dict:
+    """Only validated professional fields; no name, company contacts or emails."""
+    row = db.execute(
+        "SELECT experience_years,education,achievements,work_history_json "
+        "FROM candidate_resume_details WHERE user_id=?", (user_id,),
+    ).fetchone()
+    if not row:
+        return {"experience_years": 0, "education": "", "achievements": "", "work_history": []}
+    try:
+        history = json.loads(row["work_history_json"] or "[]")
+        if not isinstance(history, list):
+            history = []
+    except (ValueError, TypeError):
+        history = []
+    return {
+        "experience_years": row["experience_years"],
+        "education": row["education"],
+        "achievements": row["achievements"],
+        "work_history": history[:5],
+    }
+
+
 def candidate_view(db: sqlite3.Connection, user_id: int) -> dict | None:
     row = db.execute("SELECT * FROM candidate_profiles WHERE user_id=?", (user_id,)).fetchone()
-    return dict(row) if row else None
+    return (dict(row) | professional_resume(db, user_id)) if row else None
 
 
 def employer_view(db: sqlite3.Connection, user_id: int) -> dict | None:
@@ -1698,6 +1748,26 @@ def create_app(db_path: str | None = None) -> FastAPI:
                 data.schedule, data.employment, data.about.strip(), int(data.is_active), user["id"],
             ),
         )
+        if any(field in data.model_fields_set for field in
+               ("experience_years", "education", "achievements", "work_history")):
+            current = professional_resume(db, user["id"])
+            years = data.experience_years if data.experience_years is not None else current["experience_years"]
+            education = data.education.strip() if data.education is not None else current["education"]
+            achievements = data.achievements.strip() if data.achievements is not None else current["achievements"]
+            history = ([item.model_dump() for item in data.work_history]
+                       if data.work_history is not None else current["work_history"])
+            db.execute(
+                """INSERT INTO candidate_resume_details(
+                      user_id,experience_years,education,achievements,work_history_json
+                   ) VALUES(?,?,?,?,?)
+                   ON CONFLICT(user_id) DO UPDATE SET
+                     experience_years=excluded.experience_years,
+                     education=excluded.education,
+                     achievements=excluded.achievements,
+                     work_history_json=excluded.work_history_json,
+                     updated_at=datetime('now')""",
+                (user["id"], years, education, achievements, json.dumps(history, ensure_ascii=False)),
+            )
         db.execute("UPDATE users SET phone=? WHERE id=?", (data.phone.strip(), user["id"]))
         # Commit before the HTTP response: a new dashboard request may arrive immediately.
         db.commit()
@@ -2164,7 +2234,7 @@ def create_app(db_path: str | None = None) -> FastAPI:
                     "salary_min", "schedule", "employment",
                     "invitation_id", "invitation_status", "contact_shared",
                 )}
-                matches.append(public | score)
+                matches.append(public | professional_resume(db, row["candidate_id"]) | score)
         return {"matches": sorted(matches, key=lambda x: (-x["score"], x["candidate_id"]))[:50]}
 
     @app.post("/api/employer/invitations", status_code=201)
