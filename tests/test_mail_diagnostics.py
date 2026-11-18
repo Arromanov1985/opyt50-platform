@@ -127,6 +127,7 @@ def test_mail_diagnostics_is_private_read_only_and_redacted(tmp_path, monkeypatc
         assert by_event == {
             "new_application": 2, "invitation": 1, "invitation_response": 1,
             "contact_opened": 0, "application_status": 0, "introduction_outcome": 0,
+            "application_withdrawn": 0,
         }
         assert "private-person@" not in response.text
         assert "hidden reset token" not in response.text
