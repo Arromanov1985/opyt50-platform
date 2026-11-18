@@ -141,6 +141,12 @@ RELEASE09_RUNTIME_DDL = (
         outbox_id INTEGER PRIMARY KEY REFERENCES email_delivery_jobs(outbox_id) ON DELETE CASCADE,
         user_id INTEGER REFERENCES users(id) ON DELETE SET NULL
     )""",
+    # A single row per logical worker: no users, addresses or mail payloads.
+    # Heartbeats prove that a processing loop reached the database recently.
+    """CREATE TABLE IF NOT EXISTS mail_worker_heartbeat (
+        worker TEXT PRIMARY KEY,
+        seen_at TEXT NOT NULL
+    )""",
     """CREATE TABLE IF NOT EXISTS employer_public_profiles (
         employer_id INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
         about TEXT NOT NULL DEFAULT '',

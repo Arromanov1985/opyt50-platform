@@ -209,6 +209,8 @@ def test_private_mail_readiness_identifies_stalled_queue_without_exposing_users(
         idle = admin.get("/api/admin/mail-diagnostics").json()
         assert idle["mail_readiness"]["status"] == "worker_disabled"
         assert idle["mail_readiness"]["worker_configured"] is False
+        assert idle["mail_readiness"]["worker_recently_seen"] is False
+        assert idle["mail_readiness"]["worker_last_seen_seconds"] is None
         assert idle["mail_readiness"]["last_smtp_accept_at"] is None
         assert idle["mail_readiness"]["mailbox_confirmation_required"] is True
         assert idle["proven_delivery"] is False
@@ -216,10 +218,17 @@ def test_private_mail_readiness_identifies_stalled_queue_without_exposing_users(
         # This is a configuration flag, not a health assertion: it cannot prove
         # that a background worker is alive or that a mailbox received mail.
         monkeypatch.setenv("OPYT50_MAIL_WORKER_ENABLED", "1")
+        no_heartbeat = admin.get("/api/admin/mail-diagnostics").json()
+        assert no_heartbeat["mail_readiness"]["status"] == "worker_unconfirmed"
+        assert no_heartbeat["mail_readiness"]["worker_recently_seen"] is False
+
+        from app.mail_queue import record_worker_heartbeat
+        now = datetime.now(timezone.utc)
+        record_worker_heartbeat(app.state.db_path, now=now)
         no_mail = admin.get("/api/admin/mail-diagnostics").json()
         assert no_mail["mail_readiness"]["status"] == "no_workflow_mail_yet"
-
-        now = datetime.now(timezone.utc)
+        assert no_mail["mail_readiness"]["worker_recently_seen"] is True
+        assert no_mail["mail_readiness"]["worker_last_seen_seconds"] <= 5
         def stamp(delta):
             return (now + delta).isoformat(timespec="seconds")
 
@@ -292,6 +301,8 @@ def test_mail_readiness_handles_invalid_timestamps_without_exposing_details(
     create_admin(app)
     with TestClient(app) as admin:
         login_admin(admin)
+        from app.mail_queue import record_worker_heartbeat
+        record_worker_heartbeat(app.state.db_path)
         with database(app.state.db_path) as db:
             outbox = db.execute(
                 "INSERT INTO email_outbox(to_email,event,subject,body) VALUES(?,?,?,?)",
@@ -309,3 +320,77 @@ def test_mail_readiness_handles_invalid_timestamps_without_exposing_details(
         assert status["oldest_waiting_seconds"] is None
         assert status["overdue_seconds"] is None
         assert "private@example.invalid" not in result.text
+
+
+def test_worker_heartbeat_is_idempotent_and_stale_workers_are_flagged(
+    tmp_path, monkeypatch,
+):
+    from datetime import datetime, timedelta, timezone
+    from app.mail_queue import record_worker_heartbeat
+
+    configure(monkeypatch)
+    monkeypatch.setenv("OPYT50_MAIL_WORKER_ENABLED", "1")
+    app = create_app(str(tmp_path / "worker-heartbeat.db"))
+    create_admin(app)
+    with TestClient(app) as admin:
+        login_admin(admin)
+        now = datetime.now(timezone.utc)
+        record_worker_heartbeat(app.state.db_path, now=now - timedelta(minutes=3))
+        stale = admin.get("/api/admin/mail-diagnostics")
+        assert stale.status_code == 200
+        status = stale.json()["mail_readiness"]
+        assert status["status"] == "worker_unconfirmed"
+        assert status["worker_configured"] is True
+        assert status["worker_recently_seen"] is False
+        assert status["worker_last_seen_seconds"] >= 179
+
+        record_worker_heartbeat(app.state.db_path, now=now)
+        fresh = admin.get("/api/admin/mail-diagnostics").json()["mail_readiness"]
+        assert fresh["worker_recently_seen"] is True
+        assert fresh["status"] == "no_workflow_mail_yet"
+        assert fresh["worker_last_seen_seconds"] < 5
+
+        with database(app.state.db_path) as db:
+            rows = db.execute(
+                "SELECT worker,seen_at FROM mail_worker_heartbeat"
+            ).fetchall()
+        assert len(rows) == 1
+        assert rows[0]["worker"] == "workflow"
+        assert "@" not in fresh.__repr__()
+        assert "password" not in fresh.__repr__()
+
+
+def test_mail_worker_heartbeat_loop_executes_without_sending(
+    tmp_path, monkeypatch,
+):
+    import asyncio
+    from app import mail_queue
+
+    configure(monkeypatch)
+    monkeypatch.setenv("OPYT50_MAIL_WORKER_ENABLED", "0")
+    app = create_app(str(tmp_path / "loop-heartbeat.db"))
+    create_admin(app)
+    with TestClient(app):
+        passes = []
+        original_sleep = mail_queue.asyncio.sleep
+
+        async def stop_after_first_poll(seconds):
+            if seconds == mail_queue.POLL_SECONDS:
+                raise asyncio.CancelledError()
+            return await original_sleep(0)
+
+        monkeypatch.setattr(mail_queue.asyncio, "sleep", stop_after_first_poll)
+        monkeypatch.setattr(
+            mail_queue, "process_due_workflow_mail",
+            lambda _db_path: passes.append("processed"),
+        )
+        try:
+            asyncio.run(mail_queue.workflow_mail_worker(app.state.db_path))
+        except asyncio.CancelledError:
+            pass
+        assert passes == ["processed"]
+        with database(app.state.db_path) as db:
+            row = db.execute(
+                "SELECT worker,seen_at FROM mail_worker_heartbeat WHERE worker='workflow'"
+            ).fetchone()
+        assert row is not None and row["seen_at"]

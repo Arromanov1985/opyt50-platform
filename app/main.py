@@ -2470,11 +2470,21 @@ def create_app(db_path: str | None = None) -> FastAPI:
 
         oldest_age = age_seconds(queue_row["oldest_waiting_at"])
         overdue_age = age_seconds(queue_row["earliest_attempt_at"])
+        heartbeat = db.execute(
+            "SELECT seen_at FROM mail_worker_heartbeat WHERE worker=?",
+            ("workflow",),
+        ).fetchone()
+        last_seen_age = age_seconds(heartbeat["seen_at"]) if heartbeat else None
+        worker_recent = (
+            worker_configured and last_seen_age is not None and last_seen_age <= 120
+        )
         mode = delivery_mode()
         if mode != "smtp":
             readiness = "smtp_not_configured"
         elif not worker_configured:
             readiness = "worker_disabled"
+        elif not worker_recent:
+            readiness = "worker_unconfirmed"
         elif queue["exhausted"]:
             readiness = "delivery_exhausted"
         elif overdue_age is not None and overdue_age > 120:
@@ -2495,6 +2505,8 @@ def create_app(db_path: str | None = None) -> FastAPI:
             "mail_readiness": {
                 "status": readiness,
                 "worker_configured": worker_configured,
+                "worker_recently_seen": worker_recent,
+                "worker_last_seen_seconds": last_seen_age,
                 "oldest_waiting_seconds": oldest_age,
                 "overdue_seconds": overdue_age,
                 "last_smtp_accept_at": queue_row["last_smtp_accept_at"],

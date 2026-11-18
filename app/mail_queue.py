@@ -43,6 +43,20 @@ def _stamp(moment: datetime) -> str:
     return moment.astimezone(timezone.utc).isoformat(timespec="seconds")
 
 
+def record_worker_heartbeat(db_path: str, *, now: datetime | None = None) -> None:
+    """Record actual execution of the mail worker, never merely configuration.
+
+    A single keyed record prevents table growth, and the upsert is compatible
+    with SQLite and PostgreSQL. No recipient or SMTP metadata is stored.
+    """
+    with database(db_path) as db:
+        db.execute(
+            """INSERT INTO mail_worker_heartbeat(worker,seen_at) VALUES(?,?)
+               ON CONFLICT(worker) DO UPDATE SET seen_at=excluded.seen_at""",
+            ("workflow", _stamp(now or _now())),
+        )
+
+
 def enqueue_workflow_job(
     db, outbox_id: int, event: str, *, redacted: bool,
     recipient_user_id: int | None = None,
@@ -225,8 +239,15 @@ def process_due_workflow_mail(
 async def workflow_mail_worker(db_path: str) -> None:
     """Poll a shared database safely across multiple running app instances."""
     await asyncio.sleep(2)
+    last_heartbeat = None
     while True:
         try:
+            now = _now()
+            # Write at most every 20 seconds, even when multiple replicas poll
+            # the same queue. A stale timestamp flags a stopped/stuck worker.
+            if last_heartbeat is None or now - last_heartbeat >= timedelta(seconds=20):
+                await asyncio.to_thread(record_worker_heartbeat, db_path, now=now)
+                last_heartbeat = now
             await asyncio.to_thread(process_due_workflow_mail, db_path)
         except asyncio.CancelledError:
             raise
