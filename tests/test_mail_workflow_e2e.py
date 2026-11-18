@@ -87,7 +87,7 @@ def notice_rows(app):
             "SELECT event,to_email,subject,body FROM email_outbox "
             "WHERE event IN ('new_application','invitation',"
             "'application_status','invitation_response','contact_opened',"
-            "'application_withdrawn') "
+            "'application_withdrawn','introduction_outcome') "
             "ORDER BY id"
         )]
 
@@ -307,3 +307,163 @@ def test_application_withdrawal_is_committed_before_smtp_and_queued_once(
         assert [item["event"] for item in notice_rows(app)] == [
             "new_application", "application_withdrawn", "new_application"
         ]
+
+
+def test_outage_full_application_and_direct_introduction_recover_after_restart(
+    tmp_path: Path, monkeypatch,
+):
+    """Production-like isolated journey: all business actions commit while SMTP is down.
+
+    Two independent paths, eleven queued messages, bounded retry, restart, and
+    eventual delivery. There is no real SMTP connection or external recipient.
+    """
+    from datetime import datetime, timedelta, timezone
+
+    from app import mail_queue
+
+    welcome = mock_smtp(monkeypatch)
+    monkeypatch.setenv("OPYT50_MAIL_WORKER_ENABLED", "0")
+    db_path = str(tmp_path / "journey-outage.db")
+    app = create_app(db_path)
+    with TestClient(app) as candidate, TestClient(app) as employer:
+        register(candidate, "candidate", CANDIDATE)
+        register(employer, "employer", EMPLOYER)
+        assert len(welcome) == 2, "Only welcome messages are synchronous"
+        first_job = prepare(candidate, employer)
+        application = post(candidate, "/api/candidate/applications", {
+            "vacancy_id": first_job
+        })
+        assert application.status_code == 201, application.text
+        application_id = application.json()["id"]
+        assert post(candidate, f"/api/candidate/applications/{application_id}/withdraw").status_code == 200
+        repeated = post(candidate, f"/api/candidate/applications/{application_id}/withdraw")
+        assert repeated.status_code == 409
+        restored = post(candidate, "/api/candidate/applications", {"vacancy_id": first_job})
+        assert restored.status_code == 201 and restored.json()["reapplied"]
+        assert restored.json()["id"] == application_id
+
+        interest = post(employer, f"/api/employer/applications/{application_id}/interest")
+        assert interest.status_code == 200, interest.text
+        first_invitation_id = interest.json()["invitation_id"]
+        assert CANDIDATE not in employer.get("/api/employer/invitations").text
+        accepted = post(candidate, f"/api/candidate/invitations/{first_invitation_id}/respond",
+                        {"decision": "accepted", "share_consent": True})
+        assert accepted.status_code == 200, accepted.text
+        assert CANDIDATE not in employer.get("/api/employer/invitations").text
+        opened = post(employer, f"/api/employer/invitations/{first_invitation_id}/demo-pay")
+        assert opened.status_code == 200, opened.text
+        concluded = employer.patch(
+            f"/api/employer/applications/{application_id}/status",
+            headers=XHR, json={"status": "hired"},
+        )
+        assert concluded.status_code == 200, concluded.text
+
+        second_job = prepare(candidate, employer)
+        with database(db_path) as db:
+            candidate_id = db.execute(
+                "SELECT id FROM users WHERE email=?", (CANDIDATE,)
+            ).fetchone()["id"]
+        direct = post(employer, "/api/employer/invitations", {
+            "vacancy_id": second_job, "candidate_id": candidate_id,
+        })
+        assert direct.status_code == 201, direct.text
+        direct_id = direct.json()["id"]
+        direct_record = next(
+            x for x in employer.get("/api/employer/invitations").json()["invitations"]
+            if x["id"] == direct_id
+        )
+        assert "contact" not in direct_record, "Contacts hidden before separate consent"
+        assert CANDIDATE not in str(direct_record)
+        assert post(candidate, f"/api/candidate/invitations/{direct_id}/respond", {
+            "decision": "accepted", "share_consent": True,
+        }).status_code == 200
+        assert post(employer, f"/api/employer/invitations/{direct_id}/demo-pay").status_code == 200
+        final = employer.patch(
+            f"/api/employer/invitations/{direct_id}/outcome",
+            headers=XHR, json={"status": "rejected"},
+        )
+        assert final.status_code == 200, final.text
+        assert employer.patch(
+            f"/api/employer/invitations/{direct_id}/outcome",
+            headers=XHR, json={"status": "hired"},
+        ).status_code == 409
+        assert candidate.get("/api/candidate/applications").json()["applications"][0]["status"] == "hired"
+        assert len(welcome) == 2, "No business workflow should contact SMTP synchronously"
+        assert [entry["event"] for entry in notice_rows(app)] == [
+            "new_application", "application_withdrawn", "new_application",
+            "invitation", "invitation_response", "contact_opened",
+            "application_status", "invitation", "invitation_response",
+            "contact_opened", "introduction_outcome",
+        ]
+        with database(db_path) as db:
+            jobs = db.execute(
+                "SELECT state,attempts FROM email_delivery_jobs ORDER BY outbox_id"
+            ).fetchall()
+            assert len(jobs) == 11
+            assert all(j["state"] == "pending" and j["attempts"] == 0 for j in jobs)
+            assert db.execute(
+                "SELECT COUNT(*) FROM email_delivery_recipients"
+            ).fetchone()[0] == 11
+            assert db.execute(
+                "SELECT COUNT(*) FROM job_applications"
+            ).fetchone()[0] == 1, "Direct invitation must not create a fake application"
+            outbox_before_recovery = db.execute(
+                "SELECT COUNT(*) FROM email_outbox"
+            ).fetchone()[0]
+
+    # The outage begins AFTER all business actions have committed. Each job
+    # is attempted once and scheduled for a retry; no action is rolled back.
+    attempts = []
+    monkeypatch.setattr(
+        mail_queue, "send_email",
+        lambda recipient, subject, body: attempts.append((recipient, subject, body)) or False,
+    )
+    first_attempt = datetime.now(timezone.utc) + timedelta(seconds=2)
+    first_batch = process_due_workflow_mail(db_path, now=first_attempt)
+    second_batch = process_due_workflow_mail(db_path, now=first_attempt)
+    assert first_batch == {"processed": 8, "accepted": 0, "pending": 8, "exhausted": 0}
+    assert second_batch == {"processed": 3, "accepted": 0, "pending": 3, "exhausted": 0}
+    assert len(attempts) == 11
+    assert process_due_workflow_mail(
+        db_path, now=first_attempt + timedelta(seconds=29)
+    )["processed"] == 0, "Do not retry before backoff expires"
+    with database(db_path) as db:
+        assert all(
+            r["state"] == "pending" and r["attempts"] == 1
+            for r in db.execute("SELECT state,attempts FROM email_delivery_jobs")
+        )
+        assert db.execute(
+            "SELECT status FROM job_applications WHERE id=?", (application_id,)
+        ).fetchone()["status"] == "hired"
+        assert db.execute(
+            "SELECT outcome FROM invitation_outcomes WHERE invitation_id=?", (direct_id,)
+        ).fetchone()["outcome"] == "rejected"
+
+    # Simulate app restart and SMTP recovery without losing pending messages.
+    recovered = []
+    monkeypatch.setattr(
+        mail_queue, "send_email",
+        lambda recipient, subject, body: recovered.append((recipient, subject, body)) or True,
+    )
+    new_app = create_app(db_path)
+    with TestClient(new_app):
+        recovery_time = first_attempt + timedelta(seconds=31)
+        first_recovered = process_due_workflow_mail(db_path, now=recovery_time)
+        rest_recovered = process_due_workflow_mail(db_path, now=recovery_time)
+        assert first_recovered["accepted"] == 8
+        assert rest_recovered["accepted"] == 3
+        assert len(recovered) == 11
+        assert all(address in {CANDIDATE, EMPLOYER} for address, _, _ in recovered)
+        assert all(CANDIDATE not in body and "+70000000000" not in body
+                   for address, _, body in recovered if address == EMPLOYER)
+        assert process_due_workflow_mail(
+            db_path, now=recovery_time + timedelta(hours=1)
+        )["processed"] == 0
+        with database(db_path) as db:
+            assert all(
+                row["state"] == "accepted" and row["attempts"] == 2
+                for row in db.execute("SELECT state,attempts FROM email_delivery_jobs")
+            )
+            assert db.execute(
+                "SELECT COUNT(*) FROM email_outbox"
+            ).fetchone()[0] == outbox_before_recovery
