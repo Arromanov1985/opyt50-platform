@@ -661,8 +661,24 @@ def run_browser(page):
     expect(action_filter).to_contain_text("Есть согласие")
     expect(page.locator("#dashboard-main .employer-invitation-result-line")).to_contain_text("Показываем")
     expect(page.locator("#dashboard-main")).to_contain_text("Открыть контакт кандидата")
+    # Release 0.5.22: POST succeeds, but the *following GET* fails once.
+    # Show a durable server-confirmed receipt, never offer the POST again.
+    def fail_introduction_refresh_once(route):
+        route.fulfill(status=503, content_type="application/json",
+                      body='{"detail":"Test-only temporary refresh failure"}')
+    payment_posts = []
+    page.on("request", lambda request: payment_posts.append(request)
+            if request.method == "POST" and request.url.endswith("/demo-pay") else None)
+    page.route("**/api/employer/invitations", fail_introduction_refresh_once, times=1)
     page.once("dialog", lambda dialog: dialog.accept())
     page.locator("#dashboard-main [data-action='demo-pay']").click()
+    receipt = page.locator("#dashboard-main .employer-introduction-saved-receipt")
+    expect(receipt).to_contain_text("Контакт открыт (демо)")
+    expect(page.locator("#dashboard-main [data-action='demo-pay']")).to_have_count(0)
+    assert len(payment_posts) == 1, "Confirmed demo action must not be sent twice"
+    persisted_introductions = page.request.get(URL + "/api/employer/invitations").json()["invitations"]
+    assert any(item.get("contact_shared") for item in persisted_introductions), "Server must retain opened contact"
+    receipt.locator("[data-action='refresh-employer-introductions']").click()
     expect(page.locator("#dashboard-main")).to_contain_text("КОНТАКТ ОТКРЫТ · ДЕМО")
     expect(page.locator("#dashboard-main")).to_contain_text("Знакомство состоялось")
     expect(page.locator("#dashboard-main .employer-invitation-card").first).to_be_focused()
@@ -724,9 +740,21 @@ def run_browser(page):
     expect(introduced_filter).to_have_attribute("aria-pressed", "true")
     expect(page.locator("#dashboard-main")).to_contain_text("История взаимодействия")
     outcome_dialog_messages = []
+    page.route("**/api/employer/invitations", fail_introduction_refresh_once, times=1)
+    outcome_posts = []
+    page.on("request", lambda request: outcome_posts.append(request)
+            if request.method == "PATCH" and "/api/employer/applications/" in request.url
+            and request.url.endswith("/status") else None)
     page.once("dialog", lambda dialog: (outcome_dialog_messages.append(dialog.message), dialog.accept()))
     page.locator("#dashboard-main [data-action='introduction-outcome'][data-status='hired']").click()
     assert outcome_dialog_messages and "не подтверждение трудоустройства" in outcome_dialog_messages[0], outcome_dialog_messages
+    outcome_receipt = page.locator("#dashboard-main .employer-introduction-saved-receipt")
+    expect(outcome_receipt).to_contain_text("Положительный итог сохранён")
+    expect(page.locator("#dashboard-main [data-action='introduction-outcome']")).to_have_count(0)
+    assert len(outcome_posts) == 1, "Final result must be saved once only"
+    persisted_final = page.request.get(URL + "/api/employer/applications").json()["applications"]
+    assert any(item.get("status") == "hired" for item in persisted_final), "Server must keep final outcome"
+    outcome_receipt.locator("[data-action='refresh-employer-introductions']").click()
     expect(page.locator("#dashboard-main [data-action='filter-employer-invitations'][data-filter='closed']")).to_have_attribute("aria-pressed", "true")
     expect(page.locator("#dashboard-main")).to_contain_text("Положительный итог")
     focused_completed_card = page.locator("#dashboard-main .employer-invitation-card[data-application-id]")
