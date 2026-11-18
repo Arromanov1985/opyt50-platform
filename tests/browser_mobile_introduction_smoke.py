@@ -188,6 +188,38 @@ def exercise_mobile_introduction(page):
     check_mobile_width(page, "candidate introduced large text")
     page.locator("#reading-mode-toggle").click()
 
+    # Release 0.5.25: direct introductions now have a final result even when
+    # the candidate never submitted an application. This stays a separate
+    # invitation workflow, without creating a fictitious application.
+    logout(page)
+    login(page, "company@demo.example")
+    page.locator("[data-dashboard-tab-select]").select_option("invitations")
+    completed_before = page.request.get(URL + "/api/employer/invitations")
+    assert completed_before.status == 200
+    direct_case = next(item for item in completed_before.json()["invitations"]
+                       if item["id"] == invitation_id)
+    assert direct_case["application_id"] is None
+    assert direct_case["direct_outcome"] is None
+    direct_card = page.locator(
+        f"#dashboard-main .employer-invitation-card[data-invitation-id='{invitation_id}']"
+    )
+    expect(direct_card.locator("[data-action='direct-introduction-outcome']")).to_have_count(2)
+    page.once("dialog", lambda dialog: dialog.accept())
+    direct_card.locator("[data-action='direct-introduction-outcome'][data-status='hired']").click()
+    expect(page.locator("#dashboard-main")).to_contain_text("Положительный итог")
+    expect(page.locator("#dashboard-main .employer-invitation-card.is-closed")).to_have_count(1)
+    expect(page.locator("#dashboard-main [data-action='direct-introduction-outcome']")).to_have_count(0)
+    check_mobile_width(page, "employer direct outcome")
+    logout(page)
+
+    login(page, CANDIDATE_EMAIL)
+    page.locator("[data-dashboard-tab-select]").select_option("invitations")
+    expect(page.locator("#dashboard-main .candidate-introduction-card.is-closed")).to_have_count(1)
+    expect(page.locator("#dashboard-main")).to_contain_text("Положительный итог знакомства")
+    expect(page.locator("#dashboard-main")).to_contain_text("не подтверждение трудоустройства")
+    assert page.request.get(URL + "/api/candidate/applications").json()["applications"] == []
+    check_mobile_width(page, "candidate direct outcome")
+
     # The smallest supported phone keeps the consent history and controls
     # within the viewport (not a horizontally scrolling document).
     page.set_viewport_size({"width": 320, "height": 740})
