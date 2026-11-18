@@ -251,16 +251,19 @@ def test_application_withdrawal_is_committed_before_smtp_and_queued_once(
         register(candidate, "candidate", CANDIDATE)
         register(employer, "employer", EMPLOYER)
         vacancy = prepare(candidate, employer)
+        baseline = len(mail)  # Registration sends immediate welcome emails.
         applied = post(candidate, "/api/candidate/applications", {"vacancy_id": vacancy})
         assert applied.status_code == 201, applied.text
         aid = applied.json()["id"]
         dispatch_one(app)
-        assert len(mail) == 1
+        assert len(mail) == baseline + 1
+        assert mail[-1][0] == EMPLOYER
+        mail_before_withdrawal = list(mail)
 
         # No synchronous SMTP: the request returns after the database commit.
         withdrawn = post(candidate, f"/api/candidate/applications/{aid}/withdraw")
         assert withdrawn.status_code == 200, withdrawn.text
-        assert mail == [(EMPLOYER, mail[0][1], mail[0][2])]
+        assert mail == mail_before_withdrawal
         assert candidate.get("/api/candidate/applications").json()["applications"][0]["status"] == "withdrawn"
         assert employer.get("/api/employer/applications").json()["applications"][0]["status"] == "withdrawn"
         with database(app.state.db_path) as db:
@@ -286,14 +289,14 @@ def test_application_withdrawal_is_committed_before_smtp_and_queued_once(
             assert db.execute(
                 "SELECT COUNT(*) FROM email_outbox WHERE event='application_withdrawn'"
             ).fetchone()[0] == 1
-        assert len(mail) == 1
+        assert mail == mail_before_withdrawal
 
         # Only the worker sends the saved alert after the action succeeded.
         dispatch_one(app)
         assert_notice(app, mail, 1, "application_withdrawn", EMPLOYER)
         assert "отозван" in mail[-1][2]
         assert process_due_workflow_mail(app.state.db_path)["processed"] == 0
-        assert len(mail) == 2
+        assert len(mail) == baseline + 2
 
         # Reapplication reuses the original id, and generates no withdrawal again.
         reapplied = post(candidate, "/api/candidate/applications", {"vacancy_id": vacancy})
