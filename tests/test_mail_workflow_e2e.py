@@ -368,9 +368,12 @@ def test_outage_full_application_and_direct_introduction_recover_after_restart(
         })
         assert direct.status_code == 201, direct.text
         direct_id = direct.json()["id"]
-        assert CANDIDATE not in employer.get("/api/employer/invitations").text.split(
-            '"id":' + str(direct_id), 1
-        )[-1].split('"contact"', 1)[0]
+        direct_record = next(
+            x for x in employer.get("/api/employer/invitations").json()["invitations"]
+            if x["id"] == direct_id
+        )
+        assert "contact" not in direct_record, "Contacts hidden before separate consent"
+        assert CANDIDATE not in str(direct_record)
         assert post(candidate, f"/api/candidate/invitations/{direct_id}/respond", {
             "decision": "accepted", "share_consent": True,
         }).status_code == 200
@@ -384,7 +387,7 @@ def test_outage_full_application_and_direct_introduction_recover_after_restart(
             f"/api/employer/invitations/{direct_id}/outcome",
             headers=XHR, json={"status": "hired"},
         ).status_code == 409
-        assert not candidate.get("/api/candidate/applications").json()["applications"][0]["status"] == "withdrawn"
+        assert candidate.get("/api/candidate/applications").json()["applications"][0]["status"] == "hired"
         assert len(welcome) == 2, "No business workflow should contact SMTP synchronously"
         assert [entry["event"] for entry in notice_rows(app)] == [
             "new_application", "application_withdrawn", "new_application",
@@ -404,6 +407,9 @@ def test_outage_full_application_and_direct_introduction_recover_after_restart(
             assert db.execute(
                 "SELECT COUNT(*) FROM job_applications"
             ).fetchone()[0] == 1, "Direct invitation must not create a fake application"
+            outbox_before_recovery = db.execute(
+                "SELECT COUNT(*) FROM email_outbox"
+            ).fetchone()[0]
 
     # The outage begins AFTER all business actions have committed. Each job
     # is attempted once and scheduled for a retry; no action is rolled back.
@@ -458,4 +464,6 @@ def test_outage_full_application_and_direct_introduction_recover_after_restart(
                 row["state"] == "accepted" and row["attempts"] == 2
                 for row in db.execute("SELECT state,attempts FROM email_delivery_jobs")
             )
-            assert db.execute("SELECT COUNT(*) FROM email_outbox").fetchone()[0] == 13
+            assert db.execute(
+                "SELECT COUNT(*) FROM email_outbox"
+            ).fetchone()[0] == outbox_before_recovery
