@@ -166,6 +166,39 @@ def probe_private_draft_route():
         return {"result": "connection-error", "type": type(error).__name__}
 
 
+# GET on a PATCH/POST-only route is safe and never executes its mutation.
+# Unlike a public release string, the 405 + Allow evidence confirms that the
+# corresponding backend handler is actually deployed. No cookies or tokens.
+BACKEND_ROUTE_CAPABILITIES = {
+    "direct_invitation_outcome": ("/api/employer/invitations/0/outcome", "PATCH"),
+    "candidate_invitation_response": ("/api/candidate/invitations/0/respond", "POST"),
+    "employer_contact_unlock": ("/api/employer/invitations/0/demo-pay", "POST"),
+}
+
+
+def probe_backend_route(path, expected_method):
+    request = Request(
+        BASE + path,
+        headers={"User-Agent": "Stazhno-Preview-ReadOnly-Probe/1.0"},
+        method="GET",
+    )
+    try:
+        with build_opener(NoRedirect).open(request, timeout=10) as response:
+            return {"status": response.status, "result": "unexpected-get-success"}
+    except HTTPError as error:
+        allow = {method.strip().upper() for method in error.headers.get("Allow", "").split(",")}
+        content_type = error.headers.get("Content-Type", "").lower()
+        if error.code == 405 and expected_method in allow and "json" in content_type:
+            return {"status": 405, "result": "route-present-method-protected"}
+        if error.code == 404:
+            return {"status": 404, "result": "route-not-found"}
+        if error.code in (401, 403):
+            return {"status": error.code, "result": "possibly-preview-auth-gate"}
+        return {"status": error.code, "result": "unexpected-response"}
+    except (URLError, OSError, ssl.SSLError, TimeoutError) as error:
+        return {"result": "connection-error", "type": type(error).__name__}
+
+
 def main():
     host = BASE.removeprefix("https://").split("/", 1)[0].split(":", 1)[0]
     result = {"preview_url": BASE, "read_only": True, "dns": "unknown", "paths": {}}
@@ -185,6 +218,10 @@ def main():
         result["deployed_app_js"] = result["deployed_assets"]["app.js"]
         result["index_asset_revisions"] = probe_index_revisions()
         result["drafts_api"] = probe_private_draft_route()
+        result["backend_routes"] = {
+            name: probe_backend_route(path, method)
+            for name, (path, method) in BACKEND_ROUTE_CAPABILITIES.items()
+        }
     else:
         result["paths"] = {
             "/api/health": {"result": "not-tested-dns-failure"},
@@ -196,6 +233,10 @@ def main():
         result["deployed_app_js"] = result["deployed_assets"]["app.js"]
         result["index_asset_revisions"] = {"result": "not-tested-dns-failure"}
         result["drafts_api"] = {"result": "not-tested-dns-failure"}
+        result["backend_routes"] = {
+            name: {"result": "not-tested-dns-failure"}
+            for name in BACKEND_ROUTE_CAPABILITIES
+        }
     result["assessment"] = (
         "preview-health-reachable"
         if result["paths"]["/api/health"].get("status") == 200
@@ -203,12 +244,21 @@ def main():
     )
     asset_results = [item["result"] for item in result["deployed_assets"].values()]
     html_result = result["index_asset_revisions"]["result"]
-    if (all(value == "exact-match" for value in asset_results)
-            and html_result == "exact-match"
-            and result["drafts_api"]["result"] == "present-and-protected"):
-        result["release_evidence"] = "frontend-match-and-protected-drafts-api"
+    frontend_matches = (
+        all(value == "exact-match" for value in asset_results)
+        and html_result == "exact-match"
+        and result["drafts_api"]["result"] == "present-and-protected"
+    )
+    backend_matches = all(
+        item["result"] == "route-present-method-protected"
+        for item in result["backend_routes"].values()
+    )
+    if frontend_matches and backend_matches:
+        result["release_evidence"] = "frontend-and-backend-match"
     elif "mismatch" in asset_results or html_result == "mismatch":
         result["release_evidence"] = "frontend-version-mismatch"
+    elif frontend_matches and not backend_matches:
+        result["release_evidence"] = "backend-version-unverified"
     else:
         result["release_evidence"] = "unverified"
     REPORT.write_text(json.dumps(result, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")

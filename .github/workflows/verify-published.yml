@@ -33,7 +33,7 @@ jobs:
           status="unverified"
           for ((i=1; i<=attempts; i++)); do
             python scripts/probe_timeweb_preview.py > /dev/null
-            if python -c 'import json, sys; p=json.load(open("preview-reachability.json", encoding="utf-8")); sys.exit(0 if p.get("release_evidence") == "frontend-match-and-protected-drafts-api" else 1)'; then
+            if python -c 'import json, sys; p=json.load(open("preview-reachability.json", encoding="utf-8")); sys.exit(0 if p.get("release_evidence") == "frontend-and-backend-match" else 1)'; then
               status="published"
               break
             fi
@@ -59,6 +59,8 @@ jobs:
               lines.append(f"| {name} | {item.get('result', 'unknown')} |")
           lines.append(f"| HTML-версии | {report.get('index_asset_revisions', {}).get('result', 'unknown')} |")
           lines.append(f"| Защищённый API | {report.get('drafts_api', {}).get('result', 'unknown')} |")
+          for name, item in report.get("backend_routes", {}).items():
+              lines.append(f"| Backend {name} | {item.get('result', 'unknown')} |")
           with open(os.environ["GITHUB_STEP_SUMMARY"], "a", encoding="utf-8") as summary:
               summary.write("\n".join(lines) + "\n")
           PY
