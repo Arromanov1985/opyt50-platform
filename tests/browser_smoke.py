@@ -577,10 +577,72 @@ def run_browser(page):
     expect(page.locator("#dashboard-main")).to_contain_text("Согласие получено")
     expect(page.locator(".dashboard-tabs [data-tab='security']")).to_be_visible()
     expect(page.locator("#dashboard-main [data-v02-action='open-introductions']")).to_contain_text("Продолжить знакомство")
+    # Release 0.5.21: the link from an application opens exactly its own
+    # invitation even among many fictional cases. No POST/PATCH in fixtures.
+    real_invites = page.request.get(URL + "/api/employer/invitations").json()["invitations"]
+    assert real_invites, "Expected an accepted invitation in the seeded flow"
+    real_invite = real_invites[0]
+    deep_link = page.locator("#dashboard-main [data-v02-action='open-introductions']")
+    expect(deep_link).to_have_attribute("data-invitation-id", str(real_invite["id"]))
+    many_invites = []
+    for idx in range(44):
+        item = dict(real_invite)
+        item["id"] = 60000 + idx
+        item["application_id"] = 61000 + idx
+        item["candidate_profession"] = f"Тестовый кандидат {idx:02d}"
+        item["status"] = "accepted"
+        item["contact"] = None
+        item["contact_shared"] = False
+        item["timeline"] = []
+        many_invites.append(item)
+    many_invites.append(real_invite)
+
+    def fake_employer_invitations(route):
+        route.fulfill(status=200, content_type="application/json",
+                      body=json.dumps({"invitations": many_invites}, ensure_ascii=False))
+
+    page.route("**/api/employer/invitations", fake_employer_invitations)
+    deep_link.click()
+    expect(page.locator("#dashboard-main [data-action='filter-employer-invitations'][data-filter='action']")).to_have_attribute("aria-pressed", "true")
+    intro_cards = page.locator("#employer-invitation-results .employer-invitation-card")
+    expect(intro_cards).to_have_count(20)
+    expect(intro_cards.first).to_have_attribute("data-invitation-id", str(real_invite["id"]))
+    expect(intro_cards.first).to_be_focused()
+    expect(page.locator(".employer-invitation-result-line")).to_contain_text("Показываем 20 из 45")
+    next_intro = page.locator("[data-action='more-employer-invitations']")
+    expect(next_intro).to_contain_text("20")
+    next_intro.click()
+    expect(intro_cards).to_have_count(40)
+    expect(intro_cards.nth(20)).to_be_focused()
+    expect(next_intro).to_contain_text("5")
+    next_intro.click()
+    expect(intro_cards).to_have_count(45)
+    expect(page.locator("[data-action='more-employer-invitations']")).to_have_count(0)
+    page.locator("[data-action='filter-employer-invitations'][data-filter='all']").click()
+    expect(intro_cards).to_have_count(20)
+    employer_intro_reads = []
+    page.on("request", lambda request: employer_intro_reads.append(request)
+            if request.method == "GET" and request.url.endswith("/api/employer/invitations")
+            else None)
+    page.locator("[data-employer-introduction-search]").fill("тестовый кандидат 43")
+    expect(intro_cards).to_have_count(1)
+    expect(intro_cards).to_contain_text("Тестовый кандидат 43")
+    assert not employer_intro_reads, "Invitation search must use already loaded records"
+    page.set_viewport_size({"width": 390, "height": 844})
+    assert page.evaluate("""() => {
+      const root = document.querySelector('#dashboard-main');
+      return root.scrollWidth <= root.clientWidth + 3;
+    }"""), "Employer invitation pagination must fit 390px"
+    page.set_viewport_size({"width": 1280, "height": 800})
+    page.unroute("**/api/employer/invitations", fake_employer_invitations)
+    # Reopen from the original application to discard fictional cached cases.
+    page.locator(".dashboard-tabs [data-tab='applications']").click()
     page.locator("#dashboard-main [data-v02-action='open-introductions']").click()
     expect(page.locator("#dashboard-main [data-action='filter-employer-invitations'][data-filter='action']")).to_have_attribute("aria-pressed", "true")
     expect(page.locator("#dashboard-main")).to_contain_text("Знакомства и контакты")
     expect(page.locator("#dashboard-main")).to_contain_text("Открыть контакт кандидата")
+    expect(intro_cards).to_have_count(1)
+    expect(intro_cards.first).to_be_focused()
     page.locator(".dashboard-tabs [data-tab='vacancies']").click()
     page.locator("#dashboard-main .item-card").filter(has_text="Кладовщик").locator("[data-action='matches']").click()
     expect(page.locator("#employer-matches .candidate-match-card")).to_be_visible()
@@ -603,6 +665,7 @@ def run_browser(page):
     page.locator("#dashboard-main [data-action='demo-pay']").click()
     expect(page.locator("#dashboard-main")).to_contain_text("КОНТАКТ ОТКРЫТ · ДЕМО")
     expect(page.locator("#dashboard-main")).to_contain_text("Знакомство состоялось")
+    expect(page.locator("#dashboard-main .employer-invitation-card").first).to_be_focused()
     expect(page.locator("#dashboard-main")).to_contain_text("Следующий шаг — свяжитесь с кандидатом")
     expect(page.locator("#dashboard-main .invitation-vacancy-context")).to_contain_text("Кладовщик")
     expect(page.locator("#dashboard-main .invitation-last-activity")).to_contain_text("Последнее действие")
