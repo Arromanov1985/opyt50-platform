@@ -856,3 +856,93 @@ def test_private_action_summary_follows_existing_workflow_without_extra_emails(a
         assert summary(employer)["introductions_to_finish"] == 0
         assert summary(employer)["action_count"] == 0
         assert summary(candidate)["action_count"] == 0
+
+
+@pytest.mark.parametrize("outcome", ["hired", "rejected"])
+def test_direct_invitation_outcome_is_private_durable_and_terminal(app, outcome):
+    with TestClient(app) as candidate, TestClient(app) as employer, TestClient(app) as stranger:
+        cid = register(candidate, "direct-candidate@demo.example")
+        register(employer, "direct-employer@demo.example", "employer")
+        register(stranger, "other-company@demo.example", "employer")
+        profile(candidate)
+        jid = vacancy(employer)
+        invitation = post(employer, "/api/employer/invitations", {
+            "vacancy_id": jid, "candidate_id": cid
+        })
+        assert invitation.status_code == 201, invitation.text
+        iid = invitation.json()["id"]
+        path = f"/api/employer/invitations/{iid}/outcome"
+        def change(client, status):
+            return client.patch(path, headers=HEADERS, json={"status": status})
+
+        assert change(employer, outcome).status_code == 409
+        assert change(stranger, outcome).status_code == 404
+        assert change(candidate, outcome).status_code == 403
+        assert change(employer, "invalid").status_code == 422
+        consent = post(candidate, f"/api/candidate/invitations/{iid}/respond", {
+            "decision": "accepted", "share_consent": True
+        })
+        assert consent.status_code == 200, consent.text
+        assert change(employer, outcome).status_code == 409
+        pay = post(employer, f"/api/employer/invitations/{iid}/demo-pay")
+        assert pay.status_code == 200, pay.text
+        assert pay.json()["mode"] == "demo_only"
+        assert pay.json()["ok"] is True
+
+        before = candidate.get("/api/candidate/invitations").json()["invitations"][0]
+        assert before["application_id"] is None
+        assert before["direct_outcome"] is None
+        saved = change(employer, outcome)
+        assert saved.status_code == 200, saved.text
+        assert saved.json() == {"ok": True, "status": outcome}
+        assert change(employer, outcome).status_code == 409
+        assert change(employer, "rejected" if outcome == "hired" else "hired").status_code == 409
+
+        finished = candidate.get("/api/candidate/invitations").json()["invitations"][0]
+        assert finished["application_id"] is None
+        assert finished["direct_outcome"] == outcome
+        assert finished["contact_shared"] == 1
+        events = [item["event"] for item in finished["timeline"]]
+        assert events == ["invitation_sent", "invitation_accepted", "contact_opened", outcome]
+        assert not any(key in finished for key in ("candidate_email", "candidate_phone"))
+        visible = employer.get("/api/employer/invitations").json()["invitations"][0]
+        assert visible["application_id"] is None
+        assert visible["direct_outcome"] == outcome
+        assert visible["contact"]["email"] == "direct-candidate@demo.example"
+        assert stranger.get("/api/employer/invitations").json()["invitations"] == []
+        with database(app.state.db_path) as db:
+            assert db.execute(
+                "SELECT COUNT(*) FROM invitation_outcomes WHERE invitation_id=?", (iid,)
+            ).fetchone()[0] == 1
+            assert db.execute(
+                "SELECT COUNT(*) FROM job_applications WHERE vacancy_id=? AND candidate_id=?",
+                (jid, cid),
+            ).fetchone()[0] == 0
+            assert db.execute(
+                "SELECT COUNT(*) FROM email_outbox WHERE event='introduction_outcome'"
+            ).fetchone()[0] == 1
+
+
+def test_direct_invitation_outcome_cannot_override_existing_application(app):
+    with TestClient(app) as candidate, TestClient(app) as employer:
+        cid = register(candidate, "applied-candidate@demo.example")
+        register(employer, "applied-employer@demo.example", "employer")
+        profile(candidate)
+        jid = vacancy(employer)
+        applied = post(candidate, "/api/candidate/applications", {"vacancy_id": jid})
+        assert applied.status_code == 201, applied.text
+        invitation = post(employer, "/api/employer/invitations", {
+            "vacancy_id": jid, "candidate_id": cid
+        })
+        assert invitation.status_code == 201, invitation.text
+        iid = invitation.json()["id"]
+        assert post(candidate, f"/api/candidate/invitations/{iid}/respond", {
+            "decision": "accepted", "share_consent": True
+        }).status_code == 200
+        assert post(employer, f"/api/employer/invitations/{iid}/demo-pay").status_code == 200
+        outcome = employer.patch(
+            f"/api/employer/invitations/{iid}/outcome",
+            headers=HEADERS, json={"status": "hired"},
+        )
+        assert outcome.status_code == 409
+        assert employer.get("/api/employer/invitations").json()["invitations"][0]["direct_outcome"] is None
