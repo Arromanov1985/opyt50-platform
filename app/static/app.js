@@ -2454,6 +2454,7 @@ async function renderAdmin() {
       const statusLabels = {
         smtp_not_configured: 'Почтовый сервер не настроен',
         worker_disabled: 'Обработчик очереди отключён',
+        worker_unconfirmed: 'Нет подтверждения работы обработчика',
         delivery_exhausted: 'Есть письма с исчерпанными попытками',
         queue_overdue: 'Очередь не обработана в срок',
         retrying: 'Идут повторные попытки',
@@ -2470,10 +2471,15 @@ async function renderAdmin() {
       const overdueMinutes = Number.isFinite(readiness?.overdue_seconds) &&
         readiness.overdue_seconds > 120
         ? ' · Просрочка: ' + Math.floor(readiness.overdue_seconds / 60) + ' мин.' : '';
+      const workerAgeLabel = Number.isFinite(readiness?.worker_last_seen_seconds)
+        ? Math.floor(readiness.worker_last_seen_seconds / 60) + ' мин. назад'
+        : 'нет отметки активности';
       const queueNote = readiness
         ? '<p class="muted"><strong>Состояние:</strong> ' +
           esc(statusLabels[readiness.status] || 'Не проверено') +
-          ' · Обработчик: ' + (readiness.worker_configured ? 'включён в настройках' : 'отключён') +
+          ' · Обработчик: ' + (readiness.worker_recently_seen ? 'активность подтверждена'
+            : readiness.worker_configured ? 'включён, но активность не подтверждена' : 'отключён') +
+          ' (' + esc(workerAgeLabel) + ')' +
           ' · Ожидание: ' + esc(oldestMinutes) + esc(overdueMinutes) +
           ' · Последний приём SMTP: ' + esc(acceptedLabel) + '</p>' +
           '<p class="muted">Включённый обработчик и ответ SMTP не гарантируют ' +
