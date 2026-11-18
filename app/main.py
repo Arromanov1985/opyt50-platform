@@ -2413,7 +2413,7 @@ def create_app(db_path: str | None = None) -> FastAPI:
         # message body, recipient address or employer/candidate identity.
         types = (
             "new_application", "invitation", "invitation_response",
-            "contact_opened", "application_status",
+            "contact_opened", "application_status", "introduction_outcome",
         )
         rows = db.execute(
             """SELECT event,COUNT(*) AS total,MAX(created_at) AS last_created_at
