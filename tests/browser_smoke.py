@@ -393,7 +393,10 @@ def run_browser(page):
     application_search.fill("")
     expect(page.locator("#employer-application-results .application-review-card:visible")).to_have_count(20)
     page.unroute("**/api/employer/applications", fake_many_applications)
-    page.locator("[data-v02-action='employer-application-filter'][data-filter='attention']").click()
+    # Restore the pre-existing search and a neutral stage before the legacy
+    # filter assertions; the pagination scenario intentionally changed both.
+    page.locator("[data-v02-action='employer-application-filter'][data-filter='all']").click()
+    page.locator("#employer-application-search").fill("Кладовщик")
     expect(page.locator("#employer-application-results .application-review-card:visible")).to_have_count(1)
     expect(page.locator("#dashboard-main [data-v02-action='employer-application-filter']")).to_have_count(6)
     attention_filter = page.locator("#dashboard-main [data-v02-action='employer-application-filter'][data-filter='attention']")
