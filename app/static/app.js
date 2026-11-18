@@ -2443,11 +2443,42 @@ async function renderAdmin() {
       invitation: 'Приглашения соискателю',
       invitation_response: 'Ответы на приглашения',
       contact_opened: 'Открытие контакта',
-      application_status: 'Изменения статуса отклика'
+      application_status: 'Изменения статуса отклика',
+      application_withdrawn: 'Отозванные отклики',
+      introduction_outcome: 'Результаты прямых знакомств'
     };
     const queueContainer = $('#admin-mail-queue-summary');
     if (queueContainer) {
       const queue = mailDiagnostics?.retry_queue;
+      const readiness = mailDiagnostics?.mail_readiness;
+      const statusLabels = {
+        smtp_not_configured: 'Почтовый сервер не настроен',
+        worker_disabled: 'Обработчик очереди отключён',
+        delivery_exhausted: 'Есть письма с исчерпанными попытками',
+        queue_overdue: 'Очередь не обработана в срок',
+        retrying: 'Идут повторные попытки',
+        processing: 'Есть ожидающие отправки письма',
+        smtp_acceptance_observed: 'SMTP принимал письма',
+        no_workflow_mail_yet: 'Рабочих отправок ещё не было'
+      };
+      const lastAccepted = readiness?.last_smtp_accept_at;
+      const acceptedDate = lastAccepted ? new Date(lastAccepted) : null;
+      const acceptedLabel = acceptedDate && Number.isFinite(acceptedDate.getTime())
+        ? acceptedDate.toLocaleString('ru-RU') : 'пока нет';
+      const oldestMinutes = Number.isFinite(readiness?.oldest_waiting_seconds)
+        ? Math.floor(readiness.oldest_waiting_seconds / 60) + ' мин.' : 'нет';
+      const overdueMinutes = Number.isFinite(readiness?.overdue_seconds) &&
+        readiness.overdue_seconds > 120
+        ? ' · Просрочка: ' + Math.floor(readiness.overdue_seconds / 60) + ' мин.' : '';
+      const queueNote = readiness
+        ? '<p class="muted"><strong>Состояние:</strong> ' +
+          esc(statusLabels[readiness.status] || 'Не проверено') +
+          ' · Обработчик: ' + (readiness.worker_configured ? 'включён в настройках' : 'отключён') +
+          ' · Ожидание: ' + esc(oldestMinutes) + esc(overdueMinutes) +
+          ' · Последний приём SMTP: ' + esc(acceptedLabel) + '</p>' +
+          '<p class="muted">Включённый обработчик и ответ SMTP не гарантируют ' +
+          'доставку во «Входящие»; для проверки письма используйте свой адрес администратора.</p>'
+        : '';
       const states = [
         ['В очереди', queue?.queued],
         ['Повторная попытка', queue?.retrying],
@@ -2457,7 +2488,7 @@ async function renderAdmin() {
         ['Остановлены безопасностью', queue?.suppressed],
       ];
       queueContainer.innerHTML = queue
-        ? '<div class="admin-mail-event-grid">' + states.map(([label, count]) =>
+        ? queueNote + '<div class="admin-mail-event-grid">' + states.map(([label, count]) =>
             '<div><span>' + esc(label) + '</span><strong>' +
             Number(count || 0).toLocaleString('ru-RU') + '</strong></div>'
           ).join('') + '</div>'
