@@ -804,7 +804,7 @@ def install_routes(app) -> None:
     # Imported here to avoid a circular module initialization.
     from .main import (
         CONTACT_EMAIL_PATTERN, CONTACT_PHONE_PATTERN,
-        active_user, add_session, allowed, candidate_view,
+        active_user, add_session, allowed, candidate_view, professional_resume,
         clear_security_rate_limit, consume_security_rate_limit, get_connection,
     )
 
@@ -1162,6 +1162,7 @@ def install_routes(app) -> None:
         allowed(user, "employer")
         params = [user["id"]]
         sql = """SELECT a.id,a.vacancy_id,a.status,a.created_at,a.updated_at,v.title,
+                 a.candidate_id AS resume_candidate_id,
                  c.profession,c.city,c.skills,c.salary_min AS expected_salary,
                  i.id AS invitation_id,i.status AS invitation_status,i.contact_shared AS contact_shared
                  FROM job_applications a
@@ -1177,6 +1178,8 @@ def install_routes(app) -> None:
         applications = []
         for row in rows:
             item = dict(row)
+            candidate_id = item.pop("resume_candidate_id")
+            item.update(professional_resume(db, candidate_id))
             item["introduction_stage"] = introduction_stage(row["invitation_status"], row["contact_shared"])
             item["timeline"] = interaction_timeline(db, row["id"], row["invitation_id"])
             applications.append(item)
