@@ -3112,3 +3112,28 @@ body.comfortable-view .employer-application-search label{font-size:1rem}
   .employer-application-search-row .btn{width:100%}
   .application-review-card .item-actions .btn{width:100%}
 }
+
+/* Release 0.5.19: accessible incremental employer application list. */
+.employer-application-pagination{
+  display:flex;
+  justify-content:center;
+  padding:16px 0 4px;
+}
+.employer-application-pagination[hidden]{
+  display:none !important;
+}
+.employer-application-pagination .btn{
+  min-height:44px;
+  max-width:100%;
+  white-space:normal;
+}
+.application-review-card[hidden]{
+  display:none !important;
+}
+.application-review-card:focus{
+  outline:3px solid #9FD8BA;
+  outline-offset:3px;
+}
+@media(max-width:430px){
+  .employer-application-pagination .btn{width:100%}
+}

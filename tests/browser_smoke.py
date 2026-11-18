@@ -354,6 +354,50 @@ def run_browser(page):
         getComputedStyle(grid).gridTemplateColumns.trim().split(/\\s+/).length === 2;
     }"""), "Application triage should fit 390px with two-column stage filters"
     page.set_viewport_size({"width": 1280, "height": 800})
+    # Release 0.5.19: page through 45 fictional applications, without losing
+    # search matches beyond the first 20. The real backend stays untouched.
+    application_search.fill("")
+    original_applications = page.request.get(URL + "/api/employer/applications").json()
+    sample_application = original_applications["applications"][0]
+    generated_applications = []
+    for idx in range(45):
+        item = dict(sample_application)
+        item["id"] = 50000 + idx
+        item["profession"] = f"Тестовый специалист {idx:02d}"
+        item["skills"] = "уникальный-навык-44" if idx == 44 else "1С"
+        item["timeline"] = []
+        generated_applications.append(item)
+    def fake_many_applications(route):
+        route.fulfill(status=200, content_type="application/json",
+                      body=json.dumps({"applications": generated_applications}, ensure_ascii=False))
+    page.route("**/api/employer/applications", fake_many_applications)
+    page.locator("[data-v02-action='employer-application-filter'][data-filter='all']").click()
+    expect(page.locator("#employer-application-results .application-review-card:visible")).to_have_count(20)
+    expect(page.locator("#employer-application-visible-count")).to_have_text("20")
+    expect(page.locator("#employer-application-matched-count")).to_have_text("45")
+    pager = page.locator("[data-v02-action='more-employer-applications']")
+    expect(pager).to_contain_text("20")
+    pager.click()
+    expect(page.locator("#employer-application-results .application-review-card:visible")).to_have_count(40)
+    expect(page.locator(".application-review-card[data-application-id='50024']")).to_be_focused()
+    expect(pager).to_contain_text("5")
+    pager.click()
+    expect(page.locator("#employer-application-results .application-review-card:visible")).to_have_count(45)
+    expect(page.locator("#employer-application-pagination")).to_be_hidden()
+    application_search = page.locator("#employer-application-search")
+    application_search.fill("уникальный-навык-44")
+    expect(page.locator("#employer-application-results .application-review-card:visible")).to_have_count(1)
+    expect(page.locator(".application-review-card[data-application-id='50044']")).to_be_visible()
+    expect(page.locator("#employer-application-visible-count")).to_have_text("1")
+    expect(page.locator("#employer-application-pagination")).to_be_hidden()
+    application_search.fill("")
+    expect(page.locator("#employer-application-results .application-review-card:visible")).to_have_count(20)
+    page.unroute("**/api/employer/applications", fake_many_applications)
+    # Restore the pre-existing search and a neutral stage before the legacy
+    # filter assertions; the pagination scenario intentionally changed both.
+    page.locator("[data-v02-action='employer-application-filter'][data-filter='all']").click()
+    page.locator("#employer-application-search").fill("Кладовщик")
+    expect(page.locator("#employer-application-results .application-review-card:visible")).to_have_count(1)
     expect(page.locator("#dashboard-main [data-v02-action='employer-application-filter']")).to_have_count(6)
     attention_filter = page.locator("#dashboard-main [data-v02-action='employer-application-filter'][data-filter='attention']")
     expect(attention_filter).to_contain_text("Требуют внимания")

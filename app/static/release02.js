@@ -442,25 +442,40 @@
       });
     }
 
+    const employerApplicationPageSize = 20;
+    let employerApplicationVisibleLimit = employerApplicationPageSize;
     function applyEmployerApplicationsSearch() {
       const list = document.querySelector('#employer-application-results');
       if (!list) return;
       const query = String(state.employerApplicationsQuery || '').trim().toLocaleLowerCase('ru-RU');
       const cards = Array.from(list.querySelectorAll('.application-review-card'));
+      let matched = 0;
       let visible = 0;
       for (const card of cards) {
         const haystack = String(card.dataset.applicationSearch || '').toLocaleLowerCase('ru-RU');
-        card.hidden = Boolean(query && !haystack.includes(query));
+        const matches = !query || haystack.includes(query);
+        if (matches) matched += 1;
+        // Search all available cards, including those beyond the first 20.
+        card.hidden = !matches || matched > employerApplicationVisibleLimit;
         if (!card.hidden) visible += 1;
       }
       const count = document.querySelector('#employer-application-visible-count');
       if (count) count.textContent = String(visible);
+      const total = document.querySelector('#employer-application-matched-count');
+      if (total) total.textContent = String(matched);
       const empty = document.querySelector('#employer-application-search-empty');
-      if (empty) empty.hidden = visible !== 0 || cards.length === 0 || !query;
+      if (empty) empty.hidden = matched !== 0 || cards.length === 0 || !query;
+      const pager = document.querySelector('#employer-application-pagination');
+      if (pager) {
+        pager.hidden = visible >= matched;
+        const remaining = pager.querySelector('[data-employer-application-remaining]');
+        if (remaining) remaining.textContent = String(Math.min(employerApplicationPageSize,matched-visible));
+      }
     }
 
     renderEmployer = async function() {
       if(state.tab!=='applications'){
+        employerApplicationVisibleLimit = employerApplicationPageSize;
         await oldEmployer();
         return;
       }
@@ -504,8 +519,9 @@
           <div class="split-header"><div><span class="section-kicker">ОТКЛИКИ</span><h3>Отклики соискателей</h3><p class="muted">Сначала оценивайте опыт и навыки. Имя, телефон и email остаются скрытыми до отдельного согласия кандидата.</p></div><div class="application-flow-legend" aria-label="Этапы обработки отклика"><span>1. Отклик</span><b>→</b><span>2. Рассмотрение</span><b>→</b><span>3. Согласие</span><b>→</b><span>4. Знакомство</span><b>→</b><span>5. Итог</span></div></div>
           <div class="employer-application-toolbar"><div class="employer-application-vacancy-filter">${selector}</div><div class="employer-application-stage-filter" role="group" aria-label="Фильтр откликов по этапу">${filterButtons}</div></div>
           <div class="employer-application-search"><label for="employer-application-search">Поиск по профессии, вакансии, городу и навыкам</label><div class="employer-application-search-row"><input type="search" id="employer-application-search" data-employer-application-search autocomplete="off" placeholder="Например, бухгалтер или Excel" value="${esc(state.employerApplicationsQuery||'')}"><button class="btn btn-outline btn-tiny" type="button" data-v02-action="clear-employer-application-search">Очистить поиск</button></div></div>
-          <div class="employer-application-result-line"><span role="status" aria-live="polite">Показываем <strong id="employer-application-visible-count">${shown.length}</strong> из <strong>${vacancyScoped.length}</strong>${selectedStatus==='all'&&vacancyScoped.length>1?' · сначала этапы, где нужен ваш следующий шаг':''}</span>${selectedVacancy!=='all'||selectedStatus!=='all'?'<button type="button" class="link-button" data-v02-action="reset-application-filters">Сбросить фильтры</button>':''}</div>
+          <div class="employer-application-result-line"><span role="status" aria-live="polite">Показываем <strong id="employer-application-visible-count">${shown.length}</strong> из <strong id="employer-application-matched-count">${shown.length}</strong> по текущему этапу (всего по вакансии: ${vacancyScoped.length})${selectedStatus==='all'&&vacancyScoped.length>1?' · сначала этапы, где нужен ваш следующий шаг':''}</span>${selectedVacancy!=='all'||selectedStatus!=='all'?'<button type="button" class="link-button" data-v02-action="reset-application-filters">Сбросить фильтры</button>':''}</div>
           <div class="dashboard-list" id="employer-application-results">${shown.length?shown.map(a=>`<article class="item-card application-review-card" data-application-id="${Number(a.id)}" data-application-search="${esc([a.profession,a.title,a.city,a.skills].join(' '))}"><header><div><h4>${esc(a.profession)}</h4><p>${esc(a.title)} · ${esc(a.city)} · ожидания от ${money(a.expected_salary)}</p></div><span class="mini-badge">${esc(employerApplicationStageLabel(a))}</span></header>${interactionStageMarkup(a,'application')}<div class="application-profile-strip is-compact"><span><small>Навыки</small><strong>${esc(a.skills||'Не указаны')}</strong></span></div>${activityTimelineMarkup(a)}${employerIntroBadge(a)}${['applied','reviewing','interview'].includes(a.status) && !a.invitation_id?`<div class="application-next-action"><span>Следующее действие</span><strong>${a.status==='applied'?'Проверьте профиль и переведите в рассмотрение':'Решите, хотите ли начать знакомство'}</strong></div><div class="item-actions">${a.status==='applied'?`<button class="btn btn-outline btn-tiny" data-v02-action="application-status" data-id="${Number(a.id)}" data-status="reviewing">Взять в рассмотрение</button>`:''}<button class="btn btn-primary btn-tiny" data-v02-action="express-interest" data-id="${Number(a.id)}">Запросить согласие на знакомство →</button><button class="btn btn-outline btn-tiny" data-v02-action="application-status" data-id="${Number(a.id)}" data-status="rejected">Отказать</button></div>`:''}</article>`).join(''):emptyFiltered}</div>
+          <div id="employer-application-pagination" class="employer-application-pagination" hidden><button type="button" class="btn btn-outline" data-v02-action="more-employer-applications">Показать следующие <span data-employer-application-remaining>20</span> откликов</button></div>
           <div class="empty-state" id="employer-application-search-empty" hidden><strong>По вашему запросу откликов нет</strong><p>Попробуйте другую профессию, навык или город.</p><button type="button" class="btn btn-outline" data-v02-action="clear-employer-application-search">Очистить поиск</button></div>
         </div>`;
         applyEmployerApplicationsSearch();
@@ -626,12 +642,14 @@
       if (!event.target?.matches('[data-employer-application-search]') ||
           state.user?.role !== 'employer' || state.tab !== 'applications') return;
       state.employerApplicationsQuery = event.target.value;
+      employerApplicationVisibleLimit = employerApplicationPageSize;
       applyEmployerApplicationsSearch();
     });
 
     document.addEventListener('change', event => {
       if (event.target?.id !== 'employer-applications-vacancy') return;
       state.employerApplicationsVacancyFilter = event.target.value;
+      employerApplicationVisibleLimit = employerApplicationPageSize;
       if (state.user?.role === 'employer' && state.tab === 'applications') {
         renderEmployer().then(() => {
           document.querySelector('#employer-applications-vacancy')?.focus({preventScroll:true});
@@ -801,17 +819,34 @@
         else if(type==='employer-application-filter'){
           if(!Object.hasOwn(employerApplicationFilterLabels,btn.dataset.filter))return;
           state.employerApplicationsStatusFilter=btn.dataset.filter;
+          employerApplicationVisibleLimit=employerApplicationPageSize;
           await renderEmployer();
           document.querySelector('[data-v02-action="employer-application-filter"][data-filter="' + state.employerApplicationsStatusFilter + '"]')?.focus({preventScroll:true});
+        }
+        else if(type==='more-employer-applications'){
+          if (state.user?.role !== 'employer' || state.tab !== 'applications') return;
+          const list = document.querySelector('#employer-application-results');
+          const before = new Set(Array.from(list?.querySelectorAll('.application-review-card:not([hidden])') || []));
+          employerApplicationVisibleLimit += employerApplicationPageSize;
+          applyEmployerApplicationsSearch();
+          const firstNew = Array.from(list?.querySelectorAll('.application-review-card:not([hidden])') || [])
+            .find(card => !before.has(card));
+          if (firstNew) {
+            firstNew.setAttribute('tabindex','-1');
+            firstNew.focus({preventScroll:true});
+            firstNew.scrollIntoView({block:'nearest'});
+          }
         }
         else if(type==='reset-application-filters'){
           state.employerApplicationsVacancyFilter='all';
           state.employerApplicationsStatusFilter='all';
           state.employerApplicationsQuery='';
+          employerApplicationVisibleLimit=employerApplicationPageSize;
           await renderEmployer();
         }
         else if(type==='clear-employer-application-search'){
           state.employerApplicationsQuery='';
+          employerApplicationVisibleLimit=employerApplicationPageSize;
           const input=document.querySelector('#employer-application-search');
           if(input){input.value='';input.focus({preventScroll:true});}
           applyEmployerApplicationsSearch();
