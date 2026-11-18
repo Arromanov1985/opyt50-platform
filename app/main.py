@@ -2435,17 +2435,71 @@ def create_app(db_path: str | None = None) -> FastAPI:
                    THEN 1 ELSE 0 END) AS exhausted,
                  SUM(CASE WHEN state='exhausted' AND last_error_code IN
                    ('stale_notice','invalid_created_at','recipient_unavailable')
-                   THEN 1 ELSE 0 END) AS suppressed
+                   THEN 1 ELSE 0 END) AS suppressed,
+                 MIN(CASE WHEN state IN ('pending','leased')
+                   THEN created_at END) AS oldest_waiting_at,
+                 MIN(CASE WHEN state='pending'
+                   THEN next_attempt_at END) AS earliest_attempt_at,
+                 MAX(CASE WHEN state='accepted'
+                   THEN accepted_at END) AS last_smtp_accept_at
                FROM email_delivery_jobs"""
         ).fetchone()
         queue = {
             key: int(queue_row[key] or 0)
             for key in ("total", "queued", "retrying", "sending", "accepted", "exhausted", "suppressed")
         }
+        # Only aggregate timestamps and counters leave this admin endpoint.
+        # SMTP acceptance is not evidence of delivery to a mailbox, and a
+        # configured worker flag does not prove that a worker is alive.
+        worker_configured = os.getenv(
+            "OPYT50_MAIL_WORKER_ENABLED",
+            "0" if os.getenv("PYTEST_CURRENT_TEST") else "1",
+        ) == "1"
+        now = datetime.now(timezone.utc)
+
+        def age_seconds(value):
+            if not value:
+                return None
+            try:
+                moment = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+                if moment.tzinfo is None:
+                    moment = moment.replace(tzinfo=timezone.utc)
+                return max(0, int((now - moment.astimezone(timezone.utc)).total_seconds()))
+            except (TypeError, ValueError, OverflowError):
+                return None
+
+        oldest_age = age_seconds(queue_row["oldest_waiting_at"])
+        overdue_age = age_seconds(queue_row["earliest_attempt_at"])
+        mode = delivery_mode()
+        if mode != "smtp":
+            readiness = "smtp_not_configured"
+        elif not worker_configured:
+            readiness = "worker_disabled"
+        elif queue["exhausted"]:
+            readiness = "delivery_exhausted"
+        elif overdue_age is not None and overdue_age > 120:
+            readiness = "queue_overdue"
+        elif queue["retrying"]:
+            readiness = "retrying"
+        elif queue["queued"] or queue["sending"]:
+            readiness = "processing"
+        elif queue["accepted"]:
+            readiness = "smtp_acceptance_observed"
+        else:
+            readiness = "no_workflow_mail_yet"
+
         return {
-            "delivery_mode": delivery_mode(),
+            "delivery_mode": mode,
             "proven_delivery": False,
             "retry_queue": queue,
+            "mail_readiness": {
+                "status": readiness,
+                "worker_configured": worker_configured,
+                "oldest_waiting_seconds": oldest_age,
+                "overdue_seconds": overdue_age,
+                "last_smtp_accept_at": queue_row["last_smtp_accept_at"],
+                "mailbox_confirmation_required": True,
+            },
             "events": [
                 {
                     "event": name,

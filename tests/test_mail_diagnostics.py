@@ -193,3 +193,119 @@ def test_smtp_tests_are_rate_limited_per_admin(tmp_path, monkeypatch):
         assert refused.status_code == 429
         assert int(refused.headers["Retry-After"]) > 0
         assert len(captured) == 6
+
+
+def test_private_mail_readiness_identifies_stalled_queue_without_exposing_users(
+    tmp_path, monkeypatch,
+):
+    from datetime import datetime, timedelta, timezone
+
+    configure(monkeypatch)
+    app = create_app(str(tmp_path / "mail-readiness.db"))
+    create_admin(app)
+    with TestClient(app) as admin, TestClient(app) as anon:
+        login_admin(admin)
+        assert anon.get("/api/admin/mail-diagnostics").status_code == 401
+        idle = admin.get("/api/admin/mail-diagnostics").json()
+        assert idle["mail_readiness"]["status"] == "worker_disabled"
+        assert idle["mail_readiness"]["worker_configured"] is False
+        assert idle["mail_readiness"]["last_smtp_accept_at"] is None
+        assert idle["mail_readiness"]["mailbox_confirmation_required"] is True
+        assert idle["proven_delivery"] is False
+
+        # This is a configuration flag, not a health assertion: it cannot prove
+        # that a background worker is alive or that a mailbox received mail.
+        monkeypatch.setenv("OPYT50_MAIL_WORKER_ENABLED", "1")
+        no_mail = admin.get("/api/admin/mail-diagnostics").json()
+        assert no_mail["mail_readiness"]["status"] == "no_workflow_mail_yet"
+
+        now = datetime.now(timezone.utc)
+        def stamp(delta):
+            return (now + delta).isoformat(timespec="seconds")
+
+        with database(app.state.db_path) as db:
+            for idx, (state, attempts, due, accepted) in enumerate((
+                ("accepted", 1, timedelta(minutes=-6), timedelta(minutes=-1)),
+                ("pending", 0, timedelta(minutes=-3), None),
+            )):
+                inserted = db.execute(
+                    "INSERT INTO email_outbox(to_email,event,subject,body) VALUES(?,?,?,?)",
+                    ("private-candidate@example.invalid", "new_application",
+                     "private subject", "secret token and +70000000000"),
+                )
+                db.execute(
+                    """INSERT INTO email_delivery_jobs(
+                         outbox_id,state,attempts,next_attempt_at,accepted_at,created_at
+                       ) VALUES(?,?,?,?,?,?)""",
+                    (inserted.lastrowid, state, attempts, stamp(due),
+                     stamp(accepted) if accepted else None,
+                     stamp(timedelta(minutes=-12 if idx else -7))),
+                )
+            before = db.execute("SELECT COUNT(*) FROM email_delivery_jobs").fetchone()[0]
+
+        delayed = admin.get("/api/admin/mail-diagnostics")
+        assert delayed.status_code == 200
+        data = delayed.json()
+        assert data["retry_queue"]["queued"] == 1
+        assert data["retry_queue"]["accepted"] == 1
+        status = data["mail_readiness"]
+        assert status["status"] == "queue_overdue"
+        assert status["worker_configured"] is True
+        assert status["oldest_waiting_seconds"] >= 10 * 60
+        assert status["overdue_seconds"] >= 2 * 60
+        assert status["last_smtp_accept_at"] is not None
+        assert data["proven_delivery"] is False
+        for secret in ("private-candidate", "private subject", "secret token", "+70000000000"):
+            assert secret not in delayed.text
+
+        with database(app.state.db_path) as db:
+            db.execute(
+                "UPDATE email_delivery_jobs SET attempts=1, next_attempt_at=? WHERE state='pending'",
+                (stamp(timedelta(minutes=2)),),
+            )
+        retry = admin.get("/api/admin/mail-diagnostics").json()
+        assert retry["mail_readiness"]["status"] == "retrying"
+
+        with database(app.state.db_path) as db:
+            db.execute(
+                "UPDATE email_delivery_jobs SET state='exhausted',last_error_code='smtp_not_accepted' "
+                "WHERE state='pending'"
+            )
+        exhausted = admin.get("/api/admin/mail-diagnostics").json()
+        assert exhausted["mail_readiness"]["status"] == "delivery_exhausted"
+        assert exhausted["retry_queue"]["exhausted"] == 1
+
+        monkeypatch.delenv("OPYT50_SMTP_HOST")
+        unconfigured = admin.get("/api/admin/mail-diagnostics").json()
+        assert unconfigured["delivery_mode"] == "outbox_only"
+        assert unconfigured["mail_readiness"]["status"] == "smtp_not_configured"
+        with database(app.state.db_path) as db:
+            assert db.execute("SELECT COUNT(*) FROM email_delivery_jobs").fetchone()[0] == before
+
+
+def test_mail_readiness_handles_invalid_timestamps_without_exposing_details(
+    tmp_path, monkeypatch,
+):
+    configure(monkeypatch)
+    monkeypatch.setenv("OPYT50_MAIL_WORKER_ENABLED", "1")
+    app = create_app(str(tmp_path / "mail-invalid-age.db"))
+    create_admin(app)
+    with TestClient(app) as admin:
+        login_admin(admin)
+        with database(app.state.db_path) as db:
+            outbox = db.execute(
+                "INSERT INTO email_outbox(to_email,event,subject,body) VALUES(?,?,?,?)",
+                ("private@example.invalid", "invitation", "secret", "hidden"),
+            )
+            db.execute(
+                "INSERT INTO email_delivery_jobs(outbox_id,state,attempts,next_attempt_at,created_at) "
+                "VALUES(?,'pending',0,?,?)",
+                (outbox.lastrowid, "corrupt due date", "corrupt created date"),
+            )
+        result = admin.get("/api/admin/mail-diagnostics")
+        assert result.status_code == 200
+        status = result.json()["mail_readiness"]
+        assert status["status"] == "processing"
+        assert status["oldest_waiting_seconds"] is None
+        assert status["overdue_seconds"] is None
+        assert "private@example.invalid" not in result.text
