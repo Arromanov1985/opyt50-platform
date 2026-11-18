@@ -335,6 +335,154 @@
       return `<div class="empty-state empty-state-action"><strong>${headings[filter]}</strong>
         <p>${filter==='all'?'Если работодатель изменит условия вакансии после вашего отклика или приглашения, информация появится здесь.': 'Чтобы посмотреть другие уведомления, выберите «Все».'}</p></div>`;
     }
+
+    // Release 0.5.20: a local, privacy-preserving queue for candidate applications.
+    // Only company, vacancy and city are searchable. No API calls on typing.
+    const candidateApplicationPageSize = 20;
+    const candidateApplicationFilterLabels = {
+      all: 'Все', reply: 'Требуют ответа', active: 'В работе', closed: 'Завершённые'
+    };
+    let candidateApplicationStageFilter = 'all';
+    let candidateApplicationQuery = '';
+    let candidateApplicationVisibleLimit = candidateApplicationPageSize;
+
+    function candidateApplicationBucket(item) {
+      if (item.invitation_status === 'sent' &&
+          !['withdrawn','rejected','hired'].includes(item.status)) return 'reply';
+      if (['withdrawn','rejected','hired'].includes(item.status) ||
+          item.invitation_status === 'declined') return 'closed';
+      return 'active';
+    }
+
+    function setupCandidateApplicationQueue(applications) {
+      const root = document.querySelector('#dashboard-main');
+      const list = root?.querySelector('.dashboard-list');
+      if (!list || !applications.length) return;
+      const cards = Array.from(list.children).filter(node => node.matches('article.item-card'));
+      if (cards.length !== applications.length) return;
+      list.id = 'candidate-application-results';
+
+      const priority = {reply: 0, active: 1, closed: 2};
+      const entries = applications.map((item, index) => ({
+        item, card: cards[index], bucket: candidateApplicationBucket(item)
+      })).sort((left, right) =>
+        priority[left.bucket] - priority[right.bucket] ||
+        Number(right.item.id || 0) - Number(left.item.id || 0)
+      );
+      const counts = {all: entries.length, reply: 0, active: 0, closed: 0};
+      for (const entry of entries) {
+        counts[entry.bucket] += 1;
+        entry.card.classList.add('candidate-application-card');
+        entry.card.dataset.candidateApplicationStage = entry.bucket;
+        entry.card.dataset.candidateApplicationSearch =
+          [entry.item.title, entry.item.company_name, entry.item.city]
+            .map(value => String(value || '')).join(' ').toLocaleLowerCase('ru-RU');
+        list.append(entry.card);
+      }
+
+      const buttons = Object.keys(candidateApplicationFilterLabels).map(value =>
+        '<button type="button" class="btn btn-tiny candidate-application-filter" ' +
+        'data-candidate-app-action="filter" data-filter="' + value + '" aria-pressed="' +
+        (candidateApplicationStageFilter === value ? 'true' : 'false') + '">' +
+        candidateApplicationFilterLabels[value] + ' · ' + counts[value] + '</button>'
+      ).join('');
+      list.insertAdjacentHTML('beforebegin',
+        '<section class="candidate-application-toolbar" aria-label="Поиск и этапы откликов">' +
+        '<div class="candidate-application-filters" role="group" aria-label="Фильтр откликов по этапу">' +
+        buttons + '</div>' +
+        '<label for="candidate-application-search">Поиск по вакансии, компании или городу</label>' +
+        '<div class="candidate-application-search-row"><input id="candidate-application-search" ' +
+        'type="search" autocomplete="off" placeholder="Например, кладовщик или Подольск">' +
+        '<button class="btn btn-outline btn-tiny" type="button" ' +
+        'data-candidate-app-action="clear">Очистить поиск</button></div>' +
+        '<div class="candidate-application-counter" role="status" aria-live="polite">' +
+        'Показываем <strong id="candidate-application-visible-count">0</strong> из ' +
+        '<strong id="candidate-application-matched-count">0</strong> по выбранным условиям</div>' +
+        '</section>'
+      );
+      list.insertAdjacentHTML('afterend',
+        '<div class="candidate-application-empty empty-state" id="candidate-application-empty" hidden>' +
+        '<strong>Откликов по этим условиям нет</strong>' +
+        '<p>Попробуйте другой этап или поисковый запрос.</p>' +
+        '<button class="btn btn-outline" type="button" data-candidate-app-action="reset">' +
+        'Сбросить фильтры</button></div>' +
+        '<div class="candidate-application-pagination" id="candidate-application-pagination" hidden>' +
+        '<button class="btn btn-outline" type="button" data-candidate-app-action="more">' +
+        'Показать следующие <span id="candidate-application-remaining">20</span> откликов</button></div>'
+      );
+
+      const toolbar = root.querySelector('.candidate-application-toolbar');
+      const input = toolbar.querySelector('#candidate-application-search');
+      const pager = root.querySelector('#candidate-application-pagination');
+      const empty = root.querySelector('#candidate-application-empty');
+      input.value = candidateApplicationQuery;
+      function apply() {
+        const query = candidateApplicationQuery.trim().toLocaleLowerCase('ru-RU');
+        let matches = 0, visible = 0;
+        for (const entry of entries) {
+          const found = (candidateApplicationStageFilter === 'all' ||
+            candidateApplicationStageFilter === entry.bucket) &&
+            (!query || entry.card.dataset.candidateApplicationSearch.includes(query));
+          if (found) matches++;
+          entry.card.hidden = !found || matches > candidateApplicationVisibleLimit;
+          if (!entry.card.hidden) visible++;
+        }
+        toolbar.querySelector('#candidate-application-visible-count').textContent = String(visible);
+        toolbar.querySelector('#candidate-application-matched-count').textContent = String(matches);
+        toolbar.querySelectorAll('[data-candidate-app-action="filter"]').forEach(button => {
+          const selected = button.dataset.filter === candidateApplicationStageFilter;
+          button.setAttribute('aria-pressed', String(selected));
+          button.classList.toggle('btn-dark', selected);
+          button.classList.toggle('btn-outline', !selected);
+        });
+        empty.hidden = matches > 0;
+        pager.hidden = visible >= matches;
+        root.querySelector('#candidate-application-remaining').textContent =
+          String(Math.min(candidateApplicationPageSize, matches - visible));
+      }
+      input.addEventListener('input', () => {
+        candidateApplicationQuery = input.value;
+        candidateApplicationVisibleLimit = candidateApplicationPageSize;
+        apply();
+      });
+      root.addEventListener('click', event => {
+        const button = event.target.closest('[data-candidate-app-action]');
+        if (!button || !root.contains(button)) return;
+        const action = button.dataset.candidateAppAction;
+        if (action === 'filter') {
+          if (!Object.hasOwn(candidateApplicationFilterLabels, button.dataset.filter)) return;
+          candidateApplicationStageFilter = button.dataset.filter;
+          candidateApplicationVisibleLimit = candidateApplicationPageSize;
+          apply();
+          button.focus({preventScroll: true});
+        } else if (action === 'clear') {
+          candidateApplicationQuery = '';
+          candidateApplicationVisibleLimit = candidateApplicationPageSize;
+          input.value = '';
+          apply();
+          input.focus({preventScroll: true});
+        } else if (action === 'reset') {
+          candidateApplicationQuery = '';
+          candidateApplicationStageFilter = 'all';
+          candidateApplicationVisibleLimit = candidateApplicationPageSize;
+          input.value = '';
+          apply();
+          input.focus({preventScroll: true});
+        } else if (action === 'more') {
+          const before = new Set(entries.filter(entry => !entry.card.hidden).map(entry => entry.card));
+          candidateApplicationVisibleLimit += candidateApplicationPageSize;
+          apply();
+          const next = entries.find(entry => !entry.card.hidden && !before.has(entry.card));
+          if (next) {
+            next.card.tabIndex = -1;
+            next.card.focus({preventScroll: true});
+            next.card.scrollIntoView({block: 'nearest'});
+          }
+        }
+      });
+      apply();
+    }
+
     const employerExtra = [{id:'applications',label:'Отклики'}];
 
     renderCandidate = async function() {
@@ -387,6 +535,7 @@
           const {applications}=await api('/api/candidate/applications');
           const updateSummary = await api('/api/candidate/vacancy-updates');
           $('#dashboard-main').innerHTML=`<div class="panel"><div class="panel-title-row"><div><span class="section-kicker">ОТКЛИКИ</span><h3>История откликов</h3><p class="muted">Следите за этапом каждого отклика. Контакты не раскрываются работодателю автоматически.</p></div></div>${updateSummary.unread_count ? `<div class="vacancy-update-banner" role="status">По вакансиям, на которые вы откликались, есть изменения условий: ${Number(updateSummary.unread_count)}. <button type="button" class="btn btn-outline btn-tiny" data-tab="changes">Посмотреть изменения</button></div>` : ''}<div class="dashboard-list">${applications.length ? applications.map(a=>`<article class="item-card"><header><div><h4>${esc(a.title)}</h4><p>${esc(a.company_name)} · ${esc(a.city)} · ${formatPay(a)}</p></div><span class="mini-badge">${esc(candidateWorkflowStatus(a,status[a.status]||a.status))}</span></header><div class="application-card-meta"><span>Отклик отправлен</span><strong>${esc(a.created_at)}</strong></div>${interactionStageMarkup(a,'application')}${activityTimelineMarkup(a)}${applicationIntroBadge(a)}${['applied','reviewing','interview'].includes(a.status) && !a.invitation_id?`<button class="btn btn-outline btn-tiny" data-v02-action="withdraw" data-id="${Number(a.id)}">Отозвать отклик</button>`:a.status==='withdrawn'?`<button class="btn btn-primary btn-tiny" data-v02-action="reapply" data-id="${Number(a.vacancy_id)}">Откликнуться повторно</button>`:''}</article>`).join(''):'<div class="empty-state empty-state-action"><span class="empty-state-icon" aria-hidden="true">↗</span><strong>Вы ещё не откликались</strong><p>Найдите подходящую вакансию и отправьте первый отклик. Контакты работодателю автоматически не передаются.</p><a class="btn btn-primary" href="#jobs">Найти вакансию →</a></div>'}</div></div>`;
+          setupCandidateApplicationQueue(applications);
         }
         if(state.tab==='changes'){
           const result=await api(vacancyUpdatesEndpoint(vacancyUpdatesFilter));
