@@ -1396,7 +1396,7 @@ function candidateOverviewInvitationCard(item) {
   return `<article class="candidate-overview-item is-invitation">
     <div class="candidate-overview-item-head"><div><span class="card-eyebrow">ПРИГЛАШЕНИЕ</span><strong>${esc(item.title)}</strong><small>${esc(item.company_name)} · ${esc(item.city)}</small></div><span class="mini-badge ${statusBadge[item.status]||''}">${esc(candidateWorkflowStatus(item,statusTitle[item.status]||item.status))}</span></div>
     ${employerPublicTrustMarkup(item)}
-    <button type="button" class="btn btn-primary btn-tiny" data-action="open-candidate-invitations" data-filter="decision">Ответить на приглашение →</button>
+    <button type="button" class="btn btn-primary btn-tiny" data-action="open-candidate-invitations" data-filter="decision" data-invitation-id="${Number(item.id)}">Ответить на приглашение →</button>
   </article>`;
 }
 function candidateStatusChip(ok, yes, no) {
@@ -1519,6 +1519,8 @@ async function renderCandidate() {
     }
   } catch(e) { target.innerHTML = `<div class="panel">${esc(e.message)}</div>`; toast(e.message,true); }
 }
+const candidateInvitationPageSize = 20;
+let candidateInvitationVisibleLimit = candidateInvitationPageSize;
 const pendingCandidateInvitationActions = new Set();
 function candidateInvitationSavedReceipt(button, accepted) {
   const card = button.closest('.candidate-introduction-card');
@@ -1567,6 +1569,16 @@ async function loadCandidateInvitations(target=$('#dashboard-main'), force=false
     return diff || invitationLastActivity(b) - invitationLastActivity(a);
   });
   const shown = selected === 'all' ? ordered : ordered.filter(item => candidateInvitationBucket(item) === selected);
+  // Links from an application or preview must bring the selected invitation
+  // directly into view even when it is beyond the first page.
+  const requestedInvitationId = Number(state.candidateInvitationTargetId || 0);
+  if (requestedInvitationId > 0) state.candidateInvitationPinnedId = requestedInvitationId;
+  const selectedInvitationId = Number(state.candidateInvitationPinnedId || 0);
+  const selectedIndex = selectedInvitationId > 0
+    ? shown.findIndex(item => Number(item.id) === selectedInvitationId)
+    : -1;
+  if (selectedIndex > 0) shown.unshift(shown.splice(selectedIndex, 1)[0]);
+  const visible = shown.slice(0, candidateInvitationVisibleLimit);
   const filters = [
     ['all',searchScoped.length],
     ['decision',counts.decision],
@@ -1582,8 +1594,9 @@ async function loadCandidateInvitations(target=$('#dashboard-main'), force=false
   target.innerHTML = `<div class="panel candidate-introduction-center">
     <div class="split-header"><div><span class="section-kicker">ЗНАКОМСТВА</span><h3>Знакомства с компаниями</h3><p class="muted">Здесь собраны запросы на знакомство и их дальнейший статус. Имя и контакты не передаются без вашего явного согласия.</p></div><label class="candidate-introduction-search"><span>Поиск</span><input type="search" value="${esc(state.candidateInvitationsQuery)}" placeholder="Компания, вакансия или город" data-candidate-introduction-search autocomplete="off"></label></div>
     <div class="candidate-introduction-stage-filter" role="group" aria-label="Фильтр знакомств по этапу">${filters}</div>
-    <div class="candidate-introduction-result-line"><span role="status">Показываем <strong>${shown.length}</strong> из <strong>${searchScoped.length}</strong>${selected==='all'&&counts.decision?' · сначала знакомства, где нужен ваш ответ':''}</span>${selected!=='all'||query?'<button type="button" class="link-button" data-action="reset-candidate-invitation-filters">Сбросить фильтры</button>':''}</div>
-    <div class="dashboard-list">${shown.length ? shown.map(invitationCandidateMarkup).join('') : empty}</div>
+    <div class="candidate-introduction-result-line"><span role="status" aria-live="polite">Показываем <strong>${visible.length}</strong> из <strong>${shown.length}</strong> по выбранному этапу (всего по поиску: ${searchScoped.length})${selected==='all'&&counts.decision?' · сначала знакомства, где нужен ваш ответ':''}</span>${selected!=='all'||query?'<button type="button" class="link-button" data-action="reset-candidate-invitation-filters">Сбросить фильтры</button>':''}</div>
+    <div class="dashboard-list" id="candidate-invitation-results">${visible.length ? visible.map(invitationCandidateMarkup).join('') : empty}</div>
+    ${visible.length < shown.length ? `<div class="candidate-introduction-pagination"><button type="button" class="btn btn-outline" data-action="more-candidate-invitations">Показать следующие ${Math.min(candidateInvitationPageSize, shown.length - visible.length)} знакомств</button></div>` : ''}
   </div>`;
   const targetId = Number(state.candidateInvitationTargetId || 0);
   if (targetId > 0) {
@@ -2676,6 +2689,9 @@ function handleDashboardInput(event) {
   const candidateSearch = event.target.closest('[data-candidate-introduction-search]');
   if (!candidateSearch) return;
   state.candidateInvitationsQuery = String(candidateSearch.value || '');
+  state.candidateInvitationPinnedId = null;
+  state.candidateInvitationTargetId = null;
+  candidateInvitationVisibleLimit = candidateInvitationPageSize;
   clearTimeout(candidateInvitationSearchTimer);
   candidateInvitationSearchTimer = setTimeout(async () => {
     if (state.user?.role !== 'candidate' || state.tab !== 'invitations') return;
@@ -2720,6 +2736,9 @@ async function handleDashboardChange(event) {
     state.employerInvitationsData = null;
   }
   if (state.user?.role === 'candidate' && nextTab === 'invitations') {
+    candidateInvitationVisibleLimit = candidateInvitationPageSize;
+    state.candidateInvitationTargetId = null;
+    state.candidateInvitationPinnedId = null;
     state.candidateInvitationsFilter = 'all';
     state.candidateInvitationsQuery = '';
     state.candidateInvitationsData = null;
@@ -2750,6 +2769,9 @@ async function handleDashboardClick(event) {
       state.employerInvitationsData = null;
     }
     if (state.user?.role === 'candidate' && tab.dataset.tab === 'invitations') {
+      candidateInvitationVisibleLimit = candidateInvitationPageSize;
+      state.candidateInvitationTargetId = null;
+      state.candidateInvitationPinnedId = null;
       state.candidateInvitationsFilter = 'all';
       state.candidateInvitationsQuery = '';
       state.candidateInvitationsData = null;
@@ -2906,17 +2928,39 @@ async function handleDashboardClick(event) {
     }
     if (action === 'filter-candidate-invitations') {
       if (!Object.hasOwn(candidateInvitationFilterLabels,btn.dataset.filter)) return;
+      candidateInvitationVisibleLimit = candidateInvitationPageSize;
+      state.candidateInvitationTargetId = null;
+      state.candidateInvitationPinnedId = null;
       state.candidateInvitationsFilter = btn.dataset.filter;
       await loadCandidateInvitations();
       return;
     }
     if (action === 'reset-candidate-invitation-filters') {
+      candidateInvitationVisibleLimit = candidateInvitationPageSize;
+      state.candidateInvitationTargetId = null;
+      state.candidateInvitationPinnedId = null;
       state.candidateInvitationsFilter = 'all';
       state.candidateInvitationsQuery = '';
       await loadCandidateInvitations();
       return;
     }
+    if (action === 'more-candidate-invitations') {
+      const previous = candidateInvitationVisibleLimit;
+      candidateInvitationVisibleLimit += candidateInvitationPageSize;
+      await loadCandidateInvitations();
+      const next = document.querySelectorAll('#candidate-invitation-results .candidate-introduction-card')[previous];
+      if (next) {
+        next.tabIndex = -1;
+        next.focus({preventScroll:true});
+        next.scrollIntoView({block:'nearest'});
+      }
+      return;
+    }
     if (action === 'open-candidate-invitations') {
+      candidateInvitationVisibleLimit = candidateInvitationPageSize;
+      const linkId = Number(btn.dataset.invitationId || 0);
+      state.candidateInvitationTargetId = Number.isSafeInteger(linkId) && linkId > 0 ? linkId : null;
+      state.candidateInvitationPinnedId = state.candidateInvitationTargetId;
       const filter = Object.hasOwn(candidateInvitationFilterLabels,btn.dataset.filter) ? btn.dataset.filter : 'all';
       state.candidateInvitationsFilter = filter;
       state.candidateInvitationsQuery = '';
@@ -3025,6 +3069,7 @@ async function handleDashboardClick(event) {
         share_consent: accepted && consent.checked
       })});
       candidateInvitationSavedReceipt(btn, accepted);
+      candidateInvitationVisibleLimit = candidateInvitationPageSize;
       state.candidateInvitationsFilter = accepted ? 'waiting' : 'closed';
       state.candidateInvitationsData = null;
       state.candidateInvitationTargetId = id;

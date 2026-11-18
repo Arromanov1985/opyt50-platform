@@ -547,8 +547,75 @@ def run_browser(page):
     expect(page.locator("#dashboard-main")).to_contain_text("Требует вашего ответа")
     expect(page.locator("#dashboard-main")).to_contain_text("Работодатель предлагает знакомство")
     expect(page.locator(".dashboard-tabs [data-tab='security']")).to_be_visible()
-    page.locator("#dashboard-main [data-v02-action='open-introductions']").click()
+    # Release 0.5.24: a candidate's specific application takes them straight
+    # to the correct invitation, even when 44 other fictional cases precede it.
+    real_candidate_invites = page.request.get(URL + "/api/candidate/invitations").json()["invitations"]
+    real_candidate_invite = next(item for item in real_candidate_invites if item["status"] == "sent")
+    candidate_intro_link = page.locator("#dashboard-main [data-v02-action='open-introductions']")
+    expect(candidate_intro_link).to_have_attribute("data-invitation-id", str(real_candidate_invite["id"]))
+    fictional_candidate_invites = []
+    for idx in range(44):
+        item = dict(real_candidate_invite)
+        item["id"] = 97000 + idx
+        item["title"] = f"Учебное приглашение {idx:02d}"
+        item["status"] = "sent"
+        item["contact_shared"] = False
+        item["application_status"] = "interview"
+        item["timeline"] = []
+        fictional_candidate_invites.append(item)
+    fictional_candidate_invites.append(real_candidate_invite)
+
+    def fake_many_candidate_invitations(route):
+        route.fulfill(status=200, content_type="application/json",
+                      body=json.dumps({"invitations": fictional_candidate_invites}, ensure_ascii=False))
+
+    page.route("**/api/candidate/invitations", fake_many_candidate_invitations)
+    candidate_intro_link.click()
     expect(page.locator("#dashboard-main")).to_contain_text("Знакомства с компаниями")
+    invited_cards = page.locator("#candidate-invitation-results .candidate-introduction-card")
+    expect(invited_cards).to_have_count(20)
+    expect(invited_cards.first).to_have_attribute("data-invitation-id", str(real_candidate_invite["id"]))
+    expect(invited_cards.first).to_be_focused()
+    expect(page.locator(".candidate-introduction-result-line")).to_contain_text("Показываем 20 из 45")
+    candidate_intro_next = page.locator("[data-action='more-candidate-invitations']")
+    expect(candidate_intro_next).to_contain_text("20")
+    candidate_intro_next.click()
+    expect(invited_cards).to_have_count(40)
+    # The selected introduction stays first when later pages become visible.
+    expect(invited_cards.first).to_have_attribute("data-invitation-id", str(real_candidate_invite["id"]))
+    expect(invited_cards.nth(20)).to_be_focused()
+    expect(candidate_intro_next).to_contain_text("5")
+    candidate_intro_next.click()
+    expect(invited_cards).to_have_count(45)
+    expect(candidate_intro_next).to_have_count(0)
+    page.locator("[data-action='filter-candidate-invitations'][data-filter='all']").click()
+    expect(invited_cards).to_have_count(20)
+    candidate_intro_reads = []
+    page.on("request", lambda request: candidate_intro_reads.append(request)
+            if request.method == "GET" and request.url.endswith("/api/candidate/invitations")
+            else None)
+    page.locator("[data-candidate-introduction-search]").fill("учебное приглашение 43")
+    expect(invited_cards).to_have_count(1)
+    expect(invited_cards).to_contain_text("Учебное приглашение 43")
+    assert not candidate_intro_reads, "Candidate invitation search must use cached records"
+    page.locator("[data-candidate-introduction-search]").fill("несуществующее-приглашение")
+    expect(invited_cards).to_have_count(0)
+    expect(page.locator("#dashboard-main")).to_contain_text("По этому запросу знакомств нет")
+    page.locator("[data-action='reset-candidate-invitation-filters']").click()
+    expect(invited_cards).to_have_count(20)
+    page.set_viewport_size({"width": 390, "height": 844})
+    assert page.evaluate("""() => {
+      const root = document.querySelector('#dashboard-main');
+      const pager = document.querySelector('.candidate-introduction-pagination');
+      return root.scrollWidth <= root.clientWidth + 3 &&
+        (!pager || pager.scrollWidth <= pager.clientWidth + 3);
+    }"""), "Candidate invitation queue must fit 390px"
+    page.set_viewport_size({"width": 1280, "height": 800})
+    page.unroute("**/api/candidate/invitations", fake_many_candidate_invitations)
+    page.locator(".dashboard-tabs [data-tab='applications']").click()
+    page.locator("#dashboard-main [data-v02-action='open-introductions']").click()
+    expect(invited_cards).to_have_count(1)
+    expect(invited_cards.first).to_be_focused()
     expect(page.locator("#dashboard-main .candidate-introduction-stage-filter [data-action='filter-candidate-invitations']")).to_have_count(5)
     expect(page.locator("#dashboard-main [data-action='filter-candidate-invitations'][data-filter='decision']")).to_have_attribute("aria-pressed", "true")
     expect(page.locator("#dashboard-main")).to_contain_text("Требует ответа")

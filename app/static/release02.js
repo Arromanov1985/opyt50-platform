@@ -8,19 +8,19 @@
     function applicationIntroBadge(a) {
       if (!a.invitation_id) return '';
       if (a.contact_shared && a.status === 'hired') {
-        return '<div class="interaction-note is-complete"><strong>Положительный итог знакомства</strong><span>Компания хочет продолжить общение. Это не подтверждение трудоустройства. Условия работы обсудите напрямую с компанией.</span></div><button class="btn btn-outline btn-tiny" data-v02-action="open-introductions" data-filter="closed">Открыть завершённое знакомство →</button>';
+        return '<div class="interaction-note is-complete"><strong>Положительный итог знакомства</strong><span>Компания хочет продолжить общение. Это не подтверждение трудоустройства. Условия работы обсудите напрямую с компанией.</span></div><button class="btn btn-outline btn-tiny" data-v02-action="open-introductions" data-filter="closed" data-invitation-id="'+Number(a.invitation_id)+'">Открыть завершённое знакомство →</button>';
       }
       if (a.contact_shared && a.status === 'rejected') {
-        return '<div class="interaction-note is-closed"><strong>Не договорились</strong><span>Знакомство завершено без продолжения.</span></div><button class="btn btn-outline btn-tiny" data-v02-action="open-introductions" data-filter="closed">Открыть завершённое знакомство →</button>';
+        return '<div class="interaction-note is-closed"><strong>Не договорились</strong><span>Знакомство завершено без продолжения.</span></div><button class="btn btn-outline btn-tiny" data-v02-action="open-introductions" data-filter="closed" data-invitation-id="'+Number(a.invitation_id)+'">Открыть завершённое знакомство →</button>';
       }
       if (a.contact_shared) {
-        return '<div class="interaction-note is-complete"><strong>Знакомство состоялось</strong><span>Работодатель открыл контакт после вашего согласия. На СТАЖНО дополнительных действий не требуется.</span></div><button class="btn btn-outline btn-tiny" data-v02-action="open-introductions" data-filter="introduced">Открыть знакомство →</button>';
+        return '<div class="interaction-note is-complete"><strong>Знакомство состоялось</strong><span>Работодатель открыл контакт после вашего согласия. На СТАЖНО дополнительных действий не требуется.</span></div><button class="btn btn-outline btn-tiny" data-v02-action="open-introductions" data-filter="introduced" data-invitation-id="'+Number(a.invitation_id)+'">Открыть знакомство →</button>';
       }
       if (a.invitation_status === 'accepted') {
-        return '<div class="interaction-note is-waiting"><strong>Согласие отправлено</strong><span>Теперь ждём работодателя. Повторно подтверждать знакомство не нужно.</span></div><button class="btn btn-outline btn-tiny" data-v02-action="open-introductions" data-filter="waiting">Посмотреть знакомство →</button>';
+        return '<div class="interaction-note is-waiting"><strong>Согласие отправлено</strong><span>Теперь ждём работодателя. Повторно подтверждать знакомство не нужно.</span></div><button class="btn btn-outline btn-tiny" data-v02-action="open-introductions" data-filter="waiting" data-invitation-id="'+Number(a.invitation_id)+'">Посмотреть знакомство →</button>';
       }
       if (a.invitation_status === 'sent') {
-        return '<div class="interaction-note is-ready"><strong>Работодатель предлагает знакомство</strong><span>Контакты останутся скрытыми, пока вы сами не согласитесь.</span></div><button class="btn btn-primary btn-tiny" data-v02-action="open-introductions" data-filter="decision">Ответить на запрос компании →</button>';
+        return '<div class="interaction-note is-ready"><strong>Работодатель предлагает знакомство</strong><span>Контакты останутся скрытыми, пока вы сами не согласитесь.</span></div><button class="btn btn-primary btn-tiny" data-v02-action="open-introductions" data-filter="decision" data-invitation-id="'+Number(a.invitation_id)+'">Ответить на запрос компании →</button>';
       }
       if (a.invitation_status === 'declined') {
         return '<div class="interaction-note is-closed"><strong>Вы отказались от знакомства</strong><span>Контакты компании не переданы. Дополнительных действий нет.</span></div>';
@@ -1017,6 +1017,10 @@
         else if(type==='open-introductions'){
           if(state.user?.role==='candidate') {
             state.candidateInvitationsFilter=btn.dataset.filter||'decision';
+            const targetId=Number(btn.dataset.invitationId||0);
+            state.candidateInvitationTargetId=Number.isSafeInteger(targetId)&&targetId>0?targetId:null;
+            state.candidateInvitationsQuery='';
+            state.candidateInvitationsData=null;
           } else {
             state.employerInvitationsFilter=btn.dataset.filter||'all';
             const targetId=Number(btn.dataset.invitationId||0);
