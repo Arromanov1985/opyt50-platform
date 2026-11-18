@@ -86,8 +86,8 @@ def notice_rows(app):
         return [dict(row) for row in db.execute(
             "SELECT event,to_email,subject,body FROM email_outbox "
             "WHERE event IN ('new_application','invitation',"
-            "'application_status','invitation_response','contact_opened',
-            "'application_withdrawn')" "
+            "'application_status','invitation_response','contact_opened',"
+            "'application_withdrawn') "
             "ORDER BY id"
         )]
 
