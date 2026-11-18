@@ -1289,6 +1289,29 @@ async function renderAccountSecurity(target) {
     </section>
   </div>`;
 }
+function resumeRoleFields(item = {}, index = 0) {
+  return `<fieldset class="resume-work-entry" data-resume-role>
+    <legend>Место работы ${index + 1}</legend>
+    <div class="form-grid">
+      <div class="field"><label>Должность<input data-role-position maxlength="120" value="${esc(item.position || '')}" placeholder="Например, бухгалтер" autocomplete="off"></label></div>
+      <div class="field"><label>Период работы<input data-role-period maxlength="80" value="${esc(item.period || '')}" placeholder="Например, 2016–2024" autocomplete="off"></label></div>
+      <div class="field wide"><label>Обязанности и результаты<textarea data-role-duties maxlength="350" rows="3" placeholder="Что делали и каких результатов достигли">${esc(item.duties || '')}</textarea></label></div>
+    </div>
+    <button type="button" class="btn btn-outline btn-tiny" data-action="remove-resume-role">Удалить эту запись</button>
+  </fieldset>`;
+}
+function professionalResumeMarkup(profile = {}) {
+  const positions = Array.isArray(profile.work_history) ? profile.work_history.slice(0,5) : [];
+  const hasInfo = Number(profile.experience_years || 0) > 0 || profile.education ||
+    profile.achievements || positions.length;
+  if (!hasInfo) return '<p class="muted">Добавьте историю работы, образование и достижения, чтобы резюме было содержательнее.</p>';
+  return `<div class="resume-professional-summary">
+    ${Number(profile.experience_years || 0) > 0 ? `<p><strong>Общий стаж:</strong> ${Number(profile.experience_years)} лет</p>` : ''}
+    ${profile.education ? `<p><strong>Образование:</strong> ${esc(profile.education)}</p>` : ''}
+    ${positions.length ? `<div class="resume-public-history"><strong>Опыт работы</strong>${positions.map(r=>`<div class="resume-public-job"><b>${esc(r.position)}</b> <span>${esc(r.period)}</span>${r.duties ? `<p>${esc(r.duties)}</p>` : ''}</div>`).join('')}</div>` : ''}
+    ${profile.achievements ? `<p><strong>Достижения:</strong> ${esc(profile.achievements)}</p>` : ''}
+  </div>`;
+}
 function profileMarkup(profile = {}, user = {}) {
   const health = candidateProfileHealth(profile);
   // Additional details stay optional; open them explicitly when the candidate is ready.
@@ -1320,6 +1343,23 @@ function profileMarkup(profile = {}, user = {}) {
           <input id="profile-salary" name="salary_min" type="number" inputmode="numeric" value="${profile.salary_min || 0}" min="0" max="10000000" required></div>
         <div class="field"><label for="profile-schedule">Удобный график</label>
           <select id="profile-schedule" name="schedule">${optList(schedules,profile.schedule)}</select></div>
+        <div class="field wide">
+          <details class="resume-history-section" open>
+            <summary>Опыт работы, образование и достижения</summary>
+            <p class="field-help">Расскажите о своём опыте. Эти сведения можно показать работодателю без раскрытия контактов. Указывать названия компаний необязательно.</p>
+            <div class="form-grid">
+              <div class="field"><label for="resume-years">Общий стаж, лет</label>
+                <input id="resume-years" name="experience_years" type="number" inputmode="numeric" min="0" max="70" value="${Number(profile.experience_years || 0) || ''}" placeholder="Например, 20"></div>
+              <div class="field"><label for="resume-education">Образование, квалификация</label>
+                <input id="resume-education" name="education" maxlength="240" value="${esc(profile.education || '')}" placeholder="Например, среднее специальное, бухгалтерский учёт"></div>
+              <div class="field wide"><label for="resume-achievements">Чем гордитесь в работе?</label>
+                <textarea id="resume-achievements" name="achievements" maxlength="500" rows="3" placeholder="Например, наладил учёт склада, обучил сотрудников">${esc(profile.achievements || '')}</textarea></div>
+            </div>
+            <div class="resume-work-list" id="resume-work-list">${(Array.isArray(profile.work_history) ? profile.work_history : []).map(resumeRoleFields).join('')}</div>
+            <button type="button" class="btn btn-outline" data-action="add-resume-role" id="resume-add-role">Добавить место работы</button>
+            <p class="field-help">До 5 мест работы. Можно указать только должность, период и основные задачи. Не добавляйте телефон, email или ссылки.</p>
+          </details>
+        </div>
         <div class="field wide experience-entry">
           <div class="experience-entry-inner">
             <div>
@@ -1375,7 +1415,7 @@ function profileMarkup(profile = {}, user = {}) {
       <div class="split-header"><div><span class="section-kicker">ЧТО УВИДИТ РАБОТОДАТЕЛЬ</span><h4>${esc(profile.profession || 'Профессия пока не указана')}</h4></div><span class="privacy-chip">Контакты скрыты</span></div>
       <div class="profile-preview-meta"><span>⌖ ${esc(profile.city || 'Город не указан')}</span><span>от ${money(profile.salary_min || 0)}</span><span>${esc(profile.schedule || 'График не указан')}</span></div>
       <div class="job-skill-tags">${String(profile.skills || '').split(',').map(x=>x.trim()).filter(Boolean).slice(0,6).map(x=>`<span>${esc(x)}</span>`).join('') || '<span>Добавьте навыки</span>'}</div>
-      ${profile.about ? `<p>${esc(profile.about.slice(0,260))}${profile.about.length>260?'…':''}</p>` : '<p class="muted">Добавьте короткое описание опыта — оно поможет работодателю понять вашу специализацию.</p>'}
+      ${professionalResumeMarkup(profile)}
       <div class="profile-preview-hidden"><span>🔒</span><div><strong>Имя, телефон и email не показываются</strong><small>Они открываются только после вашего отдельного согласия на знакомство.</small></div></div>
     </section>
     <div class="profile-next-actions" aria-label="Следующие шаги">
@@ -2172,6 +2212,7 @@ async function loadMatches(jobId) {
         <header><div><h4>${esc(m.profession)}</h4><div class="candidate-match-meta"><span>⌖ ${esc(m.city)}</span><span>от ${money(m.salary_min)}</span><span>${esc(m.schedule)}</span><span>${esc(m.employment)}</span></div></div><div class="candidate-match-score"><span class="match-score-dot"></span><strong>${score}%</strong><small>${esc(level)}</small></div></header>
         <div class="job-skill-tags">${String(m.skills || '').split(',').map(s=>s.trim()).filter(Boolean).slice(0,5).map(skill=>`<span>${esc(skill)}</span>`).join('') || '<span>Навыки не указаны</span>'}</div>
         <div class="candidate-match-reasons">${reasons.slice(0,3).map(reason=>`<span>✓ ${esc(reason)}</span>`).join('')}</div>
+        <details class="candidate-resume-details"><summary>Профессиональное резюме</summary>${professionalResumeMarkup(m)}</details>
         ${cautions.length ? `<div class="candidate-match-cautions">${cautions.slice(0,2).map(text=>`<span>! ${esc(text)}</span>`).join('')}</div>` : ''}
         <details class="candidate-match-explanation"><summary>Показать расчёт совпадения</summary>${employerMatchBreakdownMarkup(m)}</details>
         <div class="item-actions">${action}</div>
@@ -2584,7 +2625,19 @@ async function handleDashboardSubmit(event) {
     event.preventDefault();
     const submit = beginEditorSave(form);
     if (!submit) return;
-    const body = {profession:formValue(form,'profession'),city:formValue(form,'city'),skills:formValue(form,'skills'),salary_min:parseNumber(form,'salary_min'),phone:formValue(form,'phone'),schedule:formValue(form,'schedule'),employment:formValue(form,'employment'),about:formValue(form,'about'),is_active:form.elements.namedItem('is_active').checked};
+    const work_history = Array.from(form.querySelectorAll('[data-resume-role]')).map(entry=>({
+      position:String(entry.querySelector('[data-role-position]')?.value || '').trim(),
+      period:String(entry.querySelector('[data-role-period]')?.value || '').trim(),
+      duties:String(entry.querySelector('[data-role-duties]')?.value || '').trim()
+    })).filter(entry=>entry.position || entry.period || entry.duties);
+    if (work_history.some(entry=>entry.position.length < 2 || entry.period.length < 2)) {
+      endEditorSave(form, submit);
+      toast('В каждом месте работы укажите должность и период. Либо удалите незаполненную запись.',true);
+      return;
+    }
+    const body = {profession:formValue(form,'profession'),city:formValue(form,'city'),skills:formValue(form,'skills'),salary_min:parseNumber(form,'salary_min'),phone:formValue(form,'phone'),schedule:formValue(form,'schedule'),employment:formValue(form,'employment'),about:formValue(form,'about'),is_active:form.elements.namedItem('is_active').checked,
+      experience_years:parseNumber(form,'experience_years')||0,
+      education:formValue(form,'education'),achievements:formValue(form,'achievements'),work_history};
     try {
       await api('/api/candidate/profile',{method:'PUT',body:JSON.stringify(body)});
       editorSaved(form);
@@ -2824,6 +2877,27 @@ async function handleDashboardClick(event) {
   const btn = event.target.closest('[data-action]'); if (!btn) return;
   const action = btn.dataset.action, id = Number(btn.dataset.id);
   if (btn.disabled) return;
+  if (action === 'add-resume-role') {
+    const list = document.querySelector('#profile-form #resume-work-list');
+    if (!list || list.children.length >= 5) return;
+    list.insertAdjacentHTML('beforeend', resumeRoleFields({}, list.children.length));
+    const entry = list.lastElementChild;
+    entry?.querySelector('[data-role-position]')?.focus();
+    btn.disabled = list.children.length >= 5;
+    return;
+  }
+  if (action === 'remove-resume-role') {
+    const form = btn.closest('#profile-form');
+    const list = form?.querySelector('#resume-work-list');
+    btn.closest('[data-resume-role]')?.remove();
+    Array.from(list?.children || []).forEach((entry, index) => {
+      const legend = entry.querySelector('legend');
+      if (legend) legend.textContent = 'Место работы ' + (index + 1);
+    });
+    const add = form?.querySelector('#resume-add-role');
+    if (add) add.disabled = false;
+    return;
+  }
   if (action === 'save-vacancy-draft') {
     const form = btn.closest('#vacancy-form');
     if (form) await saveVacancyDraft(form);
