@@ -239,3 +239,68 @@ def test_smtp_failure_is_not_misreported_as_delivered(tmp_path: Path, monkeypatc
             assert state["last_error_code"] == "smtp_not_accepted"
         # The outbox means generation, not SMTP acceptance or inbox delivery.
         # The worker will retry this stored business notice later.
+
+
+def test_application_withdrawal_is_committed_before_smtp_and_queued_once(
+    tmp_path: Path, monkeypatch,
+):
+    """A failed/slow SMTP server must never block a candidate's withdrawal."""
+    mail = mock_smtp(monkeypatch)  # No external SMTP calls.
+    app = create_app(str(tmp_path / "withdrawal-notification.db"))
+    with TestClient(app) as candidate, TestClient(app) as employer:
+        register(candidate, "candidate", CANDIDATE)
+        register(employer, "employer", EMPLOYER)
+        vacancy = prepare(candidate, employer)
+        applied = post(candidate, "/api/candidate/applications", {"vacancy_id": vacancy})
+        assert applied.status_code == 201, applied.text
+        aid = applied.json()["id"]
+        dispatch_one(app)
+        assert len(mail) == 1
+
+        # No synchronous SMTP: the request returns after the database commit.
+        withdrawn = post(candidate, f"/api/candidate/applications/{aid}/withdraw")
+        assert withdrawn.status_code == 200, withdrawn.text
+        assert mail == [(EMPLOYER, mail[0][1], mail[0][2])]
+        assert candidate.get("/api/candidate/applications").json()["applications"][0]["status"] == "withdrawn"
+        assert employer.get("/api/employer/applications").json()["applications"][0]["status"] == "withdrawn"
+        with database(app.state.db_path) as db:
+            pending = db.execute(
+                """SELECT q.state,q.attempts,q.outbox_id,r.user_id,o.to_email,o.body
+                   FROM email_delivery_jobs q
+                   JOIN email_outbox o ON o.id=q.outbox_id
+                   JOIN email_delivery_recipients r ON r.outbox_id=q.outbox_id
+                   WHERE o.event='application_withdrawn'"""
+            ).fetchone()
+            assert pending is not None, "Withdrawal must be queued atomically"
+            assert (pending["state"], pending["attempts"]) == ("pending", 0)
+            assert pending["to_email"] == EMPLOYER
+            assert CANDIDATE not in pending["body"]
+            assert "+70000000000" not in pending["body"]
+            employer_id = db.execute("SELECT id FROM users WHERE email=?", (EMPLOYER,)).fetchone()["id"]
+            assert pending["user_id"] == employer_id
+
+        # A second withdrawal is rejected, with no duplicate notification.
+        repeated = post(candidate, f"/api/candidate/applications/{aid}/withdraw")
+        assert repeated.status_code == 409, repeated.text
+        with database(app.state.db_path) as db:
+            assert db.execute(
+                "SELECT COUNT(*) FROM email_outbox WHERE event='application_withdrawn'"
+            ).fetchone()[0] == 1
+        assert len(mail) == 1
+
+        # Only the worker sends the saved alert after the action succeeded.
+        dispatch_one(app)
+        assert_notice(app, mail, 1, "application_withdrawn", EMPLOYER)
+        assert "отозван" in mail[-1][2]
+        assert process_due_workflow_mail(app.state.db_path)["processed"] == 0
+        assert len(mail) == 2
+
+        # Reapplication reuses the original id, and generates no withdrawal again.
+        reapplied = post(candidate, "/api/candidate/applications", {"vacancy_id": vacancy})
+        assert reapplied.status_code == 201, reapplied.text
+        assert reapplied.json()["id"] == aid and reapplied.json()["reapplied"] is True
+        dispatch_one(app)
+        assert_notice(app, mail, 2, "new_application", EMPLOYER)
+        assert [item["event"] for item in notice_rows(app)] == [
+            "new_application", "application_withdrawn", "new_application"
+        ]
