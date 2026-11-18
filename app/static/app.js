@@ -1428,7 +1428,7 @@ async function renderCandidate() {
       const pendingInvitations = pendingInvitationsList.length;
       const waitingEmployerInvitations = invitations.filter(item => item.status === 'accepted' && !item.contact_shared);
       const completedIntroductions = invitations
-        .filter(item => ['hired','rejected'].includes(item.application_status))
+        .filter(item => ['hired','rejected'].includes(item.application_status) || ['hired','rejected'].includes(item.direct_outcome))
         .sort((a,b) => invitationLastActivity(b) - invitationLastActivity(a));
       const latestCompletedIntroduction = completedIntroductions.find(item =>
         Date.now() - invitationLastActivity(item) <= 14 * 24 * 60 * 60 * 1000
@@ -1489,7 +1489,7 @@ async function renderCandidate() {
           </div>
         </section>
         ${unreadChanges ? `<section class="overview-alert" role="status"><div><strong>Изменились условия вакансий</strong><span>Непрочитанных изменений: ${unreadChanges}</span></div><button class="btn btn-outline btn-tiny" data-tab="changes">Проверить изменения</button></section>` : ''}
-        ${latestCompletedIntroduction ? `<section class="overview-alert candidate-outcome-alert ${latestCompletedIntroduction.application_status==='hired'?'is-positive':'is-neutral'}" role="status"><div><strong>${latestCompletedIntroduction.application_status==='hired'?'Положительный итог знакомства':'Знакомство завершено'}</strong><span>${latestCompletedIntroduction.application_status==='hired'?'Компания хочет продолжить общение. Это не подтверждение трудоустройства.':'По итогам знакомства договориться не удалось.'}</span></div><button class="btn btn-outline btn-tiny" data-action="open-candidate-invitations" data-filter="closed">Посмотреть итог</button></section>` : ''}
+        ${latestCompletedIntroduction ? `<section class="overview-alert candidate-outcome-alert ${(latestCompletedIntroduction.application_status || latestCompletedIntroduction.direct_outcome)==='hired'?'is-positive':'is-neutral'}" role="status"><div><strong>${latestCompletedIntroduction.application_status==='hired'?'Положительный итог знакомства':'Знакомство завершено'}</strong><span>${latestCompletedIntroduction.application_status==='hired'?'Компания хочет продолжить общение. Это не подтверждение трудоустройства.':'По итогам знакомства договориться не удалось.'}</span></div><button class="btn btn-outline btn-tiny" data-action="open-candidate-invitations" data-filter="closed">Посмотреть итог</button></section>` : ''}
         <section class="overview-stat-grid" aria-label="Сводка соискателя">
           <button type="button" class="overview-stat-card" data-tab="offers"><strong>${jobs.length}</strong><span>Подходящие вакансии</span><small>По вашему профилю</small></button>
           <button type="button" class="overview-stat-card" data-tab="applications"><strong>${activeApplications}</strong><span>Активные отклики</span><small>В процессе</small></button>
@@ -1748,8 +1748,8 @@ async function renderEmployer() {
       );
       const consentedInvitations = invitations.filter(item => item.status === 'accepted' || item.contact_shared).length;
       const openedContacts = invitations.filter(item => item.contact_shared).length;
-      const hiredIntroductions = invitations.filter(item => item.application_status === 'hired').length;
-      const rejectedIntroductions = invitations.filter(item => item.application_status === 'rejected').length;
+      const hiredIntroductions = invitations.filter(item => item.application_status === 'hired' || item.direct_outcome === 'hired').length;
+      const rejectedIntroductions = invitations.filter(item => item.application_status === 'rejected' || item.direct_outcome === 'rejected').length;
       const completedIntroductions = hiredIntroductions + rejectedIntroductions;
       const hireConversion = completedIntroductions ? Math.round(hiredIntroductions / completedIntroductions * 100) : 0;
       let nextTitle = 'Создайте первую вакансию';
@@ -1968,8 +1968,8 @@ async function loadEmployerVacancies() {
     const stats = applicationsByJob.get(id);
     if (invitation.status === 'accepted' && !invitation.contact_shared) stats.ready += 1;
     if (invitation.status === 'sent' && !invitation.contact_shared) stats.waiting += 1;
-    if (invitation.application_id && invitation.contact_shared && invitation.application_status === 'hired') stats.hired += 1;
-    else if (invitation.application_id && invitation.contact_shared && invitation.application_status === 'rejected') stats.rejected += 1;
+    if (invitation.contact_shared && (invitation.application_status === 'hired' || invitation.direct_outcome === 'hired')) stats.hired += 1;
+    else if (invitation.contact_shared && (invitation.application_status === 'rejected' || invitation.direct_outcome === 'rejected')) stats.rejected += 1;
     else if (invitation.application_id && invitation.contact_shared) stats.outcome += 1;
   }
   const view = $('#dashboard-main');
