@@ -24,6 +24,17 @@ PUBLIC = {
 }
 
 
+QUALIFICATIONS = {
+    "specializations": "Приёмка товара, складская логистика, инвентаризация",
+    "courses": [
+        {"title": "Управление складом в 1С", "provider": "Учебный центр",
+         "year": 2021, "has_certificate": True},
+        {"title": "Охрана труда", "provider": "", "year": None,
+         "has_certificate": False},
+    ],
+}
+
+
 def post(client, path, body):
     return client.post(path, json=body, headers=XHR)
 
@@ -49,12 +60,14 @@ def test_resume_round_trip_old_clients_and_private_employer_view(tmp_path):
         assert old.status_code == 200, old.text
         assert old.json()["profile"]["work_history"] == []
 
-        rich = candidate.put("/api/candidate/profile", json=DETAILS | PUBLIC, headers=XHR)
+        rich = candidate.put("/api/candidate/profile", json=DETAILS | PUBLIC | QUALIFICATIONS, headers=XHR)
         assert rich.status_code == 200, rich.text
         profile = candidate.get("/api/me").json()["user"]["profile"]
         assert profile["work_history"] == PUBLIC["work_history"]
         assert profile["experience_years"] == 24
         assert profile["education"] == PUBLIC["education"]
+        assert profile["courses"] == QUALIFICATIONS["courses"]
+        assert profile["specializations"] == QUALIFICATIONS["specializations"]
 
         # An older tablet client must not erase fields it doesn't know.
         update = candidate.put("/api/candidate/profile", json=DETAILS | {
@@ -63,6 +76,8 @@ def test_resume_round_trip_old_clients_and_private_employer_view(tmp_path):
         assert update.status_code == 200, update.text
         assert update.json()["profile"]["work_history"] == PUBLIC["work_history"]
         assert update.json()["profile"]["achievements"] == PUBLIC["achievements"]
+        assert update.json()["profile"]["courses"] == QUALIFICATIONS["courses"]
+        assert update.json()["profile"]["specializations"] == QUALIFICATIONS["specializations"]
 
         job = post(employer, "/api/employer/vacancies", {
             "title": "Кладовщик", "city": "Подольск", "salary_min": 70000,
@@ -77,6 +92,8 @@ def test_resume_round_trip_old_clients_and_private_employer_view(tmp_path):
         assert own["work_history"] == PUBLIC["work_history"]
         assert own["education"] == PUBLIC["education"]
         assert own["experience_years"] == 24
+        assert own["courses"] == QUALIFICATIONS["courses"]
+        assert own["specializations"] == QUALIFICATIONS["specializations"]
         assert "phone" not in own and "email" not in own and "name" not in own
         assert DETAILS["phone"] not in matches.text
         assert "Закрытое Имя" not in matches.text
@@ -90,6 +107,8 @@ def test_resume_round_trip_old_clients_and_private_employer_view(tmp_path):
         assert row["work_history"] == PUBLIC["work_history"]
         assert row["achievements"] == PUBLIC["achievements"]
         assert row["education"] == PUBLIC["education"]
+        assert row["courses"] == QUALIFICATIONS["courses"]
+        assert row["specializations"] == QUALIFICATIONS["specializations"]
         assert "candidate_id" not in row and "resume_candidate_id" not in row
         assert "phone" not in row and "email" not in row and "name" not in row
         assert DETAILS["phone"] not in own_apps.text
@@ -107,6 +126,16 @@ def test_resume_round_trip_old_clients_and_private_employer_view(tmp_path):
         assert clear.status_code == 200, clear.text
         assert clear.json()["profile"]["work_history"] == []
         assert clear.json()["profile"]["education"] == PUBLIC["education"]
+        assert clear.json()["profile"]["courses"] == QUALIFICATIONS["courses"]
+
+        # Explicit deletion of course entries does not touch work experience.
+        empty_courses = candidate.put("/api/candidate/profile", json=DETAILS | {
+            "courses": [], "specializations": "",
+        }, headers=XHR)
+        assert empty_courses.status_code == 200, empty_courses.text
+        assert empty_courses.json()["profile"]["courses"] == []
+        assert empty_courses.json()["profile"]["specializations"] == ""
+        assert empty_courses.json()["profile"]["education"] == PUBLIC["education"]
 
 
 @pytest.mark.parametrize("invalid", [
@@ -121,6 +150,15 @@ def test_resume_round_trip_old_clients_and_private_employer_view(tmp_path):
                        "duties": "https://example.invalid"}]},
     {"education": "Контакты: hidden@example.invalid"},
     {"achievements": "Свяжитесь со мной через t.me/hidden"},
+    {"specializations": "Контакт: hidden@example.invalid"},
+    {"courses": [
+        {"title": "Учебный курс", "provider": "hidden@example.invalid"}
+    ]},
+    {"courses": [
+        {"title": "Курс: https://example.invalid", "provider": ""}
+    ]},
+    {"courses": [{"title": "Курс", "year": 1940}]},
+    {"courses": [{"title": "Курс"}] * 7},
 ])
 def test_resume_rejects_invalid_or_contact_leaking_public_fields(tmp_path, invalid):
     app = create_app(str(tmp_path / "invalid-resume.db"))
@@ -136,6 +174,8 @@ def test_resume_rejects_invalid_or_contact_leaking_public_fields(tmp_path, inval
         current = candidate.get("/api/me").json()["user"]["profile"]
         assert current["work_history"] == []
         assert current["achievements"] == ""
+        assert current["courses"] == []
+        assert current["specializations"] == ""
 
 
 def test_resume_preserves_existing_data_when_experience_is_optional(tmp_path):
@@ -150,3 +190,5 @@ def test_resume_preserves_existing_data_when_experience_is_optional(tmp_path):
         assert profile["experience_years"] == 0
         assert profile["work_history"] == []
         assert profile["education"] == ""
+        assert profile["courses"] == []
+        assert profile["specializations"] == ""

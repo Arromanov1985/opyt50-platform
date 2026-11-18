@@ -159,6 +159,22 @@ def run_browser(page):
     page.locator("#resume-work-list [data-resume-role]").last.locator(
         "[data-action='remove-resume-role']").click()
     expect(page.locator("#resume-work-list [data-resume-role]")).to_have_count(1)
+    # Release 0.5.32: optional training and certificates, including removal.
+    expect(page.locator("#resume-training-section")).not_to_have_attribute("open", "")
+    page.locator("#resume-training-section summary").click()
+    page.locator("#resume-specializations").fill("Складская логистика, 1С")
+    page.locator("#resume-add-course").click()
+    first_course = page.locator("#resume-course-list [data-resume-course]").first
+    expect(first_course.locator("[data-course-title]")).to_be_focused()
+    first_course.locator("[data-course-title]").fill("Управление складом в 1С")
+    first_course.locator("[data-course-provider]").fill("Учебный центр")
+    first_course.locator("[data-course-year]").fill("2021")
+    first_course.locator("[data-course-certificate]").check()
+    page.locator("#resume-add-course").click()
+    expect(page.locator("#resume-course-list [data-resume-course]")).to_have_count(2)
+    page.locator("#resume-course-list [data-resume-course]").last.locator(
+        "[data-action='remove-resume-course']").click()
+    expect(page.locator("#resume-course-list [data-resume-course]")).to_have_count(1)
     # The guide is reachable directly from the main profile fields:
     # one click opens both optional sections and focuses the first question.
     page.locator("#experience-start").click()
@@ -214,6 +230,10 @@ def run_browser(page):
     assert saved_profile["education"] == "Среднее профессиональное — логистика"
     assert len(saved_profile["work_history"]) == 1
     assert saved_profile["work_history"][0]["position"] == "Старший кладовщик"
+    assert saved_profile["specializations"] == "Складская логистика, 1С"
+    assert len(saved_profile["courses"]) == 1
+    assert saved_profile["courses"][0]["title"] == "Управление складом в 1С"
+    assert saved_profile["courses"][0]["has_certificate"] is True
     # A full browser reload returns to the overview; profile data must remain intact.
     page.reload(wait_until="networkidle")
     expect(page.locator("#dashboard-main")).to_contain_text("ВАШ СЛЕДУЮЩИЙ ШАГ")
@@ -222,6 +242,14 @@ def run_browser(page):
     expect(page.locator("#resume-years")).to_have_value("24")
     expect(page.locator("#resume-education")).to_have_value(saved_profile["education"])
     expect(page.locator("#resume-work-list [data-resume-role]")).to_have_count(1)
+    expect(page.locator("#resume-course-list [data-resume-course]")).to_have_count(1)
+    expect(page.locator("#resume-training-section")).not_to_have_attribute("open", "")
+    page.locator("#resume-training-section summary").click()
+    expect(page.locator("#resume-specializations")).to_have_value(saved_profile["specializations"])
+    expect(page.locator("#resume-course-list [data-course-certificate]")).to_be_checked()
+    expect(page.locator(".profile-public-preview")).to_contain_text("Управление складом в 1С")
+    expect(page.locator(".profile-public-preview")).to_contain_text("Складская логистика, 1С")
+    expect(page.locator(".profile-public-preview")).to_contain_text("не проверен")
     expect(page.locator(".profile-public-preview")).to_contain_text("Старший кладовщик")
     expect(page.locator(".profile-public-preview")).to_contain_text("Настроил складской учёт")
     expect(page.locator(".profile-public-preview")).not_to_contain_text("kladovshik@demo.example")
@@ -810,6 +838,8 @@ def run_browser(page):
     employer_match.locator(".candidate-resume-details summary").click()
     expect(employer_match.locator(".candidate-resume-details")).to_contain_text("Старший кладовщик")
     expect(employer_match.locator(".candidate-resume-details")).to_contain_text("Среднее профессиональное")
+    expect(employer_match.locator(".candidate-resume-details")).to_contain_text("Управление складом в 1С")
+    expect(employer_match.locator(".candidate-resume-details")).to_contain_text("не проверен")
     expect(employer_match.locator(".candidate-resume-details")).not_to_contain_text("kladovshik@demo.example")
     employer_match.locator(".candidate-match-explanation summary").click()
     expect(employer_match.locator(".match-factor-row")).to_have_count(6)
