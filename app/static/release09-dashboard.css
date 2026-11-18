@@ -3284,3 +3284,41 @@ body.comfortable-view .candidate-application-counter {font-size: 1rem}
 @media (max-width:430px) {
   .candidate-introduction-pagination .btn { width: 100%; }
 }
+
+
+/* Release 0.5.31 — accessible, structured professional resume. */
+.resume-history-section{
+  padding:16px;
+  background:#F7FAF8;
+  border:1px solid #DCE9E2;
+  border-radius:14px;
+}
+.resume-history-section>summary{
+  cursor:pointer;
+  font-size:17px;
+  font-weight:800;
+  color:#173A30;
+  margin-bottom:12px;
+}
+.resume-history-section .form-grid{margin:10px 0}
+.resume-work-list{display:grid;gap:12px;margin:12px 0}
+.resume-work-entry{min-width:0;margin:0;padding:14px;border:1px solid #C9DED2;border-radius:12px;background:#fff}
+.resume-work-entry legend{font-weight:800;color:#173A30;padding:0 6px}
+.resume-work-entry .field{min-width:0}
+.resume-work-entry .field input,.resume-work-entry .field textarea{width:100%;max-width:100%}
+.resume-work-entry [data-action="remove-resume-role"]{min-height:44px}
+.resume-professional-summary{display:grid;gap:8px;min-width:0;overflow-wrap:anywhere}
+.resume-professional-summary>p{margin:0;white-space:pre-wrap}
+.resume-public-history{display:grid;gap:8px;margin:4px 0}
+.resume-public-job{background:#F8FAF8;border-left:3px solid #9DBBAB;border-radius:6px;padding:9px 12px;min-width:0}
+.resume-public-job b{display:block;color:#183B30}
+.resume-public-job span{display:block;color:#51645D;font-size:13px}
+.resume-public-job p{margin:5px 0 0;white-space:pre-wrap;overflow-wrap:anywhere}
+.candidate-resume-details{margin:12px 0;border:1px solid #DCE9E2;border-radius:10px;padding:11px 12px}
+.candidate-resume-details>summary{font-weight:800;cursor:pointer;min-height:28px}
+.candidate-resume-details .resume-professional-summary{padding-top:12px}
+@media(max-width:430px){
+  .resume-history-section{padding:12px}
+  .resume-work-entry{padding:10px}
+  #resume-add-role{width:100%;min-height:44px;white-space:normal}
+}
