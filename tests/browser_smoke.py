@@ -552,13 +552,78 @@ def run_browser(page):
     expect(page.locator("#dashboard-main .candidate-introduction-stage-filter [data-action='filter-candidate-invitations']")).to_have_count(5)
     expect(page.locator("#dashboard-main [data-action='filter-candidate-invitations'][data-filter='decision']")).to_have_attribute("aria-pressed", "true")
     expect(page.locator("#dashboard-main")).to_contain_text("Требует ответа")
+    # Release 0.5.23: the consent POST succeeds, but the subsequent GET
+    # fails once. The UI must show a confirmed receipt, not another consent CTA.
+    def fail_candidate_list_once(route):
+        route.fulfill(status=503, content_type="application/json",
+                      body='{"detail":"Test-only read failure"}')
+
+    candidate_responses = []
+    page.on("request", lambda request: candidate_responses.append(request)
+            if request.method == "POST" and "/api/candidate/invitations/" in request.url
+            and request.url.endswith("/respond") else None)
+    page.route("**/api/candidate/invitations", fail_candidate_list_once, times=1)
+    original_candidate_intro_id = page.locator(
+        "#dashboard-main .candidate-introduction-card[data-invitation-id]"
+    ).first.get_attribute("data-invitation-id")
     page.locator("#dashboard-main [id^='consent-']").check()
     page.locator("#dashboard-main [data-action='accept']").click()
+    saved_consent = page.locator("#dashboard-main .candidate-introduction-saved-receipt")
+    expect(saved_consent).to_contain_text("Согласие отправлено")
+    expect(page.locator("#dashboard-main [data-action='accept']")).to_have_count(0)
+    expect(page.locator("#dashboard-main [data-action='decline']")).to_have_count(0)
+    assert len(candidate_responses) == 1, "Consent response must not be posted twice"
+    persisted_consent = page.request.get(URL + "/api/candidate/invitations").json()["invitations"]
+    assert any(item["status"] == "accepted" for item in persisted_consent), "Consent must be saved by server"
+    saved_consent.locator("[data-action='refresh-candidate-introductions']").click()
     expect(page.locator("#account-action-count")).to_be_hidden()
     expect(page.locator("#dashboard-main")).to_contain_text("Согласие отправлено")
+    expect(page.locator("#dashboard-main .candidate-introduction-card[data-invitation-id='" +
+                        original_candidate_intro_id + "']")).to_be_focused()
     expect(page.locator("#dashboard-main")).to_contain_text("Теперь ждём работодателя")
     expect(page.locator("#dashboard-main [data-action='filter-candidate-invitations'][data-filter='waiting']")).to_have_attribute("aria-pressed", "true")
     expect(page.locator("#dashboard-main [data-action='accept']")).to_have_count(0)
+    # Separately check the declined path on a fictional invitation. Never
+    # mutate real consent or personal data for this test.
+    fictional_invitation = dict(persisted_consent[0])
+    fictional_invitation["id"] = 96001
+    fictional_invitation["status"] = "sent"
+    fictional_invitation["application_status"] = "interview"
+    fictional_invitation["contact_shared"] = False
+    fictional_invitation["timeline"] = []
+    fictional_state = {"status": "sent"}
+    def fictional_candidate_list(route):
+        item = dict(fictional_invitation)
+        item["status"] = fictional_state["status"]
+        route.fulfill(status=200, content_type="application/json",
+                      body=json.dumps({"invitations": [item]}, ensure_ascii=False))
+    def fictional_decline(route):
+        fictional_state["status"] = "declined"
+        route.fulfill(status=200, content_type="application/json",
+                      body='{"status":"declined"}')
+
+    page.route("**/api/candidate/invitations", fictional_candidate_list)
+    page.route("**/api/candidate/invitations/96001/respond", fictional_decline)
+    page.locator(".dashboard-tabs [data-tab='applications']").click()
+    page.locator(".dashboard-tabs [data-tab='invitations']").click()
+    expect(page.locator("#dashboard-main [data-action='decline']")).to_be_visible()
+    page.route("**/api/candidate/invitations", fail_candidate_list_once, times=1)
+    page.locator("#dashboard-main [data-action='decline']").evaluate(
+        "(button) => { button.click(); button.click(); }"
+    )
+    saved_decline = page.locator("#dashboard-main .candidate-introduction-saved-receipt")
+    expect(saved_decline).to_contain_text("Отказ сохранён")
+    expect(saved_decline).to_contain_text("Контакты компании не переданы")
+    expect(page.locator("#dashboard-main [data-action='accept']")).to_have_count(0)
+    expect(page.locator("#dashboard-main [data-action='decline']")).to_have_count(0)
+    assert len(candidate_responses) == 2, "Fictional decline must POST once despite double click"
+    saved_decline.locator("[data-action='refresh-candidate-introductions']").click()
+    expect(page.locator("#dashboard-main [data-action='filter-candidate-invitations'][data-filter='closed']")).to_have_attribute("aria-pressed", "true")
+    expect(page.locator("#dashboard-main .candidate-introduction-card[data-invitation-id='96001']")).to_be_focused()
+    expect(page.locator("#dashboard-main")).to_contain_text("Вы отказались")
+    page.unroute("**/api/candidate/invitations", fictional_candidate_list)
+    page.unroute("**/api/candidate/invitations/96001/respond", fictional_decline)
+    # Return to actual API state without submitting another decision.
     page.locator(".dashboard-tabs [data-tab='applications']").click()
     expect(page.locator("#dashboard-main [data-v02-action='open-introductions']")).to_contain_text("Посмотреть знакомство")
     page.locator("#dashboard-main [data-v02-action='open-introductions']").click()

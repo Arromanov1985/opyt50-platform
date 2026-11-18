@@ -1519,6 +1519,29 @@ async function renderCandidate() {
     }
   } catch(e) { target.innerHTML = `<div class="panel">${esc(e.message)}</div>`; toast(e.message,true); }
 }
+const pendingCandidateInvitationActions = new Set();
+function candidateInvitationSavedReceipt(button, accepted) {
+  const card = button.closest('.candidate-introduction-card');
+  if (!card) return;
+  const consent = card.querySelector('.consent-box');
+  const actions = card.querySelector('.invitation-actions');
+  const receipt = document.createElement('div');
+  receipt.className = 'candidate-introduction-saved-receipt candidate-introduction-note ' +
+    (accepted ? 'is-waiting' : 'is-closed');
+  receipt.setAttribute('role', 'status');
+  receipt.innerHTML = accepted
+    ? '<strong>Согласие отправлено</strong>' +
+      '<span>Ваш ответ сохранён. Контакты смогут открыть только после вашего согласия. ' +
+      'Сейчас ждём работодателя.</span>'
+    : '<strong>Отказ сохранён</strong>' +
+      '<span>Вы отказались от знакомства. Контакты компании не переданы.</span>';
+  receipt.insertAdjacentHTML('beforeend',
+    '<button type="button" class="btn btn-outline btn-tiny" ' +
+    'data-action="refresh-candidate-introductions">Обновить список</button>');
+  if (consent) consent.replaceWith(receipt);
+  else if (actions) actions.replaceWith(receipt);
+  if (actions && actions.isConnected) actions.remove();
+}
 async function loadCandidateInvitations(target=$('#dashboard-main'), force=false) {
   if (force || !Array.isArray(state.candidateInvitationsData)) {
     const result = await api('/api/candidate/invitations');
@@ -1562,6 +1585,16 @@ async function loadCandidateInvitations(target=$('#dashboard-main'), force=false
     <div class="candidate-introduction-result-line"><span role="status">Показываем <strong>${shown.length}</strong> из <strong>${searchScoped.length}</strong>${selected==='all'&&counts.decision?' · сначала знакомства, где нужен ваш ответ':''}</span>${selected!=='all'||query?'<button type="button" class="link-button" data-action="reset-candidate-invitation-filters">Сбросить фильтры</button>':''}</div>
     <div class="dashboard-list">${shown.length ? shown.map(invitationCandidateMarkup).join('') : empty}</div>
   </div>`;
+  const targetId = Number(state.candidateInvitationTargetId || 0);
+  if (targetId > 0) {
+    const card = target.querySelector('.candidate-introduction-card[data-invitation-id="' + targetId + '"]');
+    if (card) {
+      card.tabIndex = -1;
+      card.focus({preventScroll:true});
+      card.scrollIntoView({block:'nearest'});
+    }
+  }
+  state.candidateInvitationTargetId = null;
 }
 const candidateInvitationFilterLabels = {
   all:'Все',
@@ -1611,13 +1644,13 @@ function invitationCandidateMarkup(x) {
       : '';
     // The candidate sees who invites them and a readable job summary before
     // consent. The detailed timeline stays available without burying the CTA.
-    return `<article class="item-card invitation-card candidate-introduction-card is-decision"><header><div><span class="card-eyebrow">ЗНАКОМСТВО</span><h4>${esc(x.title)}</h4><p>${esc(x.company_name)} · ${esc(x.city)} · ${formatPay(x)}</p>${employerPublicTrustMarkup(x)}</div><span class="mini-badge">${esc(candidateInvitationStageLabel(x))}</span></header>
+    return `<article class="item-card invitation-card candidate-introduction-card is-decision" data-invitation-id="${Number(x.id)}"><header><div><span class="card-eyebrow">ЗНАКОМСТВО</span><h4>${esc(x.title)}</h4><p>${esc(x.company_name)} · ${esc(x.city)} · ${formatPay(x)}</p>${employerPublicTrustMarkup(x)}</div><span class="mini-badge">${esc(candidateInvitationStageLabel(x))}</span></header>
       <div class="candidate-invitation-summary"><strong>Условия вакансии</strong><p>${esc(preview)}</p>${fullConditions}</div>
       ${action}
       <details class="candidate-invitation-history"><summary>Этапы знакомства и история</summary>${interactionStageMarkup(x,'invitation')}${activityTimelineMarkup(x)}</details>
     </article>`;
   }
-  return `<article class="item-card invitation-card candidate-introduction-card is-${bucket}"><header><div><span class="card-eyebrow">ЗНАКОМСТВО</span><h4>${esc(x.title)}</h4><p>${esc(x.company_name)} · ${esc(x.city)} · ${formatPay(x)}</p>${employerPublicTrustMarkup(x)}</div><span class="mini-badge ${bucket==='closed'?'gray':''}">${esc(candidateInvitationStageLabel(x))}</span></header>
+  return `<article class="item-card invitation-card candidate-introduction-card is-${bucket}" data-invitation-id="${Number(x.id)}"><header><div><span class="card-eyebrow">ЗНАКОМСТВО</span><h4>${esc(x.title)}</h4><p>${esc(x.company_name)} · ${esc(x.city)} · ${formatPay(x)}</p>${employerPublicTrustMarkup(x)}</div><span class="mini-badge ${bucket==='closed'?'gray':''}">${esc(candidateInvitationStageLabel(x))}</span></header>
    ${interactionStageMarkup(x,'invitation')}
    <p class="invitation-description">${esc(description)}</p>
    ${activityTimelineMarkup(x)}
@@ -2771,6 +2804,18 @@ async function handleDashboardClick(event) {
     button.disabled = true;
     button.setAttribute('aria-busy','true');
   }
+  const candidateReplyCard = ['accept','decline'].includes(action) && state.user?.role === 'candidate'
+    ? btn.closest('.candidate-introduction-card') : null;
+  const candidateReplyId = candidateReplyCard && Number.isSafeInteger(id) && id > 0 ? id : 0;
+  if (candidateReplyId && pendingCandidateInvitationActions.has(candidateReplyId)) return;
+  if (candidateReplyId) pendingCandidateInvitationActions.add(candidateReplyId);
+  const candidateReplyButtons = candidateReplyCard
+    ? Array.from(candidateReplyCard.querySelectorAll('.invitation-actions [data-action="accept"], .invitation-actions [data-action="decline"]'))
+    : [];
+  for (const button of candidateReplyButtons) {
+    button.disabled = true;
+    button.setAttribute('aria-busy','true');
+  }
   btn.disabled = true;
   try {
     if (action === 'resume-vacancy-draft') {
@@ -2964,13 +3009,33 @@ async function handleDashboardClick(event) {
     if (action === 'matches' || action === 'matches-primary') { await loadMatches(id); }
     if (action === 'job-status') { await api(`/api/employer/vacancies/${id}/status`,{method:'PATCH',body:JSON.stringify({status:btn.dataset.status})}); await showDashboard(); toast('Статус вакансии обновлён.'); }
     if (action === 'invite') { await api('/api/employer/invitations',{method:'POST',body:JSON.stringify({vacancy_id:Number(btn.dataset.job),candidate_id:id})}); toast('Приглашение отправлено.'); state.employerInvitationsFilter='waiting'; state.tab='invitations'; await showDashboard(); }
+    if (action === 'refresh-candidate-introductions') {
+      await loadCandidateInvitations($('#dashboard-main'), true);
+      refreshActionSummary().catch(() => {});
+      return;
+    }
     if (action === 'accept' || action === 'decline') {
       const consent = $(`#consent-${id}`);
-      if (action === 'accept' && !consent.checked) { throw new Error('Подтвердите согласие на передачу контакта.'); }
-      await api(`/api/candidate/invitations/${id}/respond`,{method:'POST',body:JSON.stringify({decision:action === 'accept' ? 'accepted':'declined',share_consent:action === 'accept' && consent.checked})});
-      state.candidateInvitationsFilter = action === 'accept' ? 'waiting' : 'closed';
-      await showDashboard();
-      toast('Ответ работодателю сохранён.');
+      if (action === 'accept' && !consent?.checked) {
+        throw new Error('Подтвердите согласие на передачу контакта.');
+      }
+      const accepted = action === 'accept';
+      await api(`/api/candidate/invitations/${id}/respond`,{method:'POST',body:JSON.stringify({
+        decision: accepted ? 'accepted' : 'declined',
+        share_consent: accepted && consent.checked
+      })});
+      candidateInvitationSavedReceipt(btn, accepted);
+      state.candidateInvitationsFilter = accepted ? 'waiting' : 'closed';
+      state.candidateInvitationsData = null;
+      state.candidateInvitationTargetId = id;
+      try {
+        await loadCandidateInvitations($('#dashboard-main'), true);
+      } catch (refreshError) {
+        toast('Ответ сохранён, но список пока не обновился. Нажмите «Обновить список».', true);
+        return;
+      }
+      refreshActionSummary().catch(() => {});
+      toast(accepted ? 'Согласие сохранено. Ждём работодателя.' : 'Отказ сохранён. Контакты не переданы.');
     }
     if (action === 'introduction-outcome') {
       const outcome = btn.dataset.status;
@@ -3024,6 +3089,10 @@ async function handleDashboardClick(event) {
       toast(`Демо-платёж ${money(result.amount_rub)} проведён без списания средств.`);
     }
   } catch(e) { toast(e.message,true); } finally {
+    if (candidateReplyId) pendingCandidateInvitationActions.delete(candidateReplyId);
+    for (const button of candidateReplyButtons) {
+      if (button.isConnected) {button.disabled = false; button.removeAttribute('aria-busy');}
+    }
     if (introBusyId) pendingEmployerIntroductionActions.delete(introBusyId);
     for (const button of introButtons) {
       if (button.isConnected) {button.disabled = false; button.removeAttribute('aria-busy');}

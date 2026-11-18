@@ -3246,3 +3246,25 @@ body.comfortable-view .candidate-application-counter {font-size: 1rem}
 @media(max-width:430px) {
   .employer-introduction-saved-receipt .btn {width: 100%}
 }
+
+
+/* Release 0.5.23: durable candidate consent receipt after read-only errors. */
+.candidate-introduction-saved-receipt {
+  display: grid;
+  align-items: start;
+  justify-items: start;
+  gap: 8px;
+  margin: 10px 0;
+}
+.candidate-introduction-saved-receipt .btn {
+  min-height: 44px;
+  max-width: 100%;
+  white-space: normal;
+}
+.candidate-introduction-card:focus {
+  outline: 3px solid #A9E4BD;
+  outline-offset: 3px;
+}
+@media (max-width: 430px) {
+  .candidate-introduction-saved-receipt .btn { width: 100%; }
+}
