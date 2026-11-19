@@ -56,6 +56,7 @@ def test_shareable_vacancy_page_shows_public_information_only(tmp_path: Path):
         assert "<script>alert('xss')</script>" not in page.text
         assert "&lt;script&gt;alert" in page.text
         assert client.get("/static/vacancy-share.css").status_code == 200
+        assert client.get("/static/employer-directory.css").status_code == 200
 
         with database(app.state.db_path) as db:
             # Publishing the job already creates its moderation row.

@@ -86,6 +86,7 @@ def test_public_sitemap_lists_only_public_editorial_pages(tmp_path):
         urls = [item.text for item in root.findall("s:url/s:loc", namespace)]
         assert urls == [
             "https://stazhno.ru/",
+            "https://stazhno.ru/employers",
             "https://stazhno.ru/journal",
             *["https://stazhno.ru/journal/" + slug for slug in SLUGS],
         ]

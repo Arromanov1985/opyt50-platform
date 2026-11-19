@@ -55,6 +55,18 @@ def run_browser(page):
     page.locator("#jr-article-grid .jr-card:visible").click()
     expect(page.locator(".jr-article h1")).to_contain_text("Работодателю")
     expect(page.locator(".jr-related .jr-card")).to_have_count(2)
+    # A company is discoverable only with active moderated vacancies.
+    page.goto(URL + "/employers", wait_until="networkidle")
+    expect(page.locator("#employer-cards .employer-card").first).to_be_visible()
+    directory_query = page.locator('input[name="q"]')
+    directory_query.fill("абсолютно-несуществующая-компания-98998")
+    page.locator('.employer-search button[type="submit"]').click()
+    expect(page.locator(".empty-list")).to_be_visible()
+    page.locator(".empty-list a[href='/employers']").click()
+    expect(page.locator("#employer-cards .employer-card").first).to_be_visible()
+    page.locator("#employer-cards .employer-card h2 a").first.click()
+    expect(page.locator(".company-vacancies .company-job").first).to_be_visible()
+    assert page.locator(".company-vacancies .company-job a[href^='/vacancies/']").count() >= 1
     page.goto(URL, wait_until="networkidle")
     page.unroute("**/api/growth/event")
     expect(page.locator(".brand-word").first).to_contain_text("стажно")
