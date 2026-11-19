@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="robots" content="noindex,nofollow">
+<title>Редакция журнала — СТАЖНО</title>
+<link rel="icon" href="/static/favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="/static/journal-admin.css?v=1">
+<script src="/static/journal-admin.js?v=1" defer></script>
+</head>
+<body>
+<a class="skip" href="#editor-main">К редактору</a>
+<header class="top"><div class="wrap top-inner">
+<a class="logo" href="/">стажно<span>.</span>ру</a>
+<nav aria-label="Навигация редакции"><a href="/journal" target="_blank" rel="noopener">Открыть журнал</a><a href="/#dashboard">Вернуться в кабинет</a></nav>
+</div></header>
+<main id="editor-main" class="wrap">
+<section class="hero"><div><span class="kicker">РЕДАКЦИЯ СТАЖНО</span><h1>Управление журналом</h1>
+<p>Черновики не видны посетителям. Публикация и снятие с публикации — отдельные действия администратора.</p></div>
+<button type="button" id="new-article" class="btn primary">Новая статья</button></section>
+<div id="notice" role="status" aria-live="polite"></div>
+<div class="editor-layout">
+<aside class="sidebar" aria-label="Список статей">
+<div class="sidebar-top"><h2>Материалы</h2><button type="button" id="reload-list" class="btn subtle">Обновить</button></div>
+<div id="article-list" class="article-list"><p>Загружаем статьи…</p></div>
+</aside>
+<section class="workspace">
+<form id="article-form" autocomplete="off">
+<div class="workspace-head"><div><span class="kicker">КАРТОЧКА МАТЕРИАЛА</span><h2 id="editor-heading">Выберите статью</h2></div><span class="status" id="editor-status">—</span></div>
+<div class="fields">
+<label class="wide">Адрес статьи (латиница, через дефис)<input id="article-slug" name="slug" maxlength="90" required placeholder="moi-professionalnye-navyki" pattern="[a-z0-9]+(-[a-z0-9]+)*"></label>
+<label class="wide">Заголовок<input id="article-title" name="title" maxlength="180" minlength="8" required></label>
+<label class="wide">Краткое описание для каталога и поиска<textarea id="article-description" name="description" maxlength="350" minlength="25" rows="3" required></textarea></label>
+<label>Рубрика<input id="article-category" name="category" maxlength="55" minlength="3" required placeholder="Карьера"></label>
+<label>Время чтения<input id="article-read" name="read" maxlength="30" minlength="3" required placeholder="5 минут"></label>
+<label class="wide">Текст статьи
+<small>Заголовок раздела начинайте с <code>##</code>. Обычные абзацы разделяйте пустой строкой. Список — строки с <code>-</code>. Для публикации нужно хотя бы два раздела.</small>
+<textarea id="article-body" name="body" rows="15" minlength="200" maxlength="20000" required placeholder="## Первый раздел&#10;Опишите практический шаг...&#10;&#10;## Второй раздел&#10;Объясните следующий шаг..."></textarea></label>
+</div>
+<div class="action-row">
+<button type="submit" id="save" class="btn primary">Сохранить черновик</button>
+<button type="button" id="preview" class="btn subtle">Предпросмотр</button>
+<button type="button" id="publish" class="btn affirmative">Опубликовать</button>
+<button type="button" id="hide" class="btn subtle">Скрыть статью</button>
+<button type="button" id="archive" class="btn danger">Архивировать черновик</button>
+</div>
+<p class="hint" id="edit-hint">Несохранённые изменения не будут опубликованы. При одновременном редактировании система попросит загрузить свежую версию.</p>
+</form>
+<section class="preview" id="article-preview" hidden aria-label="Предпросмотр статьи"><h2>Предпросмотр</h2><div id="preview-content"></div></section>
+</section>
+</div>
+<section class="audit"><div class="sidebar-top"><h2>Последние действия редакции</h2><button type="button" id="reload-audit" class="btn subtle">Обновить</button></div><div id="audit-items" aria-live="polite"></div></section>
+</main>
+<footer class="wrap foot">Редактор СТАЖНО · Только для авторизованного администратора · Публикация требует отдельного подтверждения</footer>
+</body></html>
