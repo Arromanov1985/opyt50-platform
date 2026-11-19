@@ -4,6 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta name="legal-profile-ready" content="{{LEGAL_READY_ATTR}}">
+  <meta name="legal-terms-version" content="{{TERMS_VERSION}}">
   <meta name="description" content="стажно.ру — работа и новые возможности для специалистов 50+. Поиск вакансий, короткий профиль, отклики и знакомство с работодателем с сохранением приватности контактов.">
   <link rel="canonical" href="https://stazhno.ru/">
   <meta property="og:type" content="website">
@@ -30,7 +31,7 @@
   <link rel="stylesheet" href="/static/release13-taxonomy.css?v=1300">
   <title>СТАЖНО.РУ — работа и новые возможности после 50 лет</title>
   <script src="/static/release02.js?v=93e153af5cc6" defer></script>
-  <script src="/static/app.js?v=fa37bf1845ad" defer></script>
+  <script src="/static/app.js?v=legalterms1" defer></script>
   <script src="/static/release03.js?v=0810" defer></script>
   <script src="/static/vacancy-wizard.js?v=b59564433a0b" defer></script>
   <script src="/static/release09-home.js?v=0901" defer></script>
@@ -251,6 +252,10 @@
       <strong>Оператор: {{OPERATOR_NAME}}. {{LEGAL_REGISTRATION_NOTICE}}</strong>
       <p>До регистрации ознакомьтесь с <a href="/terms" target="_blank" rel="noopener">Пользовательским соглашением{{LEGAL_LINK_SUFFIX}}</a> и <a href="/privacy" target="_blank" rel="noopener">Политикой персональных данных{{LEGAL_LINK_SUFFIX}}</a>. Порядок отдельных согласий на специальные цели и передачу контактов описан <a href="/legal/consent" target="_blank" rel="noopener">здесь</a>.</p>
       <p class="draft-disclaimer">{{LEGAL_REGISTRATION_NOTICE}} Для обращения используйте {{PRIVACY_EMAIL}}. Обработка регулируется документами с редакциями {{PRIVACY_VERSION}} и {{TERMS_VERSION}}.</p>
+    </div>
+    <div class="field hidden" id="auth-terms-row">
+      <label for="auth-terms-accepted"><input id="auth-terms-accepted" type="checkbox" autocomplete="off"> Я принимаю <a href="/terms" target="_blank" rel="noopener">Пользовательское соглашение</a> в действующей редакции.</label>
+      <small>Принятие договора не является согласием на все возможные способы обработки персональных данных.</small>
     </div>
     <button type="submit" class="btn btn-primary btn-lg btn-full" id="auth-submit">Продолжить →</button>
     <p class="auth-message" id="auth-message" role="alert" aria-live="polite"></p>
