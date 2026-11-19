@@ -143,6 +143,9 @@ def run_browser(page):
     page.locator("#privacy-rights-kind").select_option("access")
     page.locator("#privacy-rights-request-form button[type='submit']").click()
     expect(page.locator("#privacy-rights-history")).to_contain_text("Получить сведения об обработке")
+    page.locator("#privacy-rights-kind").select_option("deletion")
+    page.locator("#privacy-rights-request-form button[type='submit']").click()
+    expect(page.locator("#privacy-rights-history")).to_contain_text("Запросить удаление данных")
     with page.expect_download() as exported_file:
         page.locator("#dashboard-main a[href='/api/account/data-export']").click()
     assert exported_file.value.suggested_filename.startswith("stazhno-my-data-")
@@ -1149,7 +1152,19 @@ def run_browser(page):
     expect(page.locator("#admin-growth-articles tbody tr")).to_have_count(4)
     expect(page.locator("#admin-privacy-rights")).to_contain_text("Получить сведения об обработке")
     expect(page.locator("#admin-privacy-rights")).to_contain_text("kladovshik@demo.example")
-
+    deletion_row = page.locator(".privacy-rights-admin").filter(has_text="Запросить удаление данных")
+    deletion_row.locator("[data-action='privacy-rights-review']").click()
+    deletion_row = page.locator(".privacy-rights-admin").filter(has_text="Запросить удаление данных")
+    deletion_row.locator("[data-action='privacy-disposal-preview']").click()
+    expect(deletion_row.locator(".privacy-disposal-report")).to_be_visible()
+    expect(deletion_row.locator(".privacy-disposal-checks label")).to_have_count(7)
+    expect(deletion_row.locator(".privacy-disposal-report")).to_contain_text("только чтение")
+    deletion_row.locator('input[data-disposal-check="identity_reviewed"]').check()
+    deletion_row.locator('input[data-disposal-check="lawful_basis_reviewed"]').check()
+    deletion_row.locator("[data-action='privacy-disposal-save']").click()
+    expect(deletion_row.locator(".privacy-disposal-report")).to_contain_text(
+        "Закрытие со статусом «выполнено» запрещено"
+    )
 
     expect(page.locator("[data-v02-action='admin-users']")).to_be_visible()
     page.locator("[data-v02-action='admin-users']").click()
