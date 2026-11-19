@@ -129,6 +129,17 @@ def run_browser(page):
     page.locator("#job-dialog-close").click()
     expect(page.locator("#job-dialog")).not_to_be_visible()
 
+    # A search with no results must offer a clear recovery action, preserving
+    # the original job-search workflow and keyboard-accessible controls.
+    page.locator("#profession-filter").fill("несуществующая профессия 98765")
+    page.locator("#jobs-filter").click()
+    empty = page.locator("#public-jobs .jobs-empty-state")
+    expect(empty).to_contain_text("По этим условиям вакансий пока нет.")
+    expect(empty.locator("[data-v02-action='reset-public-job-filters']")).to_be_visible()
+    empty.locator("[data-v02-action='reset-public-job-filters']").click()
+    expect(page.locator("#profession-filter")).to_have_value("")
+    expect(page.locator("#public-jobs .job-card").first).to_be_visible()
+
     login(page, "kladovshik@demo.example")
     expect(page.locator("#dashboard-main")).to_contain_text("ВАШ СЛЕДУЮЩИЙ ШАГ")
     expect(page.locator("#dashboard-main .overview-stat-card")).to_have_count(4)
