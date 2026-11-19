@@ -262,6 +262,28 @@ def run_browser(browser, base, database):
         boris.set_viewport_size({"width": 390, "height": 844})
         capture(boris, "community-chat-mobile.png")
 
+        # A failed details refresh leaves the current composer fully usable.
+        # Failed selection must not invalidate its active send/history token.
+        detail_url = base + "/api/community/connections/" + connection_id
+
+        def abort_details(route):
+            route.abort("failed")
+
+        boris.route(detail_url, abort_details)
+        with boris.expect_event("requestfailed", predicate=lambda request: request.url == detail_url):
+            boris.locator('#community-thread [data-action="refresh-thread"]').click()
+        boris.unroute(detail_url, abort_details)
+        expect(boris.locator("#community-notice")).to_have_class(re.compile(r".*\berror\b.*"))
+        after_refresh_message = "Продолжаю разговор после временной ошибки обновления."
+        boris.locator('#community-message-form [name="body"]').fill(after_refresh_message)
+        with boris.expect_response(lambda response: response.url == detail_url + "/messages" and response.request.method == "POST") as after_refresh_send:
+            boris.locator('#community-message-form [type="submit"]').click()
+        checked(after_refresh_send.value)
+        expect(boris.locator("#thread-history")).to_contain_text(after_refresh_message)
+        expect(boris.locator('#community-message-form [name="body"]')).to_have_value("")
+        expect(boris.locator("#community-notice")).to_have_text("Сообщение отправлено.")
+        expect(boris.locator("#community-notice")).not_to_have_class(re.compile(r".*\berror\b.*"))
+
         # A late history response from thread A must neither replace thread B
         # nor attach A's submit handler to B's composer.
         second_connection = checked(outsider.request.post(

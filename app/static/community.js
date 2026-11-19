@@ -8,7 +8,7 @@
   const connectionStates = {pending:'Ожидает ответа', accepted:'Знакомство принято', declined:'Запрос отклонён', cancelled:'Запрос отозван', blocked:'Общение прекращено'};
   const reasons = {spam:'Спам или навязчивые предложения', fraud:'Подозрение на мошенничество', harassment:'Оскорбления или давление', personal_data:'Публикация личных данных', other:'Другая проблема'};
   const mode = document.body.dataset.communityPage;
-  const state = {user:null, profile:null, dirty:false, messageDirty:false, connections:[], connectionPage:1, connectionFilter:'', selected:null, messageKey:null, messageBody:null, nextBefore:null, directoryPage:1, directoryRequest:0, threadRequest:0, messageLoadRequest:0, moderationPage:1, reportPage:1, busy:new WeakSet()};
+  const state = {user:null, profile:null, dirty:false, messageDirty:false, connections:[], connectionPage:1, connectionFilter:'', selected:null, messageKey:null, messageBody:null, nextBefore:null, directoryPage:1, directoryRequest:0, threadSelectionRequest:0, threadRequest:0, messageLoadRequest:0, moderationPage:1, reportPage:1, busy:new WeakSet()};
   const content = $('#community-content');
   const dialog = $('#community-dialog');
   let dialogBusy = false;
@@ -233,12 +233,19 @@
   async function openThread(id, {preserve=false}={}) {
     const currentForm = $('#community-message-form');
     if (currentForm && state.busy.has(currentForm)) { notice('Дождитесь результата отправки. Сообщение пока остаётся в этой вкладке.'); return; }
-    if (state.selected?.id===id) preserve=true;
-    if (state.messageDirty && state.selected?.id!==id && !window.confirm('В сообщении есть несохранённый текст. Перейти к другому разговору?')) return;
-    const request=++state.threadRequest;
-    const result=await api('/api/community/connections/'+encodeURIComponent(id));
-    if(request!==state.threadRequest)return;
+    // Keep the visible composer's token valid until a replacement is ready.
+    // Failed detail requests must not detach the current conversation's state.
+    const selectionRequest=++state.threadSelectionRequest;
+    let result;
+    try { result=await api('/api/community/connections/'+encodeURIComponent(id)); }
+    catch (error) { if(selectionRequest===state.threadSelectionRequest)throw error;return; }
+    if(selectionRequest!==state.threadSelectionRequest)return;
+    const latestForm = $('#community-message-form');
+    if (latestForm && state.busy.has(latestForm)) { notice('Дождитесь результата отправки. Сообщение пока остаётся в этой вкладке.'); return; }
+    preserve=state.selected?.id===id;
+    if (state.messageDirty && !preserve && !window.confirm('В сообщении есть несохранённый текст. Перейти к другому разговору?')) return;
     const draft=preserve?$('#community-message-form textarea')?.value:null;
+    const request=++state.threadRequest;
     state.selected=result.connection;const c=state.selected;
     if(!preserve){state.messageDirty=false;state.messageKey=null;state.messageBody=null;}
     history.replaceState(null,'','/community/connections?thread='+encodeURIComponent(id));
