@@ -1,0 +1,25 @@
+name: Legal readiness (technical)
+
+# WARNING: detects missing documents and signoff, not legal compliance.
+# To enforce it, repository admin must require this check in a GitHub ruleset
+# for main and restrict direct pushes. This repository currently has no ruleset.
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  prerequisites:
+    name: Legal readiness (technical)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: '3.13'
+      - name: Require public legal information and approved release scope
+        run: python scripts/check_legal_readiness.py
