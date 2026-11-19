@@ -338,7 +338,8 @@ PRIVACY_DISPOSAL_DDL = (
             CHECK(backups_and_processors_reviewed IN (0,1)),
         manual_action_verified INTEGER NOT NULL DEFAULT 0 CHECK(manual_action_verified IN (0,1)),
         reviewed_at TEXT NOT NULL,
-        reviewed_by INTEGER NOT NULL REFERENCES users(id)
+        reviewed_by INTEGER NOT NULL REFERENCES users(id),
+        impact_digest TEXT NOT NULL
     )""",
     """CREATE TABLE IF NOT EXISTS privacy_disposal_review_actions (
         event_key TEXT PRIMARY KEY,
@@ -346,7 +347,8 @@ PRIVACY_DISPOSAL_DDL = (
             ON DELETE CASCADE,
         reviewed_by INTEGER NOT NULL REFERENCES users(id),
         reviewed_at TEXT NOT NULL,
-        checks_bits TEXT NOT NULL
+        checks_bits TEXT NOT NULL,
+        impact_digest TEXT NOT NULL
     )""",
 )
 
