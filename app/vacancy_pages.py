@@ -65,7 +65,7 @@ def vacancy_page(job: dict) -> HTMLResponse:
     <a class="brand" href="/" aria-label="СТАЖНО — на главную">
       <img src="/static/brand-symbol.svg" alt="" width="32" height="32">
       стажно<span>.</span>ру</a>
-    <nav aria-label="Разделы сайта"><a href="/#jobs">Все вакансии</a><a href="/journal">Журнал</a></nav>
+    <nav aria-label="Разделы сайта"><a href="/#jobs">Все вакансии</a><a href="/employers">Работодатели</a><a href="/journal">Журнал</a></nav>
   </div></header>
   <main class="wrap" id="content">
     <nav class="breadcrumbs" aria-label="Навигация">
