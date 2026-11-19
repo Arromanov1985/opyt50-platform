@@ -8,6 +8,7 @@ These are *events*, not unique visitors or attributable conversions.
 from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
+import re
 from typing import Any
 
 from .db import database
@@ -23,11 +24,22 @@ def record_event(db_path: str, source: str, action: str) -> None:
     No user context, browser metadata or identifiable request fields are read.
     Keep at most 180 UTC days of aggregate counters, even on long-running apps.
     """
-    if source not in VALID_SOURCES or action not in VALID_ACTIONS:
+    if action not in VALID_ACTIONS:
         raise ValueError("Unsupported aggregate event")
     today = datetime.now(timezone.utc).date()
     cutoff = (today - timedelta(days=179)).isoformat()
     with database(db_path) as db:
+        # A newly published editor article is valid even if absent from the
+        # original six/ten-file release catalog. Reject arbitrary identifiers.
+        if source not in VALID_SOURCES:
+            if not re.fullmatch(r"[a-z0-9]+(?:-[a-z0-9]+)*", source):
+                raise ValueError("Unsupported aggregate event")
+            valid = db.execute(
+                "SELECT 1 FROM journal_entries WHERE slug=? AND status='published'",
+                (source,),
+            ).fetchone()
+            if valid is None:
+                raise ValueError("Unsupported aggregate event")
         db.execute(
             """INSERT INTO growth_daily_counts(event_date,source,action,total)
                VALUES(?,?,?,1)
