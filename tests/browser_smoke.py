@@ -33,7 +33,7 @@ def login(page, email):
     expect(page.locator("#dashboard")).to_be_visible(timeout=15000)
 
 
-def run_browser(page):
+def run_browser(page, playwright):
     console_errors = []
     page.on("pageerror", lambda error: console_errors.append(str(error)))
     page.goto(URL, wait_until="networkidle")
@@ -1142,6 +1142,26 @@ def run_browser(page):
     expect(page.locator("#dashboard-main")).to_contain_text("История откликов")
     page.locator("#logout").click()
 
+    # An isolated synthetic account exercises deletion-request administration
+    # without freezing the demo candidate used by the remaining browser flows.
+    rights_only = playwright.request.new_context(base_url=URL)
+    try:
+        signup = rights_only.post("/api/register",
+            headers={"X-Requested-With": "OPYT50"},
+            data={
+                "email": "rights-only@example.invalid",
+                "name": "Тестовый заявитель",
+                "password": "StrongSyntheticRights2026!",
+                "role": "candidate",
+            })
+        assert signup.status == 201, signup.text()
+        request = rights_only.post("/api/account/privacy-requests",
+            headers={"X-Requested-With": "OPYT50"},
+            data={"kind": "deletion"})
+        assert request.status == 201, request.text()
+    finally:
+        rights_only.dispose()
+
     login(page, "admin@demo.example")
     expect(page.locator("#admin-stats")).to_contain_text("Активные отклики")
     expect(page.locator("#admin-stats")).to_contain_text("Отозванные отклики")
@@ -1574,7 +1594,7 @@ def main():
                     context = browser.new_context(viewport={"width": 1366, "height": 900}, locale="ru-RU")
                     page = context.new_page()
                     try:
-                        run_browser(page)
+                        run_browser(page, p)
                     except Exception:
                         page.screenshot(path=str(Path(tmp) / "failure.png"), full_page=True)
                         server_log.flush()
