@@ -19,13 +19,18 @@ TEMPLATE_FIELDS = (
     "privacy_email", "rights_email", "support_email", "rkn_notification",
     "database_country", "backups_country", "mail_provider",
     "privacy_version", "terms_version", "consent_version",
-    "effective_date", "retention_rules",
+    "effective_date", "retention_rules", "processors", "crossborder_policy",
+    "request_process", "security_measures", "moderation_contact",
+    "termination_procedure", "legal_basis_review", "consent_optional_scope",
+    "notification_status",
 )
 REQUIRED_VALID = (
     "operator_name", "inn", "ogrnip", "address", "privacy_email",
     "rights_email", "rkn_notification", "database_country",
     "backups_country", "mail_provider", "privacy_version",
     "terms_version", "consent_version", "effective_date", "retention_rules",
+    "processors", "crossborder_policy", "request_process", "security_measures",
+    "moderation_contact", "termination_procedure", "legal_basis_review",
 )
 TEST_WORDS = ("тест", "не подтверж", "не утверж", "заменить", "пример", "example.invalid",
               "placeholder", "todo", "не подано", "проверить", "[", "]")
@@ -65,7 +70,7 @@ def readiness_failures(profile: dict | None = None, approval_text: str | None = 
         errors.append("INN format or checksum invalid")
     if not _ogrnip_valid(str(p.get("ogrnip", ""))):
         errors.append("OGRNIP format or checksum invalid")
-    for key in ("privacy_email", "rights_email", "support_email"):
+    for key in ("privacy_email", "rights_email", "support_email", "moderation_contact"):
         email = str(p.get(key, "")).strip().casefold()
         if not re.fullmatch(r"[^\s@]+@[^\s@]+\.[^\s@]+", email) or email.endswith(".invalid"):
             errors.append(f"invalid live mailbox: {key}")
