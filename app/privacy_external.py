@@ -54,6 +54,10 @@ def save_external_review(
         raise ValueError("Unknown external system")
     if status not in VALID_STATUSES:
         raise ValueError("Unknown review state")
+    # Never wave away real infrastructure: only an absence of previously
+    # shared contacts can make the third-party recipient section N/A.
+    if status == "not_applicable" and system_key != "third_party_recipients":
+        raise ValueError("Core external systems cannot be marked not applicable")
     row = db.execute(
         "SELECT kind,status FROM privacy_rights_requests WHERE request_key=?",
         (request_key,),
@@ -64,6 +68,16 @@ def save_external_review(
         raise ValueError("Only deletion or cessation requests need external review")
     if row["status"] != "in_review":
         raise ValueError("Start review before attesting external systems")
+    if status == "not_applicable":
+        opened = db.execute(
+            """SELECT COUNT(*) FROM invitations i
+               JOIN privacy_rights_requests r
+                 ON (r.user_id=i.candidate_id OR r.user_id=i.employer_id)
+               WHERE r.request_key=? AND i.contact_shared=1""",
+            (request_key,),
+        ).fetchone()[0]
+        if opened:
+            raise ValueError("Cannot mark recipients inapplicable after contact disclosure")
     stamp = datetime.now(timezone.utc).isoformat()
     db.execute(
         """INSERT INTO privacy_external_reviews
