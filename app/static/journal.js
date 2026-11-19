@@ -24,6 +24,8 @@ document.addEventListener('DOMContentLoaded', () => {
     ? window.location.pathname.slice(0, -1) : window.location.pathname;
   const source = path === '/journal'
     ? 'journal'
+    : path.startsWith('/journal/paths/') ? 'path-' + path.slice('/journal/paths/'.length)
+    : path === '/journal/paths' ? ''
     : path.startsWith('/journal/') ? path.slice('/journal/'.length) : '';
   if (!source || !/^[a-z0-9-]{1,80}$/.test(source)) return;
   function sendGrowthEvent(action) {
@@ -43,7 +45,7 @@ document.addEventListener('DOMContentLoaded', () => {
   document.querySelectorAll('a[data-growth-action]').forEach(link => {
     link.addEventListener('click', () => {
       const action = link.getAttribute('data-growth-action');
-      if (action === 'jobs_click' || action === 'profile_click') {
+      if (action === 'jobs_click' || action === 'profile_click' || action === 'community_click') {
         sendGrowthEvent(action);
       }
     });
