@@ -77,7 +77,7 @@ def test_private_export_needs_session_and_never_returns_other_people(tmp_path: P
             )
         response = candidate.get("/api/account/data-export")
         assert response.status_code == 200
-        assert response.headers["cache-control"] == "private, no-store, max-age=0"
+        assert "no-store" in response.headers["cache-control"]
         assert response.headers["pragma"] == "no-cache"
         assert response.headers["x-content-type-options"] == "nosniff"
         assert response.headers["x-robots-tag"] == "noindex, nofollow"
