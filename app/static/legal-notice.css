@@ -1,0 +1,8 @@
+/* IP legal review preview near registration and in footer */
+.legal-operator-preview{font-size:13px;line-height:1.6;margin-top:14px;color:#536d5b}
+.legal-operator-preview strong{color:#264a39}.legal-operator-preview a{color:#1c7254}
+.auth-legal-notice{margin:15px 0;padding:15px 17px;border:1px solid #d9e6dc;border-radius:14px;background:#f7faf7;font-size:13px;line-height:1.55;color:#3b604b}
+.auth-legal-notice strong{display:block;color:#28523c;margin-bottom:5px}.auth-legal-notice p{margin:0 0 8px}
+.auth-legal-notice a{font-weight:700;color:#176c4d;text-decoration:underline}
+.auth-legal-notice .draft-disclaimer{color:#8a642e;font-size:12px}
+@media(max-width:650px){.auth-legal-notice{padding:12px}}
