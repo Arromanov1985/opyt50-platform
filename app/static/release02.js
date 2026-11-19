@@ -207,7 +207,7 @@
         const active = [];
         for (const [input,param,label] of filters) {
           const value=searchValue(input);
-          if(value){ qs.set(param,value); active.push([label,value]); }
+          if(value){ qs.set(param,value); active.push([label,value,input]); }
         }
         const sort=searchValue('sort-filter') || 'recent';
         qs.set('sort',sort);
@@ -215,8 +215,8 @@
         const jobs = result.jobs || [];
         $('#jobs-count').textContent = `Найдено: ${jobs.length}`;
         const sortLabels={salary_desc:'Сначала выше зарплата',salary_asc:'Сначала ниже зарплата'};
-        if(sortLabels[sort]) active.push(['Сортировка',sortLabels[sort]]);
-        $('#job-filter-summary').innerHTML = active.map(([label,value])=>`<span class="filter-chip">${esc(label)}: ${esc(value)}</span>`).join('');
+        if(sortLabels[sort]) active.push(['Сортировка',sortLabels[sort],'sort-filter']);
+        $('#job-filter-summary').innerHTML = active.map(([label,value,input])=>`<button type="button" class="filter-chip filter-chip-action" data-v02-action="remove-public-job-filter" data-filter-id="${input}" aria-label="Убрать фильтр: ${esc(label)}, ${esc(value)}">${esc(label)}: ${esc(value)} <span aria-hidden="true">×</span></button>`).join('');
         const hasFilters = active.length > 0;
         $('#public-jobs').innerHTML = jobs.length
           ? jobs.map(j=>jobMarkup(j)).join('')
@@ -840,6 +840,19 @@
       if (type === 'retry-public-jobs') {
         event.preventDefault();
         await loadPublicJobs();
+        return;
+      }
+      if (type === 'remove-public-job-filter') {
+        event.preventDefault();
+        const allowed = ['profession-filter','city-filter','salary-filter','schedule-filter','employment-filter','sort-filter'];
+        const fieldId = btn.dataset.filterId;
+        if (!allowed.includes(fieldId)) return;
+        const field = document.getElementById(fieldId);
+        if (!field) return;
+        field.value = fieldId === 'sort-filter' ? 'recent' : '';
+        field.dispatchEvent(new Event('input',{bubbles:true}));
+        await loadPublicJobs();
+        field.focus({preventScroll:true});
         return;
       }
       if (btn.disabled) return;
