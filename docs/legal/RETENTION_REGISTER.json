@@ -1,0 +1,296 @@
+{
+  "schema_version": "0.1-DRAFT",
+  "operator": "ИП Иванов Иван Иванович",
+  "status": "TEST_ONLY",
+  "effective_date": null,
+  "legal_review_required": true,
+  "notes": "Neither a default retention schedule nor authorization to erase. Periods must be set and verified per category before release.",
+  "categories": [
+    {
+      "code": "account_identity",
+      "tables": [
+        "users",
+        "account_controls"
+      ],
+      "purpose": "Регистрация и управление учётной записью",
+      "start_event": "termination_or_cessation_review",
+      "systems": [
+        "primary_database"
+      ],
+      "retention_days": null,
+      "legal_basis": "NOT_APPROVED",
+      "disposition": "MANUAL_REVIEW_REQUIRED",
+      "verified_by": null,
+      "approval_status": "PENDING_LEGAL_REVIEW"
+    },
+    {
+      "code": "candidate_profiles",
+      "tables": [
+        "candidate_profiles",
+        "candidate_resume_details",
+        "candidate_resume_qualifications"
+      ],
+      "purpose": "Профессиональный профиль и резюме",
+      "start_event": "account_termination_or_goal_achieved",
+      "systems": [
+        "primary_database",
+        "backup"
+      ],
+      "retention_days": null,
+      "legal_basis": "NOT_APPROVED",
+      "disposition": "MANUAL_REVIEW_REQUIRED",
+      "verified_by": null,
+      "approval_status": "PENDING_LEGAL_REVIEW"
+    },
+    {
+      "code": "employer_profiles",
+      "tables": [
+        "employer_profiles",
+        "employer_public_profiles"
+      ],
+      "purpose": "Карточка работодателя",
+      "start_event": "account_termination_or_goal_achieved",
+      "systems": [
+        "primary_database",
+        "backup"
+      ],
+      "retention_days": null,
+      "legal_basis": "NOT_APPROVED",
+      "disposition": "MANUAL_REVIEW_REQUIRED",
+      "verified_by": null,
+      "approval_status": "PENDING_LEGAL_REVIEW"
+    },
+    {
+      "code": "vacancies",
+      "tables": [
+        "vacancies",
+        "vacancy_drafts",
+        "vacancy_updates",
+        "vacancy_moderation"
+      ],
+      "purpose": "Размещение вакансий и модерация",
+      "start_event": "vacancy_closed_or_contract_end",
+      "systems": [
+        "primary_database",
+        "backup"
+      ],
+      "retention_days": null,
+      "legal_basis": "NOT_APPROVED",
+      "disposition": "MANUAL_REVIEW_REQUIRED",
+      "verified_by": null,
+      "approval_status": "PENDING_LEGAL_REVIEW"
+    },
+    {
+      "code": "applications",
+      "tables": [
+        "job_applications",
+        "application_events",
+        "candidate_favorites"
+      ],
+      "purpose": "Отклики и их история",
+      "start_event": "recruitment_process_completed",
+      "systems": [
+        "primary_database",
+        "backup"
+      ],
+      "retention_days": null,
+      "legal_basis": "NOT_APPROVED",
+      "disposition": "MANUAL_REVIEW_REQUIRED",
+      "verified_by": null,
+      "approval_status": "PENDING_LEGAL_REVIEW"
+    },
+    {
+      "code": "introductions",
+      "tables": [
+        "invitations",
+        "invitation_outcomes",
+        "demo_transactions"
+      ],
+      "purpose": "Знакомства и согласие на раскрытие контакта",
+      "start_event": "introduction_closed",
+      "systems": [
+        "primary_database",
+        "recipient_copies"
+      ],
+      "retention_days": null,
+      "legal_basis": "NOT_APPROVED",
+      "disposition": "MANUAL_REVIEW_REQUIRED",
+      "verified_by": null,
+      "approval_status": "PENDING_LEGAL_REVIEW"
+    },
+    {
+      "code": "communications",
+      "tables": [
+        "email_outbox",
+        "email_delivery_jobs",
+        "email_delivery_recipients"
+      ],
+      "purpose": "Сервисные письма и очередь доставки",
+      "start_event": "message_sent_or_suppressed",
+      "systems": [
+        "smtp_provider",
+        "mail_worker"
+      ],
+      "retention_days": null,
+      "legal_basis": "NOT_APPROVED",
+      "disposition": "MANUAL_REVIEW_REQUIRED",
+      "verified_by": null,
+      "approval_status": "PENDING_LEGAL_REVIEW"
+    },
+    {
+      "code": "auth_secrets",
+      "tables": [
+        "sessions",
+        "session_context",
+        "session_activity",
+        "email_tokens",
+        "admin_mfa_challenges",
+        "admin_webauthn_challenges"
+      ],
+      "purpose": "Аутентификация, защита доступа",
+      "start_event": "secret_expiry_or_session_end",
+      "systems": [
+        "primary_database",
+        "security_logs"
+      ],
+      "retention_days": null,
+      "legal_basis": "NOT_APPROVED",
+      "disposition": "MANUAL_REVIEW_REQUIRED",
+      "verified_by": null,
+      "approval_status": "PENDING_LEGAL_REVIEW"
+    },
+    {
+      "code": "security_traces",
+      "tables": [
+        "security_events",
+        "admin_audit",
+        "account_devices",
+        "security_rate_limits"
+      ],
+      "purpose": "Обнаружение злоупотреблений и доказательства событий",
+      "start_event": "security_purpose_closed",
+      "systems": [
+        "primary_database",
+        "infrastructure_logs"
+      ],
+      "retention_days": null,
+      "legal_basis": "NOT_APPROVED",
+      "disposition": "MANUAL_REVIEW_REQUIRED",
+      "verified_by": null,
+      "approval_status": "PENDING_LEGAL_REVIEW"
+    },
+    {
+      "code": "legal_acceptances",
+      "tables": [
+        "legal_acceptance_records"
+      ],
+      "purpose": "Доказательство ознакомления и договора",
+      "start_event": "legal_obligation_expired",
+      "systems": [
+        "primary_database",
+        "backup"
+      ],
+      "retention_days": null,
+      "legal_basis": "NOT_APPROVED",
+      "disposition": "MANUAL_REVIEW_REQUIRED",
+      "verified_by": null,
+      "approval_status": "PENDING_LEGAL_REVIEW"
+    },
+    {
+      "code": "rights_requests",
+      "tables": [
+        "privacy_rights_requests",
+        "privacy_rights_admin_actions",
+        "privacy_disposal_reviews",
+        "privacy_disposal_review_actions"
+      ],
+      "purpose": "Обращения субъектов и контроль их исполнения",
+      "start_event": "request_closed_and_retention_review",
+      "systems": [
+        "primary_database",
+        "backup"
+      ],
+      "retention_days": null,
+      "legal_basis": "NOT_APPROVED",
+      "disposition": "MANUAL_REVIEW_REQUIRED",
+      "verified_by": null,
+      "approval_status": "PENDING_LEGAL_REVIEW"
+    },
+    {
+      "code": "complaints",
+      "tables": [
+        "content_reports"
+      ],
+      "purpose": "Жалобы на содержание и разрешение споров",
+      "start_event": "complaint_resolved_and_reviewed",
+      "systems": [
+        "primary_database"
+      ],
+      "retention_days": null,
+      "legal_basis": "NOT_APPROVED",
+      "disposition": "MANUAL_REVIEW_REQUIRED",
+      "verified_by": null,
+      "approval_status": "PENDING_LEGAL_REVIEW"
+    },
+    {
+      "code": "aggregated_analytics",
+      "tables": [
+        "growth_daily_counts",
+        "taxonomy_observations"
+      ],
+      "purpose": "Агрегированная статистика и справочник",
+      "start_event": "analytics_purpose_reviewed",
+      "systems": [
+        "primary_database"
+      ],
+      "retention_days": null,
+      "legal_basis": "NOT_APPROVED",
+      "disposition": "MANUAL_REVIEW_REQUIRED",
+      "verified_by": null,
+      "approval_status": "PENDING_LEGAL_REVIEW"
+    },
+    {
+      "code": "host_backups",
+      "tables": [],
+      "purpose": "Резервные копии БД и приложения",
+      "start_event": "backup_rotation_policy",
+      "systems": [
+        "database_backups",
+        "app_platform"
+      ],
+      "retention_days": null,
+      "legal_basis": "NOT_APPROVED",
+      "disposition": "MANUAL_REVIEW_REQUIRED",
+      "verified_by": null,
+      "approval_status": "PENDING_LEGAL_REVIEW"
+    },
+    {
+      "code": "hosting_logs",
+      "tables": [],
+      "purpose": "Внешние журналы инфраструктуры и мониторинга",
+      "start_event": "provider_log_retention",
+      "systems": [
+        "infrastructure_logs"
+      ],
+      "retention_days": null,
+      "legal_basis": "NOT_APPROVED",
+      "disposition": "MANUAL_REVIEW_REQUIRED",
+      "verified_by": null,
+      "approval_status": "PENDING_LEGAL_REVIEW"
+    },
+    {
+      "code": "third_party_copies",
+      "tables": [],
+      "purpose": "Переданные работодателям контактные данные",
+      "start_event": "disclosure_and_recipient_review",
+      "systems": [
+        "recipient_copies"
+      ],
+      "retention_days": null,
+      "legal_basis": "NOT_APPROVED",
+      "disposition": "MANUAL_REVIEW_REQUIRED",
+      "verified_by": null,
+      "approval_status": "PENDING_LEGAL_REVIEW"
+    }
+  ]
+}
