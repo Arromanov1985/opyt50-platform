@@ -68,6 +68,11 @@ def enqueue_workflow_job(
     """
     if event not in WORKFLOW_EVENTS or redacted:
         return False
+    # All NEW workflow jobs must have an auditable account mapping. Reject a
+    # notice when the user has asked for erasure or to stop processing, even
+    # before an outbox row or SMTP attempt is created by the normal call path.
+    if recipient_user_id is None or workflow_notice_blocked(db, recipient_user_id):
+        return False
     instant = _stamp(_now())
     db.execute(
         """INSERT INTO email_delivery_jobs(
@@ -82,6 +87,22 @@ def enqueue_workflow_job(
             (outbox_id, recipient_user_id),
         )
     return True
+
+
+def workflow_notice_blocked(db, user_id: int) -> bool:
+    """Block optional mail while a deletion/cessation request is in effect.
+
+    The lookup uses the caller's transaction for the enqueue-time check.
+    Password reset, email verification and administrator MFA are NOT workflow
+    events and are deliberately outside this function's call path.
+    """
+    return db.execute(
+        """SELECT 1 FROM privacy_rights_requests
+           WHERE user_id=? AND kind IN ('deletion','stop_processing')
+             AND status IN ('received','in_review','completed')
+           LIMIT 1""",
+        (user_id,),
+    ).fetchone() is not None
 
 
 def _claim_next(db_path: str, now: datetime):
@@ -134,8 +155,8 @@ def _claim_next(db_path: str, now: datetime):
 def _delivery_block_reason(db_path: str, item, now: datetime) -> str | None:
     """Suppress out-of-date notices or mail destined for disabled/deleted users.
 
-    Unmapped 0.5.5 jobs stay eligible until the age limit. All newly
-    generated workflow notices have a stable recipient identity.
+    Unmapped historical jobs are suppressed, never sent by guessing the
+    recipient from an email address. New workflow notices have an account ID.
     """
     try:
         created = datetime.fromisoformat(str(item["created_at"]))
@@ -160,16 +181,10 @@ def _delivery_block_reason(db_path: str, item, now: datetime) -> str | None:
         # deletion/processing-cessation request, including completed ones.
         restricted = (
             entry is not None and entry["user_id"] is not None
-            and db.execute(
-                """SELECT 1 FROM privacy_rights_requests
-                   WHERE user_id=? AND kind IN ('deletion','stop_processing')
-                     AND status IN ('received','in_review','completed')
-                   LIMIT 1""",
-                (entry["user_id"],),
-            ).fetchone() is not None
+            and workflow_notice_blocked(db, int(entry["user_id"]))
         )
-    if entry is None:  # Previously queued jobs have no recipient mapping.
-        return None
+    if entry is None:  # Historical jobs lack verified recipient identity.
+        return "unmapped_recipient"
     if (entry["user_id"] is None or entry["email"] != item["recipient"]
             or entry["account_status"] != "active"):
         return "recipient_unavailable"
@@ -180,7 +195,7 @@ def _delivery_block_reason(db_path: str, item, now: datetime) -> str | None:
 
 def _suppress(db_path: str, item, reason: str) -> bool:
     """Complete this lease without SMTP; only known non-sensitive codes."""
-    assert reason in ("stale_notice", "invalid_created_at", "recipient_unavailable", "privacy_request")
+    assert reason in ("stale_notice", "invalid_created_at", "recipient_unavailable", "privacy_request", "unmapped_recipient")
     with database(db_path) as db:
         updated = db.execute(
             """UPDATE email_delivery_jobs
