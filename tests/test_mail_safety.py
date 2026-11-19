@@ -131,8 +131,9 @@ def test_legacy_queue_without_recipient_mapping_is_quarantined(
                 """INSERT INTO email_delivery_jobs
                    (outbox_id,state,attempts,next_attempt_at,created_at)
                    VALUES(?,'pending',0,?,?)""",
-                (inserted.lastrowid, datetime.now(timezone.utc).isoformat(),
-                 datetime.now(timezone.utc).isoformat()),
+                (inserted.lastrowid,
+                 (datetime.now(timezone.utc) - timedelta(minutes=1)).isoformat(timespec="seconds"),
+                 (datetime.now(timezone.utc) - timedelta(minutes=1)).isoformat(timespec="seconds")),
             )
         assert count_recipients(app) == 0
         assert process_due_workflow_mail(app.state.db_path)["exhausted"] == 1
