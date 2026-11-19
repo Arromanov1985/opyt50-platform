@@ -28,6 +28,9 @@ def test_ip_legal_pages_are_readonly_and_explicitly_unapproved(tmp_path):
             assert title in res.text
             assert "ТЕСТОВЫЕ ДАННЫЕ" in res.text
             assert client.post(path).status_code == 405
+        assert client.get("/static/privacy.html").status_code == 404
+        assert client.get("/static/terms.html").status_code == 404
+        assert client.get("/static/consent.html").status_code == 404
         assert client.get("/static/legal.css").status_code == 200
         assert client.get("/static/legal-notice.css").status_code == 200
 
