@@ -64,12 +64,11 @@ def _company_rows(db, query: str, city: str):
              JOIN vacancies v ON v.employer_id=e.user_id AND v.status='open'
              LEFT JOIN account_controls c ON c.user_id=e.user_id
              LEFT JOIN vacancy_moderation vm ON vm.vacancy_id=v.id
-             LEFT JOIN employer_public_profiles p ON p.employer_id=e.user_id
              WHERE COALESCE(c.status,'active')='active'
                AND COALESCE(vm.status,'approved')='approved'"""
     args = []
     if query:
-        sql += " AND (instr(unicode_fold(e.company_name),?)>0 OR instr(unicode_fold(COALESCE(p.about,'')),?)>0)"
+        sql += " AND (instr(unicode_fold(e.company_name),?)>0 OR instr(unicode_fold(v.title),?)>0)"
         args.extend([query.casefold(), query.casefold()])
     if city:
         sql += (" AND (unicode_fold(v.city)=? OR unicode_fold(v.city)='удалённо'"
@@ -108,8 +107,8 @@ def employer_directory(query: str, city: str, db) -> HTMLResponse:
         '<p>Здесь собраны работодатели с открытыми опубликованными вакансиями.'
         ' Сравнивайте предложения и условия, прежде чем откликаться.</p></section>'
         '<form class="employer-search" method="get" action="/employers" role="search">'
-        '<label>Название или направление<input type="search" name="q" maxlength="100"'
-        f' value="{_e(query)}" placeholder="Например, склад или производство"></label>'
+        '<label>Компания или профессия<input type="search" name="q" maxlength="100"'
+        f' value="{_e(query)}" placeholder="Название компании или профессия"></label>'
         '<label>Город<input type="search" name="city" maxlength="100"'
         f' value="{_e(city)}" placeholder="Например, Москва"></label>'
         '<button type="submit" class="button primary">Найти компании</button>'
