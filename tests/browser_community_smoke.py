@@ -5,6 +5,7 @@ accounts, external email, Timeweb data, or existing applications are involved.
 """
 from __future__ import annotations
 
+import json
 import os
 import re
 import socket
@@ -68,6 +69,7 @@ def no_overflow(page):
 
 def capture(page, filename):
     no_overflow(page)
+    page.evaluate("window.scrollTo(0, 0)")
     page.screenshot(path=str(OUTPUT / filename), full_page=True)
 
 
@@ -257,6 +259,61 @@ def run_browser(browser, base, database):
         assert_private_values_absent(str(thread))
         boris.set_viewport_size({"width": 390, "height": 844})
         capture(boris, "community-chat-mobile.png")
+
+        # A late history response from thread A must neither replace thread B
+        # nor attach A's submit handler to B's composer.
+        second_connection = checked(outsider.request.post(
+            base + "/api/community/connections", headers=HEADERS,
+            data={"public_id": boris_profile["public_id"], "purpose": "exchange", "note": "Обсудим обучение мастеров"},
+        ))["connection"]
+        second_id = second_connection["id"]
+        checked(boris.request.post(
+            base + "/api/community/connections/" + second_id + "/respond", headers=HEADERS,
+            data={"decision": "accept"},
+        ))
+        first_history = checked(boris.request.get(base + "/api/community/connections/" + connection_id + "/messages"))
+        boris.goto(base + "/community/connections", wait_until="networkidle")
+        held_routes = []
+        first_url = base + "/api/community/connections/" + connection_id + "/messages"
+
+        def hold_first_history(route):
+            held_routes.append(route)
+
+        boris.route(first_url, hold_first_history)
+        with boris.expect_request(lambda request: request.url == first_url and request.method == "GET"):
+            boris.locator(f'[data-connection-id="{connection_id}"] [data-action="open-thread"]').click()
+        expect(boris.locator("#community-thread h2")).to_have_text("Анна «Опыт»")
+        assert len(held_routes) == 1
+        second_url = base + "/api/community/connections/" + second_id + "/messages"
+        with boris.expect_response(lambda response: response.url == second_url and response.request.method == "GET") as second_history:
+            boris.locator(f'[data-connection-id="{second_id}"] [data-action="open-thread"]').click()
+        checked(second_history.value)
+        expect(boris.locator("#community-thread h2")).to_have_text("Виктор Мастер")
+        with boris.expect_response(lambda response: response.url == first_url):
+            held_routes[0].fulfill(status=200, content_type="application/json", body=json.dumps(first_history))
+        boris.unroute(first_url, hold_first_history)
+        # Allow the fulfilled response's microtasks to complete before the next
+        # actual user action, without a timing-dependent sleep.
+        boris.evaluate("() => new Promise(resolve => requestAnimationFrame(resolve))")
+        expect(boris.locator("#community-thread h2")).to_have_text("Виктор Мастер")
+        race_posts = []
+
+        def record_thread_post(request):
+            if request.url.endswith("/messages") and request.method == "POST":
+                race_posts.append(request.url)
+
+        boris.on("request", record_thread_post)
+        race_message = "Сообщение только для Виктора, а не для Анны."
+        boris.locator('#community-message-form [name="body"]').fill(race_message)
+        with boris.expect_response(lambda response: response.url == second_url and response.request.method == "POST") as raced_send:
+            boris.locator('#community-message-form [type="submit"]').click()
+        checked(raced_send.value)
+        expect(boris.locator("#thread-history")).to_contain_text(race_message)
+        boris.remove_listener("request", record_thread_post)
+        assert race_posts == [second_url], "A late response must not send thread B's text to thread A"
+        unchanged_history = checked(boris.request.get(first_url))
+        assert [item["id"] for item in unchanged_history["messages"]] == [item["id"] for item in first_history["messages"]]
+        capture(boris, "community-multiple-conversations-mobile.png")
 
         # Recipient controls continuation; blocking makes both write directions fail.
         anna.reload(wait_until="networkidle")

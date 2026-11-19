@@ -8,7 +8,7 @@
   const connectionStates = {pending:'Ожидает ответа', accepted:'Знакомство принято', declined:'Запрос отклонён', cancelled:'Запрос отозван', blocked:'Общение прекращено'};
   const reasons = {spam:'Спам или навязчивые предложения', fraud:'Подозрение на мошенничество', harassment:'Оскорбления или давление', personal_data:'Публикация личных данных', other:'Другая проблема'};
   const mode = document.body.dataset.communityPage;
-  const state = {user:null, profile:null, dirty:false, messageDirty:false, connections:[], connectionPage:1, connectionFilter:'', selected:null, messageKey:null, messageBody:null, nextBefore:null, directoryPage:1, directoryRequest:0, threadRequest:0, moderationPage:1, reportPage:1, busy:new WeakSet()};
+  const state = {user:null, profile:null, dirty:false, messageDirty:false, connections:[], connectionPage:1, connectionFilter:'', selected:null, messageKey:null, messageBody:null, nextBefore:null, directoryPage:1, directoryRequest:0, threadRequest:0, messageLoadRequest:0, moderationPage:1, reportPage:1, busy:new WeakSet()};
   const content = $('#community-content');
   const dialog = $('#community-dialog');
   let dialogBusy = false;
@@ -235,18 +235,19 @@
     if (currentForm && state.busy.has(currentForm)) { notice('Дождитесь результата отправки. Сообщение пока остаётся в этой вкладке.'); return; }
     if (state.selected?.id===id) preserve=true;
     if (state.messageDirty && state.selected?.id!==id && !window.confirm('В сообщении есть несохранённый текст. Перейти к другому разговору?')) return;
-    const draft=preserve?$('#community-message-form textarea')?.value:null;
     const request=++state.threadRequest;
     const result=await api('/api/community/connections/'+encodeURIComponent(id));
     if(request!==state.threadRequest)return;
+    const draft=preserve?$('#community-message-form textarea')?.value:null;
     state.selected=result.connection;const c=state.selected;
     if(!preserve){state.messageDirty=false;state.messageKey=null;state.messageBody=null;}
     history.replaceState(null,'','/community/connections?thread='+encodeURIComponent(id));
     $('#community-thread').innerHTML=`<div class="thread-heading"><span class="eyebrow">${esc(goals[c.purpose])}</span><h2>${esc(c.counterpart.public_name)}</h2>${statusBadge(c.status,connectionStates)}<div class="actions"><button class="text-button" type="button" data-action="report-connection" data-id="${esc(id)}">Сообщить о проблеме</button>${c.can_block?`<button class="text-button" type="button" data-action="block-connection" data-id="${esc(id)}">Прекратить общение</button>`:''}<button class="text-button" type="button" data-action="refresh-thread" data-id="${esc(id)}">Обновить разговор</button></div></div>
     ${['accepted','blocked'].includes(c.status)?`<div class="thread-body"><div class="older-control"><button class="button secondary compact" id="load-older-messages" type="button" hidden>Более ранние сообщения</button></div><div id="thread-history" class="thread-history" role="log" aria-label="Переписка"><p class="help">Загружаем сообщения…</p></div></div>`:`<div class="thread-empty"><p>${c.status==='pending'?'Переписка откроется после принятия запроса.':'Этот запрос завершён. Переписка не открывалась.'}</p></div>`}
-    ${c.can_message?`<form id="community-message-form" class="message-form"><label for="community-message">Ваше сообщение</label><textarea id="community-message" name="body" rows="4" maxlength="2000" required placeholder="Напишите о задаче или опыте, который хотите обсудить.">${esc(draft || '')}</textarea><div class="actions"><p class="help">Не отправляйте пароли, коды и платёжные данные.</p><button class="button primary" type="submit">Отправить</button></div></form>`:'<p class="help thread-heading">Отправка сообщений недоступна. Контакты из аккаунта не раскрываются.</p>'}`;
+    ${c.can_message?`<form id="community-message-form" class="message-form" method="post"><label for="community-message">Ваше сообщение</label><textarea id="community-message" name="body" rows="4" maxlength="2000" required placeholder="Напишите о задаче или опыте, который хотите обсудить.">${esc(draft || '')}</textarea><div class="actions"><p class="help">Не отправляйте пароли, коды и платёжные данные.</p><button class="button primary" type="submit">Отправить</button></div></form>`:'<p class="help thread-heading">Отправка сообщений недоступна. Контакты из аккаунта не раскрываются.</p>'}`;
     document.querySelectorAll('[data-connection-id]').forEach(node=>node.classList.toggle('selected',node.dataset.connectionId===id));
-    if (['accepted','blocked'].includes(c.status)) await loadMessages(id,false,request);
+    // Bind the composer synchronously before loading history. A slow or failed
+    // GET must never leave a visible form with a native navigation submit.
     $('#load-older-messages')?.addEventListener('click',()=>loadMessages(id,true,request).catch(error=>notice(error.message,'error')));
     const form=$('#community-message-form');
     if(form){
@@ -257,21 +258,26 @@
         busy(form,async()=>{await api('/api/community/connections/'+encodeURIComponent(id)+'/messages',{method:'POST',body:{body,client_key:clientKey}});form.elements.body.value='';if(request===state.threadRequest&&state.selected?.id===id){state.messageDirty=false;state.messageKey=null;state.messageBody=null;}$('.form-error',form)?.remove();await loadMessages(id,false,request);});
       });
     }
+    if (['accepted','blocked'].includes(c.status)) {
+      try { await loadMessages(id,false,request); }
+      catch (error) { if (request===state.threadRequest) notice(error.message,'error'); }
+    }
   }
   async function loadMessages(id,older,request) {
     if(request!==state.threadRequest)return;
+    const loadRequest=++state.messageLoadRequest;
     const button=$('#load-older-messages');if(button)button.disabled=true;
     try{
       const params=older&&state.nextBefore?'?before='+encodeURIComponent(state.nextBefore):'';
       const result=await api('/api/community/connections/'+encodeURIComponent(id)+'/messages'+params);
-      if(request!==state.threadRequest)return;
+      if(request!==state.threadRequest || loadRequest!==state.messageLoadRequest)return;
       const historyNode=$('#thread-history');
       const markup=result.messages.map(messageMarkup).join('');
       if(older)historyNode.insertAdjacentHTML('afterbegin',markup);else historyNode.innerHTML=markup||'<p class="help">Знакомство принято. Можно начать разговор.</p>';
       state.nextBefore=result.next_before;
       if(button){button.hidden=!result.has_more;button.disabled=false;}
       if(!older){const body=$('.thread-body');body.scrollTop=body.scrollHeight;}
-    }catch(error){if(button)button.disabled=false;throw error;}
+    }catch(error){if(request!==state.threadRequest || loadRequest!==state.messageLoadRequest)return;if(button)button.disabled=false;throw error;}
   }
   async function connectionAction(id,action) {
     const route=action==='accept-connection'||action==='decline-connection'?'respond':action==='cancel-connection'?'cancel':'block';
@@ -315,7 +321,7 @@
       else if(action==='open-thread')await openThread(id);
       else if(action==='refresh-thread')await openThread(id,{preserve:true});
       else if(action==='accept-connection')await busy(button.closest('article'),()=>connectionAction(id,action));
-      else if(['decline-connection','cancel-connection','block-connection'].includes(action))confirmAction(action==='block-connection'?'Прекратить общение?':'Завершить этот запрос?',action==='block-connection'?'Вы больше не сможете отправлять друг другу сообщения и новые запросы. История разговора сохранится. Блокировка в этом выпуске необратима.':'Запрос будет завершён. Отправить повторное приглашение этому участнику будет нельзя.',action==='block-connection'?'Прекратить общение':'Подтвердить',()=>connectionAction(id,action));
+      else if(['decline-connection','cancel-connection','block-connection'].includes(action))confirmAction(action==='block-connection'?'Прекратить общение?':'Завершить этот запрос?',action==='block-connection'?'Вы больше не сможете отправлять друг другу сообщения и новые запросы. История разговора сохранится. Возобновить общение после блокировки будет нельзя.':'Запрос будет завершён. Отправить повторное приглашение этому участнику будет нельзя.',action==='block-connection'?'Прекратить общение':'Подтвердить',()=>connectionAction(id,action));
       else if(action==='report-connection')report({connection_id:id});
       else if(['approve-profile','reject-profile','hide-profile'].includes(action))moderateProfile(button);
       else if(action==='reload-moderation')await Promise.all([loadModeration(),loadReports()]);

@@ -60,7 +60,7 @@ def community_page(mode: str = "directory", person: dict | None = None) -> HTMLR
     }
     title = titles[mode]
     content = _public_content(person) if mode == "person" and person else '<div class="loading" role="status">Загружаем сообщество…</div>'
-    intro = """<section class="community-hero"><div><span class="eyebrow">ПРОФЕССИОНАЛЬНОЕ СООБЩЕСТВО</span><h1>Опыт становится ценнее,<br>когда им делятся.</h1><p>Найдите коллег для проекта, передайте знания или начните новое профессиональное знакомство.</p><a class="button light" href="/community/profile">Создать свой профиль <span aria-hidden="true">↗</span></a></div><aside class="hero-note"><span class="note-symbol" aria-hidden="true">↗</span><h2>Есть что предложить.<br>Есть чему научиться.</h2><p>Работа, наставничество, совместные проекты и разговор по делу.</p></aside></section>""" if mode == "directory" else ""
+    intro = """<section class="community-hero"><div><span class="eyebrow">ПРОФЕССИОНАЛЬНОЕ СООБЩЕСТВО</span><h1>Опыт становится ценнее,<br> когда им делятся.</h1><p>Найдите коллег для проекта, передайте знания или начните новое профессиональное знакомство.</p><a class="button light" href="/community/profile">Создать свой профиль <span aria-hidden="true">↗</span></a></div><aside class="hero-note"><span class="note-symbol" aria-hidden="true">↗</span><h2>Есть что предложить.<br> Есть чему научиться.</h2><p>Работа, наставничество, совместные проекты и разговор по делу.</p></aside></section>""" if mode == "directory" else ""
     markup = f"""<!doctype html>
 <html lang="ru"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
 <title>{_e(title)} | СТАЖНО</title>
@@ -70,7 +70,7 @@ def community_page(mode: str = "directory", person: dict | None = None) -> HTMLR
 <link rel="stylesheet" href="{_asset('community.css')}"><script src="{_asset('community.js')}" defer></script>
 </head><body data-community-page="{mode}" data-person-id="{_e((person or {}).get('public_id'))}">
 <a class="skip-link" href="#community-main">К основному содержанию</a>
-<header class="community-header"><div class="wrap header-row"><a class="brand" href="/" aria-label="СТАЖНО — на главную"><img src="/static/brand-symbol.svg" width="32" height="32" alt="">стажно<span>.</span>ру</a>
+<header class="community-header"><div class="wrap header-row"><a class="brand" href="/" aria-label="СТАЖНО — на главную"><img src="/static/brand-symbol.svg" width="32" height="32" alt=""><span class="brand-word">стажно<span class="brand-dot">.</span>ру</span></a>
 <nav aria-label="Основное меню"><a href="/#jobs">Вакансии</a><a href="/community" aria-current="page">Сообщество</a><a href="/journal">Журнал</a></nav>
 <div class="header-actions"><button id="reading-mode-toggle" class="text-button reading-toggle" type="button" aria-pressed="false" aria-label="Включить крупный текст">Аа <span>Крупный текст</span></button><a class="button secondary compact" href="/#account">Мой кабинет</a></div></div></header>
 <main id="community-main" class="wrap">{intro}
