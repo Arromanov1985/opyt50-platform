@@ -91,7 +91,7 @@ def test_preview_not_indexed_and_canonical_domain_indexable(tmp_path):
     with TestClient(app, base_url="https://preview.twc1.net") as preview:
         robots = preview.get("/robots.txt")
         assert robots.status_code == 200
-        assert "Disallow: /\\n" in robots.text
+        assert "Disallow: /\n" in robots.text
         assert "Sitemap:" not in robots.text
         assert preview.get("/journal").headers.get("x-robots-tag") == "noindex, nofollow"
         assert preview.get("/").headers.get("x-robots-tag") == "noindex, nofollow"
@@ -100,5 +100,5 @@ def test_preview_not_indexed_and_canonical_domain_indexable(tmp_path):
         assert robots.status_code == 200
         assert "Disallow: /api/" in robots.text
         assert "https://stazhno.ru/sitemap.xml" in robots.text
-        assert "Disallow: /\\n" not in robots.text
+        assert "Disallow: /\n" not in robots.text
         assert public.get("/journal").headers.get("x-robots-tag") is None
