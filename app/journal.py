@@ -62,7 +62,7 @@ def _layout(title: str, description: str, path: str, body: str) -> str:
 
 def _article_card(article: dict) -> str:
     return (
-        f'<a class="jr-card" href="/journal/{_e(article["slug"])}">'
+        f'<a class="jr-card" data-jr-category="{_e(article["category"])}" href="/journal/{_e(article["slug"])}">'
         f'<span class="jr-tag">{_e(article["category"])}</span>'
         f'<h2>{_e(article["title"])}</h2>'
         f'<p>{_e(article["description"])}</p>'
@@ -72,19 +72,37 @@ def _article_card(article: dict) -> str:
 
 def journal_index() -> HTMLResponse:
     cards = "".join(_article_card(item) for item in ARTICLES)
+    categories = list(dict.fromkeys(article["category"] for article in ARTICLES))
+    buttons = '<button type="button" data-jr-category-filter="all" aria-pressed="true">Все темы</button>' + "".join(
+        f'<button type="button" data-jr-category-filter="{_e(category)}" aria-pressed="false">{_e(category)}</button>'
+        for category in categories
+    )
     body = (
         '<div class="jr-breadcrumb"><a href="/">Главная</a><span aria-hidden="true">/</span>Журнал</div>'
         '<section class="jr-hero"><span class="jr-kicker">ЖУРНАЛ СТАЖНО</span>'
         '<h1>Опыт открывает новые возможности</h1>'
-        '<p>Понятные практические материалы о работе, профессиональном опыте и безопасности.'
-        ' Без лишних обещаний и возрастных стереотипов.</p></section>'
+        '<p>Практические материалы о работе, профессиональном опыте и навыках.'
+        ' Выбирайте тему и переходите к полезному действию.</p></section>'
         '<section class="jr-list" aria-label="Статьи"><h2 class="jr-list-title">Начните с полезного</h2>'
-        f'<div class="jr-grid">{cards}</div></section>'
+        '<div class="jr-discovery" role="search" aria-label="Поиск материалов журнала">'
+        '<label for="jr-article-search">Поиск по статьям</label>'
+        '<input type="search" id="jr-article-search" maxlength="100" autocomplete="off"'
+        ' placeholder="Например, собеседование или навыки">'
+        f'<div class="jr-category-filters" role="group" aria-label="Темы материалов">{buttons}</div>'
+        f'<p class="jr-results-count" id="jr-results-count" role="status" aria-live="polite">Материалов: {len(ARTICLES)}</p>'
+        '</div>'
+        f'<div class="jr-grid" id="jr-article-grid">{cards}</div>'
+        '<div id="jr-no-results" class="jr-no-results" hidden><strong>По вашему запросу материалов нет</strong>'
+        '<p>Попробуйте другую тему или уберите слова из поиска.</p>'
+        '<button type="button" id="jr-reset-search">Показать все материалы</button></div>'
+        '</section>'
         '<aside class="jr-bottom"><h2>Готовы использовать свой опыт?</h2>'
         '<p>Посмотрите вакансии или начните с профессионального профиля. Контакты защищены.</p>'
-        '<a class="jr-primary" href="/#jobs" data-growth-action="jobs_click">Посмотреть вакансии →</a></aside>'
+        '<a class="jr-primary" href="/#jobs" data-growth-action="jobs_click">Посмотреть вакансии →</a>'
+        '<a class="jr-secondary" href="/#candidate-path" data-growth-action="profile_click">Создать профиль</a>'
+        '</aside>'
     )
-    return HTMLResponse(_layout("Журнал: работа и новые возможности после 50", 
+    return HTMLResponse(_layout("Журнал: работа и новые возможности после 50",
                                "Практические статьи СТАЖНО о профессиональном опыте, работе, проектах и безопасности.",
                                "/journal", body), headers={"Cache-Control": "public, max-age=300"})
 
@@ -100,6 +118,11 @@ def journal_article(slug: str) -> HTMLResponse:
         if section.get("bullets"):
             content += '<ul>' + "".join(f'<li>{_e(b)}</li>' for b in section["bullets"]) + '</ul>'
         sections.append('<section>' + content + '</section>')
+    related_items = sorted(
+        (item for item in ARTICLES if item["slug"] != slug),
+        key=lambda item: (item["category"] != article["category"], ARTICLES.index(item)),
+    )[:2]
+    related_cards = "".join(_article_card(item) for item in related_items)
     article_body = (
         '<div class="jr-breadcrumb"><a href="/">Главная</a>'
         '<span aria-hidden="true">/</span><a href="/journal">Журнал</a>'
@@ -116,6 +139,9 @@ def journal_article(slug: str) -> HTMLResponse:
         ' Контакты не публикуются автоматически.</p>'
         '<a class="jr-primary" href="/#candidate-path" data-growth-action="profile_click">Создать профиль →</a>'
         '<a class="jr-secondary" href="/#jobs" data-growth-action="jobs_click">Посмотреть вакансии</a></aside></div>'
+        '<section class="jr-related" aria-label="Другие полезные материалы">'
+        '<h2>Читайте также</h2>'
+        f'<div class="jr-grid">{related_cards}</div></section>'
         '<p class="jr-back"><a href="/journal">← Все статьи журнала</a></p>'
     )
     return HTMLResponse(_layout(article["title"], article["description"],
