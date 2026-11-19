@@ -930,6 +930,7 @@ def interaction_timeline(
 
 def install_routes(app) -> None:
     # Imported here to avoid a circular module initialization.
+    from .privacy_restriction import restriction_is_active
     from .main import (
         CONTACT_EMAIL_PATTERN, CONTACT_PHONE_PATTERN,
         active_user, add_session, allowed, candidate_view, professional_resume,
@@ -1003,7 +1004,8 @@ def install_routes(app) -> None:
                WHERE e.user_id=? AND u.role='employer'""",
             (employer_id,),
         ).fetchone()
-        if company is None or company["account_status"] != "active":
+        if (company is None or company["account_status"] != "active"
+                or restriction_is_active(db, employer_id)):
             raise HTTPException(404, "Компания не найдена")
         jobs = db.execute(
             """SELECT v.id,v.employer_id,v.title,v.city,v.salary_min,v.salary_max,
@@ -1129,7 +1131,7 @@ def install_routes(app) -> None:
                             WHERE v.id=? AND v.status='open'
                               AND COALESCE(c.status,'active')='active'
                               AND COALESCE(vm.status,'approved')='approved'""", (job_id,)).fetchone()
-        if row is None:
+        if row is None or restriction_is_active(db, row["employer_id"]):
             raise HTTPException(404, "Вакансия не найдена или закрыта")
         return {"job": dict(row)}
 
@@ -1200,7 +1202,8 @@ def install_routes(app) -> None:
             (data.vacancy_id,),
         ).fetchone()
         if (job is None or job["status"] != "open" or
-                job["moderation_status"] != "approved" or job["employer_status"] != "active"):
+                job["moderation_status"] != "approved" or job["employer_status"] != "active"
+                or restriction_is_active(db, job["employer_id"])):
             raise HTTPException(404, "Вакансия закрыта, скрыта или не найдена")
         previous = db.execute(
             "SELECT id,status FROM job_applications WHERE vacancy_id=? AND candidate_id=?",
@@ -1343,7 +1346,9 @@ def install_routes(app) -> None:
             raise HTTPException(409, "Вакансия ожидает проверки. Новые знакомства временно недоступны")
         if item["status"] in {"withdrawn", "rejected", "hired"}:
             raise HTTPException(409, "Обработка этого отклика завершена")
-        # Never generate a contact-sharing flow for a disabled candidate.
+        # Never generate a contact-sharing flow for a restricted candidate.
+        if restriction_is_active(db, item["candidate_id"]):
+            raise HTTPException(409, "Запрос на знакомство временно ограничен по обращению кандидата")
         control = db.execute(
             "SELECT status FROM account_controls WHERE user_id=?", (item["candidate_id"],)
         ).fetchone()
@@ -1423,6 +1428,8 @@ def install_routes(app) -> None:
                              WHERE a.id=? AND v.employer_id=?""", (application_id, user["id"])).fetchone()
         if item is None:
             raise HTTPException(404, "Отклик не найден")
+        if restriction_is_active(db, item["candidate_id"]):
+            raise HTTPException(409, "Изменение отклика ограничено по обращению кандидата")
         if item["status"] in {"withdrawn", "hired", "rejected"}:
             if item["status"] == body.status:
                 return {"ok": True, "status": body.status}
