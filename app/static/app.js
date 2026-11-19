@@ -1332,7 +1332,8 @@ function professionalResumeMarkup(profile = {}) {
 // adds the account's verified-visible name, email and saved telephone explicitly.
 function resumePrintSafeText(value) {
   return String(value ?? '')
-    .replace(/[^\s@]+@[^\s@]+\.[^\s@]+/gi, '[контакт скрыт]')\n    .replace(/(?:https?:\/\/|www\.|t\.me\/|wa\.me\/|vk\.com\/|max\.ru\/)\S+/gi, '[ссылка скрыта]')
+    .replace(/[^\s@]+@[^\s@]+\.[^\s@]+/gi, '[контакт скрыт]')
+    .replace(/(?:https?:\/\/|www\.|t\.me\/|wa\.me\/|vk\.com\/|max\.ru\/)\S+/gi, '[ссылка скрыта]')
     .replace(/@[A-Za-z0-9_]{4,}/g, '[контакт скрыт]')
     .replace(/(?:\+?\d[\s().-]*){10,15}/g, '[телефон скрыт]');
 }
