@@ -181,7 +181,7 @@ def test_search_metadata_probe_checks_both_resources_and_preview_noindex(monkeyp
     from app.journal import journal_sitemap
 
     sitemap = journal_sitemap().body
-    robots = b"User-agent: *\\nDisallow: /\\n"
+    robots = b"User-agent: *\nDisallow: /\n"
     monkeypatch.setattr(probe, "BASE", "https://preview.twc1.net")
     requests = []
 
