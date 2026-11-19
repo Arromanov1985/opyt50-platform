@@ -231,3 +231,43 @@ def test_growth_aggregate_is_atomic_and_private_in_postgresql(runtime_db):
             ("journal", "view", 2),
             ("kak-proverit-vakansiyu", "jobs_click", 1),
         ]
+
+
+def test_privacy_requests_are_private_idempotent_and_audited_in_postgres(runtime_db):
+    from app.release02 import init_release02
+    from app.privacy_rights import (
+        submit_request, requests_for_user, admin_request_list, admin_change_status,
+    )
+
+    init_release02("ignored-when-DATABASE_URL-present")
+    init_release02("ignored-when-DATABASE_URL-present")
+    with postgres_database(runtime_db) as db:
+        db.execute(
+            "INSERT INTO users(id,email,password_hash,role,name) VALUES(4,?,?,?,?)",
+            ("rightsadmin@example.invalid", "test-hash", "admin", "Rights Admin"),
+        )
+        saved = submit_request(db, 1, "deletion")
+        same = submit_request(db, 1, "deletion")
+        assert saved["request_key"] == same["request_key"]
+        assert [x["kind"] for x in requests_for_user(db, 1)] == ["deletion"]
+        assert requests_for_user(db, 2) == []
+        assert admin_request_list(db)[0]["email"] == "c@example.invalid"
+        reviewed = admin_change_status(
+            db, saved["request_key"], 4, "in_review",
+            manual_response_confirmed=False, closure_reason=None,
+        )
+        assert reviewed["status"] == "in_review"
+        closed = admin_change_status(
+            db, saved["request_key"], 4, "declined",
+            manual_response_confirmed=True, closure_reason="retention_required",
+        )
+        assert closed["status"] == "declined"
+        assert submit_request(db, 1, "deletion")["request_key"] != saved["request_key"]
+
+    with postgres_database(runtime_db) as db:
+        assert db.execute(
+            "SELECT COUNT(*) FROM privacy_rights_requests WHERE user_id=?", (1,)
+        ).fetchone()[0] == 2
+        assert db.execute(
+            "SELECT COUNT(*) FROM privacy_rights_admin_actions WHERE admin_user_id=?", (4,)
+        ).fetchone()[0] == 2
