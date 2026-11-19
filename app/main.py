@@ -43,7 +43,7 @@ from fastapi import Depends, FastAPI, HTTPException, Query, Request, Response
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from starlette.middleware.trustedhost import TrustedHostMiddleware
-from pydantic import BaseModel, Field, field_validator, model_validator
+from pydantic import BaseModel, Field, StrictBool, field_validator, model_validator
 
 from .db import database, init_db
 from .matching import lead_price, match_candidate, taxonomy_payload
@@ -53,6 +53,7 @@ from .legal_config import render_template as render_legal_template, legal_approv
 from .privacy_rights import (
     requests_for_user, submit_request, admin_request_list, admin_change_status,
 )
+from .privacy_disposal import impact_preview, review_state, update_review
 from .data_export import build_personal_data_snapshot
 from .growth import VALID_SOURCES, record_event, aggregate_snapshot
 from .security import (
@@ -87,6 +88,16 @@ class PrivacyRightsStatusIn(BaseModel):
     closure_reason: Literal[
         "fulfilled", "retention_required", "identity_unverified", "other"
     ] | None = None
+
+
+class PrivacyDisposalReviewIn(BaseModel):
+    identity_reviewed: StrictBool
+    lawful_basis_reviewed: StrictBool
+    retention_reviewed: StrictBool
+    linked_data_reviewed: StrictBool
+    recipients_reviewed: StrictBool
+    backups_and_processors_reviewed: StrictBool
+    manual_action_verified: StrictBool
 
 
 class DirectInvitationOutcomeIn(BaseModel):
@@ -2615,6 +2626,62 @@ def create_app(db_path: str | None = None) -> FastAPI:
             "note": "Решение и ответ пользователю выполняются оператором вручную; "
                     "статус не свидетельствует об автоматическом удалении данных.",
         }
+
+    @app.get("/api/admin/privacy-requests/{request_key}/impact")
+    def admin_privacy_disposal_impact(
+        request_key: str,
+        user: dict = Depends(active_user),
+        db: sqlite3.Connection = Depends(get_connection),
+    ):
+        """Read-only aggregate impact review; no changes to any account."""
+        allowed(user, "admin")
+        if not re.fullmatch(r"[A-Za-z0-9_-]{16,64}", request_key):
+            raise HTTPException(422, "Некорректный номер обращения")
+        try:
+            preview = impact_preview(db, request_key)
+        except ValueError as exc:
+            raise HTTPException(409, str(exc)) from None
+        if preview is None:
+            raise HTTPException(404, "Обращение не найдено")
+        return {"preview": preview, "dry_run": True}
+
+    @app.get("/api/admin/privacy-requests/{request_key}/disposition-review")
+    def admin_privacy_disposal_review(
+        request_key: str,
+        user: dict = Depends(active_user),
+        db: sqlite3.Connection = Depends(get_connection),
+    ):
+        allowed(user, "admin")
+        if not re.fullmatch(r"[A-Za-z0-9_-]{16,64}", request_key):
+            raise HTTPException(422, "Некорректный номер обращения")
+        try:
+            review = review_state(db, request_key)
+        except ValueError as exc:
+            raise HTTPException(409, str(exc)) from None
+        if review is None:
+            raise HTTPException(404, "Обращение не найдено")
+        return {"review": review}
+
+    @app.post("/api/admin/privacy-requests/{request_key}/disposition-review")
+    def admin_privacy_disposal_save_review(
+        request_key: str,
+        payload: PrivacyDisposalReviewIn,
+        user: dict = Depends(active_user),
+        db: sqlite3.Connection = Depends(get_connection),
+    ):
+        """Persist only explicit human attestations, never an erase command."""
+        allowed(user, "admin")
+        if not re.fullmatch(r"[A-Za-z0-9_-]{16,64}", request_key):
+            raise HTTPException(422, "Некорректный номер обращения")
+        try:
+            review = update_review(
+                db, request_key, user["id"], payload.model_dump(),
+            )
+        except ValueError as exc:
+            raise HTTPException(409, str(exc)) from None
+        if review is None:
+            raise HTTPException(404, "Обращение не найдено")
+        return {"review": review, "actual_deletion_performed": False}
 
     @app.post("/api/admin/privacy-requests/{request_key}/status")
     def admin_privacy_request_status(
