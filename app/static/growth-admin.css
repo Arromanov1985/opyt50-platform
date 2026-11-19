@@ -1,0 +1,9 @@
+/* Growth analytics: accessible admin-only table; no third-party assets. */
+.admin-growth-overflow{max-width:100%;overflow-x:auto;margin-top:22px}
+.admin-growth-table{width:100%;min-width:570px;border-collapse:collapse;text-align:left;font-size:14px}
+.admin-growth-table caption{text-align:left;font-size:14px;font-weight:700;color:#385d4b;padding:8px 0 15px}
+.admin-growth-table th,.admin-growth-table td{border-bottom:1px solid #dae6df;padding:12px 14px;line-height:1.5}
+.admin-growth-table thead th{background:#f2f8f3;color:#294e3c;white-space:nowrap}
+.admin-growth-table tbody th{font-weight:600;max-width:360px}
+.admin-growth-table td{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
+.comfortable-view .admin-growth-table{font-size:17px}
