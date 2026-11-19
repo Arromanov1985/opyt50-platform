@@ -44,7 +44,7 @@ def _layout(title: str, description: str, path: str, body: str) -> str:
         "<img src=\"/static/brand-symbol.svg\" alt=\"\" width=\"36\" height=\"36\">"
         "стажно<span>.</span>ру</a>"
         "<nav class=\"jr-nav\" aria-label=\"Основное меню\">"
-        "<a href=\"/journal\">Журнал</a><a href=\"/#jobs\">Вакансии</a>"
+        "<a href=\"/journal\">Журнал</a><a href=\"/employers\">Работодатели</a><a href=\"/#jobs\">Вакансии</a>"
         "<a href=\"/#candidate-path\">Соискателям</a></nav>"
         "<button class=\"jr-text-toggle\" id=\"reading-mode-toggle\" aria-pressed=\"false\" "
         "type=\"button\" aria-label=\"Включить крупный текст\">Аа <span>Крупный текст</span></button>"
@@ -152,7 +152,7 @@ def journal_article(slug: str) -> HTMLResponse:
 
 def journal_sitemap() -> Response:
     """Only public, editorial destinations; no account, profile or API URLs."""
-    paths = ["/", "/journal"] + ["/journal/" + article["slug"] for article in ARTICLES]
+    paths = ["/", "/employers", "/journal"] + ["/journal/" + article["slug"] for article in ARTICLES]
     urls = "".join(
         "<url><loc>" + _e(ORIGIN + path) + "</loc>"
         "<lastmod>" + PUBLISHED + "</lastmod></url>"
