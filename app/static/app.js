@@ -2811,7 +2811,10 @@ async function renderAdmin() {
           ['journal', 'Журнал — список статей'],
           ['kak-pokazat-opyt-v-profile', 'Как показать свой опыт'],
           ['kak-proverit-vakansiyu', 'Как проверить вакансию'],
-          ['proektnaya-rabota-posle-50', 'Подработка и проекты']
+          ['proektnaya-rabota-posle-50', 'Подработка и проекты'],
+          ['path-nayti-rabotu', 'Маршрут: найти работу'],
+          ['path-novye-navyki', 'Маршрут: новые навыки'],
+          ['path-delitsya-opytom', 'Маршрут: делиться опытом']
         ];
         const events = Array.isArray(growth.by_article) ? growth.by_article : [];
         const countFor = (source, action) =>
@@ -2820,13 +2823,15 @@ async function renderAdmin() {
         growthArticlesArea.innerHTML =
           '<table class="admin-growth-table"><caption>Действия по материалам за 30 дней</caption>' +
           '<thead><tr><th scope="col">Материал</th><th scope="col">Загрузки</th>' +
-          '<th scope="col">К вакансиям</th><th scope="col">К профилю</th></tr></thead><tbody>' +
+          '<th scope="col">К вакансиям</th><th scope="col">К профилю</th><th scope="col">В сообщество</th><th scope="col">Клики / загрузки*</th></tr></thead><tbody>' +
           articles.map(([source, title]) =>
             '<tr><th scope="row">' + esc(title) + '</th>' +
-            ['view','jobs_click','profile_click'].map(action =>
+            ['view','jobs_click','profile_click','community_click'].map(action =>
               '<td>' + countFor(source, action).toLocaleString('ru-RU') + '</td>'
-            ).join('') + '</tr>'
-          ).join('') + '</tbody></table>';
+            ).join('') + '<td>' + (countFor(source, 'view')
+              ? ((countFor(source, 'jobs_click') + countFor(source, 'profile_click') + countFor(source, 'community_click')) / countFor(source, 'view') * 100).toFixed(1) + '%'
+              : '—') + '</td></tr>'
+          ).join('') + '</tbody></table><p class="muted">* Соотношение событий, не конверсия уникальных людей. Может превышать 100%.</p>';
       }
     }
 
