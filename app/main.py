@@ -1663,6 +1663,9 @@ def create_app(db_path: str | None = None) -> FastAPI:
         db: sqlite3.Connection = Depends(get_connection),
     ):
         item = submit_request(db, user["id"], payload.kind)
+        # FastAPI generator cleanup can happen after the HTTP response is sent.
+        # Commit before replying so a follow-up GET sees the new request.
+        db.commit()
         return {"request": item, "automatic_fulfillment": False}
 
 
@@ -2681,6 +2684,7 @@ def create_app(db_path: str | None = None) -> FastAPI:
             raise HTTPException(409, str(exc)) from None
         if review is None:
             raise HTTPException(404, "Обращение не найдено")
+        db.commit()
         return {"review": review, "actual_deletion_performed": False}
 
     @app.post("/api/admin/privacy-requests/{request_key}/status")
@@ -2703,6 +2707,7 @@ def create_app(db_path: str | None = None) -> FastAPI:
             raise HTTPException(409, str(exc)) from None
         if result is None:
             raise HTTPException(404, "Обращение не найдено")
+        db.commit()
         return {"request": result, "automatic_fulfillment": False}
 
     @app.get("/api/admin/stats")
