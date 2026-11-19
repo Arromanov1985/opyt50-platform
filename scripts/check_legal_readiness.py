@@ -17,6 +17,7 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 from app.legal_config import readiness_failures, legal_profile, render_template
+from app.retention_register import retention_readiness
 
 
 def verify(root: Path) -> list[tuple[str, bool, str]]:
@@ -28,6 +29,7 @@ def verify(root: Path) -> list[tuple[str, bool, str]]:
     terms = templates / "terms.html"
     approval = root / "docs" / "legal" / "LEGAL_APPROVAL.md"
     profile_ready = not readiness_failures(legal_profile())
+    retention = retention_readiness(root / "docs" / "legal" / "RETENTION_REGISTER.json")
 
     def public_page(path: Path, required: tuple[str, ...]) -> bool:
         if not path.is_file():
@@ -60,6 +62,8 @@ def verify(root: Path) -> list[tuple[str, bool, str]]:
     return [
         ("Verified IP operator profile", profile_ready,
          "Replace all test fields in app/legal_operator.json and obtain written signoff."),
+        ("Approved retention-category matrix", retention["approved"],
+         "Approve all categories in docs/legal/RETENTION_REGISTER.json with legal bases and real periods."),
         ("Public privacy-policy page", public_page(privacy, ("персональных данных", "оператор")),
          "Publish a lawyer-reviewed /privacy document, not a template or invented operator."),
         ("Public user-terms page", public_page(terms, ("пользователь", "условия")),
