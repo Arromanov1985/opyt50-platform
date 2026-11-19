@@ -136,3 +136,25 @@ def test_approved_terms_must_be_explicit_and_receipt_is_persisted(monkeypatch, t
             assert record["privacy_version"] == legal_profile()["privacy_version"]
             assert record["evidence_method"] == "explicit-checkbox"
             assert record["accepted_at"]
+
+
+
+def test_real_production_cannot_disable_legal_gate_with_pytest_marker(monkeypatch, tmp_path):
+    app = create_app(str(tmp_path / "no-bypass.sqlite"))
+    with TestClient(app) as client:
+        # After startup so the unrelated production TLS/MFA settings stay out of
+        # this focused regression test. Request-time production guard is real.
+        monkeypatch.setenv("OPYT50_ENV", "production")
+        monkeypatch.setenv("OPYT50_PUBLIC_URL", "https://stazhno.ru")
+        monkeypatch.setenv("PYTEST_CURRENT_TEST", "not-a-real-test-marker")
+        response = client.post(
+            "/api/register",
+            headers={"X-Requested-With": "OPYT50"},
+            json={
+                "role": "candidate",
+                "name": "Тестовая регистрация",
+                "email": "blocked@example.invalid",
+                "password": "SecureLocalPassword2026!",
+            },
+        )
+        assert response.status_code == 503, response.text
