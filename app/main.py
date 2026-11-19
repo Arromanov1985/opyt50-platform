@@ -54,6 +54,8 @@ from .privacy_rights import (
     requests_for_user, submit_request, admin_request_list, admin_change_status,
 )
 from .privacy_disposal import impact_preview, review_state, update_review
+from .privacy_external import external_review_status, save_external_review
+from .retention_register import retention_readiness
 from .data_export import build_personal_data_snapshot
 from .growth import VALID_SOURCES, record_event, aggregate_snapshot
 from .security import (
@@ -98,6 +100,10 @@ class PrivacyDisposalReviewIn(BaseModel):
     recipients_reviewed: StrictBool
     backups_and_processors_reviewed: StrictBool
     manual_action_verified: StrictBool
+
+
+class PrivacyExternalReviewIn(BaseModel):
+    status: Literal["reviewed", "not_applicable", "followup_required"]
 
 
 class DirectInvitationOutcomeIn(BaseModel):
@@ -2686,6 +2692,53 @@ def create_app(db_path: str | None = None) -> FastAPI:
             raise HTTPException(404, "Обращение не найдено")
         db.commit()
         return {"review": review, "actual_deletion_performed": False}
+
+    @app.get("/api/admin/privacy-retention-readiness")
+    def admin_privacy_retention_readiness(
+        user: dict = Depends(active_user),
+    ):
+        allowed(user, "admin")
+        # Machine-readable TODO matrix, not a legal opinion or automatic purge.
+        return retention_readiness()
+
+    @app.get("/api/admin/privacy-requests/{request_key}/external-review")
+    def admin_privacy_external_status(
+        request_key: str,
+        user: dict = Depends(active_user),
+        db: sqlite3.Connection = Depends(get_connection),
+    ):
+        allowed(user, "admin")
+        if not re.fullmatch(r"[A-Za-z0-9_-]{16,64}", request_key):
+            raise HTTPException(422, "Некорректный номер обращения")
+        try:
+            result = external_review_status(db, request_key)
+        except ValueError as exc:
+            raise HTTPException(409, str(exc)) from None
+        if result is None:
+            raise HTTPException(404, "Обращение не найдено")
+        return {"review": result}
+
+    @app.post("/api/admin/privacy-requests/{request_key}/external-review/{system_key}")
+    def admin_privacy_external_save(
+        request_key: str,
+        system_key: str,
+        payload: PrivacyExternalReviewIn,
+        user: dict = Depends(active_user),
+        db: sqlite3.Connection = Depends(get_connection),
+    ):
+        allowed(user, "admin")
+        if not re.fullmatch(r"[A-Za-z0-9_-]{16,64}", request_key):
+            raise HTTPException(422, "Некорректный номер обращения")
+        try:
+            result = save_external_review(
+                db, request_key, user["id"], system_key, payload.status
+            )
+        except ValueError as exc:
+            raise HTTPException(409, str(exc)) from None
+        if result is None:
+            raise HTTPException(404, "Обращение не найдено")
+        db.commit()
+        return {"review": result, "external_action_performed": False}
 
     @app.post("/api/admin/privacy-requests/{request_key}/status")
     def admin_privacy_request_status(
