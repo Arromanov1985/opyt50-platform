@@ -2509,12 +2509,14 @@ def create_app(db_path: str | None = None) -> FastAPI:
         if data.decision == "accepted" and not data.share_consent:
             raise HTTPException(422, "Нужно подтвердить согласие на передачу контакта этой компании")
         invitation = db.execute(
-            "SELECT id,status FROM invitations WHERE id=? AND candidate_id=?", (invitation_id, user["id"])
+            "SELECT id,status,employer_id FROM invitations WHERE id=? AND candidate_id=?", (invitation_id, user["id"])
         ).fetchone()
         if not invitation:
             raise HTTPException(404, "Приглашение не найдено")
         if invitation["status"] != "sent":
             raise HTTPException(409, "На это приглашение уже ответили")
+        if data.decision == "accepted" and restriction_is_active(db, invitation["employer_id"]):
+            raise HTTPException(409, "Знакомство временно ограничено по обращению работодателя")
         db.execute(
             """UPDATE invitations SET status=?,share_consent=?,responded_at=datetime('now')
                WHERE id=? AND candidate_id=?""",
