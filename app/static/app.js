@@ -1934,6 +1934,7 @@ function employerCompanyMarkup(result) {
   return `<div class="panel company-profile-panel">
     <div class="split-header"><div><span class="section-kicker">КОМПАНИЯ</span><h3>Профиль работодателя</h3><p class="muted">Эти данные помогают соискателю понимать, кто разместил вакансию. ИНН публично не показывается.</p></div>${trust.verified?'<span class="verified-company-badge">✓ Компания проверена</span>':''}</div>
     ${companyTrustMarkup(trust)}
+    ${state.user?.id ? `<p class="company-public-link"><a class="btn btn-outline btn-tiny" href="/companies/${Number(state.user.id)}">Посмотреть публичную страницу компании</a> <small>Этой ссылкой можно делиться с кандидатами.</small></p>` : ''}
     <div class="company-verification-note ${trust.verified?'is-verified':''}"><strong>${trust.verified?'Проверка пройдена':'Статус проверки'}</strong><p>${esc(verificationText)}</p></div>
     <form id="company-form" class="company-form">
       <div class="form-grid">
