@@ -124,7 +124,9 @@ def path_detail(slug: str, articles: list[dict]) -> HTMLResponse:
         f'<ol class="jr-path-steps">{steps}</ol>'
         '<aside class="jr-bottom"><h2>Готовы к следующему шагу?</h2>'
         '<p>Выберите подходящее действие, когда закончите чтение.</p>'
-        f'<a class="jr-primary" href="{_e(path["href"])}">{_e(path["action"])} →</a>'
+        f'<a class="jr-primary" href="{_e(path["href"])}" data-growth-action="'
+        + ("community_click" if path["href"] == "/community" else "jobs_click")
+        + f'">{_e(path["action"])} →</a>'
         '<a class="jr-secondary" href="/journal/paths">Другие маршруты</a></aside>'
     )
     return _shell(path["title"] + " | СТАЖНО", path["description"],
