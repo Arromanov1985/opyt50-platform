@@ -20,7 +20,8 @@ document.addEventListener('DOMContentLoaded', () => {
 // storage, query strings, UTM parameters or referrers are included in events.
 // A blocked request must never stop reading or following an ordinary link.
 document.addEventListener('DOMContentLoaded', () => {
-  const path = window.location.pathname.replace(/\\/$/, '');
+  const path = window.location.pathname.endsWith('/')
+    ? window.location.pathname.slice(0, -1) : window.location.pathname;
   const source = path === '/journal'
     ? 'journal'
     : path.startsWith('/journal/') ? path.slice('/journal/'.length) : '';
