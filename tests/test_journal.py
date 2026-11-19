@@ -18,7 +18,7 @@ def test_journal_public_pages_and_no_leaks(tmp_path):
         assert index.status_code == 200
         assert index.headers["content-type"].startswith("text/html")
         assert 'href="https://stazhno.ru/journal"' in index.text
-        assert 'href="/static/journal.css?v=1"' in index.text
+        assert 'href="/static/journal.css?v=2"' in index.text
         assert 'id="reading-mode-toggle"' in index.text
         assert 'href="/#jobs"' in index.text
         for slug in SLUGS:
