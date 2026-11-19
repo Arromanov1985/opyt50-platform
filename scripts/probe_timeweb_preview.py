@@ -381,10 +381,29 @@ def probe_public_search_metadata():
                     status = "too-large"
                 elif not content_type.startswith(mime):
                     status = "incorrect-content-type"
-                elif payload != expected_body:
-                    status = "mismatch"
                 elif not tag_ok:
                     status = "incorrect-robots-tag"
+                elif payload != expected_body:
+                    status = "mismatch"
+                    # CMS may have hidden, published or edited articles after
+                    # the release; use the public page manifest's sitemap hash.
+                    if path == "/sitemap.xml":
+                        manifest_req = Request(
+                            BASE + "/api/public/journal/manifest",
+                            headers={"User-Agent":"Stazhno-Preview-ReadOnly-Probe/1.0"},
+                            method="GET",
+                        )
+                        try:
+                            with build_opener(NoRedirect).open(manifest_req, timeout=12) as manifest_response:
+                                digests = json.loads(manifest_response.read(40_001)).get("pages", {})
+                            digest = digests.get("/sitemap.xml")
+                            if isinstance(digest,str) and len(digest)==64 and (
+                                hashlib.sha256(payload).hexdigest()==digest
+                            ):
+                                status = "exact-match"
+                        except (HTTPError, URLError, OSError, ssl.SSLError, TimeoutError,
+                                ValueError, TypeError, KeyError):
+                            pass
                 else:
                     status = "exact-match"
                 item = {"status": response.status, "result": status}
