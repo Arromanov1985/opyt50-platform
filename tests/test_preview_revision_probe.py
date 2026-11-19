@@ -135,3 +135,42 @@ def test_public_html_revision_check_rejects_stale_entrypoint(tmp_path, monkeypat
     assert mismatch["result"] == "mismatch"
     assert mismatch["asset_revisions"]["release02.js"] is False
     assert mismatch["asset_revisions"]["app.js"] is True
+
+
+def test_deployed_journal_check_requires_exact_html_and_get_only(monkeypatch):
+    from urllib.parse import urlsplit
+    from app.journal import ARTICLES, journal_index, journal_article
+
+    pages = {"/journal": journal_index().body}
+    pages.update({
+        "/journal/" + article["slug"]: journal_article(article["slug"]).body
+        for article in ARTICLES
+    })
+    requests = []
+
+    class JournalOpener:
+        def __init__(self, stale=False):
+            self.stale = stale
+
+        def open(self, request, timeout=12):
+            requests.append(request)
+            assert request.get_method() == "GET"
+            assert request.get_header("Authorization") is None
+            assert request.get_header("Cookie") is None
+            path = urlsplit(request.full_url).path
+            body = pages[path]
+            if self.stale and path == "/journal":
+                body = b"<html><h1>Old journal</h1></html>"
+            return FakeResponse(body, "text/html; charset=utf-8")
+
+    monkeypatch.setattr(probe, "build_opener", lambda *_args: JournalOpener())
+    good = probe.probe_public_journal_pages()
+    assert good["result"] == "exact-match"
+    assert len(good["pages"]) == 4
+    assert all(item["result"] == "exact-match" for item in good["pages"].values())
+    assert len(requests) == 4
+
+    monkeypatch.setattr(probe, "build_opener", lambda *_args: JournalOpener(stale=True))
+    stale = probe.probe_public_journal_pages()
+    assert stale["result"] == "unverified"
+    assert stale["pages"]["/journal"]["result"] == "mismatch"
