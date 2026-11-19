@@ -9,7 +9,7 @@ from pathlib import Path
 from fastapi import FastAPI
 from fastapi.responses import HTMLResponse
 
-from .legal_config import render_template
+from .legal_config import render_template, legal_approved
 
 STATIC = Path(__file__).resolve().parent / "static"
 LEGAL_DRAFT_ROUTES = {
@@ -27,7 +27,7 @@ def install_legal_draft_routes(app: FastAPI) -> None:
                 markup,
                 headers={
                     "Cache-Control": "no-store",
-                    "X-Robots-Tag": "noindex, nofollow",
+                    **({} if legal_approved() else {"X-Robots-Tag": "noindex, nofollow"}),
                 },
             )
         return page
