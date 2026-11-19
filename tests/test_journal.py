@@ -102,6 +102,9 @@ def test_public_sitemap_lists_only_public_editorial_pages(tmp_path):
             "https://stazhno.ru/employers",
             "https://stazhno.ru/journal",
             *["https://stazhno.ru/journal/" + slug for slug in SLUGS],
+            "https://stazhno.ru/journal/paths",
+            *["https://stazhno.ru/journal/paths/" + slug for slug in
+              ("nayti-rabotu", "novye-navyki", "delitsya-opytom")],
         ]
         assert all("/api/" not in url for url in urls)
         assert all("/dashboard" not in url for url in urls)
