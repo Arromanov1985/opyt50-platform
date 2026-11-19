@@ -154,7 +154,9 @@ def run_browser(page):
     expect(page.locator("#job-dialog")).to_be_visible()
     expect(page.locator("#job-dialog-title")).to_have_text("Кладовщик")
     assert not application_posts, "Opening a shared vacancy must never submit an application"
+    assert "vacancy=" not in page.evaluate("location.search"), "Link should be consumed once"
     page.locator("#job-dialog-close").click()
+    expect(page.locator("#job-dialog")).not_to_be_visible()
 
     # A search with no results must offer a clear recovery action, preserving
     # the original job-search workflow and keyboard-accessible controls.
