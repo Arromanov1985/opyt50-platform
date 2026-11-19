@@ -53,15 +53,16 @@ def test_release_probe_never_calls_mutating_method(monkeypatch, status, allow, c
 
 
 @pytest.mark.parametrize(
-    ("backend_ok", "journal_ok", "expected_evidence"),
+    ("backend_ok", "journal_ok", "search_ok", "expected_evidence"),
     [
-        (True, True, "frontend-and-backend-match"),
-        (False, True, "backend-version-unverified"),
-        (True, False, "journal-version-unverified"),
+        (True, True, True, "frontend-and-backend-match"),
+        (False, True, True, "backend-version-unverified"),
+        (True, False, True, "journal-version-unverified"),
+        (True, True, False, "search-metadata-unverified"),
     ],
 )
 def test_release_report_distinguishes_frontend_parity_from_backend_parity(
-    monkeypatch, tmp_path, backend_ok, journal_ok, expected_evidence
+    monkeypatch, tmp_path, backend_ok, journal_ok, search_ok, expected_evidence
 ):
     monkeypatch.setattr(probe, "REPORT", tmp_path / "release-report.json")
     monkeypatch.setattr(probe.socket, "getaddrinfo", lambda *_args, **_kwargs: [(0,)])
@@ -89,9 +90,14 @@ def test_release_report_distinguishes_frontend_parity_from_backend_parity(
         probe, "probe_public_journal_pages",
         lambda: {"result": "exact-match" if journal_ok else "unverified", "pages": {}},
     )
+    monkeypatch.setattr(
+        probe, "probe_public_search_metadata",
+        lambda: {"result": "exact-match" if search_ok else "unverified", "resources": {}},
+    )
     assert probe.main() == 0
     saved = json.loads(probe.REPORT.read_text(encoding="utf-8"))
     assert saved["release_evidence"] == expected_evidence
     assert saved["read_only"] is True
     assert len(saved["backend_routes"]) == len(probe.BACKEND_ROUTE_CAPABILITIES)
     assert saved["journal_pages"]["result"] == ("exact-match" if journal_ok else "unverified")
+    assert saved["search_metadata"]["result"] == ("exact-match" if search_ok else "unverified")
