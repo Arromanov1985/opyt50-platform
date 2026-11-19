@@ -3471,3 +3471,18 @@ body.comfortable-view .overview-action-item p{font-size:.95rem}
 .filter-chip-action:hover{background:#DDF2E4;border-color:#9FCCAA}
 .filter-chip-action:focus-visible{outline:2px solid #08793A;outline-offset:2px}
 .filter-chip-action span{font-size:15px;line-height:1}
+
+
+/* Short, optional candidate checklist before sending a first application. */
+.profile-preapply-guide{
+  margin:16px 0 20px;padding:15px 17px;
+  border:1px solid #D2E6D9;border-radius:14px;background:#F6FBF8;color:#254A37;
+}
+.profile-preapply-guide summary{font-size:14px;font-weight:800;cursor:pointer}
+.profile-preapply-guide ol{margin:13px 0 10px;padding-left:21px;display:grid;gap:7px}
+.profile-preapply-guide li,.profile-preapply-guide p{font-size:13px;line-height:1.5}
+.profile-preapply-guide p{margin:8px 0}
+.profile-preapply-guide a{font-weight:750}
+body.comfortable-view .profile-preapply-guide summary,
+body.comfortable-view .profile-preapply-guide li,
+body.comfortable-view .profile-preapply-guide p{font-size:1rem}
