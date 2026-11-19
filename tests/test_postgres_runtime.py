@@ -299,3 +299,60 @@ def test_personal_data_export_is_bounded_and_private_in_postgresql(runtime_db):
         assert "password_hash" not in account["account"]
         assert "token_hash" not in str(account)
         assert "c@example.invalid" not in str(employer)
+
+
+
+def test_postgres_disposal_impact_and_manual_gate_are_non_destructive(runtime_db):
+    from app.release02 import init_release02
+    from app.privacy_rights import admin_change_status
+    from app.privacy_disposal import (
+        CHECKS, impact_preview, review_state, update_review,
+    )
+
+    init_release02("ignored-when-DATABASE_URL-present")
+    init_release02("ignored-when-DATABASE_URL-present")
+    with postgres_database(runtime_db) as db:
+        db.execute(
+            "INSERT INTO users(id,email,password_hash,role,name) VALUES(4,?,?,?,?)",
+            ("disposaladmin@example.invalid", "test-hash", "admin", "Admin"),
+        )
+        db.execute(
+            """INSERT INTO job_applications(vacancy_id,candidate_id)
+               VALUES(?,?)""", (3,1),
+        )
+        db.execute(
+            """INSERT INTO privacy_rights_requests
+               (request_key,user_id,kind,status,submitted_at,updated_at)
+               VALUES(?,?,'deletion','in_review',?,?)""",
+            ("pg-disposal-request-001",1,
+             "2026-11-19T00:00:00+00:00", "2026-11-19T00:00:00+00:00"),
+        )
+        plan = impact_preview(db, "pg-disposal-request-001")
+        assert plan["counts"]["applications"] == 1
+        assert plan["counts"]["professional_profile"] == 1
+        assert plan["automatic_deletion"] is False
+        assert not review_state(db, "pg-disposal-request-001")["ready_for_manual_closure"]
+        with pytest.raises(ValueError, match="manual checklist"):
+            admin_change_status(
+                db, "pg-disposal-request-001",4,"completed",
+                manual_response_confirmed=True,closure_reason="fulfilled",
+            )
+        checklist = {key:True for key in CHECKS}
+        assert update_review(
+            db, "pg-disposal-request-001",4,checklist,
+        )["ready_for_manual_closure"] is True
+        assert admin_change_status(
+            db,"pg-disposal-request-001",4,"completed",
+            manual_response_confirmed=True,closure_reason="fulfilled",
+        )["status"] == "completed"
+        assert db.execute("SELECT COUNT(*) FROM users WHERE id=1").fetchone()[0] == 1
+        assert db.execute("SELECT COUNT(*) FROM job_applications").fetchone()[0] == 1
+
+    with postgres_database(runtime_db) as db:
+        assert db.execute(
+            "SELECT COUNT(*) FROM privacy_disposal_review_actions"
+        ).fetchone()[0] == 1
+        assert db.execute(
+            "SELECT status FROM privacy_rights_requests WHERE request_key=?",
+            ("pg-disposal-request-001",),
+        ).fetchone()["status"] == "completed"
