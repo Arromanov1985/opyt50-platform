@@ -11,7 +11,7 @@ from fastapi.responses import HTMLResponse
 
 from .legal_config import render_template, legal_approved
 
-STATIC = Path(__file__).resolve().parent / "static"
+TEMPLATES = Path(__file__).resolve().parent / "legal_templates"
 LEGAL_DRAFT_ROUTES = {
     "/privacy": "privacy.html",
     "/terms": "terms.html",
@@ -22,7 +22,7 @@ LEGAL_DRAFT_ROUTES = {
 def install_legal_draft_routes(app: FastAPI) -> None:
     def handler_for(filename: str):
         def page():
-            markup = render_template((STATIC / filename).read_text(encoding="utf-8"))
+            markup = render_template((TEMPLATES / filename).read_text(encoding="utf-8"))
             return HTMLResponse(
                 markup,
                 headers={
