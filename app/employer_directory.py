@@ -6,7 +6,6 @@ payments or applicant records are used to build these pages.
 from __future__ import annotations
 
 from html import escape
-from urllib.parse import urlencode
 
 from fastapi import Depends, FastAPI, HTTPException
 from fastapi.responses import HTMLResponse
@@ -44,7 +43,7 @@ def _layout(title: str, description: str, canonical_path: str, content: str) -> 
 <img src="/static/brand-symbol.svg" width="34" height="34" alt="">
 стажно<span>.</span>ру</a>
 <nav aria-label="Основное меню">
-<a href="/employers" aria-current="{"page" if canonical_path == "/employers" else "false"}">Работодатели</a>
+<a href="/employers">Работодатели</a>
 <a href="/#jobs">Вакансии</a><a href="/journal">Журнал</a>
 </nav></div></header>
 <main class="wrap" id="main">{content}</main>
@@ -95,7 +94,6 @@ def employer_directory(query: str, city: str, db) -> HTMLResponse:
         f'<a class="card-link" href="/employers/{int(row["id"])}">Вакансии компании →</a></article>'
         for row in rows
     )
-    filter_query = urlencode({"q": query, "city": city})
     clear_href = "/employers"
     empty = (
         '<div class="empty-list" role="status"><h2>Компаний по этим условиям не найдено</h2>'
