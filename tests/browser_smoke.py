@@ -1225,10 +1225,10 @@ def run_browser(page):
     page.locator("#article-category").fill("Карьера")
     page.locator("#article-read").fill("5 минут")
     page.locator("#article-body").fill(
-        "## Проверьте основные условия\\n"
+        "## Проверьте основные условия\n"
         "Перед согласием уточните график, задачи, состав оплаты и оформление. "
-        "Сравните предложения на одинаковой основе и запишите различия.\\n\\n"
-        "## Выберите следующий шаг\\n"
+        "Сравните предложения на одинаковой основе и запишите различия.\n\n"
+        "## Выберите следующий шаг\n"
         "Уточните сроки ответа и критерии оценки результата. "
         "Не отправляйте коды подтверждения или банковские данные неожиданным собеседникам.")
     page.locator("#preview").click()
@@ -1530,7 +1530,7 @@ def run_browser(page):
     # Structured descriptions are compared section by section; legacy free
     # text is kept whole rather than lost or silently truncated.
     assert page.evaluate("""() => {
-      const before = 'Обязанности:\\nУчёт\\n\\nТребования:\\n1С\\n\\nУсловия работы:\\n2/2';
+      const before = 'Обязанности:\nУчёт\n\nТребования:\n1С\n\nУсловия работы:\n2/2';
       const after = before.replace('2/2','3/3');
       const details = window.StazhnoVacancyChanges.details({
         description:{before,after}
