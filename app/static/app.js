@@ -3457,13 +3457,49 @@ async function handleDashboardClick(event) {
       btn.disabled = true;
       panel.textContent = 'Считаем связанные записи…';
       try {
-        const [impact, checklist] = await Promise.all([
+        const [impact, checklist, external] = await Promise.all([
           api('/api/admin/privacy-requests/' + encodeURIComponent(requestKey) + '/impact'),
-          api('/api/admin/privacy-requests/' + encodeURIComponent(requestKey) + '/disposition-review')
+          api('/api/admin/privacy-requests/' + encodeURIComponent(requestKey) + '/disposition-review'),
+          api('/api/admin/privacy-requests/' + encodeURIComponent(requestKey) + '/external-review')
         ]);
-        panel.innerHTML = disposalPreviewMarkup(impact.preview, checklist.review);
+        panel.innerHTML = disposalPreviewMarkup(impact.preview, checklist.review, external.review);
       } finally {
         btn.disabled = false;
+      }
+      return;
+    }
+    if (action === 'privacy-external-save') {
+      const requestKey = String(btn.dataset.rightsKey || '');
+      const systemKey = String(btn.dataset.systemKey || '');
+      if (!/^[A-Za-z0-9_-]{16,64}$/.test(requestKey) ||
+          !/^[a-z_]{4,40}$/.test(systemKey)) return;
+      const panel = document.getElementById('privacy-disposal-panel-' + requestKey);
+      if (!panel) return;
+      const selector = Array.from(panel.querySelectorAll('select[data-external-system]'))
+        .find(node => node.dataset.externalSystem === systemKey);
+      const status = String(selector?.value || '');
+      if (!['reviewed','not_applicable','followup_required'].includes(status)) {
+        toast('Выберите результат проверки.', true); return;
+      }
+      if (status !== 'followup_required' && !window.confirm(
+        'Вы подтверждаете, что проверили эту внешнюю систему самостоятельно и ' +
+        'отметка соответствует действительности? Система не соединяется с провайдером.'
+      )) return;
+      btn.disabled = true;
+      try {
+        const url = '/api/admin/privacy-requests/' + encodeURIComponent(requestKey);
+        await api(url + '/external-review/' + encodeURIComponent(systemKey), {
+          method: 'POST', body: JSON.stringify({status})
+        });
+        const [impact, checklist, external] = await Promise.all([
+          api(url + '/impact'),
+          api(url + '/disposition-review'),
+          api(url + '/external-review')
+        ]);
+        panel.innerHTML = disposalPreviewMarkup(impact.preview, checklist.review, external.review);
+        toast('Статус внешней проверки записан. Данные у провайдера не изменялись.');
+      } finally {
+        if (btn.isConnected) btn.disabled = false;
       }
       return;
     }
@@ -3484,8 +3520,11 @@ async function handleDashboardClick(event) {
         const saved = await api('/api/admin/privacy-requests/' + encodeURIComponent(requestKey) + '/disposition-review', {
           method:'POST', body:JSON.stringify(payload)
         });
-        const report = await api('/api/admin/privacy-requests/' + encodeURIComponent(requestKey) + '/impact');
-        panel.innerHTML = disposalPreviewMarkup(report.preview, saved.review);
+        const [report, external] = await Promise.all([
+          api('/api/admin/privacy-requests/' + encodeURIComponent(requestKey) + '/impact'),
+          api('/api/admin/privacy-requests/' + encodeURIComponent(requestKey) + '/external-review')
+        ]);
+        panel.innerHTML = disposalPreviewMarkup(report.preview, saved.review, external.review);
         toast('Ручные проверки сохранены в журнале. Данные не удалены.');
       } finally {
         if (btn.isConnected) btn.disabled = false;
