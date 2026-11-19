@@ -1236,10 +1236,11 @@ def run_browser(page):
     page.locator("#save").click()
     expect(page.locator("#notice")).to_contain_text("Черновик сохранён")
     assert page.request.get(URL + "/journal/test-redakcionnaya-statia").status == 404
-    page.on("dialog", lambda dialog: dialog.accept())
+    page.once("dialog", lambda dialog: dialog.accept())
     page.locator("#publish").click()
     expect(page.locator("#notice")).to_contain_text("Статья опубликована")
     assert page.request.get(URL + "/journal/test-redakcionnaya-statia").status == 200
+    page.once("dialog", lambda dialog: dialog.accept())
     page.locator("#hide").click()
     expect(page.locator("#notice")).to_contain_text("Статья снята с публикации")
     assert page.request.get(URL + "/journal/test-redakcionnaya-statia").status == 404
