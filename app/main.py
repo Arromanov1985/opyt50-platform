@@ -69,7 +69,7 @@ EMPLOYMENTS = {"Любая", "Полная", "Частичная", "Проект
 
 class GrowthEventIn(BaseModel):
     source: str = Field(min_length=1, max_length=80)
-    action: Literal["view", "jobs_click", "profile_click"]
+    action: Literal["view", "jobs_click", "profile_click", "community_click"]
 
 
 class DirectInvitationOutcomeIn(BaseModel):
