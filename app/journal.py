@@ -35,7 +35,7 @@ def _layout(title: str, description: str, path: str, body: str) -> str:
         f"<meta property=\"og:title\" content=\"{_e(title)}\">"
         f"<meta property=\"og:description\" content=\"{_e(description)}\">"
         f"<meta property=\"og:url\" content=\"{_e(canonical)}\">"
-        "<link rel=\"stylesheet\" href=\"/static/journal.css?v=1\">"
+        "<link rel=\"stylesheet\" href=\"/static/journal.css?v=2\">"
         "<script src=\"/static/journal.js?v=2\" defer></script>"
         "</head><body class=\"jr-page\">"
         "<a class=\"jr-skip\" href=\"#jr-content\">К основному содержанию</a>"
