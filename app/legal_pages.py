@@ -7,7 +7,9 @@ without replacing placeholders, lawyer sign-off, and changing the status.
 from pathlib import Path
 
 from fastapi import FastAPI
-from fastapi.responses import FileResponse
+from fastapi.responses import HTMLResponse
+
+from .legal_config import render_template
 
 STATIC = Path(__file__).resolve().parent / "static"
 LEGAL_DRAFT_ROUTES = {
@@ -20,9 +22,9 @@ LEGAL_DRAFT_ROUTES = {
 def install_legal_draft_routes(app: FastAPI) -> None:
     def handler_for(filename: str):
         def page():
-            return FileResponse(
-                STATIC / filename,
-                media_type="text/html; charset=utf-8",
+            markup = render_template((STATIC / filename).read_text(encoding="utf-8"))
+            return HTMLResponse(
+                markup,
                 headers={
                     "Cache-Control": "no-store",
                     "X-Robots-Tag": "noindex, nofollow",
