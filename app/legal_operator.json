@@ -1,0 +1,21 @@
+{
+  "_comment": "TEST DATA ONLY. NOT A REGISTERED OR VERIFIED OPERATOR. Replace before legal review and public launch.",
+  "status": "TEST_ONLY",
+  "operator_name": "ИП Иванов Иван Иванович",
+  "individual_full_name": "Иванов Иван Иванович",
+  "inn": "ТЕСТ-ИНН-ЗАМЕНИТЬ",
+  "ogrnip": "ТЕСТ-ОГРНИП-ЗАМЕНИТЬ",
+  "address": "ТЕСТОВЫЙ АДРЕС, РФ, город Пример, улица Тестовая, дом 0 — НЕ ДЕЙСТВИТЕЛЕН",
+  "privacy_email": "privacy@example.invalid",
+  "rights_email": "rights@example.invalid",
+  "support_email": "support@example.invalid",
+  "rkn_notification": "ТЕСТ-РКН-НЕ-ПОДАНО",
+  "database_country": "ТЕСТОВОЕ ЗНАЧЕНИЕ: РФ, регион не подтвержден",
+  "backups_country": "ТЕСТОВОЕ ЗНАЧЕНИЕ: регион не подтвержден",
+  "mail_provider": "ТЕСТОВОЕ ЗНАЧЕНИЕ: Timeweb, договор и регион не подтверждены",
+  "privacy_version": "draft-ip-2026-11-19",
+  "terms_version": "draft-ip-2026-11-19",
+  "consent_version": "draft-ip-2026-11-19",
+  "effective_date": "НЕ УТВЕРЖДЕНО",
+  "retention_rules": "ТЕСТОВОЕ ЗНАЧЕНИЕ: сроки по категориям согласовать с юристом"
+}
