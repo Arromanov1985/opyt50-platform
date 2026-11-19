@@ -506,7 +506,7 @@ def enqueue_notice(
         if event in WORKFLOW_EVENTS:
             # Do not persist new optional messages for people requesting
             # deletion or cessation. The existing outbox insert above is
-            # rolled back independently of the business event via savepoint.
+            # removed without modifying the surrounding business operation.
             if workflow_notice_blocked(db, user_id):
                 db.execute("DELETE FROM email_outbox WHERE id=?", (inserted.lastrowid,))
                 return
