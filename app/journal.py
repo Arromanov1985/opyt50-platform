@@ -77,8 +77,9 @@ def _catalog(request: Request) -> list[dict]:
         return public_articles(db)
 
 
-def journal_index(request: Request) -> HTMLResponse:
-    articles = _catalog(request)
+def journal_index(articles: list[dict] | None = None) -> HTMLResponse:
+    if articles is None:
+        articles = ARTICLES
     cards = "".join(_article_card(item) for item in articles)
     categories = list(dict.fromkeys(article["category"] for article in articles))
     buttons = '<button type="button" data-jr-category-filter="all" aria-pressed="true">Все темы</button>' + "".join(
@@ -115,8 +116,9 @@ def journal_index(request: Request) -> HTMLResponse:
                                "/journal", body), headers={"Cache-Control": "public, max-age=300"})
 
 
-def journal_article(slug: str, request: Request) -> HTMLResponse:
-    articles = _catalog(request)
+def journal_article(slug: str, articles: list[dict] | None = None) -> HTMLResponse:
+    if articles is None:
+        articles = ARTICLES
     article = next((item for item in articles if item["slug"] == slug), None)
     if article is None:
         raise HTTPException(status_code=404, detail="Статья не найдена")
@@ -170,9 +172,10 @@ def journal_highlights(request: Request) -> dict:
     ]}
 
 
-def journal_sitemap(request: Request) -> Response:
-    """Only currently published editorial pages; never index hidden drafts."""
-    articles = _catalog(request)
+def journal_sitemap(articles: list[dict] | None = None) -> Response:
+    """Only published editorial pages when a live catalog is supplied."""
+    if articles is None:
+        articles = ARTICLES
     paths = ["/", "/employers", "/journal"] + ["/journal/" + article["slug"] for article in articles]
     urls = "".join(
         "<url><loc>" + _e(ORIGIN + path) + "</loc>"
@@ -201,10 +204,21 @@ def journal_robots(request: Request) -> PlainTextResponse:
 
 
 def install_journal_routes(app: FastAPI) -> None:
+    # The pure renderers still accept a default seed catalog for deterministic
+    # unit/probe rendering. Public HTTP routes use current published DB rows.
+    def sitemap_http(request: Request):
+        return journal_sitemap(_catalog(request))
+
+    def index_http(request: Request):
+        return journal_index(_catalog(request))
+
+    def article_http(slug: str, request: Request):
+        return journal_article(slug, _catalog(request))
+
     app.add_api_route("/robots.txt", journal_robots, methods=["GET"], include_in_schema=False)
-    app.add_api_route("/sitemap.xml", journal_sitemap, methods=["GET"], include_in_schema=False)
-    app.add_api_route("/journal", journal_index, methods=["GET"], include_in_schema=False)
+    app.add_api_route("/sitemap.xml", sitemap_http, methods=["GET"], include_in_schema=False)
+    app.add_api_route("/journal", index_http, methods=["GET"], include_in_schema=False)
     app.add_api_route("/api/public/journal/highlights", journal_highlights, methods=["GET"], include_in_schema=False)
-    app.add_api_route("/journal/{slug}", journal_article, methods=["GET"], include_in_schema=False)
+    app.add_api_route("/journal/{slug}", article_http, methods=["GET"], include_in_schema=False)
     from .journal_cms import install_journal_admin_routes
     install_journal_admin_routes(app)
