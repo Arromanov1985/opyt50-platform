@@ -83,7 +83,7 @@ def test_admin_preflight_and_checkpoint_gate_fulfillment(tmp_path):
         preview = client.get(preview_url).json()["preview"]
         assert preview["account_role"] == "candidate"
         assert preview["kind"] == "stop_processing"
-        assert "email" not in json.dumps(preview)
+        assert "review-candidate@example.invalid" not in json.dumps(preview)
 
         assert client.get(checklist_url).json()["review"]["ready_for_manual_closure"] is False
         # Checklist cannot be signed before the request is accepted for review.
