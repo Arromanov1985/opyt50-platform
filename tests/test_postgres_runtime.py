@@ -308,6 +308,7 @@ def test_postgres_disposal_impact_and_manual_gate_are_non_destructive(runtime_db
     from app.privacy_disposal import (
         CHECKS, impact_preview, review_state, update_review,
     )
+    from app.privacy_external import SYSTEMS, save_external_review
 
     init_release02("ignored-when-DATABASE_URL-present")
     init_release02("ignored-when-DATABASE_URL-present")
@@ -340,7 +341,11 @@ def test_postgres_disposal_impact_and_manual_gate_are_non_destructive(runtime_db
         checklist = {key:True for key in CHECKS}
         assert update_review(
             db, "pg-disposal-request-001",4,checklist,
-        )["ready_for_manual_closure"] is True
+        )["ready_for_manual_closure"] is False
+        for system_key, _ in SYSTEMS:
+            save_external_review(db,"pg-disposal-request-001",4,system_key,"reviewed")
+        assert review_state(db,"pg-disposal-request-001")["external_checks_ready"] is True
+        assert review_state(db,"pg-disposal-request-001")["ready_for_manual_closure"] is True
         db.execute(
             "INSERT INTO candidate_favorites(candidate_id,vacancy_id) VALUES(?,?)",
             (1,3),
@@ -369,3 +374,6 @@ def test_postgres_disposal_impact_and_manual_gate_are_non_destructive(runtime_db
             "SELECT status FROM privacy_rights_requests WHERE request_key=?",
             ("pg-disposal-request-001",),
         ).fetchone()["status"] == "completed"
+        assert db.execute(
+            "SELECT COUNT(*) FROM privacy_external_review_events"
+        ).fetchone()[0] == len(SYSTEMS)
