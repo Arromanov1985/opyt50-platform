@@ -266,8 +266,8 @@ def probe_public_search_metadata():
     host = urlsplit(BASE).hostname
     is_canonical = host in {"stazhno.ru", "www.stazhno.ru"}
     robots = (
-        "User-agent: *\\nDisallow: /api/\\nSitemap: https://stazhno.ru/sitemap.xml\\n"
-        if is_canonical else "User-agent: *\\nDisallow: /\\n"
+        "User-agent: *\nDisallow: /api/\nSitemap: https://stazhno.ru/sitemap.xml\n"
+        if is_canonical else "User-agent: *\nDisallow: /\n"
     ).encode("utf-8")
     resources = {
         "/robots.txt": (robots, "text/plain"),
