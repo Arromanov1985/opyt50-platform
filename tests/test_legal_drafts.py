@@ -26,7 +26,7 @@ def test_ip_legal_pages_are_readonly_and_explicitly_unapproved(tmp_path):
             assert 'name="robots" content="noindex,nofollow"' in res.text
             assert "Иванов Иван Иванович" in res.text
             assert title in res.text
-            assert "ПРОЕКТ" in res.text
+            assert "ТЕСТОВЫЕ ДАННЫЕ" in res.text
             assert client.post(path).status_code == 405
         assert client.get("/static/legal.css").status_code == 200
         assert client.get("/static/legal-notice.css").status_code == 200
@@ -41,8 +41,8 @@ def test_registration_and_footer_link_drafts_without_claiming_consent(tmp_path):
         assert 'href="/legal/consent"' in html
         assert 'id="auth-legal-notice"' in html
         assert 'id="legal-operator-info"' in html
-        assert "требуемое законом согласие и серверная фиксация" in html
-        assert "ожидают подтверждения" in html
+        assert "ТЕСТОВЫЕ ДАННЫЕ" in html
+        assert "НЕ ПОДТВЕРЖДЕНЫ" in html
 
 
 def test_public_release_legal_gate_fails_on_placeholder_drafts():
@@ -54,4 +54,5 @@ def test_public_release_legal_gate_fails_on_placeholder_drafts():
     assert "Public user-terms page" in failed
     assert "Legal information near registration" in failed
     assert "Visible operator identification" in failed
+    assert "Verified IP operator profile" in failed
     assert "Human legal release signoff" in failed
