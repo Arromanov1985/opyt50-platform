@@ -2016,11 +2016,8 @@ async function renderEmployer() {
         action: '<button class="btn btn-outline btn-tiny" data-tab="applications">К откликам</button>',
         urgent: true
       });
-      if (drafts.length) employerTasks.push({
-        title: 'Продолжить черновик вакансии',
-        description: `Незавершённых черновиков: ${drafts.length}. Они не видны соискателям.`,
-        action: `<button class="btn btn-outline btn-tiny" data-action="resume-vacancy-draft" data-id="${Number(recentDraft.id)}">Продолжить</button>`
-      });
+      // A dedicated draft reminder or the hero already has the resume button.
+      // Do not render a second identical action (ambiguous for keyboard/QA).
       if (openJobs.length) employerTasks.push({
         title: 'Посмотреть подходящих специалистов',
         description: `Открытых вакансий: ${openJobs.length}. Можно начать подбор без раскрытия контактов.`,
