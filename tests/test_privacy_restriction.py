@@ -106,6 +106,12 @@ def test_employer_request_hides_public_pages_and_blocks_new_activity(tmp_path: P
         employer_id = register(employer, "employer", "employer2@example.invalid")
         candidate_id = register(candidate, "candidate", "candidate2@example.invalid")
         vacancy_id = create_vacancy_and_resume(app, employer_id, candidate_id)
+        with database(app.state.db_path) as db:
+            invitation_id = db.execute(
+                """INSERT INTO invitations(vacancy_id,candidate_id,employer_id,price_rub)
+                   VALUES(?,?,?,?)""",
+                (vacancy_id, candidate_id, employer_id, 0),
+            ).lastrowid
 
         assert any(j["id"] == vacancy_id for j in candidate.get("/api/jobs").json()["jobs"])
         assert candidate.get(f"/api/jobs/{vacancy_id}").status_code == 200
@@ -114,6 +120,16 @@ def test_employer_request_hides_public_pages_and_blocks_new_activity(tmp_path: P
 
         assert employer.get("/api/me").status_code == 200
         assert employer.get("/api/account/data-export").status_code == 200
+        # Previously sent invitations may be declined, but new consent cannot
+        # be accepted while the employer is under an active restriction.
+        invitation_route = f"/api/candidate/invitations/{invitation_id}/respond"
+        assert candidate.post(invitation_route, headers=XHR, json={
+            "decision": "accepted", "share_consent": True,
+        }).status_code == 409
+        declined = candidate.post(invitation_route, headers=XHR, json={
+            "decision": "declined", "share_consent": False,
+        })
+        assert declined.status_code == 200, declined.text
         assert employer.get("/api/employer/vacancies").status_code == 200
         assert employer.get(
             f"/api/employer/vacancies/{vacancy_id}/matches"
