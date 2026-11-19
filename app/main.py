@@ -48,6 +48,7 @@ from pydantic import BaseModel, Field, field_validator, model_validator
 from .db import database, init_db
 from .matching import lead_price, match_candidate, taxonomy_payload
 from .journal import install_journal_routes
+from .growth import VALID_SOURCES, record_event, aggregate_snapshot
 from .security import (
     ADMIN_SESSION_IDLE_SECONDS, ADMIN_SESSION_SECONDS, COOKIE_NAME,
     SESSION_SECONDS, SESSION_TOUCH_SECONDS, USER_SESSION_IDLE_SECONDS,
@@ -63,6 +64,11 @@ CONTACT_PHONE_PATTERN = re.compile(
 )
 SCHEDULES = {"Любой", "Полный день", "Сменный", "Гибкий", "Удалённо"}
 EMPLOYMENTS = {"Любая", "Полная", "Частичная", "Проектная"}
+
+
+class GrowthEventIn(BaseModel):
+    source: str = Field(min_length=1, max_length=80)
+    action: Literal["view", "jobs_click", "profile_click"]
 
 
 class DirectInvitationOutcomeIn(BaseModel):
@@ -928,6 +934,15 @@ def create_app(db_path: str | None = None) -> FastAPI:
         response = FileResponse(BASE / "static" / "index.html")
         response.headers["Cache-Control"] = "no-store, max-age=0"
         return response
+
+    @app.post("/api/growth/event", status_code=204, include_in_schema=False)
+    def growth_event(payload: GrowthEventIn):
+        # Anonymous, strictly whitelisted and strictly aggregated. Never read cookies,
+        # user identity, browser metadata, IP address or full referrer.
+        if payload.source not in VALID_SOURCES:
+            raise HTTPException(422, "Неизвестный материал журнала")
+        record_event(db_location, payload.source, payload.action)
+        return Response(status_code=204)
 
     @app.get("/api/health")
     def health():
@@ -2485,6 +2500,15 @@ def create_app(db_path: str | None = None) -> FastAPI:
         # Commit before the HTTP response: a new dashboard request may arrive immediately.
         db.commit()
         return {"ok": True, "mode": "demo_only", "amount_rub": row["price_rub"], "contact": dict(contact)}
+
+    @app.get("/api/admin/growth")
+    def admin_growth(
+        days: int = Query(default=30, ge=1, le=90),
+        user: dict = Depends(active_user),
+        db: sqlite3.Connection = Depends(get_connection),
+    ):
+        allowed(user, "admin")
+        return aggregate_snapshot(db, days)
 
     @app.get("/api/admin/stats")
     def stats(user: dict = Depends(active_user), db: sqlite3.Connection = Depends(get_connection)):
