@@ -923,6 +923,13 @@ def install_routes(app) -> None:
             "jobs": [dict(row) for row in jobs],
         }
 
+    @app.get("/companies/{employer_id}", include_in_schema=False)
+    def public_company_html(employer_id: int, db: sqlite3.Connection = Depends(get_connection)):
+        # Same public visibility conditions as the company API. Never query
+        # internal account or contact fields for the rendered HTML.
+        from .employer_pages import employer_page
+        return employer_page(public_company(employer_id, db))
+
     @app.post("/api/reports", status_code=201)
     def create_content_report(
         data: ContentReportIn,
