@@ -3626,6 +3626,9 @@ async function start() {
   await reloadUser();
   await loadPublicJobs();
   if (state.user) { state.tab = 'overview'; await showDashboard(); }
+  // Feature modules may now open deep-linked public content with correct
+  // authenticated state, without creating applications on behalf of users.
+  document.dispatchEvent(new Event('stazhno:ready'));
 }
 // Refresh when a signed-in user returns, never by background polling.
 document.addEventListener('visibilitychange', () => {
