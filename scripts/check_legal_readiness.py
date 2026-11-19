@@ -12,6 +12,8 @@ import json
 import re
 from pathlib import Path
 
+from app.legal_config import readiness_failures, legal_profile
+
 
 def verify(root: Path) -> list[tuple[str, bool, str]]:
     site = root / "app" / "static"
@@ -25,6 +27,8 @@ def verify(root: Path) -> list[tuple[str, bool, str]]:
         if not path.is_file():
             return False
         text = path.read_text(encoding="utf-8").casefold()
+        if "{{" in text:  # Unrendered test-only page is never an approved publication.
+            return False
         forbidden = (
             "не утверждено", "не вступил", "не вступили", "не публиковать",
             "не применяется", "draft", "проект —", "[подтвердить",
@@ -46,6 +50,8 @@ def verify(root: Path) -> list[tuple[str, bool, str]]:
     banned = bool(re.search(r"(?i)\b(?:placeholder|tbd|todo|example\.invalid)\b", approval_text))
 
     return [
+        ("Verified IP operator profile", not readiness_failures(legal_profile()),
+         "Replace all test fields in app/legal_operator.json and obtain written signoff."),
         ("Public privacy-policy page", public_page(privacy, ("персональных данных", "оператор")),
          "Publish a lawyer-reviewed /privacy document, not a template or invented operator."),
         ("Public user-terms page", public_page(terms, ("пользователь", "условия")),
