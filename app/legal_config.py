@@ -123,6 +123,12 @@ def render_template(content: str, profile: dict | None = None, html: bool = True
         ),
         "LEGAL_LINK_SUFFIX": "" if approved else " (тестовый проект)",
         "LEGAL_READY_ATTR": "yes" if approved else "no",
+        "LEGAL_ROBOTS_META": "index,follow" if approved else "noindex,nofollow",
+        "LEGAL_EYEBROW": "Утверждённая редакция" if approved else "ТЕСТОВЫЙ ПРОЕКТ",
+        "LEGAL_META_DESCRIPTION": (
+            "Юридические документы и условия обработки данных СТАЖНО.РУ"
+            if approved else "Тестовый макет юридических документов. Недействительные реквизиты."
+        ),
     }
     for key, value in status.items():
         content = content.replace("{{" + key + "}}", value)
