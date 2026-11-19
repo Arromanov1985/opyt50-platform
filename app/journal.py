@@ -6,6 +6,7 @@ This is intentionally small: editorial content is reviewed and deployed as code.
 from __future__ import annotations
 
 import json
+import hashlib
 from html import escape
 
 from fastapi import FastAPI, HTTPException, Request
@@ -172,6 +173,21 @@ def journal_highlights(request: Request) -> dict:
     ]}
 
 
+def journal_manifest(request: Request) -> dict:
+    """Public digests for exact verification of CMS-published pages.
+
+    Never includes unpublished content, identities or visitor information.
+    HTML source is still verified independently by JS/CSS asset fingerprints.
+    """
+    articles = _catalog(request)
+    pages = {"/journal": hashlib.sha256(journal_index(articles).body).hexdigest()}
+    for article in articles:
+        path = "/journal/" + article["slug"]
+        pages[path] = hashlib.sha256(journal_article(article["slug"], articles).body).hexdigest()
+    pages["/sitemap.xml"] = hashlib.sha256(journal_sitemap(articles).body).hexdigest()
+    return {"pages": pages, "count": len(articles)}
+
+
 def journal_sitemap(articles: list[dict] | None = None) -> Response:
     """Only published editorial pages when a live catalog is supplied."""
     if articles is None:
@@ -219,6 +235,7 @@ def install_journal_routes(app: FastAPI) -> None:
     app.add_api_route("/sitemap.xml", sitemap_http, methods=["GET"], include_in_schema=False)
     app.add_api_route("/journal", index_http, methods=["GET"], include_in_schema=False)
     app.add_api_route("/api/public/journal/highlights", journal_highlights, methods=["GET"], include_in_schema=False)
+    app.add_api_route("/api/public/journal/manifest", journal_manifest, methods=["GET"], include_in_schema=False)
     app.add_api_route("/journal/{slug}", article_http, methods=["GET"], include_in_schema=False)
     from .journal_cms import install_journal_admin_routes
     install_journal_admin_routes(app)
