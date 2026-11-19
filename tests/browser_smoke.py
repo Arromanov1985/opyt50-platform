@@ -135,6 +135,27 @@ def run_browser(page):
     page.locator("#job-dialog-close").click()
     expect(page.locator("#job-dialog")).not_to_be_visible()
 
+    # Public job URL is shareable and returns to the SAME vacancy without
+    # submitting an application or exposing applicant contact data.
+    shared_id = int(page.locator("#public-jobs .job-card").first.get_attribute("data-job-id"))
+    share_link = page.locator("#public-jobs .job-card").first.locator(
+        f"a[href='/vacancies/{shared_id}']"
+    )
+    expect(share_link).to_be_visible()
+    landing = page.request.get(URL + f"/vacancies/{shared_id}")
+    assert landing.status == 200, landing.text()
+    assert "Кладовщик" in landing.text()
+    assert f'/?vacancy={shared_id}#jobs' in landing.text()
+    application_posts = []
+    page.on("request", lambda request: application_posts.append(request.url) if (
+        request.method == "POST" and request.url.endswith("/api/candidate/applications")
+    ) else None)
+    page.goto(URL + f"/?vacancy={shared_id}#jobs", wait_until="networkidle")
+    expect(page.locator("#job-dialog")).to_be_visible()
+    expect(page.locator("#job-dialog-title")).to_have_text("Кладовщик")
+    assert not application_posts, "Opening a shared vacancy must never submit an application"
+    page.locator("#job-dialog-close").click()
+
     # A search with no results must offer a clear recovery action, preserving
     # the original job-search workflow and keyboard-accessible controls.
     page.locator("#profession-filter").fill("несуществующая профессия 98765")
