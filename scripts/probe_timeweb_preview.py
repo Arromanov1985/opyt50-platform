@@ -208,11 +208,10 @@ def probe_public_journal_pages():
     from app.journal import ARTICLES, journal_index, journal_article
 
     expected_pages = {"/journal": journal_index().body}
-    expected_pages.update(
-        {"/journal/" + article["slug"]: journal_article(article["slug"]).body}
+    expected_pages.update({
+        "/journal/" + article["slug"]: journal_article(article["slug"]).body
         for article in ARTICLES
-    )
-    # update() receives one mapping at a time above to keep source explicit.
+    })
     results = {}
     for path, expected_body in expected_pages.items():
         fingerprint = hashlib.sha256(expected_body).hexdigest()
