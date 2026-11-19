@@ -16,7 +16,7 @@ import sys
 ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
-from app.legal_config import readiness_failures, legal_profile
+from app.legal_config import readiness_failures, legal_profile, render_template
 
 
 def verify(root: Path) -> list[tuple[str, bool, str]]:
@@ -26,13 +26,16 @@ def verify(root: Path) -> list[tuple[str, bool, str]]:
     privacy = site / "privacy.html"
     terms = site / "terms.html"
     approval = root / "docs" / "legal" / "LEGAL_APPROVAL.md"
+    profile_ready = not readiness_failures(legal_profile())
 
     def public_page(path: Path, required: tuple[str, ...]) -> bool:
         if not path.is_file():
             return False
-        text = path.read_text(encoding="utf-8").casefold()
-        if "{{" in text:  # Unrendered test-only page is never an approved publication.
+        # Render from the same central IP config as the running site.
+        # A draft or fake IP fails even if the template happens to have all links.
+        if not profile_ready:
             return False
+        text = render_template(path.read_text(encoding="utf-8")).casefold()
         forbidden = (
             "не утверждено", "не вступил", "не вступили", "не публиковать",
             "не применяется", "draft", "проект —", "[подтвердить",
@@ -54,7 +57,7 @@ def verify(root: Path) -> list[tuple[str, bool, str]]:
     banned = bool(re.search(r"(?i)\b(?:placeholder|tbd|todo|example\.invalid)\b", approval_text))
 
     return [
-        ("Verified IP operator profile", not readiness_failures(legal_profile()),
+        ("Verified IP operator profile", profile_ready,
          "Replace all test fields in app/legal_operator.json and obtain written signoff."),
         ("Public privacy-policy page", public_page(privacy, ("персональных данных", "оператор")),
          "Publish a lawyer-reviewed /privacy document, not a template or invented operator."),
@@ -64,16 +67,14 @@ def verify(root: Path) -> list[tuple[str, bool, str]]:
          "Make privacy policy reachable from every personal-data collection flow."),
         ("Terms link in homepage", 'href="/terms"' in page,
          "Link public site terms in the footer and registration form."),
-        ("Legal information near registration", 'id="auth-legal-notice"' in page and
-         not any(item in page.casefold() for item in (
-             "документы пока не вступили в силу", "юридические документы: проект",
-             "макет юридической приёмки",
-         )),
+        ("Legal information near registration", profile_ready and
+         'id="auth-legal-notice"' in page and 'id="auth-terms-row"' in page,
          "Replace draft notices with approved basis/consents and evidentiary recording."),
-        ("Visible operator identification", 'id="legal-operator-info"' in page and
-         "mailto:" in page and "ожидают подтверждения" not in page.casefold(),
+        ("Visible operator identification", profile_ready and
+         'id="legal-operator-info"' in page and "mailto:" in page,
          "Show the verified site owner's real name, address and legal contact email."),
-        ("Data-subject request channel", 'id="privacy-request-contact"' in page,
+        ("Data-subject request channel", profile_ready and
+         'id="privacy-request-contact"' in privacy.read_text(encoding="utf-8"),
          "Explain and publish a reachable channel for correction, access and erasure requests."),
         ("Human legal release signoff", status and scope and reviewer and date and not banned,
          "Require a genuine reviewer/owner approval in docs/legal/LEGAL_APPROVAL.md for this release."),
