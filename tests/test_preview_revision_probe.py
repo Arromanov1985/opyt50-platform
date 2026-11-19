@@ -166,9 +166,9 @@ def test_deployed_journal_check_requires_exact_html_and_get_only(monkeypatch):
     monkeypatch.setattr(probe, "build_opener", lambda *_args: JournalOpener())
     good = probe.probe_public_journal_pages()
     assert good["result"] == "exact-match"
-    assert len(good["pages"]) == 4
+    assert len(good["pages"]) == len(ARTICLES) + 1
     assert all(item["result"] == "exact-match" for item in good["pages"].values())
-    assert len(requests) == 4
+    assert len(requests) == len(ARTICLES) + 1
 
     monkeypatch.setattr(probe, "build_opener", lambda *_args: JournalOpener(stale=True))
     stale = probe.probe_public_journal_pages()
