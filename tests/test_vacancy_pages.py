@@ -58,9 +58,9 @@ def test_shareable_vacancy_page_shows_public_information_only(tmp_path: Path):
         assert client.get("/static/vacancy-share.css").status_code == 200
 
         with database(app.state.db_path) as db:
+            # Publishing the job already creates its moderation row.
             db.execute(
-                """INSERT INTO vacancy_moderation(vacancy_id,status,updated_at)
-                   VALUES(?, 'rejected', datetime('now'))""",
+                "UPDATE vacancy_moderation SET status='rejected' WHERE vacancy_id=?",
                 (job_id,),
             )
         assert client.get(f"/vacancies/{job_id}").status_code == 404
