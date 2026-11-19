@@ -22,6 +22,7 @@
   <link rel="stylesheet" href="/static/release08-dashboard.css?v=brand2">
   <link rel="stylesheet" href="/static/release09-home.css?v=0905">
   <link rel="stylesheet" href="/static/journal-preview.css?v=1">
+  <link rel="stylesheet" href="/static/editorial-home.css?v=1">
   <link rel="stylesheet" href="/static/release09-dashboard.css?v=de7b3a40c75c">
   <link rel="stylesheet" href="/static/growth-admin.css?v=1">
   <link rel="stylesheet" href="/static/release09-forms.css?v=0902">
@@ -33,6 +34,7 @@
   <script src="/static/release03.js?v=0810" defer></script>
   <script src="/static/vacancy-wizard.js?v=b59564433a0b" defer></script>
   <script src="/static/release09-home.js?v=0901" defer></script>
+  <script src="/static/journal-home.js?v=1" defer></script>
   <script src="/static/release09-forms.js?v=0901" defer></script>
   <script src="/static/release13-taxonomy.js?v=1300" defer></script>
 </head>
@@ -50,21 +52,30 @@
   <div class="product-strip" role="status"><div class="container product-strip-inner"><span><strong>СТАЖНО.РУ</strong> — работа и новые возможности</span><span class="product-strip-points"><b>✓</b> Без возрастных барьеров <b>✓</b> Контакты скрыты по умолчанию <b>✓</b> Понятные этапы отклика <b>✓</b> Крупный текст</span></div></div>
   <main>
     <section class="hero hero-v08" id="home"><div class="container hero-grid">
-      <div class="hero-content"><span class="eyebrow"><span class="eyebrow-point"></span> РАБОТА И НОВЫЕ ВОЗМОЖНОСТИ</span>
-        <h1>Работа и новые возможности<br><em>после 50 лет</em></h1>
-        <p class="hero-copy">Помогаем людям с опытом находить подходящую работу, проекты и новые возможности для развития — спокойно, понятно и без возрастных стереотипов.</p>
+      <div class="hero-content"><span class="eyebrow"><span class="eyebrow-point"></span> РАБОТА · СООБЩЕСТВО · ЗНАНИЯ</span>
+        <h1>Ваш опыт открывает<br><em>новые возможности</em></h1>
+        <p class="hero-copy">СТАЖНО объединяет поиск работы, профессиональные знакомства и полезные знания. Выберите то, что важно вам сегодня — и возвращайтесь за новыми возможностями.</p>
         <div class="hero-job-search" role="search" aria-label="Быстрый поиск вакансий">
           <input id="hero-job-query" type="search" maxlength="120" autocomplete="off" placeholder="Кем хотите работать? Например, бухгалтер или кладовщик" aria-label="Профессия или навык">
           <button class="btn btn-primary" id="hero-job-search" type="button">Найти →</button>
         </div>
-        <div class="hero-actions">
-          <a class="btn btn-outline btn-lg" href="#jobs">Найти работу</a>
-          <button class="btn btn-dark btn-lg" data-register="employer">Я работодатель</button>
+        <div class="hero-actions editorial-hero-actions">
+          <a class="btn btn-dark btn-lg" href="#jobs">Найти работу</a>
+          <a class="btn btn-outline btn-lg" href="/community">Найти коллег</a>
+          <a class="btn btn-outline btn-lg" href="/journal">Читать журнал</a>
         </div>
-        <p class="hero-helper">Вакансии можно смотреть без регистрации. Профиль понадобится, когда захотите откликнуться.</p>
+        <p class="hero-helper">Вакансии и статьи доступны без регистрации. Для общения и отклика потребуется аккаунт; личные контакты не публикуются автоматически.</p>
         <div class="hero-foot"><span class="hero-tick">✓</span> Бесплатный профиль соискателя <span class="foot-divider"></span><span class="hero-tick">✓</span> Приватность контактов</div>
       </div>
       <div class="hero-visual hero-photo-wrap"><img class="hero-person hero-photo" src="/static/experience-hero-v2.webp?v=2" alt="Опытные специалисты — женщина и мужчина старше 50 лет"></div>
+    </div></section>
+    <section class="editorial-directions" aria-label="Три направления СТАЖНО"><div class="container">
+      <div class="editorial-directions-heading"><span class="section-kicker">ЧТО ВАМ ИНТЕРЕСНО</span><h2>Одна платформа — три пути</h2><p>Начните с того, что сейчас полезнее. Все разделы связаны между собой.</p></div>
+      <div class="editorial-directions-grid">
+        <a class="editorial-direction" href="#jobs"><span class="editorial-direction-icon" aria-hidden="true">01</span><strong>Работа и проекты</strong><span>Просматривайте условия, выбирайте вакансии и откликайтесь с защитой контактов.</span><b>Открыть вакансии →</b></a>
+        <a class="editorial-direction" href="/community"><span class="editorial-direction-icon" aria-hidden="true">02</span><strong>Люди и опыт</strong><span>Находите коллег и наставников, знакомьтесь и общайтесь по взаимному согласию.</span><b>В сообщество →</b></a>
+        <a class="editorial-direction" href="/journal"><span class="editorial-direction-icon" aria-hidden="true">03</span><strong>Знания и идеи</strong><span>Читайте практические материалы о карьере, навыках и новых возможностях.</span><b>Читать журнал →</b></a>
+      </div>
     </div></section>
     <section class="role-paths" aria-label="Выберите свой сценарий"><div class="container role-path-grid">
       <article class="role-path-card candidate-path" id="candidate-path">
@@ -97,7 +108,7 @@
        <a href="#jobs" class="direction-card" data-job-query="руководитель"><span class="direction-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="8" cy="8" r="3"/><circle cx="17" cy="9" r="2.5"/><path d="M2.5 20c.5-4 2.4-6 5.5-6s5 2 5.5 6M14 15c3.3 0 5.3 1.6 5.8 5"/></svg></span><strong>Управление</strong><small>Руководители и эксперты</small></a>
       </div>
     </div></section>
-    <section class="section jr-preview-section" id="journal-preview" aria-labelledby="journal-preview-heading"><div class="container"><div class="section-heading"><div><span class="section-kicker">ЖУРНАЛ СТАЖНО</span><h2 id="journal-preview-heading">Полезное для людей с опытом</h2></div><p>Короткие практические материалы о работе, проектах и защите личных данных.</p></div><div class="jr-preview-grid"><a href="/journal/kak-pokazat-opyt-v-profile" class="jr-preview-card"><span>КАРЬЕРА</span><strong>Как показать свой опыт в профессиональном профиле</strong><small>Пошаговая инструкция →</small></a><a href="/journal/kak-proverit-vakansiyu" class="jr-preview-card"><span>БЕЗОПАСНОСТЬ</span><strong>Как проверить вакансию и сохранить свои данные</strong><small>Практические советы →</small></a><a href="/journal/proektnaya-rabota-posle-50" class="jr-preview-card"><span>НОВЫЕ ВОЗМОЖНОСТИ</span><strong>Подработка, проекты и наставничество: как начать</strong><small>Новые идеи →</small></a></div><p class="jr-preview-all"><a href="/journal">Все материалы журнала →</a></p><p class="jr-preview-all"><a href="/community">Найти коллег для проектов и обмена опытом →</a></p></div></section>
+    <section class="section jr-preview-section" id="journal-preview" aria-labelledby="journal-preview-heading"><div class="container"><div class="section-heading"><div><span class="section-kicker">ЖУРНАЛ СТАЖНО</span><h2 id="journal-preview-heading">Практические материалы журнала</h2></div><p>Десять материалов в журнале и новые публикации редакции. Читайте, сохраняйте идеи, находите своё направление.</p></div><div class="jr-preview-grid" id="journal-home-highlights" aria-live="polite"><a href="/journal/kak-pokazat-opyt-v-profile" class="jr-preview-card"><span>КАРЬЕРА</span><strong>Как показать свой опыт в профессиональном профиле</strong><small>Пошаговая инструкция →</small></a><a href="/journal/kak-proverit-vakansiyu" class="jr-preview-card"><span>БЕЗОПАСНОСТЬ</span><strong>Как проверить вакансию и сохранить свои данные</strong><small>Практические советы →</small></a><a href="/journal/proektnaya-rabota-posle-50" class="jr-preview-card"><span>НОВЫЕ ВОЗМОЖНОСТИ</span><strong>Подработка, проекты и наставничество: как начать</strong><small>Новые идеи →</small></a></div><p class="jr-preview-all"><a href="/journal">Все материалы журнала →</a></p><p class="jr-preview-all"><a href="/community">Найти коллег для проектов и обмена опытом →</a></p></div></section>
     <section class="section jobs-section" id="jobs"><div class="container"><div class="section-heading"><div><span class="section-kicker">ВАКАНСИИ</span><h2>Актуальные <em>возможности</em></h2></div><p>Вакансии подбираются по навыкам, городу и условиям работы. Ниже сейчас показаны только демонстрационные объявления.</p></div>
       <div class="jobs-toolbar jobs-toolbar-v02 jobs-toolbar-v08 jobs-toolbar-v09">
         <div class="jobs-search-primary">
