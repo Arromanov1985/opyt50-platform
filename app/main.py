@@ -54,6 +54,7 @@ from .privacy_rights import (
     requests_for_user, submit_request, admin_request_list, admin_change_status,
 )
 from .privacy_disposal import impact_preview, review_state, update_review
+from .privacy_restriction import marketplace_action_restricted, restriction_is_active
 from .privacy_external import external_review_status, save_external_review
 from .retention_register import retention_readiness
 from .data_export import build_personal_data_snapshot
@@ -672,6 +673,15 @@ def active_user(request: Request, db: sqlite3.Connection = Depends(get_connectio
     # Internal-only identifier for server-side session controls. user_response()
     # deliberately serializes an explicit safe subset and never exposes this.
     user["_session_token_hash"] = digest
+    if row["role"] in {"candidate", "employer"} and marketplace_action_restricted(
+        db, row["id"], request.method, request.url.path,
+    ):
+        raise HTTPException(
+            409,
+            "Операции подбора и новые действия временно ограничены по вашему "
+            "обращению о персональных данных. В разделе «Безопасность» "
+            "доступны ваши обращения и выгрузка собственных данных.",
+        )
     return user
 
 def allowed(user: dict, role: str) -> None:
@@ -1960,7 +1970,13 @@ def create_app(db_path: str | None = None) -> FastAPI:
                  LEFT JOIN vacancy_moderation vm ON vm.vacancy_id=v.id
                  WHERE v.status='open'
                    AND COALESCE(ac.status,'active')='active'
-                   AND COALESCE(vm.status,'approved')='approved'"""
+                   AND COALESCE(vm.status,'approved')='approved'
+                  AND NOT EXISTS (
+                      SELECT 1 FROM privacy_rights_requests pr
+                      WHERE pr.user_id=v.employer_id
+                        AND pr.kind IN ('deletion','stop_processing')
+                        AND pr.status IN ('received','in_review','completed')
+                  )"""
         params: list = []
         if q.strip():
             # instr on Unicode-casefolded text ensures correct Cyrillic search.
@@ -2017,6 +2033,12 @@ def create_app(db_path: str | None = None) -> FastAPI:
                WHERE v.status='open'
                  AND COALESCE(ac.status,'active')='active'
                  AND COALESCE(vm.status,'approved')='approved'
+                  AND NOT EXISTS (
+                      SELECT 1 FROM privacy_rights_requests pr
+                      WHERE pr.user_id=v.employer_id
+                        AND pr.kind IN ('deletion','stop_processing')
+                        AND pr.status IN ('received','in_review','completed')
+                  )
                LIMIT 500""",
             (user["id"],user["id"]),
         ).fetchall()
@@ -2052,6 +2074,12 @@ def create_app(db_path: str | None = None) -> FastAPI:
                WHERE v.status='open'
                  AND COALESCE(ac.status,'active')='active'
                  AND COALESCE(vm.status,'approved')='approved'
+                  AND NOT EXISTS (
+                      SELECT 1 FROM privacy_rights_requests pr
+                      WHERE pr.user_id=v.employer_id
+                        AND pr.kind IN ('deletion','stop_processing')
+                        AND pr.status IN ('received','in_review','completed')
+                  )
                ORDER BY v.id DESC LIMIT 500"""
         ).fetchall()
         alternatives = []
@@ -2384,7 +2412,13 @@ def create_app(db_path: str | None = None) -> FastAPI:
                FROM candidate_profiles c
                JOIN users u ON u.id=c.user_id
                LEFT JOIN invitations i ON i.candidate_id=u.id AND i.vacancy_id=?
-               WHERE c.is_active=1 AND u.role='candidate'""",
+               WHERE c.is_active=1 AND u.role='candidate'
+                  AND NOT EXISTS (
+                      SELECT 1 FROM privacy_rights_requests pr
+                      WHERE pr.user_id=u.id
+                        AND pr.kind IN ('deletion','stop_processing')
+                        AND pr.status IN ('received','in_review','completed')
+                  )""",
             (job_id,),
         ).fetchall()
         matches = []
@@ -2418,7 +2452,9 @@ def create_app(db_path: str | None = None) -> FastAPI:
             """SELECT c.* FROM candidate_profiles c JOIN users u ON u.id=c.user_id
                WHERE c.user_id=? AND u.role='candidate'""", (data.candidate_id,)
         ).fetchone()
-        if candidate is None or match_candidate(dict(vacancy), dict(candidate)) is None:
+        if candidate is None or restriction_is_active(db, data.candidate_id):
+            raise HTTPException(422, "Кандидат не доступен для приглашения")
+        if match_candidate(dict(vacancy), dict(candidate)) is None:
             raise HTTPException(422, "Кандидат не соответствует условиям вакансии")
         try:
             cursor = db.execute(
@@ -2525,7 +2561,10 @@ def create_app(db_path: str | None = None) -> FastAPI:
             )}
             item["introduction_stage"] = introduction_stage(row["status"], row["contact_shared"])
             item["timeline"] = interaction_timeline(db, row["application_id"], row["id"])
-            if row["contact_shared"] and row["share_consent"]:
+            if (
+                row["contact_shared"] and row["share_consent"]
+                and not restriction_is_active(db, row["candidate_id"])
+            ):
                 item["contact"] = {
                     "name": row["candidate_name"],
                     "email": row["candidate_email"],
@@ -2593,6 +2632,8 @@ def create_app(db_path: str | None = None) -> FastAPI:
             raise HTTPException(404, "Приглашение не найдено")
         if row["status"] != "accepted" or not row["share_consent"]:
             raise HTTPException(409, "Кандидат ещё не согласился на знакомство")
+        if restriction_is_active(db, row["candidate_id"]):
+            raise HTTPException(409, "Открытие контакта ограничено по обращению кандидата")
         db.execute(
             "INSERT OR IGNORE INTO demo_transactions(invitation_id,amount_rub) VALUES(?,?)",
             (invitation_id, row["price_rub"]),
