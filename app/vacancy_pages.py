@@ -75,7 +75,7 @@ def vacancy_page(job: dict) -> HTMLResponse:
     </nav>
     <article class="vacancy-sheet">
       <span class="kicker">ОТКРЫТАЯ ВАКАНСИЯ</span>
-      <h1>{title}</h1><p class="company">{company} · {city}</p>
+      <h1>{title}</h1><p class="company"><a href="/companies/{int(job['employer_id'])}">{company}</a> · {city}</p>
       <p class="salary">{pay}</p>
       <div class="facts">
         <div><span>Город</span><strong>{city}</strong></div>
