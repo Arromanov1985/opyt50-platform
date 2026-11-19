@@ -25,7 +25,7 @@ def test_journal_public_pages_and_no_leaks(tmp_path):
         assert index.status_code == 200
         assert index.headers["content-type"].startswith("text/html")
         assert 'href="https://stazhno.ru/journal"' in index.text
-        assert 'href="/static/journal.css?v=3"' in index.text
+        assert 'href="/static/journal.css?v=4"' in index.text
         assert 'id="reading-mode-toggle"' in index.text
         assert 'id="jr-article-search"' in index.text
         assert 'data-jr-category-filter="all"' in index.text
