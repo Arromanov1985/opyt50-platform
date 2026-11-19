@@ -24,12 +24,17 @@ def configured(monkeypatch):
 
 def create_notice(app, event="invitation"):
     with database(app.state.db_path) as db:
+        recipient_id = db.execute(
+            """INSERT INTO users(email,role,name,password_hash)
+               VALUES('fictional@demo.example','candidate','Test','fake-hash')"""
+        ).lastrowid
         inserted = db.execute(
             "INSERT INTO email_outbox(to_email,event,subject,body) VALUES(?,?,?,?)",
             ("fictional@demo.example", event, "Тестовое событие", "Тестовое сообщение"),
         )
         assert enqueue_workflow_job(
             db, inserted.lastrowid, event, redacted=False,
+            recipient_user_id=recipient_id,
         ) is True
     return inserted.lastrowid
 
