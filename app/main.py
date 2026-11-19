@@ -785,6 +785,8 @@ def create_app(db_path: str | None = None) -> FastAPI:
         init_db(app.state.db_path)
         from .release02 import init_release02
         init_release02(app.state.db_path)
+        from .journal_cms import init_journal
+        init_journal(app.state.db_path)
         # Production defaults to automatic retry. Pytest runs use an explicit
         # processor, so parallel TestClient lifespans never send from a
         # background task while asserting deterministic mail state.
