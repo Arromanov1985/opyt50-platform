@@ -6,3 +6,9 @@
 .auth-legal-notice a{font-weight:700;color:#176c4d;text-decoration:underline}
 .auth-legal-notice .draft-disclaimer{color:#8a642e;font-size:12px}
 @media(max-width:650px){.auth-legal-notice{padding:12px}}
+
+/* Contract checkbox is shown only after legal signoff, never for test-only data. */
+#auth-terms-row{margin:12px 0 17px;padding:13px 15px;background:#f7faf7;border:1px solid #d4e3d8;border-radius:12px;line-height:1.55}
+#auth-terms-row label{display:flex;align-items:start;gap:10px;font-size:14px;font-weight:600}
+#auth-terms-row input{flex:0 0 18px;width:18px;height:18px;margin:3px 0 0}
+#auth-terms-row small{display:block;font-size:12px;margin-top:9px;color:#547361}
