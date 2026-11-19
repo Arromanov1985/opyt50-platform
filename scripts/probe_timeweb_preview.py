@@ -216,55 +216,89 @@ def probe_backend_route(path, expected_method):
 
 
 def probe_public_journal_pages():
-    """Compare exact bytes of public editorial HTML with the checked-out code.
+    """GET-only parity for published CMS pages, including later editor updates.
 
-    No accounts, cookies, contact fields, POSTs or external services.
+    A public manifest provides hashes for *currently published* pages. An older
+    server without the manifest falls back to exact seed catalog comparison.
+    No unpublished article, cookie or administrator API is ever requested.
     """
     root = str(Path(__file__).resolve().parents[1])
     if root not in sys.path:
         sys.path.insert(0, root)
     from app.journal import ARTICLES, journal_index, journal_article
 
-    expected_pages = {"/journal": journal_index().body}
-    expected_pages.update({
-        "/journal/" + article["slug"]: journal_article(article["slug"]).body
+    static_expected = {"/journal": hashlib.sha256(journal_index().body).hexdigest()}
+    static_expected.update({
+        "/journal/" + article["slug"]:
+            hashlib.sha256(journal_article(article["slug"]).body).hexdigest()
         for article in ARTICLES
     })
+    expected = static_expected
+    source = "seed-catalog"
+    manifest_request = Request(
+        BASE + "/api/public/journal/manifest",
+        headers={"User-Agent": "Stazhno-Preview-ReadOnly-Probe/1.0",
+                 "Cache-Control": "no-cache", "Pragma": "no-cache"},
+        method="GET",
+    )
+    try:
+        with build_opener(NoRedirect).open(manifest_request, timeout=12) as response:
+            raw = response.read(40_001)
+            if len(raw) > 40_000:
+                raise ValueError("Editorial manifest too large")
+            manifest = json.loads(raw)
+        pages = manifest.get("pages")
+        if not isinstance(pages, dict) or not 1 <= len(pages) <= 51:
+            raise ValueError("Invalid editorial manifest")
+        published = {
+            path: digest for path,digest in pages.items()
+            if path == "/journal" or (
+                path.startswith("/journal/")
+                and path[9:].replace("-", "").isalnum()
+            )
+        }
+        if "/journal" not in published or len(published) > 40 or not all(
+            isinstance(digest,str) and len(digest)==64
+            and all(ch in "0123456789abcdef" for ch in digest)
+            for digest in published.values()
+        ):
+            raise ValueError("Invalid editorial page digests")
+        expected = published
+        source = "cms-public-manifest"
+    except (HTTPError, URLError, OSError, ssl.SSLError, TimeoutError, ValueError, TypeError, KeyError):
+        pass
+
     results = {}
-    for path, expected_body in expected_pages.items():
-        fingerprint = hashlib.sha256(expected_body).hexdigest()
+    for path, fingerprint in expected.items():
         request = Request(
             BASE + path + "?revision_check=" + fingerprint[:16],
-            headers={
-                "User-Agent": "Stazhno-Preview-ReadOnly-Probe/1.0",
-                "Cache-Control": "no-cache",
-                "Pragma": "no-cache",
-            },
+            headers={"User-Agent":"Stazhno-Preview-ReadOnly-Probe/1.0",
+                     "Cache-Control":"no-cache", "Pragma":"no-cache"},
             method="GET",
         )
         try:
             with build_opener(NoRedirect).open(request, timeout=12) as response:
                 payload = response.read(250_001)
                 if len(payload) > 250_000:
-                    item = {"status": response.status, "result": "html-too-large"}
+                    item = {"status":response.status,"result":"html-too-large"}
                 elif not response.headers.get("Content-Type", "").lower().startswith("text/html"):
-                    item = {"status": response.status, "result": "not-html"}
+                    item = {"status":response.status,"result":"not-html"}
                 else:
                     observed = hashlib.sha256(payload).hexdigest()
                     item = {
-                        "status": response.status,
-                        "result": "exact-match" if observed == fingerprint else "mismatch",
-                        "expected_sha256": fingerprint,
-                        "observed_sha256": observed,
+                        "status":response.status,
+                        "result":"exact-match" if observed==fingerprint else "mismatch",
+                        "expected_sha256":fingerprint,"observed_sha256":observed,
                     }
         except HTTPError as error:
-            item = {"status": error.code, "result": "route-not-found" if error.code == 404 else "http-error"}
+            item = {"status":error.code,
+                    "result":"route-not-found" if error.code==404 else "http-error"}
         except (URLError, OSError, ssl.SSLError, TimeoutError) as error:
-            item = {"result": "connection-error", "type": type(error).__name__}
+            item = {"result":"connection-error","type":type(error).__name__}
         results[path] = item
     return {
-        "result": "exact-match" if all(item["result"] == "exact-match" for item in results.values()) else "unverified",
-        "pages": results,
+        "result":"exact-match" if all(item["result"]=="exact-match" for item in results.values()) else "unverified",
+        "catalog_source":source,"pages":results,
     }
 
 
