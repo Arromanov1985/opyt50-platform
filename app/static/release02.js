@@ -182,7 +182,7 @@
       } else if (open && !state.user) {
         roleActions = `<button type="button" class="btn btn-primary btn-tiny" data-v02-action="apply" data-id="${id}">Откликнуться</button>`;
       }
-      return `<article class="job-card job-card-v08" data-job-id="${id}"><div class="job-top"><div class="job-company-wrap"><span class="job-company">${esc(job.company_name || 'Работодатель')}</span>${employerTrustBadges(job)}</div>${scoreBadge}</div>
+      return `<article class="job-card job-card-v08" data-job-id="${id}"><div class="job-top"><div class="job-company-wrap"><a class="job-company" href="/companies/${Number(job.employer_id)}" aria-label="О компании ${esc(job.company_name || 'Работодатель')}">${esc(job.company_name || 'Работодатель')}</a>${employerTrustBadges(job)}</div>${scoreBadge}</div>
         <h3>${esc(job.title)}</h3><div class="job-salary">${formatPay(job)}</div>
         <div class="job-meta"><span>⌖ ${esc(job.city)}</span><span>${esc(job.schedule)}</span><span>${esc(job.employment)}</span></div>
         ${preview ? `<p class="job-preview">${esc(preview)}${String(job.description || '').replace(/\s+/g,' ').trim().length > 180 ? '…' : ''}</p>` : ''}
@@ -902,7 +902,7 @@
   $('#company-dialog-title').textContent=c.company_name;
   const trust={employer_verified:c.trust&&c.trust.verified,employer_email_verified:c.trust&&c.trust.email_verified,employer_inn_provided:c.trust&&c.trust.inn_provided,employer_created_at:c.created_at};
   const cards=jobs.map(j=>'<article class="item-card"><h4>'+esc(j.title)+'</h4><p>'+esc(j.city)+' · '+formatPay(j)+'</p><button class="btn btn-outline btn-tiny" data-v02-action="details" data-id="'+Number(j.id)+'">Подробнее</button></article>').join('');
-  $('#company-dialog-content').innerHTML='<div class="company-public-card">'+employerTrustBadges(trust,true)+'<p class="company-public-about">'+esc(c.about||'Компания пока не добавила описание.')+'</p><div class="company-public-stats"><strong>'+Number(c.open_vacancies||0)+'</strong><span> активных вакансий</span></div><div class="dashboard-list">'+cards+'</div></div>';
+  $('#company-dialog-content').innerHTML='<div class="company-public-card">'+employerTrustBadges(trust,true)+'<p class="company-public-about">'+esc(c.about||'Компания пока не добавила описание.')+'</p><div class="company-public-stats"><strong>'+Number(c.open_vacancies||0)+'</strong><span> активных вакансий</span></div><a class="btn btn-outline btn-tiny" href="/companies/'+Number(c.id)+'">Открыть страницу компании</a><div class="dashboard-list">'+cards+'</div></div>';
   if($('#job-dialog').open) $('#job-dialog').close();
   $('#company-dialog').showModal();
 }else if(type==='report'){
