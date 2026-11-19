@@ -39,6 +39,12 @@ COMMON_COUNTS = (
     ("security_events", "SELECT COUNT(*) FROM security_events WHERE user_id=?", "id"),
     ("service_emails", "SELECT COUNT(*) FROM email_outbox WHERE to_email=?", "email"),
     ("delivery_links", "SELECT COUNT(*) FROM email_delivery_recipients WHERE user_id=?", "id"),
+    ("workflow_mail_awaiting", """SELECT COUNT(*) FROM email_delivery_jobs q
+        JOIN email_delivery_recipients r ON r.outbox_id=q.outbox_id
+        WHERE r.user_id=? AND q.state IN ('pending','leased')""", "id"),
+    ("workflow_mail_privacy_suppressed", """SELECT COUNT(*) FROM email_delivery_jobs q
+        JOIN email_delivery_recipients r ON r.outbox_id=q.outbox_id
+        WHERE r.user_id=? AND q.last_error_code='privacy_request'""", "id"),
 )
 CANDIDATE_COUNTS = (
     ("professional_profile", "SELECT COUNT(*) FROM candidate_profiles WHERE user_id=?", "id"),
@@ -95,6 +101,8 @@ def impact_preview(db, request_key: str) -> dict | None:
     risks = ["Проверить правовые основания и сроки хранения по каждому виду данных",
              "Проверить почтовые очереди, системные журналы и резервные копии",
              "Не удалять автоматически аккаунт, заявки и доказательства согласий"]
+    if counts.get("workflow_mail_awaiting", 0):
+        risks.append("В очереди остаются рабочие уведомления; проверьте подавление до закрытия обращения")
     if counts.get("contacts_already_shared", 0):
         risks.append("Контакты ранее раскрывались: оценить уведомление конкретных получателей")
     if counts.get("candidate_applications_affected", 0):
