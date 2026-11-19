@@ -15,7 +15,10 @@ from .db import database
 from .journal import BY_SLUG
 
 VALID_SOURCES = frozenset({"journal", *BY_SLUG})
-VALID_ACTIONS = frozenset({"view", "jobs_click", "profile_click"})
+from .journal_paths import PATHS
+
+PATH_SOURCES = frozenset("path-" + item["slug"] for item in PATHS)
+VALID_ACTIONS = frozenset({"view", "jobs_click", "profile_click", "community_click"})
 
 
 def record_event(db_path: str, source: str, action: str) -> None:
@@ -31,7 +34,7 @@ def record_event(db_path: str, source: str, action: str) -> None:
     with database(db_path) as db:
         # A newly published editor article is valid even if absent from the
         # original six/ten-file release catalog. Reject arbitrary identifiers.
-        if source not in VALID_SOURCES:
+        if source not in VALID_SOURCES and source not in PATH_SOURCES:
             if not re.fullmatch(r"[a-z0-9]+(?:-[a-z0-9]+)*", source):
                 raise ValueError("Unsupported aggregate event")
             valid = db.execute(
