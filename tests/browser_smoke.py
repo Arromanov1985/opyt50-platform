@@ -270,14 +270,14 @@ def run_browser(page):
       profession: '<img src=x onerror=alert(1)>',
       city: 'Москва',
       skills: 'Excel, hidden@example.invalid',
-      about: 'Пишите +7 999 111-22-33 или https://example.invalid',
+      about: 'Пишите +7 999 111-22-33, @privatehandle или https://example.invalid',
       work_history: [{position:'Администратор',period:'2020–2024',
                       duties:'Контакт hidden@example.invalid'}],
       courses: [{title:'Курс',provider:'https://example.invalid'}]
     }, {name:'Частное имя',email:'private@example.invalid'}, false)""")
     assert "<img" not in unsafe and "&lt;img" in unsafe
     for secret in ("hidden@example.invalid", "private@example.invalid",
-                   "https://example.invalid", "+7 999 111-22-33", "Частное имя"):
+                   "https://example.invalid", "+7 999 111-22-33", "@privatehandle", "Частное имя"):
         assert secret not in unsafe
     dialog.locator("#resume-print-include-contacts").check()
     expect(sheet).to_contain_text("kladovshik@demo.example")
