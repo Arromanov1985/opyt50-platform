@@ -108,7 +108,7 @@ def test_growth_frontend_is_first_party_and_fails_open(tmp_path):
     assert "localStorage.setItem('growth" not in script
     html = (STATIC / "index.html").read_text(encoding="utf-8")
     assert 'growth-admin.css?v=1' in html
-    assert 'app.js?v=legalterms1' in html
+    assert 'app.js?v=3f2f9800fafb' in html
     with TestClient(app) as client:
         article = client.get("/journal/kak-proverit-vakansiyu")
         assert article.status_code == 200
