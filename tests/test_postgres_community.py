@@ -83,12 +83,17 @@ def test_community_additive_startup_and_consented_conversation_in_postgresql(run
 
     app = create_app("unused-pg-community")
     with ExitStack() as stack:
-        candidate, other, employer, admin, visitor = [stack.enter_context(TestClient(app)) for _ in range(5)]
+        # DATABASE_URL deliberately enables production-style Secure cookies.
+        # Use an HTTPS test origin so the client sends them back unchanged.
+        candidate, other, employer, admin, visitor = [
+            stack.enter_context(TestClient(app, base_url="https://testserver")) for _ in range(5)
+        ]
         for client, email in (
             (candidate, "c@example.invalid"), (other, "community-other@example.invalid"),
             (employer, "e@example.invalid"), (admin, "community-admin@example.invalid"),
         ):
             _checked(client.post("/api/login", headers=XHR, json={"email": email, "password": PASSWORD}))
+            _checked(client.get("/api/me"))
 
         assert _checked(visitor.get("/api/community/people"))["total"] == 0
         own = _checked(candidate.get("/api/community/profile"))["profile"]
