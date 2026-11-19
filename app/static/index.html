@@ -3,6 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="legal-profile-ready" content="{{LEGAL_READY_ATTR}}">
   <meta name="description" content="стажно.ру — работа и новые возможности для специалистов 50+. Поиск вакансий, короткий профиль, отклики и знакомство с работодателем с сохранением приватности контактов.">
   <link rel="canonical" href="https://stazhno.ru/">
   <meta property="og:type" content="website">
@@ -193,10 +194,10 @@
       <nav class="footer-column" aria-label="Соискателям"><strong>Соискателям</strong><a href="#jobs">Вакансии</a><a href="#candidate-path">Как начать</a><a href="#how">Как работает сервис</a><a href="#faq">Частые вопросы</a><a href="/journal">Журнал</a></nav>
       <nav class="footer-column" aria-label="Работодателям"><strong>Работодателям</strong><a href="#employer-path">Найти сотрудника</a><a href="#how">Как проходит знакомство</a><button class="btn btn-text" type="button" data-register="employer">Создать аккаунт</button></nav>
     </div>
-    <div class="legal-operator-preview" id="legal-operator-info"><strong>Владелец проекта: ИП Иванов Иван Иванович</strong> · ОГРНИП и ИНН — ожидают подтверждения · юридические документы находятся на согласовании.
-        <a href="/privacy">Политика обработки персональных данных (проект)</a> ·
-        <a href="/terms">Пользовательское соглашение (проект)</a> ·
-        <a href="/legal/consent">Согласия (проект)</a></div>
+    <div class="legal-operator-preview" id="legal-operator-info"><strong>Оператор: {{OPERATOR_NAME}}</strong> · ИНН: {{INN}} · ОГРНИП: {{OGRNIP}} · адрес: {{ADDRESS}}. <span>{{LEGAL_IDENTITY_STATUS}}</span> <span>Контакт по ПД: <a href="mailto:{{PRIVACY_EMAIL}}">{{PRIVACY_EMAIL}}</a>; заявления правообладателей: <a href="mailto:{{RIGHTS_EMAIL}}">{{RIGHTS_EMAIL}}</a></span>.
+        <a href="/privacy">Политика обработки персональных данных{{LEGAL_LINK_SUFFIX}}</a> ·
+        <a href="/terms">Пользовательское соглашение{{LEGAL_LINK_SUFFIX}}</a> ·
+        <a href="/legal/consent">Согласия{{LEGAL_LINK_SUFFIX}}</a></div>
     <div class="footer-meta"><span>© 2026 stazhno.ru</span><div class="footer-meta-right"><span>Контакты только с согласия кандидата</span><span>Тестовый запуск: расчёты за контакты без реального списания</span></div></div>
   </div></footer>
   <dialog id="job-dialog" class="auth-dialog job-dialog" aria-labelledby="job-dialog-title"><div class="modal-top"><div><span class="section-kicker">ПОДРОБНОСТИ ВАКАНСИИ</span><h2 id="job-dialog-title"></h2></div><button type="button" class="icon-button" id="job-dialog-close" aria-label="Закрыть">×</button></div><div id="job-dialog-content"></div></dialog>
@@ -247,9 +248,9 @@
     <div class="auth-route" id="auth-route"><strong id="auth-route-title">После регистрации</strong><div class="auth-route-steps" id="auth-route-steps"><span><i>1</i>Аккаунт</span><span><i>2</i>Короткий профиль</span><span><i>3</i>Отклик</span></div></div>
     <p class="auth-guidance" id="auth-guidance" aria-live="polite">Профессию и опыт сможете указать после регистрации.</p>
     <div class="auth-legal-notice" id="auth-legal-notice">
-      <strong>Юридические документы: проект для ИП Иванов Иван Иванович</strong>
-      <p>До регистрации ознакомьтесь с <a href="/terms" target="_blank" rel="noopener">проектом Пользовательского соглашения</a> и <a href="/privacy" target="_blank" rel="noopener">проектом Политики персональных данных</a>. Отдельные согласия на специальные цели и передачу контактов описаны <a href="/legal/consent" target="_blank" rel="noopener">здесь</a>.</p>
-      <p class="draft-disclaimer">Это макет юридической приёмки. Документы пока не вступили в силу; требуемое законом согласие и серверная фиксация его получения ещё не настроены. Не использовать для сбора реальных данных до утверждения.</p>
+      <strong>Оператор: {{OPERATOR_NAME}}. {{LEGAL_REGISTRATION_NOTICE}}</strong>
+      <p>До регистрации ознакомьтесь с <a href="/terms" target="_blank" rel="noopener">Пользовательским соглашением{{LEGAL_LINK_SUFFIX}}</a> и <a href="/privacy" target="_blank" rel="noopener">Политикой персональных данных{{LEGAL_LINK_SUFFIX}}</a>. Порядок отдельных согласий на специальные цели и передачу контактов описан <a href="/legal/consent" target="_blank" rel="noopener">здесь</a>.</p>
+      <p class="draft-disclaimer">{{LEGAL_REGISTRATION_NOTICE}} Для обращения используйте {{PRIVACY_EMAIL}}. Обработка регулируется документами с редакциями {{PRIVACY_VERSION}} и {{TERMS_VERSION}}.</p>
     </div>
     <button type="submit" class="btn btn-primary btn-lg btn-full" id="auth-submit">Продолжить →</button>
     <p class="auth-message" id="auth-message" role="alert" aria-live="polite"></p>
