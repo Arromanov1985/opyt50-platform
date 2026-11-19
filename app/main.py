@@ -40,7 +40,7 @@ from typing import Any, Literal
 from urllib.parse import urlsplit
 
 from fastapi import Depends, FastAPI, HTTPException, Query, Request, Response
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from starlette.middleware.trustedhost import TrustedHostMiddleware
 from pydantic import BaseModel, Field, field_validator, model_validator
@@ -49,6 +49,7 @@ from .db import database, init_db
 from .matching import lead_price, match_candidate, taxonomy_payload
 from .journal import install_journal_routes
 from .legal_pages import install_legal_draft_routes
+from .legal_config import render_template as render_legal_template, legal_approved, legal_profile
 from .growth import VALID_SOURCES, record_event, aggregate_snapshot
 from .security import (
     ADMIN_SESSION_IDLE_SECONDS, ADMIN_SESSION_SECONDS, COOKIE_NAME,
@@ -87,6 +88,8 @@ class Registration(BaseModel):
     password: str = Field(min_length=15, max_length=128)
     phone: str = Field(default="", max_length=30)
     company_name: str = Field(default="", max_length=120)
+    terms_accepted: bool = False
+    terms_version: str = Field(default="", max_length=90)
 
     @field_validator("email")
     @classmethod
@@ -932,7 +935,8 @@ def create_app(db_path: str | None = None) -> FastAPI:
 
     @app.get("/", include_in_schema=False)
     def index():
-        response = FileResponse(BASE / "static" / "index.html")
+        page = (BASE / "static" / "index.html").read_text(encoding="utf-8")
+        response = HTMLResponse(render_legal_template(page))
         response.headers["Cache-Control"] = "no-store, max-age=0"
         return response
 
@@ -980,6 +984,15 @@ def create_app(db_path: str | None = None) -> FastAPI:
 
     @app.post("/api/register", status_code=201)
     def register(data: Registration, request: Request, response: Response, db: sqlite3.Connection = Depends(get_connection)):
+        # The sample IP identity is never sufficient for a public signup.
+        # Unit tests may exercise the isolated in-memory/temporary DB with fake people.
+        live_runtime = production_runtime() and not os.getenv("PYTEST_CURRENT_TEST")
+        if live_runtime and not legal_approved():
+            raise HTTPException(503, "Публичная регистрация закрыта до юридического утверждения документов")
+        if legal_approved():
+            current_terms = legal_profile()["terms_version"]
+            if data.terms_accepted is not True or data.terms_version != current_terms:
+                raise HTTPException(422, "Для регистрации подтвердите актуальное пользовательское соглашение")
         try:
             cursor = db.execute(
                 "INSERT INTO users(email,password_hash,role,name,phone) VALUES(?,?,?,?,?)",
@@ -992,6 +1005,15 @@ def create_app(db_path: str | None = None) -> FastAPI:
                 db.execute(
                     "INSERT INTO employer_profiles(user_id,company_name) VALUES(?,?)",
                     (user_id, data.company_name.strip()),
+                )
+            if legal_approved():
+                db.execute(
+                    """INSERT INTO legal_acceptance_records(user_id,terms_version,privacy_version,accepted_at,evidence_method)
+                       VALUES(?,?,?,?,?)""",
+                    (
+                        user_id, data.terms_version, legal_profile()["privacy_version"],
+                        datetime.now(timezone.utc).isoformat(), "explicit-checkbox",
+                    ),
                 )
             add_session(db, response, user_id, request)
             from .release02 import enqueue_notice
