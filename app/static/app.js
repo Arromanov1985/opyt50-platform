@@ -2680,11 +2680,26 @@ const disposalCountLabels = Object.freeze({
   vacancy_drafts:'Черновики',candidate_applications_affected:'Отклики других кандидатов',
   vacancy_updates:'Изменения вакансий',reports_about_employer:'Жалобы на компанию'
 });
-function disposalPreviewMarkup(impact, review) {
+function disposalPreviewMarkup(impact, review, external) {
   const counts = Object.entries(impact.counts || {});
   const checks = review?.checks || {};
   const labels = review?.labels || {};
   const entries = Object.entries(labels);
+  const externalChecks = Array.isArray(external?.checks) ? external.checks : [];
+  const externalRows = externalChecks.map(item => {
+    const key = esc(item.system_key || '');
+    const selected = String(item.status || 'not_reviewed');
+    const options = [['not_reviewed','Не проверено'],['reviewed','Проверено вручную'],
+      ['followup_required','Требуются действия'],['not_applicable','Не применяется']];
+    return '<div class="privacy-external-row"><span>' + esc(item.label || key) +
+      '</span><select data-external-system="' + key + '">' +
+      options.map(([value,label]) => '<option value="' + value + '"' +
+        (selected === value ? ' selected' : '') + (value === 'not_reviewed' ? ' disabled' : '') +
+        '>' + label + '</option>').join('') + '</select>' +
+      '<button type="button" class="btn btn-outline btn-small" ' +
+      'data-action="privacy-external-save" data-rights-key="' + esc(impact.request_key || '') +
+      '" data-system-key="' + key + '">Сохранить</button></div>';
+  }).join('');
   return '<div class="privacy-disposal-report">' +
     '<h4>Предварительная оценка — только чтение</h4>' +
     '<p class="muted">Запрос на ' +
@@ -2698,7 +2713,10 @@ function disposalPreviewMarkup(impact, review) {
     '<p class="muted">Неизменяемый отчёт: данные могли измениться после просмотра. Фактическое удаление и уведомление получателей не выполняются.</p>' +
     '<ul class="privacy-disposal-risks">' +
     (impact.risk_flags || []).map(r => '<li>' + esc(r) + '</li>').join('') +
-    '</ul><h4>Проверки оператора</h4>' +
+    '</ul><h4>Внешние системы и резервные копии</h4>' +
+    '<p class="muted">Каждый пункт отмечается только после реальной проверки у соответствующего провайдера. Система не имеет прямого доступа к Timeweb, SMTP или получателям; статусы являются заявлениями оператора.</p>' +
+    '<div class="privacy-external-checks">' + externalRows + '</div>' +
+    '<h4>Проверки оператора</h4>' +
     '<p class="muted">Отметки — ручные заверения администратора; система не проверяет их истинность. Последний пункт отмечают ТОЛЬКО после действительного исполнения вне этого интерфейса.</p>' +
     '<div class="privacy-disposal-checks">' +
     entries.map(([key,label]) =>
@@ -2713,7 +2731,9 @@ function disposalPreviewMarkup(impact, review) {
       'После подтверждения изменились связанные записи. Повторно проверьте последствия и сохраните чек-лист.' :
       review?.ready_for_manual_closure ?
       'Все этапы отмечены администратором. Перед закрытием проверьте фактический результат и ответ пользователю.' :
-      'Закрытие со статусом «выполнено» запрещено до заполнения всех этапов.') +
+      (review?.external_checks_ready === false && entries.every(([key]) => checks[key]) ?
+        'Проверки оператора отмечены, но внешние системы ещё не подтверждены. Завершение запрещено.' :
+        'Закрытие со статусом «выполнено» запрещено до заполнения всех этапов.')) +
     '</p></div>';
 }
 async function renderAdmin() {
