@@ -143,6 +143,10 @@ def run_browser(page):
     page.locator("#privacy-rights-kind").select_option("access")
     page.locator("#privacy-rights-request-form button[type='submit']").click()
     expect(page.locator("#privacy-rights-history")).to_contain_text("Получить сведения об обработке")
+    with page.expect_download() as exported_file:
+        page.locator("#dashboard-main a[href='/api/account/data-export']").click()
+    assert exported_file.value.suggested_filename.startswith("stazhno-my-data-")
+    assert exported_file.value.suggested_filename.endswith(".json")
     page.locator(".dashboard-tabs [data-tab='profile']").click()
     expect(page.locator("#profile-form")).to_be_visible()
     expect(page.locator(".profile-health")).to_be_visible()
