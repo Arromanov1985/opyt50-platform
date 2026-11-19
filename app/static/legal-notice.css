@@ -12,3 +12,16 @@
 #auth-terms-row label{display:flex;align-items:start;gap:10px;font-size:14px;font-weight:600}
 #auth-terms-row input{flex:0 0 18px;width:18px;height:18px;margin:3px 0 0}
 #auth-terms-row small{display:block;font-size:12px;margin-top:9px;color:#547361}
+
+/* Data-subject requests: clearly separated from security events and signups. */
+.account-privacy-rights .account-security-form{max-width:640px;margin:18px 0}
+.account-privacy-rights select,.privacy-rights-admin select{display:block;width:100%;min-height:42px;margin-top:8px;padding:9px 12px;border:1px solid #c8d9cf;border-radius:10px;background:#fff;color:#213f30;font:inherit}
+.privacy-rights-record{display:flex;align-items:start;justify-content:space-between;flex-wrap:wrap;gap:12px;padding:14px 0;border-bottom:1px solid #dfebe2}
+.privacy-rights-record strong{display:block;color:#244d36}
+.privacy-rights-record small{display:block;margin-top:5px;color:#5d7466;font-size:12px;overflow-wrap:anywhere}
+.privacy-rights-record .status{font-size:12px;white-space:nowrap;padding:5px 9px;border-radius:20px;background:#eff6f0}
+.privacy-rights-admin>div:first-child{flex:1 1 230px;min-width:0}
+.privacy-rights-admin-actions{display:flex;align-items:end;gap:12px;flex-wrap:wrap}
+.privacy-rights-admin-actions label{display:block;font-size:12px;max-width:330px;min-width:220px}
+.privacy-rights-admin-actions .btn{min-height:42px}
+@media(max-width:600px){.privacy-rights-admin-actions{width:100%}.privacy-rights-admin-actions label{max-width:none;width:100%}.privacy-rights-admin-actions .btn{width:100%}}
