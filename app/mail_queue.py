@@ -155,17 +155,32 @@ def _delivery_block_reason(db_path: str, item, now: datetime) -> str | None:
                WHERE t.outbox_id=?""",
             (item["id"],),
         ).fetchone()
+        # New workflow notices are mapped to recipients; no security-token
+        # messages are ever queued here. Exclude notifications during a
+        # deletion/processing-cessation request, including completed ones.
+        restricted = (
+            entry is not None and entry["user_id"] is not None
+            and db.execute(
+                """SELECT 1 FROM privacy_rights_requests
+                   WHERE user_id=? AND kind IN ('deletion','stop_processing')
+                     AND status IN ('received','in_review','completed')
+                   LIMIT 1""",
+                (entry["user_id"],),
+            ).fetchone() is not None
+        )
     if entry is None:  # Previously queued jobs have no recipient mapping.
         return None
     if (entry["user_id"] is None or entry["email"] != item["recipient"]
             or entry["account_status"] != "active"):
         return "recipient_unavailable"
+    if restricted:
+        return "privacy_request"
     return None
 
 
 def _suppress(db_path: str, item, reason: str) -> bool:
     """Complete this lease without SMTP; only known non-sensitive codes."""
-    assert reason in ("stale_notice", "invalid_created_at", "recipient_unavailable")
+    assert reason in ("stale_notice", "invalid_created_at", "recipient_unavailable", "privacy_request")
     with database(db_path) as db:
         updated = db.execute(
             """UPDATE email_delivery_jobs
