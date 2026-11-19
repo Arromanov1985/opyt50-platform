@@ -20,7 +20,7 @@ DONE_STATUSES = frozenset({"reviewed", "not_applicable"})
 
 def external_review_status(db, request_key: str) -> dict | None:
     owner = db.execute(
-        """SELECT kind,status FROM privacy_rights_requests WHERE request_key=?""",
+        """SELECT kind,status,user_id FROM privacy_rights_requests WHERE request_key=?""",
         (request_key,),
     ).fetchone()
     if owner is None:
@@ -32,10 +32,22 @@ def external_review_status(db, request_key: str) -> dict | None:
            WHERE request_key=?""", (request_key,),
     ).fetchall()
     by_key = {row["system_key"]: row for row in rows}
+    shared = db.execute(
+        """SELECT COUNT(*) FROM invitations
+           WHERE (candidate_id=? OR employer_id=?) AND contact_shared=1""",
+        (owner["user_id"], owner["user_id"]),
+    ).fetchone()[0]
+    # A previously marked "not applicable" becomes stale if a contact was
+    # subsequently disclosed. Never allow the old attestation to authorize closure.
     checks = [{
         "system_key": key,
         "label": label,
-        "status": by_key[key]["status"] if key in by_key else "not_reviewed",
+        "status": (
+            "followup_required"
+            if key == "third_party_recipients" and shared
+               and key in by_key and by_key[key]["status"] == "not_applicable"
+            else by_key[key]["status"] if key in by_key else "not_reviewed"
+        ),
         "reviewed_at": by_key[key]["reviewed_at"] if key in by_key else None,
     } for key, label in SYSTEMS]
     return {
