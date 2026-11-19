@@ -58,7 +58,8 @@ def test_candidate_request_blocks_new_activity_but_preserves_access(tmp_path: Pa
         employer_id = register(employer, "employer", "employer@example.invalid")
         vacancy_id = create_vacancy_and_resume(app, employer_id, candidate_id)
 
-        assert not restriction_is_active(_readonly_connection(app), candidate_id)
+        with database(app.state.db_path) as db:
+            assert not restriction_is_active(db, candidate_id)
         key = request_restriction(candidate, "stop_processing")
         assert key
         assert candidate.get("/api/me").status_code == 200
@@ -68,7 +69,10 @@ def test_candidate_request_blocks_new_activity_but_preserves_access(tmp_path: Pa
         assert "no-store" in export.headers.get("cache-control", "")
         assert candidate.get("/api/candidate/jobs").status_code == 409
         assert candidate.get("/api/candidate/alternative-jobs").status_code == 409
-        assert candidate.put("/api/candidate/profile", headers=XHR, json={}).status_code == 409
+        assert candidate.put("/api/candidate/profile", headers=XHR, json={
+            "profession": "Кладовщик", "city": "Москва",
+            "salary_min": 50000,
+        }).status_code == 409
         assert candidate.post(
             "/api/candidate/applications", headers=XHR,
             json={"vacancy_id": vacancy_id},
@@ -131,10 +135,3 @@ def test_employer_request_hides_public_pages_and_blocks_new_activity(tmp_path: P
             assert db.execute("SELECT COUNT(*) FROM users WHERE id=?", (employer_id,)).fetchone()[0] == 1
             assert db.execute("SELECT COUNT(*) FROM vacancies WHERE id=?", (vacancy_id,)).fetchone()[0] == 1
 
-
-def _readonly_connection(app):
-    """Minimal context-free helper used only for the initial status lookup."""
-    import sqlite3
-    db = sqlite3.connect(app.state.db_path)
-    db.row_factory = sqlite3.Row
-    return db
