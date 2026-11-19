@@ -118,6 +118,13 @@ def admin_change_status(
             raise ValueError("Provide a categorical reason for closure")
         if next_status == "completed" and closure_reason != "fulfilled":
             raise ValueError("A completed request must be fulfilled")
+        if next_status == "completed" and current["kind"] in {"deletion", "stop_processing"}:
+            from .privacy_disposal import manual_completion_allowed
+            if not manual_completion_allowed(db, request_key):
+                raise ValueError(
+                    "Deletion and processing-cessation requests require an "
+                    "audited manual checklist before marking them fulfilled"
+                )
         if next_status == "declined" and closure_reason == "fulfilled":
             raise ValueError("A fulfilled request must not be marked declined")
     elif closure_reason is not None:
