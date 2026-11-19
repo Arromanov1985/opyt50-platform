@@ -111,6 +111,20 @@ def test_admin_preflight_and_checkpoint_gate_fulfillment(tmp_path):
         saved = client.post(checklist_url, headers=XHR, json=checked)
         assert saved.status_code == 200
         assert saved.json()["review"]["ready_for_manual_closure"] is True
+        # A newly queued email alters the privacy footprint after signoff.
+        with database(app.state.db_path) as db:
+            db.execute(
+                "INSERT INTO email_outbox(to_email,event,subject,body) VALUES(?,?,?,?)",
+                ("review-candidate@example.invalid", "service", "Тест", "Проверка"),
+            )
+        stale = client.get(checklist_url).json()["review"]
+        assert stale["counts_changed_since_review"] is True
+        assert stale["ready_for_manual_closure"] is False
+        assert client.post(status_url, headers=XHR, json=final).status_code == 409
+        saved = client.post(checklist_url, headers=XHR, json=checked)
+        assert saved.status_code == 200
+        assert saved.json()["review"]["counts_changed_since_review"] is False
+        assert saved.json()["review"]["ready_for_manual_closure"] is True
         closed = client.post(status_url, headers=XHR, json=final)
         assert closed.status_code == 200
         assert closed.json()["automatic_fulfillment"] is False
@@ -124,7 +138,7 @@ def test_admin_preflight_and_checkpoint_gate_fulfillment(tmp_path):
                 "SELECT checks_bits FROM privacy_disposal_review_actions WHERE request_key=?",
                 (key,),
             ).fetchall()
-            assert [r["checks_bits"] for r in trail] == ["1111110", "1111111"]
+            assert [r["checks_bits"] for r in trail] == ["1111110", "1111111", "1111111"]
             assert review_state(db, key)["ready_for_manual_closure"] is True
 
 
