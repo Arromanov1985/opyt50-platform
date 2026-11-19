@@ -49,6 +49,7 @@ jobs:
           node --check app/static/vacancy-wizard.js
           node --check app/static/release09-home.js
           node --check app/static/journal.js
+          node --check app/static/community.js
           node --check app/static/release09-forms.js
           node --check app/static/release13-taxonomy.js
       - name: Browser dependencies
@@ -70,6 +71,18 @@ jobs:
         run: python tests/browser_editor_resilience_smoke.py
       - name: Browser taxonomy autocomplete smoke
         run: python tests/browser_taxonomy_smoke.py
+      - name: Browser professional community consent and messaging
+        env:
+          STAZHNO_COMMUNITY_REVIEW_DIR: community-review
+        run: python tests/browser_community_smoke.py
+      - name: Upload community visual review
+        if: always() && github.event_name == 'pull_request'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: stazhno-community-review
+          path: community-review/
+          if-no-files-found: warn
+          retention-days: 7
       - name: Browser security smoke
         run: python tests/browser_security_smoke.py
       - name: Capture PR visual review

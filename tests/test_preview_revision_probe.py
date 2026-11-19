@@ -2,6 +2,8 @@
 from email.message import Message
 from urllib.error import HTTPError
 
+import pytest
+
 from scripts import probe_timeweb_preview as probe
 
 
@@ -210,3 +212,65 @@ def test_search_metadata_probe_checks_both_resources_and_preview_noindex(monkeyp
     failed = probe.probe_public_search_metadata()
     assert failed["result"] == "unverified"
     assert failed["resources"]["/robots.txt"]["result"] == "mismatch"
+
+
+@pytest.mark.parametrize(
+    ("response_kind", "expected_result"),
+    [
+        ("current", "exact-match"),
+        ("stale", "mismatch"),
+        ("wrong-mime", "not-html"),
+        ("missing", "route-not-found"),
+    ],
+)
+def test_community_probe_requires_exact_public_shell_without_fetching_profiles(
+    monkeypatch, response_kind, expected_result
+):
+    from urllib.parse import urlsplit
+    from app.community_pages import community_page
+
+    current = community_page(mode="directory").body
+    requests = []
+
+    class CommunityOpener:
+        def open(self, request, timeout=12):
+            requests.append(request)
+            assert request.get_method() == "GET"
+            assert urlsplit(request.full_url).path == "/community"
+            assert request.get_header("Cookie") is None
+            assert request.get_header("Authorization") is None
+            if response_kind == "missing":
+                raise error(404)
+            if response_kind == "stale":
+                return FakeResponse(b"<html>Previous release</html>", "text/html")
+            mime = "application/json" if response_kind == "wrong-mime" else "text/html; charset=utf-8"
+            return FakeResponse(current, mime)
+
+    monkeypatch.setattr(probe, "build_opener", lambda *_args: CommunityOpener())
+    result = probe.probe_public_community_page()
+    assert result["result"] == expected_result
+    assert len(requests) == 1
+    if expected_result == "exact-match":
+        assert result["expected_sha256"] == result["observed_sha256"]
+
+
+@pytest.mark.parametrize("route", probe.COMMUNITY_PRIVATE_ROUTES.values())
+def test_private_community_probe_never_reads_response_content_or_uses_session(monkeypatch, route):
+    requests = []
+
+    class PrivateResponse(FakeResponse):
+        def read(self, _n):
+            raise AssertionError("Private data must not be read even if an API is misconfigured")
+
+    class PrivateOpener:
+        def open(self, request, timeout=10):
+            requests.append(request)
+            assert request.get_method() == "GET"
+            assert request.get_header("Authorization") is None
+            assert request.get_header("Cookie") is None
+            return PrivateResponse()
+
+    monkeypatch.setattr(probe, "build_opener", lambda *_args: PrivateOpener())
+    assert probe.probe_private_route(route)["result"] == "unexpected-public-access"
+    assert len(requests) == 1
+    assert requests[0].full_url == probe.BASE + route

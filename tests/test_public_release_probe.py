@@ -53,23 +53,36 @@ def test_release_probe_never_calls_mutating_method(monkeypatch, status, allow, c
 
 
 @pytest.mark.parametrize(
-    ("backend_ok", "journal_ok", "search_ok", "expected_evidence"),
+    (
+        "backend_ok", "journal_ok", "search_ok", "community_page_result",
+        "community_api_result", "community_asset_result", "expected_evidence",
+    ),
     [
-        (True, True, True, "frontend-and-backend-match"),
-        (False, True, True, "backend-version-unverified"),
-        (True, False, True, "journal-version-unverified"),
-        (True, True, False, "search-metadata-unverified"),
+        (True, True, True, "exact-match", "present-and-protected", "exact-match", "frontend-and-backend-match"),
+        (False, True, True, "exact-match", "present-and-protected", "exact-match", "backend-version-unverified"),
+        (True, False, True, "exact-match", "present-and-protected", "exact-match", "journal-version-unverified"),
+        (True, True, False, "exact-match", "present-and-protected", "exact-match", "search-metadata-unverified"),
+        (True, True, True, "mismatch", "present-and-protected", "exact-match", "community-version-unverified"),
+        (True, True, True, "route-not-found", "present-and-protected", "exact-match", "community-version-unverified"),
+        (True, True, True, "exact-match", "route-not-found", "exact-match", "community-version-unverified"),
+        (True, True, True, "exact-match", "unexpected-public-access", "exact-match", "community-version-unverified"),
+        (True, True, True, "exact-match", "possibly-preview-auth-gate", "exact-match", "community-version-unverified"),
+        (True, True, True, "exact-match", "present-and-protected", "mismatch", "frontend-version-mismatch"),
+        (True, True, True, "exact-match", "present-and-protected", "http-error", "unverified"),
     ],
 )
 def test_release_report_distinguishes_frontend_parity_from_backend_parity(
-    monkeypatch, tmp_path, backend_ok, journal_ok, search_ok, expected_evidence
+    monkeypatch, tmp_path, backend_ok, journal_ok, search_ok, community_page_result,
+    community_api_result, community_asset_result, expected_evidence,
 ):
     monkeypatch.setattr(probe, "REPORT", tmp_path / "release-report.json")
     monkeypatch.setattr(probe.socket, "getaddrinfo", lambda *_args, **_kwargs: [(0,)])
     monkeypatch.setattr(probe, "probe", lambda path: {"status": 200, "result": "reachable"})
     monkeypatch.setattr(
         probe, "probe_asset",
-        lambda _path, _source: {"status": 200, "result": "exact-match"},
+        lambda _path, source: {
+            "result": community_asset_result if source.name in probe.COMMUNITY_ASSETS else "exact-match",
+        },
     )
     monkeypatch.setattr(
         probe, "probe_index_revisions",
@@ -94,6 +107,14 @@ def test_release_report_distinguishes_frontend_parity_from_backend_parity(
         probe, "probe_public_search_metadata",
         lambda: {"result": "exact-match" if search_ok else "unverified", "resources": {}},
     )
+    monkeypatch.setattr(
+        probe, "probe_public_community_page",
+        lambda: {"result": community_page_result},
+    )
+    monkeypatch.setattr(
+        probe, "probe_private_route",
+        lambda _route: {"result": community_api_result},
+    )
     assert probe.main() == 0
     saved = json.loads(probe.REPORT.read_text(encoding="utf-8"))
     assert saved["release_evidence"] == expected_evidence
@@ -101,3 +122,33 @@ def test_release_report_distinguishes_frontend_parity_from_backend_parity(
     assert len(saved["backend_routes"]) == len(probe.BACKEND_ROUTE_CAPABILITIES)
     assert saved["journal_pages"]["result"] == ("exact-match" if journal_ok else "unverified")
     assert saved["search_metadata"]["result"] == ("exact-match" if search_ok else "unverified")
+    assert saved["community_page"]["result"] == community_page_result
+    assert len(saved["community_api"]) == len(probe.COMMUNITY_PRIVATE_ROUTES)
+    assert {"community.js", "community.css"} <= saved["deployed_assets"].keys()
+
+
+@pytest.mark.parametrize("route", probe.COMMUNITY_PRIVATE_ROUTES.values())
+def test_community_private_routes_deny_anonymous_read(tmp_path, route):
+    app = create_app(str(tmp_path / "test-community-release.db"))
+    with TestClient(app) as client:
+        response = client.get(route)
+    assert response.status_code == 401
+    assert response.headers["content-type"].startswith("application/json")
+
+
+def test_release_probe_does_not_attempt_community_reads_after_dns_failure(monkeypatch, tmp_path):
+    monkeypatch.setattr(probe, "REPORT", tmp_path / "release-report.json")
+
+    def unavailable_dns(*_args, **_kwargs):
+        raise OSError("DNS unavailable")
+
+    def unexpected_request(*_args, **_kwargs):
+        raise AssertionError("DNS failure must not trigger HTTP requests")
+
+    monkeypatch.setattr(probe.socket, "getaddrinfo", unavailable_dns)
+    monkeypatch.setattr(probe, "build_opener", unexpected_request)
+    assert probe.main() == 0
+    report = json.loads(probe.REPORT.read_text(encoding="utf-8"))
+    assert report["release_evidence"] == "unverified"
+    assert report["community_page"]["result"] == "not-tested-dns-failure"
+    assert all(item["result"] == "not-tested-dns-failure" for item in report["community_api"].values())

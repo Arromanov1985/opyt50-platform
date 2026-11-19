@@ -1195,7 +1195,7 @@ function tabsMarkup(items, heading, subtitle) {
     <span class="section-kicker dashboard-menu-kicker">${esc(heading)}</span>
     <label class="dashboard-mobile-switch"><span>Раздел кабинета</span><select data-dashboard-tab-select aria-label="Раздел личного кабинета">${items.map(t => `<option value="${esc(t.id)}" ${state.tab === t.id ? 'selected' : ''} data-base-label="${esc(t.label)}">${esc(t.label)}${actionCountForTab(t.id) ? ' · '+actionCountForTab(t.id) : ''}</option>`).join('')}</select></label>
     <nav class="dashboard-tabs" aria-label="Разделы личного кабинета">${items.map(t => `<button type="button" data-tab="${esc(t.id)}" class="${state.tab === t.id ? 'active' : ''}"><span class="dashboard-tab-icon" aria-hidden="true">${icons[t.id]||'•'}</span><span>${esc(t.label)}</span><span class="dashboard-action-count" data-action-count-for="${esc(t.id)}" ${actionCountForTab(t.id) ? '' : 'hidden'} aria-label="Требует действия: ${actionCountForTab(t.id)}">${actionCountForTab(t.id) || ''}</span></button>`).join('')}</nav>
-    <div class="dashboard-side-note"><span>Приватность</span><small>Контакты открываются только в сценарии знакомства.</small></div>
+    <div class="dashboard-side-note"><span>Профессиональное сообщество</span><small><a href="/community">Участники и обмен опытом</a></small><small><a href="/community/connections">Мои профессиональные связи</a></small>${state.user?.role === 'candidate' ? '<small><a href="/community/profile">Мой публичный профиль</a></small>' : ''}</div><div class="dashboard-side-note"><span>Приватность</span><small>Контакты открываются только в сценарии знакомства.</small></div>
   </aside>`;
 }
 function candidateProfileHealth(profile = {}) {
@@ -2662,7 +2662,7 @@ function adminSecurityEventStat(label, value) {
 }
 async function renderAdmin() {
   $('#account-content').innerHTML = `<div class="admin-dashboard-stack">
-    <section class="panel"><h3>Панель управления</h3><p class="muted">Статистика работы MVP, без раскрытия персональных данных.</p><div class="stat-grid" id="admin-stats"><div class="loading">Загрузка...</div></div></section>
+    <section class="panel"><h3>Профессиональное сообщество</h3><p class="muted">Проверяйте новые профили перед публикацией и рассматривайте жалобы участников.</p><a class="btn btn-primary" href="/community/moderation">Модерация профилей и жалоб →</a></section><section class="panel"><h3>Панель управления</h3><p class="muted">Статистика работы MVP, без раскрытия персональных данных.</p><div class="stat-grid" id="admin-stats"><div class="loading">Загрузка...</div></div></section>
     <section class="panel">
       <span class="section-kicker">ПРИВЛЕЧЕНИЕ АУДИТОРИИ</span>
       <h3>Журнал и регистрации — 30 дней</h3>

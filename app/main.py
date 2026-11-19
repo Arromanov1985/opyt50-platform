@@ -2731,6 +2731,10 @@ def create_app(db_path: str | None = None) -> FastAPI:
     install_routes(app)
     install_journal_routes(app)
     install_employer_directory(app)
+    from .community import install_community_routes
+    from .community_pages import install_community_pages
+    install_community_routes(app)
+    install_community_pages(app)
     return app
 
 
