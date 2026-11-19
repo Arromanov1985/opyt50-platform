@@ -18,8 +18,8 @@ LEGAL_DRAFT_ROUTES = {
 
 
 def install_legal_draft_routes(app: FastAPI) -> None:
-    for path, filename in LEGAL_DRAFT_ROUTES.items():
-        def page(filename=filename):
+    def handler_for(filename: str):
+        def page():
             return FileResponse(
                 STATIC / filename,
                 media_type="text/html; charset=utf-8",
@@ -28,4 +28,7 @@ def install_legal_draft_routes(app: FastAPI) -> None:
                     "X-Robots-Tag": "noindex, nofollow",
                 },
             )
-        app.add_api_route(path, page, methods=["GET"], include_in_schema=False)
+        return page
+
+    for path, filename in LEGAL_DRAFT_ROUTES.items():
+        app.add_api_route(path, handler_for(filename), methods=["GET"], include_in_schema=False)
