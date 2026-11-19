@@ -156,16 +156,22 @@ def update_review(db, request_key: str, admin_id: int, checks: dict) -> dict | N
     if set(checks) != set(CHECKS) or any(type(value) is not bool for value in checks.values()):
         raise ValueError("All checklist flags must be explicit booleans")
     now = datetime.now(timezone.utc).isoformat()
-    columns = ",".join(CHECKS)
     values = [int(checks[key]) for key in CHECKS]
-    placeholders = ",".join("?" for _ in CHECKS)
-    updates = ",".join(f"{key}=excluded.{key}" for key in CHECKS)
     db.execute(
-        f"""INSERT INTO privacy_disposal_reviews
-            (request_key,{columns},reviewed_at,reviewed_by)
-            VALUES(?,{placeholders},?,?)
-            ON CONFLICT(request_key) DO UPDATE SET
-            {updates},reviewed_at=excluded.reviewed_at,
+        """INSERT INTO privacy_disposal_reviews
+           (request_key,identity_reviewed,lawful_basis_reviewed,retention_reviewed,
+            linked_data_reviewed,recipients_reviewed,backups_and_processors_reviewed,
+            manual_action_verified,reviewed_at,reviewed_by)
+           VALUES(?,?,?,?,?,?,?,?,?,?)
+           ON CONFLICT(request_key) DO UPDATE SET
+            identity_reviewed=excluded.identity_reviewed,
+            lawful_basis_reviewed=excluded.lawful_basis_reviewed,
+            retention_reviewed=excluded.retention_reviewed,
+            linked_data_reviewed=excluded.linked_data_reviewed,
+            recipients_reviewed=excluded.recipients_reviewed,
+            backups_and_processors_reviewed=excluded.backups_and_processors_reviewed,
+            manual_action_verified=excluded.manual_action_verified,
+            reviewed_at=excluded.reviewed_at,
             reviewed_by=excluded.reviewed_by""",
         (request_key, *values, now, admin_id),
     )
