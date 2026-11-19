@@ -827,10 +827,12 @@
     });
     // Opening a shared vacancy never submits an application. A guest must
     // still choose to sign in and click the explicit application action.
-    const linkedVacancyId = Number(new URLSearchParams(location.search).get('vacancy'));
-    if (Number.isSafeInteger(linkedVacancyId) && linkedVacancyId > 0) {
-      showJobDetails(linkedVacancyId).catch(error => toast(error.message, true));
-    }
+    document.addEventListener('stazhno:ready', () => {
+      const linkedVacancyId = Number(new URLSearchParams(location.search).get('vacancy'));
+      if (Number.isSafeInteger(linkedVacancyId) && linkedVacancyId > 0) {
+        showJobDetails(linkedVacancyId).catch(error => toast(error.message, true));
+      }
+    }, {once:true});
 
     const pendingEmployerReviewRequests = new Set();
     const pendingCandidateWithdrawals = new Set();
