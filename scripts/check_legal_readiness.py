@@ -25,7 +25,16 @@ def verify(root: Path) -> list[tuple[str, bool, str]]:
         if not path.is_file():
             return False
         text = path.read_text(encoding="utf-8").casefold()
-        return all(token.casefold() in text for token in required)
+        forbidden = (
+            "не утверждено", "не вступил", "не вступили", "не публиковать",
+            "не применяется", "draft", "проект —", "[подтвердить",
+            "[email", "[адрес", "[рабочий", "[огрнип", "[инн",
+            "content=\"noindex", "проверить по егрип",
+        )
+        return (
+            all(token.casefold() in text for token in required)
+            and not any(item in text for item in forbidden)
+        )
 
     # These checks intentionally do not accept guessed placeholder identities:
     # they are only structural checks; independent human review is mandatory.
@@ -46,10 +55,13 @@ def verify(root: Path) -> list[tuple[str, bool, str]]:
         ("Terms link in homepage", 'href="/terms"' in page,
          "Link public site terms in the footer and registration form."),
         ("Legal information near registration", 'id="auth-legal-notice"' in page and
-         page.split('id="auth-legal-notice"', 1)[-1].split("</", 1)[0] != "",
-         "Expose the operator, purpose and approved lawful basis/consents next to registration."),
+         not any(item in page.casefold() for item in (
+             "документы пока не вступили в силу", "юридические документы: проект",
+             "макет юридической приёмки",
+         )),
+         "Replace draft notices with approved basis/consents and evidentiary recording."),
         ("Visible operator identification", 'id="legal-operator-info"' in page and
-         "mailto:" in page,
+         "mailto:" in page and "ожидают подтверждения" not in page.casefold(),
          "Show the verified site owner's real name, address and legal contact email."),
         ("Data-subject request channel", 'id="privacy-request-contact"' in page,
          "Explain and publish a reachable channel for correction, access and erasure requests."),
