@@ -1263,8 +1263,53 @@ function accountSecuritySessionMarkup(item) {
     ${item.current ? '<span class="status success">Текущая</span>' : `<button type="button" class="btn btn-outline btn-small" data-action="revoke-session" data-session-id="${esc(item.id)}">Завершить</button>`}
   </div>`;
 }
+const rightsKindLabels = Object.freeze({
+  access: 'Получить сведения об обработке',
+  correction: 'Исправить неточные данные',
+  deletion: 'Запросить удаление данных',
+  stop_processing: 'Запросить прекращение обработки'
+});
+const rightsStatusLabels = Object.freeze({
+  received: 'Получено',
+  in_review: 'Рассматривается',
+  completed: 'Решение принято',
+  declined: 'Отказ после рассмотрения'
+});
+function rightsDate(value) { return esc(String(value || '').slice(0, 10)); }
+function accountPrivacyRightsMarkup(requests, available) {
+  const rows = Array.isArray(requests) ? requests.slice(0, 50) : [];
+  const options = Object.entries(rightsKindLabels).map(([value,label]) =>
+    '<option value="' + esc(value) + '">' + esc(label) + '</option>'
+  ).join('');
+  const history = !available ? '<p class="muted">Не удалось загрузить историю запросов.</p>' :
+    rows.length ? rows.map(item =>
+      '<div class="privacy-rights-record"><span><strong>' +
+      esc(rightsKindLabels[item.kind] || 'Обращение') +
+      '</strong><small>От ' + rightsDate(item.submitted_at) +
+      ' · № ' + esc(String(item.request_key || '').slice(0, 8)) +
+      '</small></span><span class="status">' +
+      esc(rightsStatusLabels[item.status] || 'Обрабатывается') +
+      '</span></div>'
+    ).join('') : '<p class="muted">Обращений пока нет.</p>';
+  return '<section class="panel account-privacy-rights">' +
+    '<span class="section-kicker">МОИ ПЕРСОНАЛЬНЫЕ ДАННЫЕ</span>' +
+    '<h3>Обращение к оператору</h3>' +
+    '<p class="muted">Можно запросить сведения об обработке, исправление, удаление или прекращение обработки данных. Заявка сохраняется в кабинете. Оператор рассматривает её вручную с учётом закона — отправка запроса не удаляет аккаунт автоматически.</p>' +
+    '<p class="muted">Если не можете войти, используйте контакт из <a href="/privacy" target="_blank" rel="noopener">Политики персональных данных</a>. Пока там тестовые реквизиты, раздел предназначен только для проверки интерфейса.</p>' +
+    '<form id="privacy-rights-request-form" class="account-security-form">' +
+      '<div class="field"><label for="privacy-rights-kind">Какое действие требуется?</label>' +
+      '<select id="privacy-rights-kind" name="kind" required><option value="">Выберите вид обращения</option>' +
+      options + '</select></div>' +
+      '<p class="auth-message" id="privacy-rights-message" role="status" aria-live="polite"></p>' +
+      '<button type="submit" class="btn btn-outline">Отправить запрос оператору</button>' +
+    '</form><h4>История обращений</h4>' +
+    '<div id="privacy-rights-history" aria-live="polite">' + history + '</div></section>';
+}
 async function renderAccountSecurity(target) {
-  const data = await api('/api/account/security');
+  const [data, privacyRequests] = await Promise.all([
+    api('/api/account/security'),
+    api('/api/account/privacy-requests').catch(() => null)
+  ]);
   const events = Array.isArray(data.events) ? data.events : [];
   const sessions = Array.isArray(data.sessions) ? data.sessions : [];
   target.innerHTML = `<div class="account-security-stack">
@@ -1297,6 +1342,7 @@ async function renderAccountSecurity(target) {
         <button type="submit" class="btn btn-primary">Сменить пароль и завершить старые сессии →</button>
       </form>
     </section>
+    ${accountPrivacyRightsMarkup(privacyRequests?.requests, Boolean(privacyRequests))}
     <section class="panel account-security-events">
       <span class="section-kicker">ЖУРНАЛ</span>
       <h3>Последние события безопасности</h3>
