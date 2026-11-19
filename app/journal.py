@@ -106,6 +106,11 @@ def journal_index(articles: list[dict] | None = None) -> HTMLResponse:
         '<p>Попробуйте другую тему или уберите слова из поиска.</p>'
         '<button type="button" id="jr-reset-search">Показать все материалы</button></div>'
         '</section>'
+        '<aside class="jr-path-promo" aria-labelledby="jr-path-promo-heading">'
+        '<span class="jr-kicker">НЕ ЗНАЕТЕ, С ЧЕГО НАЧАТЬ?</span>'
+        '<h2 id="jr-path-promo-heading">Выберите цель — материалы уже собраны по шагам</h2>'
+        '<p>Поиск работы, новые навыки или обмен опытом. Начните без регистрации.</p>'
+        '<a class="jr-primary" href="/journal/paths">Посмотреть маршруты →</a></aside>'
         '<aside class="jr-bottom"><h2>Готовы использовать свой опыт?</h2>'
         '<p>Посмотрите вакансии или начните с профессионального профиля. Контакты защищены.</p>'
         '<a class="jr-primary" href="/#jobs" data-growth-action="jobs_click">Посмотреть вакансии →</a>'
@@ -155,7 +160,8 @@ def journal_article(slug: str, articles: list[dict] | None = None) -> HTMLRespon
         '<section class="jr-related" aria-label="Другие полезные материалы">'
         '<h2>Читайте также</h2>'
         f'<div class="jr-grid">{related_cards}</div></section>'
-        '<p class="jr-back"><a href="/journal">← Все статьи журнала</a></p>'
+        '<p class="jr-back"><a href="/journal/paths">Маршруты чтения</a> · '
+        '<a href="/journal">← Все статьи журнала</a></p>'
     )
     return HTMLResponse(_layout(article["title"], article["description"],
                                "/journal/" + slug, article_body),
@@ -236,6 +242,16 @@ def install_journal_routes(app: FastAPI) -> None:
     app.add_api_route("/journal", index_http, methods=["GET"], include_in_schema=False)
     app.add_api_route("/api/public/journal/highlights", journal_highlights, methods=["GET"], include_in_schema=False)
     app.add_api_route("/api/public/journal/manifest", journal_manifest, methods=["GET"], include_in_schema=False)
+    from .journal_paths import paths_index, path_detail
+
+    def paths_http(request: Request):
+        return paths_index(_catalog(request))
+
+    def path_detail_http(slug: str, request: Request):
+        return path_detail(slug, _catalog(request))
+
+    app.add_api_route("/journal/paths", paths_http, methods=["GET"], include_in_schema=False)
+    app.add_api_route("/journal/paths/{slug}", path_detail_http, methods=["GET"], include_in_schema=False)
     app.add_api_route("/journal/{slug}", article_http, methods=["GET"], include_in_schema=False)
     from .journal_cms import install_journal_admin_routes
     install_journal_admin_routes(app)
