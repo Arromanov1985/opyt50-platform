@@ -1028,6 +1028,13 @@ def install_routes(app) -> None:
             raise HTTPException(404, "Вакансия не найдена или закрыта")
         return {"job": dict(row)}
 
+    @app.get("/vacancies/{job_id}", include_in_schema=False)
+    def public_vacancy_page(job_id: int, db: sqlite3.Connection = Depends(get_connection)):
+        # Reuse the existing moderated, active-only public detail query.
+        # In particular, do not expose closed or unapproved vacancies.
+        from .vacancy_pages import vacancy_page
+        return vacancy_page(job_detail(job_id, db)["job"])
+
     @app.get("/api/candidate/favorites")
     def favorites(user: dict = Depends(active_user), db: sqlite3.Connection = Depends(get_connection)):
         allowed(user, "candidate")

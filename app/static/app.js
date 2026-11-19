@@ -1536,6 +1536,16 @@ function profileMarkup(profile = {}, user = {}) {
       <p class="form-note">* Поля, необходимые для поиска вакансий. Ваши контакты не передаются работодателю автоматически.</p>
       <button class="btn btn-primary btn-lg" type="submit">Сохранить профиль</button>
     </form>
+    <details class="profile-preapply-guide">
+      <summary>Проверьте профиль перед первым откликом</summary>
+      <ol>
+        <li>Профессия и город соответствуют тому, что вы ищете сейчас.</li>
+        <li>Навыки и достижения описывают конкретные задачи, а не общие качества.</li>
+        <li>В свободных описаниях нет телефона, адреса и личной почты.</li>
+      </ol>
+      <p>Отклик отправляет профессиональный профиль без открытия личных контактов. Для знакомства требуется отдельное согласие.</p>
+      <a href="/journal/kak-pokazat-opyt-v-profile">Как лучше рассказать о своём опыте →</a>
+    </details>
     <section class="profile-public-preview" aria-label="Предпросмотр профиля для работодателя">
       <div class="split-header"><div><span class="section-kicker">ЧТО УВИДИТ РАБОТОДАТЕЛЬ</span><h4>${esc(profile.profession || 'Профессия пока не указана')}</h4></div><span class="privacy-chip">Контакты скрыты</span></div>
       <div class="profile-preview-meta"><span>⌖ ${esc(profile.city || 'Город не указан')}</span><span>от ${money(profile.salary_min || 0)}</span><span>${esc(profile.schedule || 'График не указан')}</span></div>
@@ -2310,7 +2320,7 @@ function jobEmployerMarkup(x, stats = {total: 0, interested: 0, attention: 0, re
     <div class="vacancy-pipeline-mini"><span><strong>${stats.total}</strong><small>Отклики</small></span><span><strong>${stats.outcome}</strong><small>Ждут итога</small></span><span><strong>${stats.hired}</strong><small>Выбраны</small></span><span><strong>${stats.rejected}</strong><small>Не договорились</small></span></div>
     <div class="vacancy-quality ${qualityClass}"><div class="vacancy-quality-head"><span>Качество объявления</span><strong>${quality.percent}%</strong></div><div class="vacancy-quality-track"><span style="width:${quality.percent}%"></span></div>${quality.suggestions.length?`<p>${esc(quality.suggestions.slice(0,2).join(' · '))}</p>`:'<p>Основные условия заполнены хорошо.</p>'}</div>
     <div class="employer-vacancy-primary">${needsOutcome ? `<button type="button" class="btn btn-primary" data-action="open-employer-invitations" data-filter="introduced" data-vacancy-id="${x.id}">Зафиксировать итог →</button>` : hasReadyIntroduction ? `<button type="button" class="btn btn-primary" data-action="open-employer-invitations" data-filter="action" data-vacancy-id="${x.id}">Продолжить знакомство →</button>` : needsAttention ? `<button type="button" class="btn btn-primary" data-action="vacancy-applications-primary" data-id="${x.id}">Разобрать отклики →</button>` : `<button class="btn btn-dark" data-action="matches-primary" data-id="${x.id}" ${x.status === 'closed' ? 'disabled':''}>Подобрать кандидатов →</button>`}</div>
-    <div class="item-actions employer-vacancy-secondary"><button type="button" class="btn btn-outline btn-tiny" data-action="vacancy-applications" data-id="${x.id}">Отклики</button><button class="btn btn-outline btn-tiny" data-action="matches" data-id="${x.id}" ${x.status === 'closed' ? 'disabled':''}>Подбор</button><button class="btn btn-outline btn-tiny" data-action="edit-job" data-id="${x.id}">Редактировать</button><button type="button" class="btn btn-outline btn-tiny" data-action="vacancy-history" data-id="${Number(x.id)}" aria-expanded="false" aria-controls="employer-vacancy-history-${Number(x.id)}">История условий</button><button class="btn btn-outline btn-tiny" data-action="job-status" data-id="${x.id}" data-status="${x.status === 'open' ? 'closed' : 'open'}">${x.status === 'open' ? 'Закрыть' : 'Открыть'}</button></div>
+    <div class="item-actions employer-vacancy-secondary"><button type="button" class="btn btn-outline btn-tiny" data-action="vacancy-applications" data-id="${x.id}">Отклики</button><button class="btn btn-outline btn-tiny" data-action="matches" data-id="${x.id}" ${x.status === 'closed' ? 'disabled':''}>Подбор</button><button class="btn btn-outline btn-tiny" data-action="edit-job" data-id="${x.id}">Редактировать</button>${x.status==='open' && (x.moderation_status||'approved')==='approved' ? `<a class="btn btn-outline btn-tiny" href="/vacancies/${Number(x.id)}">Ссылка на вакансию</a>` : ''}<button type="button" class="btn btn-outline btn-tiny" data-action="vacancy-history" data-id="${Number(x.id)}" aria-expanded="false" aria-controls="employer-vacancy-history-${Number(x.id)}">История условий</button><button class="btn btn-outline btn-tiny" data-action="job-status" data-id="${x.id}" data-status="${x.status === 'open' ? 'closed' : 'open'}">${x.status === 'open' ? 'Закрыть' : 'Открыть'}</button></div>
     <section class="employer-vacancy-history" id="employer-vacancy-history-${Number(x.id)}" aria-label="История изменений условий вакансии" hidden></section>
   </article>`;
 }
@@ -3626,6 +3636,9 @@ async function start() {
   await reloadUser();
   await loadPublicJobs();
   if (state.user) { state.tab = 'overview'; await showDashboard(); }
+  // Feature modules may now open deep-linked public content with correct
+  // authenticated state, without creating applications on behalf of users.
+  document.dispatchEvent(new Event('stazhno:ready'));
 }
 // Refresh when a signed-in user returns, never by background polling.
 document.addEventListener('visibilitychange', () => {
