@@ -7,6 +7,8 @@ Only fixed, owner-filtered SQL and aggregate counts leave the administrative API
 from __future__ import annotations
 
 from datetime import datetime, timezone
+import hashlib
+import json
 import secrets
 
 DISPOSITION_KINDS = frozenset(("deletion", "stop_processing"))
@@ -116,6 +118,18 @@ def impact_preview(db, request_key: str) -> dict | None:
     }
 
 
+def _impact_digest(preview: dict) -> str:
+    """No personal data: fingerprint of aggregate section counts and role."""
+    payload = {
+        "kind": preview["kind"],
+        "role": preview["account_role"],
+        "counts": preview["counts"],
+    }
+    return hashlib.sha256(
+        json.dumps(payload, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    ).hexdigest()
+
+
 def review_state(db, request_key: str) -> dict | None:
     request = _request(db, request_key)
     if request is None:
@@ -126,20 +140,23 @@ def review_state(db, request_key: str) -> dict | None:
         """SELECT identity_reviewed,lawful_basis_reviewed,retention_reviewed,
                   linked_data_reviewed,recipients_reviewed,
                   backups_and_processors_reviewed,manual_action_verified,
-                  reviewed_at
+                  impact_digest,reviewed_at
            FROM privacy_disposal_reviews WHERE request_key=?""",
         (request_key,),
     ).fetchone()
     fields = {
         k: bool(row[k]) if row is not None else False for k in CHECKS
     }
+    current = impact_preview(db, request_key)
+    changed = row is not None and row["impact_digest"] != _impact_digest(current)
     return {
         "request_key": request_key,
         "kind": request["kind"],
         "status": request["status"],
         "checks": fields,
         "labels": REVIEW_LABELS,
-        "ready_for_manual_closure": all(fields.values()),
+        "counts_changed_since_review": bool(changed),
+        "ready_for_manual_closure": all(fields.values()) and not changed,
         "reviewed_at": row["reviewed_at"] if row is not None else None,
         "actual_deletion_performed_by_system": False,
     }
@@ -157,12 +174,13 @@ def update_review(db, request_key: str, admin_id: int, checks: dict) -> dict | N
         raise ValueError("All checklist flags must be explicit booleans")
     now = datetime.now(timezone.utc).isoformat()
     values = [int(checks[key]) for key in CHECKS]
+    digest = _impact_digest(impact_preview(db, request_key))
     db.execute(
         """INSERT INTO privacy_disposal_reviews
            (request_key,identity_reviewed,lawful_basis_reviewed,retention_reviewed,
             linked_data_reviewed,recipients_reviewed,backups_and_processors_reviewed,
-            manual_action_verified,reviewed_at,reviewed_by)
-           VALUES(?,?,?,?,?,?,?,?,?,?)
+            manual_action_verified,reviewed_at,reviewed_by,impact_digest)
+           VALUES(?,?,?,?,?,?,?,?,?,?,?)
            ON CONFLICT(request_key) DO UPDATE SET
             identity_reviewed=excluded.identity_reviewed,
             lawful_basis_reviewed=excluded.lawful_basis_reviewed,
@@ -172,16 +190,17 @@ def update_review(db, request_key: str, admin_id: int, checks: dict) -> dict | N
             backups_and_processors_reviewed=excluded.backups_and_processors_reviewed,
             manual_action_verified=excluded.manual_action_verified,
             reviewed_at=excluded.reviewed_at,
-            reviewed_by=excluded.reviewed_by""",
-        (request_key, *values, now, admin_id),
+            reviewed_by=excluded.reviewed_by,
+            impact_digest=excluded.impact_digest""",
+        (request_key, *values, now, admin_id, digest),
     )
     db.execute(
         """INSERT INTO privacy_disposal_review_actions
-           (event_key,request_key,reviewed_by,reviewed_at,checks_bits)
-           VALUES(?,?,?,?,?)""",
+           (event_key,request_key,reviewed_by,reviewed_at,checks_bits,impact_digest)
+           VALUES(?,?,?,?,?,?)""",
         (
             secrets.token_urlsafe(16), request_key, admin_id, now,
-            "".join("1" if checks[key] else "0" for key in CHECKS),
+            "".join("1" if checks[key] else "0" for key in CHECKS), digest,
         ),
     )
     return review_state(db, request_key)
