@@ -828,8 +828,13 @@
     // Opening a shared vacancy never submits an application. A guest must
     // still choose to sign in and click the explicit application action.
     document.addEventListener('stazhno:ready', () => {
-      const linkedVacancyId = Number(new URLSearchParams(location.search).get('vacancy'));
+      const url = new URL(location.href);
+      const linkedVacancyId = Number(url.searchParams.get('vacancy'));
       if (Number.isSafeInteger(linkedVacancyId) && linkedVacancyId > 0) {
+        // Consume the deep link once, preserving other query parameters.
+        // A refresh or subsequent login must not reopen a dismissed dialog.
+        url.searchParams.delete('vacancy');
+        history.replaceState(null, '', url.pathname + url.search + url.hash);
         showJobDetails(linkedVacancyId).catch(error => toast(error.message, true));
       }
     }, {once:true});
