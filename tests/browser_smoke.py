@@ -43,7 +43,7 @@ def run_browser(page):
     page.goto(URL + "/journal", wait_until="networkidle")
     expect(page.locator("#jr-article-grid .jr-card")).to_have_count(6)
     journal_search = page.locator("#jr-article-search")
-    journal_search.fill("собеседован")
+    journal_search.fill("подготовиться")
     expect(page.locator("#jr-article-grid .jr-card:visible")).to_have_count(1)
     expect(page.locator("#jr-results-count")).to_contain_text("1 из 6")
     page.locator("[data-jr-category-filter='Работодателям']").click()
