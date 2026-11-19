@@ -341,6 +341,19 @@ def test_postgres_disposal_impact_and_manual_gate_are_non_destructive(runtime_db
         assert update_review(
             db, "pg-disposal-request-001",4,checklist,
         )["ready_for_manual_closure"] is True
+        db.execute(
+            "INSERT INTO candidate_favorites(candidate_id,vacancy_id) VALUES(?,?)",
+            (1,3),
+        )
+        assert review_state(db, "pg-disposal-request-001")["counts_changed_since_review"]
+        with pytest.raises(ValueError, match="manual checklist"):
+            admin_change_status(
+                db,"pg-disposal-request-001",4,"completed",
+                manual_response_confirmed=True,closure_reason="fulfilled",
+            )
+        assert update_review(
+            db,"pg-disposal-request-001",4,checklist,
+        )["ready_for_manual_closure"] is True
         assert admin_change_status(
             db,"pg-disposal-request-001",4,"completed",
             manual_response_confirmed=True,closure_reason="fulfilled",
@@ -351,7 +364,7 @@ def test_postgres_disposal_impact_and_manual_gate_are_non_destructive(runtime_db
     with postgres_database(runtime_db) as db:
         assert db.execute(
             "SELECT COUNT(*) FROM privacy_disposal_review_actions"
-        ).fetchone()[0] == 1
+        ).fetchone()[0] == 2
         assert db.execute(
             "SELECT status FROM privacy_rights_requests WHERE request_key=?",
             ("pg-disposal-request-001",),
