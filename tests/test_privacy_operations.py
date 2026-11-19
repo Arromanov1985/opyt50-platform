@@ -86,6 +86,8 @@ def test_external_provider_review_requires_admin_and_manual_state(tmp_path):
         assert owner.post(prefix+"/not_real",headers=XHR,json={
             "status":"reviewed"}).status_code == 409
         assert owner.post(prefix+"/database_backups",headers=XHR,json={
+            "status":"not_applicable"}).status_code == 409
+        assert owner.post(prefix+"/database_backups",headers=XHR,json={
             "status":"unverified"}).status_code == 422
         assert owner.post(prefix+"/database_backups",json={
             "status":"reviewed"}).status_code == 403
@@ -139,3 +141,53 @@ def test_external_system_review_rejects_access_request(tmp_path):
             headers=XHR,json={"status":"reviewed"}
         ).status_code == 409
         app.dependency_overrides.clear()
+
+
+
+def test_recipient_not_applicable_becomes_stale_when_contacts_open(tmp_path):
+    from app.privacy_external import external_review_status, save_external_review
+
+    app=create_app(str(tmp_path / "stale-recipient.db"))
+    with TestClient(app) as candidate, TestClient(app) as employer:
+        candidate_id=create_candidate(candidate)
+        e=employer.post("/api/register",headers=XHR,json={
+            "email":"company@example.invalid", "name":"Тестовая компания",
+            "company_name":"Тестовая компания", "role":"employer",
+            "password":"StrongTestPassword2026!!",
+        })
+        assert e.status_code == 201, e.text
+        employer_id=e.json()["user"]["id"]
+        key=candidate.post("/api/account/privacy-requests", headers=XHR,
+            json={"kind":"deletion"}).json()["request"]["request_key"]
+        with database(app.state.db_path) as db:
+            admin_id=db.execute(
+                "INSERT INTO users(email,role,name,password_hash) VALUES(?,?,?,?)",
+                ("audit-admin@example.invalid","admin","Admin","testhash")
+            ).lastrowid
+            db.execute(
+                "UPDATE privacy_rights_requests SET status='in_review' WHERE request_key=?",
+                (key,),
+            )
+            state=save_external_review(db,key,admin_id,"third_party_recipients",
+                "not_applicable")
+            assert state["checks"][-1]["status"] == "not_applicable"
+            vacancy=db.execute(
+                """INSERT INTO vacancies(employer_id,title,city,salary_min,salary_max,skills)
+                   VALUES(?,?,?,?,?,?)""",
+                (employer_id,"Example Job","Москва",50000,90000,"Опыт")
+            ).lastrowid
+            db.execute(
+                """INSERT INTO invitations(vacancy_id,candidate_id,employer_id,
+                    price_rub,contact_shared) VALUES(?,?,?,?,1)""",
+                (vacancy,candidate_id,employer_id,0),
+            )
+            current=external_review_status(db,key)
+            assert current["checks"][-1]["status"] == "followup_required"
+            assert current["ready_for_manual_closure"] is False
+            try:
+                save_external_review(db,key,admin_id,"third_party_recipients",
+                    "not_applicable")
+            except ValueError as exc:
+                assert "contact disclosure" in str(exc)
+            else:
+                assert False, "Must not accept N/A for already disclosed contacts"
