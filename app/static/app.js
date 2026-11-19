@@ -2644,7 +2644,13 @@ function adminPrivacyRightsMarkup(requests, available) {
         '">Взять в работу</button></div>';
     }
     if (status === 'in_review') {
-      return header + '<div class="privacy-rights-admin-actions">' +
+      const disposal = item.kind === 'deletion' || item.kind === 'stop_processing';
+      const preflight = disposal ?
+        '<button type="button" class="btn btn-outline btn-small" ' +
+        'data-action="privacy-disposal-preview" data-rights-key="' + key +
+        '">Оценить последствия</button>' +
+        '<div class="privacy-disposal-preview" id="privacy-disposal-panel-' + key + '"></div>' : '';
+      return header + '<div class="privacy-rights-admin-actions">' + preflight +
         '<label>Результат ручной обработки<select data-rights-closure-reason="' + key + '">' +
         '<option value="fulfilled">Запрос выполнен</option>' +
         '<option value="retention_required">Ограничение по закону</option>' +
@@ -2657,6 +2663,56 @@ function adminPrivacyRightsMarkup(requests, available) {
     }
     return header + '</div>';
   }).join('');
+}
+const disposalCountLabels = Object.freeze({
+  active_sessions:'Активные сеансы',auth_tokens:'Сервисные токены',saved_devices:'Устройства',
+  legal_acceptances:'Подтверждения договоров',rights_requests:'Обращения',
+  security_events:'События безопасности',service_emails:'Сервисные письма',
+  delivery_links:'Связи почтовых заданий',
+  professional_profile:'Профессиональный профиль',resume:'Резюме',
+  qualifications:'Квалификации',applications:'Отклики',
+  application_events:'История откликов',favorite_vacancies:'Избранное',
+  invitations:'Приглашения',contacts_already_shared:'Ранее открытые контакты',
+  vacancy_update_receipts:'Уведомления об изменении вакансий',
+  reports_submitted:'Поданные жалобы',company_profile:'Карточка компании',
+  public_company_profile:'Открытый профиль компании',
+  published_vacancies:'Вакансии',open_vacancies:'Активные вакансии',
+  vacancy_drafts:'Черновики',candidate_applications_affected:'Отклики других кандидатов',
+  vacancy_updates:'Изменения вакансий',reports_about_employer:'Жалобы на компанию'
+});
+function disposalPreviewMarkup(impact, review) {
+  const counts = Object.entries(impact.counts || {});
+  const checks = review?.checks || {};
+  const labels = review?.labels || {};
+  const entries = Object.entries(labels);
+  return '<div class="privacy-disposal-report">' +
+    '<h4>Предварительная оценка — только чтение</h4>' +
+    '<p class="muted">Запрос на ' +
+    (impact.kind === 'deletion' ? 'удаление' : 'прекращение обработки') +
+    ': количество связанных записей, а не данные людей.</p>' +
+    '<div class="privacy-disposal-counts">' +
+    counts.filter(([,n]) => Number(n) > 0).map(([key,value]) =>
+      '<div><span>' + esc(disposalCountLabels[key] || key) +
+      '</span><strong>' + Number(value) + '</strong></div>'
+    ).join('') + '</div>' +
+    '<p class="muted">Неизменяемый отчёт: данные могли измениться после просмотра. Фактическое удаление и уведомление получателей не выполняются.</p>' +
+    '<ul class="privacy-disposal-risks">' +
+    (impact.risk_flags || []).map(r => '<li>' + esc(r) + '</li>').join('') +
+    '</ul><h4>Проверки оператора</h4>' +
+    '<p class="muted">Отметки — ручные заверения администратора; система не проверяет их истинность. Последний пункт отмечают ТОЛЬКО после действительного исполнения вне этого интерфейса.</p>' +
+    '<div class="privacy-disposal-checks">' +
+    entries.map(([key,label]) =>
+      '<label><input type="checkbox" data-disposal-check="' + esc(key) +
+      '"' + (checks[key] ? ' checked' : '') +
+      '> <span>' + esc(label) + '</span></label>'
+    ).join('') + '</div>' +
+    '<button type="button" class="btn btn-outline btn-small" data-action="privacy-disposal-save" ' +
+      'data-rights-key="' + esc(impact.request_key || '') +
+      '">Сохранить проверки</button>' +
+    '<p class="muted">' + (review?.ready_for_manual_closure ?
+      'Все этапы отмечены администратором. Перед закрытием проверьте фактический результат и ответ пользователю.' :
+      'Закрытие со статусом «выполнено» запрещено до заполнения всех этапов.') +
+    '</p></div>';
 }
 async function renderAdmin() {
   $('#account-content').innerHTML = `<div class="admin-dashboard-stack">
