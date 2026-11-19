@@ -1001,7 +1001,11 @@ def create_app(db_path: str | None = None) -> FastAPI:
     def register(data: Registration, request: Request, response: Response, db: sqlite3.Connection = Depends(get_connection)):
         # The sample IP identity is never sufficient for a public signup.
         # Unit tests may exercise the isolated in-memory/temporary DB with fake people.
-        live_runtime = production_runtime() and not os.getenv("PYTEST_CURRENT_TEST")
+        # CI may exercise a disposable database with fictional users, but
+        # a real OPYT50_ENV=production must never accept test bypass metadata.
+        explicit_production = os.getenv("OPYT50_ENV", "").strip().casefold() in {"prod", "production"}
+        isolated_test = bool(os.getenv("PYTEST_CURRENT_TEST")) and not explicit_production
+        live_runtime = production_runtime() and not isolated_test
         if live_runtime and not legal_approved():
             raise HTTPException(503, "Публичная регистрация закрыта до юридического утверждения документов")
         if legal_approved():
