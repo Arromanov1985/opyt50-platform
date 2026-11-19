@@ -199,6 +199,58 @@ def probe_backend_route(path, expected_method):
         return {"result": "connection-error", "type": type(error).__name__}
 
 
+
+def probe_public_journal_pages():
+    """Compare exact bytes of public editorial HTML with the checked-out code.
+
+    No accounts, cookies, contact fields, POSTs or external services.
+    """
+    from app.journal import ARTICLES, journal_index, journal_article
+
+    expected_pages = {"/journal": journal_index().body}
+    expected_pages.update(
+        {"/journal/" + article["slug"]: journal_article(article["slug"]).body}
+        for article in ARTICLES
+    )
+    # update() receives one mapping at a time above to keep source explicit.
+    results = {}
+    for path, expected_body in expected_pages.items():
+        fingerprint = hashlib.sha256(expected_body).hexdigest()
+        request = Request(
+            BASE + path + "?revision_check=" + fingerprint[:16],
+            headers={
+                "User-Agent": "Stazhno-Preview-ReadOnly-Probe/1.0",
+                "Cache-Control": "no-cache",
+                "Pragma": "no-cache",
+            },
+            method="GET",
+        )
+        try:
+            with build_opener(NoRedirect).open(request, timeout=12) as response:
+                payload = response.read(250_001)
+                if len(payload) > 250_000:
+                    item = {"status": response.status, "result": "html-too-large"}
+                elif not response.headers.get("Content-Type", "").lower().startswith("text/html"):
+                    item = {"status": response.status, "result": "not-html"}
+                else:
+                    observed = hashlib.sha256(payload).hexdigest()
+                    item = {
+                        "status": response.status,
+                        "result": "exact-match" if observed == fingerprint else "mismatch",
+                        "expected_sha256": fingerprint,
+                        "observed_sha256": observed,
+                    }
+        except HTTPError as error:
+            item = {"status": error.code, "result": "route-not-found" if error.code == 404 else "http-error"}
+        except (URLError, OSError, ssl.SSLError, TimeoutError) as error:
+            item = {"result": "connection-error", "type": type(error).__name__}
+        results[path] = item
+    return {
+        "result": "exact-match" if all(item["result"] == "exact-match" for item in results.values()) else "unverified",
+        "pages": results,
+    }
+
+
 def main():
     host = BASE.removeprefix("https://").split("/", 1)[0].split(":", 1)[0]
     result = {"preview_url": BASE, "read_only": True, "dns": "unknown", "paths": {}}
@@ -217,6 +269,7 @@ def main():
         # Retain the original field for existing dashboards and logs.
         result["deployed_app_js"] = result["deployed_assets"]["app.js"]
         result["index_asset_revisions"] = probe_index_revisions()
+        result["journal_pages"] = probe_public_journal_pages()
         result["drafts_api"] = probe_private_draft_route()
         result["backend_routes"] = {
             name: probe_backend_route(path, method)
@@ -232,6 +285,7 @@ def main():
         }
         result["deployed_app_js"] = result["deployed_assets"]["app.js"]
         result["index_asset_revisions"] = {"result": "not-tested-dns-failure"}
+        result["journal_pages"] = {"result": "not-tested-dns-failure", "pages": {}}
         result["drafts_api"] = {"result": "not-tested-dns-failure"}
         result["backend_routes"] = {
             name: {"result": "not-tested-dns-failure"}
@@ -249,16 +303,19 @@ def main():
         and html_result == "exact-match"
         and result["drafts_api"]["result"] == "present-and-protected"
     )
+    journal_matches = result["journal_pages"]["result"] == "exact-match"
     backend_matches = all(
         item["result"] == "route-present-method-protected"
         for item in result["backend_routes"].values()
     )
-    if frontend_matches and backend_matches:
+    if frontend_matches and backend_matches and journal_matches:
         result["release_evidence"] = "frontend-and-backend-match"
     elif "mismatch" in asset_results or html_result == "mismatch":
         result["release_evidence"] = "frontend-version-mismatch"
     elif frontend_matches and not backend_matches:
         result["release_evidence"] = "backend-version-unverified"
+    elif frontend_matches and backend_matches and not journal_matches:
+        result["release_evidence"] = "journal-version-unverified"
     else:
         result["release_evidence"] = "unverified"
     REPORT.write_text(json.dumps(result, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
