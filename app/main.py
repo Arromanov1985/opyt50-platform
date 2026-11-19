@@ -48,6 +48,7 @@ from pydantic import BaseModel, Field, field_validator, model_validator
 from .db import database, init_db
 from .matching import lead_price, match_candidate, taxonomy_payload
 from .journal import install_journal_routes
+from .legal_pages import install_legal_draft_routes
 from .growth import VALID_SOURCES, record_event, aggregate_snapshot
 from .security import (
     ADMIN_SESSION_IDLE_SECONDS, ADMIN_SESSION_SECONDS, COOKIE_NAME,
@@ -2729,6 +2730,7 @@ def create_app(db_path: str | None = None) -> FastAPI:
     from .release02 import install_routes
     install_routes(app)
     install_journal_routes(app)
+    install_legal_draft_routes(app)
     return app
 
 
