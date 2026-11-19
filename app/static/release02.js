@@ -217,12 +217,15 @@
         const sortLabels={salary_desc:'Сначала выше зарплата',salary_asc:'Сначала ниже зарплата'};
         if(sortLabels[sort]) active.push(['Сортировка',sortLabels[sort]]);
         $('#job-filter-summary').innerHTML = active.map(([label,value])=>`<span class="filter-chip">${esc(label)}: ${esc(value)}</span>`).join('');
+        const hasFilters = active.length > 0;
         $('#public-jobs').innerHTML = jobs.length
           ? jobs.map(j=>jobMarkup(j)).join('')
-          : '<div class="empty-state"><strong>По этим условиям вакансий нет.</strong><p>Уберите один из фильтров или сбросьте поиск, чтобы увидеть больше вариантов.</p></div>';
+          : hasFilters
+            ? '<div class="empty-state empty-state-action jobs-empty-state" role="status"><strong>По этим условиям вакансий пока нет.</strong><p>Попробуйте расширить поиск или посмотрите все доступные предложения.</p><button type="button" class="btn btn-outline" data-v02-action="reset-public-job-filters">Показать все вакансии</button></div>'
+            : '<div class="empty-state empty-state-action jobs-empty-state" role="status"><strong>Открытых вакансий пока нет.</strong><p>Новые предложения появятся здесь после публикации работодателями. Пока можно посмотреть материалы о поиске работы.</p><a class="btn btn-outline" href="/journal">Перейти в журнал</a></div>';
       } catch(e) {
         toast(e.message,true);
-        $('#public-jobs').innerHTML='<div class="empty-state">Не удалось загрузить вакансии. Попробуйте ещё раз.</div>';
+        $('#public-jobs').innerHTML='<div class="empty-state empty-state-action jobs-empty-state" role="status"><strong>Не удалось загрузить вакансии.</strong><p>Проверьте подключение и повторите поиск.</p><button type="button" class="btn btn-outline" data-v02-action="retry-public-jobs">Повторить поиск</button></div>';
       }
     };
 
@@ -829,6 +832,16 @@
       const btn=event.target.closest('[data-v02-action]');
       if(!btn)return;
       const type=btn.dataset.v02Action,id=Number(btn.dataset.id);
+      if (type === 'reset-public-job-filters') {
+        event.preventDefault();
+        $('#jobs-reset').click();
+        return;
+      }
+      if (type === 'retry-public-jobs') {
+        event.preventDefault();
+        await loadPublicJobs();
+        return;
+      }
       if (btn.disabled) return;
       if (type==='application-status' && btn.dataset.status==='rejected' &&
           !window.confirm('Отказать по этому отклику? Кандидат увидит ваш отказ.')) return;
