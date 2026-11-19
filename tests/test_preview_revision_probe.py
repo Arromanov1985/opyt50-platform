@@ -174,3 +174,39 @@ def test_deployed_journal_check_requires_exact_html_and_get_only(monkeypatch):
     stale = probe.probe_public_journal_pages()
     assert stale["result"] == "unverified"
     assert stale["pages"]["/journal"]["result"] == "mismatch"
+
+
+def test_search_metadata_probe_checks_both_resources_and_preview_noindex(monkeypatch):
+    from urllib.parse import urlsplit
+    from app.journal import journal_sitemap
+
+    sitemap = journal_sitemap().body
+    robots = b"User-agent: *\\nDisallow: /\\n"
+    monkeypatch.setattr(probe, "BASE", "https://preview.twc1.net")
+    requests = []
+
+    class MetadataOpener:
+        def __init__(self, stale=False):
+            self.stale = stale
+
+        def open(self, request, timeout=12):
+            assert request.get_method() == "GET"
+            assert request.get_header("Cookie") is None
+            assert request.get_header("Authorization") is None
+            requests.append(request)
+            path = urlsplit(request.full_url).path
+            if path == "/robots.txt":
+                response = FakeResponse(robots if not self.stale else b"User-agent: *", "text/plain")
+            else:
+                assert path == "/sitemap.xml"
+                response = FakeResponse(sitemap, "application/xml")
+            response.headers["X-Robots-Tag"] = "noindex, nofollow"
+            return response
+
+    monkeypatch.setattr(probe, "build_opener", lambda *_args: MetadataOpener())
+    assert probe.probe_public_search_metadata()["result"] == "exact-match"
+    assert len(requests) == 2
+    monkeypatch.setattr(probe, "build_opener", lambda *_args: MetadataOpener(stale=True))
+    failed = probe.probe_public_search_metadata()
+    assert failed["result"] == "unverified"
+    assert failed["resources"]["/robots.txt"]["result"] == "mismatch"
