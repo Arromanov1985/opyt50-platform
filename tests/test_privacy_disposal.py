@@ -110,7 +110,21 @@ def test_admin_preflight_and_checkpoint_gate_fulfillment(tmp_path):
         checked = {k:True for k in CHECKS}
         saved = client.post(checklist_url, headers=XHR, json=checked)
         assert saved.status_code == 200
-        assert saved.json()["review"]["ready_for_manual_closure"] is True
+        assert saved.json()["review"]["ready_for_manual_closure"] is False
+        assert saved.json()["review"]["external_checks_ready"] is False
+        external_url = f"/api/admin/privacy-requests/{key}/external-review"
+        initial = client.get(external_url)
+        assert initial.status_code == 200
+        assert len(initial.json()["review"]["checks"]) == 5
+        for item in initial.json()["review"]["checks"]:
+            result = client.post(
+                external_url + "/" + item["system_key"], headers=XHR,
+                json={"status": "reviewed"},
+            )
+            assert result.status_code == 200, result.text
+            assert result.json()["external_action_performed"] is False
+        assert client.get(external_url).json()["review"]["ready_for_manual_closure"] is True
+        assert client.get(checklist_url).json()["review"]["ready_for_manual_closure"] is True
         # A newly queued email alters the privacy footprint after signoff.
         with database(app.state.db_path) as db:
             db.execute(
@@ -139,6 +153,9 @@ def test_admin_preflight_and_checkpoint_gate_fulfillment(tmp_path):
                 (key,),
             ).fetchall()
             assert [r["checks_bits"] for r in trail] == ["1111110", "1111111", "1111111"]
+            assert db.execute(
+                "SELECT COUNT(*) FROM privacy_external_review_events WHERE request_key=?", (key,)
+            ).fetchone()[0] == 5
             assert review_state(db, key)["ready_for_manual_closure"] is True
 
 
