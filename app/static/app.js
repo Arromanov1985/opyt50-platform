@@ -1332,8 +1332,8 @@ function professionalResumeMarkup(profile = {}) {
 // adds the account's verified-visible name, email and saved telephone explicitly.
 function resumePrintSafeText(value) {
   return String(value ?? '')
-    .replace(/[^\s@]+@[^\s@]+\.[^\s@]+/gi, '[контакт скрыт]')
-    .replace(/(?:https?:\/\/|www\.|t\.me\/)\S+/gi, '[ссылка скрыта]')
+    .replace(/[^\s@]+@[^\s@]+\.[^\s@]+/gi, '[контакт скрыт]')\n    .replace(/(?:https?:\/\/|www\.|t\.me\/|wa\.me\/|vk\.com\/|max\.ru\/)\S+/gi, '[ссылка скрыта]')
+    .replace(/@[A-Za-z0-9_]{4,}/g, '[контакт скрыт]')
     .replace(/(?:\+?\d[\s().-]*){10,15}/g, '[телефон скрыт]');
 }
 function resumePrintData(profile = {}) {
@@ -1393,7 +1393,7 @@ function openResumePrintPreview() {
     '<p>Используются только последние сохранённые данные. Изменения в форме сначала сохраните.</p>' +
     '<label class="resume-print-consent"><input type="checkbox" id="resume-print-include-contacts">' +
     '<span>Добавить моё имя, email и телефон в печатное резюме</span></label>' +
-    '<p class="resume-print-privacy">По умолчанию контакты скрыты. Если включите их, они попадут в распечатку или PDF.</p>' +
+    '<p class="resume-print-privacy">По умолчанию контакты скрыты. Проверьте свободные описания на личные сведения перед сохранением PDF. Если включите контакты, они попадут в документ.</p>' +
     '<div class="resume-print-buttons">' +
     '<button type="button" class="btn btn-primary" data-resume-print="print">Печать / сохранить PDF</button>' +
     '<button type="button" class="btn btn-outline" data-resume-print="close">Вернуться к резюме</button>' +
