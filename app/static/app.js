@@ -2709,7 +2709,9 @@ function disposalPreviewMarkup(impact, review) {
     '<button type="button" class="btn btn-outline btn-small" data-action="privacy-disposal-save" ' +
       'data-rights-key="' + esc(impact.request_key || '') +
       '">Сохранить проверки</button>' +
-    '<p class="muted">' + (review?.ready_for_manual_closure ?
+    '<p class="muted">' + (review?.counts_changed_since_review ?
+      'После подтверждения изменились связанные записи. Повторно проверьте последствия и сохраните чек-лист.' :
+      review?.ready_for_manual_closure ?
       'Все этапы отмечены администратором. Перед закрытием проверьте фактический результат и ответ пользователю.' :
       'Закрытие со статусом «выполнено» запрещено до заполнения всех этапов.') +
     '</p></div>';
