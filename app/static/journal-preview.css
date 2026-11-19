@@ -1,0 +1,12 @@
+/* Compact journal preview on existing homepage. Isolated selectors. */
+.jr-preview-section{background:#f5f9f6}
+.jr-preview-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px}
+.jr-preview-card{display:flex;flex-direction:column;gap:12px;background:#fff;padding:26px;border:1px solid #dce9df;border-radius:18px;text-decoration:none;color:#183e30;min-height:220px;transition:box-shadow .15s}
+.jr-preview-card:hover,.jr-preview-card:focus-visible{box-shadow:0 8px 30px rgba(15,60,42,.14)}
+.jr-preview-card span{font-size:12px;color:#237457;font-weight:800;letter-spacing:.09em}
+.jr-preview-card strong{font-size:21px;line-height:1.3}
+.jr-preview-card small{margin-top:auto;font-size:15px;color:#197554;font-weight:700}
+.jr-preview-all{margin:22px 0 0}.jr-preview-all a{color:#146a4d;font-weight:800;text-underline-offset:4px}
+body.comfortable-view .jr-preview-card strong{font-size:24px}
+@media(max-width:880px){.jr-preview-grid{grid-template-columns:1fr}.jr-preview-card{min-height:0}}
+@media(prefers-reduced-motion:reduce){.jr-preview-card{transition:none}}
