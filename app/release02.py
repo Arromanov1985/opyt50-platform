@@ -502,14 +502,21 @@ def enqueue_notice(
             "INSERT INTO email_outbox(to_email,event,subject,body) VALUES(?,?,?,?)",
             (user["email"], event, subject, persisted),
         )
-        from .mail_queue import enqueue_workflow_job
-        if not enqueue_workflow_job(
-            db, inserted.lastrowid, event, redacted=stored_body is not None,
-            recipient_user_id=user_id,
-        ):
-            # Security and short-lived token emails keep their immediate
-            # delivery semantics. Their redacted stored copy MUST NOT be
-            # retried or used as a replacement for the original token.
+        from .mail_queue import WORKFLOW_EVENTS, enqueue_workflow_job, workflow_notice_blocked
+        if event in WORKFLOW_EVENTS:
+            # Do not persist new optional messages for people requesting
+            # deletion or cessation. The existing outbox insert above is
+            # rolled back independently of the business event via savepoint.
+            if workflow_notice_blocked(db, user_id):
+                db.execute("DELETE FROM email_outbox WHERE id=?", (inserted.lastrowid,))
+                return
+            enqueue_workflow_job(
+                db, inserted.lastrowid, event, redacted=stored_body is not None,
+                recipient_user_id=user_id,
+            )
+        else:
+            # Short-lived security-token emails keep immediate semantics.
+            # Their redacted copy MUST NOT be replayed automatically.
             send_email(user["email"], subject, message)
         # Workflow notifications are queued atomically with the business
         # action, and sent by the background worker only after DB commit.
