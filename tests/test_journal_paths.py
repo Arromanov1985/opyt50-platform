@@ -26,6 +26,8 @@ def test_reading_paths_are_accessible_and_step_by_step(tmp_path: Path):
             assert path["title"] in page.text
             assert '<ol class="jr-path-steps">' in page.text
             assert 'href="' + path["href"] + '"' in page.text
+            expected_action = "community_click" if path["href"] == "/community" else "jobs_click"
+            assert 'data-growth-action="' + expected_action + '"' in page.text
             for slug, _ in path["steps"]:
                 assert 'href="/journal/' + slug + '"' in page.text
             assert 'type="password"' not in page.text
