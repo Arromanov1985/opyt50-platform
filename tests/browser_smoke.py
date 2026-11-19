@@ -1531,7 +1531,7 @@ def run_browser(page):
     # Structured descriptions are compared section by section; legacy free
     # text is kept whole rather than lost or silently truncated.
     assert page.evaluate("""() => {
-      const before = 'Обязанности:\nУчёт\n\nТребования:\n1С\n\nУсловия работы:\n2/2';
+      const before = 'Обязанности:\\nУчёт\\n\\nТребования:\\n1С\\n\\nУсловия работы:\\n2/2';
       const after = before.replace('2/2','3/3');
       const details = window.StazhnoVacancyChanges.details({
         description:{before,after}
