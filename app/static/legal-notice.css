@@ -40,3 +40,13 @@
 .privacy-disposal-checks input{flex:none;margin-top:2px;width:18px;height:18px;accent-color:#2e805a}
 .privacy-disposal-checks input:focus-visible{outline:2px solid #ce9739;outline-offset:3px}
 @media(max-width:650px){.privacy-disposal-report{padding:12px}.privacy-disposal-counts{grid-template-columns:1fr}}
+
+/* Review-only readiness summaries and external processing destinations. */
+.admin-retention-list{columns:2;column-gap:24px;max-height:300px;overflow:auto;padding-left:22px;line-height:1.5;font-size:13px;color:#4d6a58}
+.admin-retention-list li{break-inside:avoid;padding:2px 0}
+.privacy-external-checks{display:grid;gap:8px;margin:12px 0 20px}
+.privacy-external-row{display:grid;grid-template-columns:minmax(170px,1fr) minmax(170px,220px) auto;align-items:center;gap:12px;padding:11px;background:#fff;border:1px solid #dfebe2;border-radius:10px}
+.privacy-external-row span{font-size:13px;line-height:1.5}
+.privacy-external-row select{width:100%;min-height:39px;border:1px solid #c9dbc9;border-radius:8px;background:#fff;padding:6px 8px;font:inherit;font-size:12px}
+.privacy-external-row select:focus-visible{outline:2px solid #bc913b;outline-offset:2px}
+@media(max-width:720px){.admin-retention-list{columns:1}.privacy-external-row{grid-template-columns:1fr;gap:8px}.privacy-external-row button{width:100%}}
