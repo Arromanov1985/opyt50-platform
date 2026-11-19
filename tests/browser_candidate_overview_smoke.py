@@ -74,10 +74,20 @@ def run_overview(page):
     expect(dashboard).to_contain_text("Сейчас в процессе")
     expect(dashboard.locator(".candidate-overview-section")).to_have_count(3)
     expect(dashboard.locator(".candidate-invitations-preview")).to_be_visible()
+    tasks = dashboard.locator(".overview-action-center")
+    expect(tasks).to_be_visible()
+    expect(tasks).to_contain_text("Приглашения, ожидающие ответа")
+    expect(tasks).to_contain_text("Подтвердить электронную почту")
+    assert tasks.locator(".overview-action-item").count() >= 2
+    expect(tasks.locator("[data-action='open-candidate-invitations']")).to_be_visible()
 
     # The overview must remain usable at the core mobile width.
     page.set_viewport_size({"width": 390, "height": 844})
     expect(dashboard.locator(".candidate-overview-grid")).to_be_visible()
+    assert page.evaluate("""() => {
+      const center = document.querySelector('#dashboard-main .overview-action-center');
+      return center && center.scrollWidth <= center.clientWidth + 3;
+    }"""), "Candidate action center must fit a 390px viewport"
     expect(dashboard.locator(".candidate-status-row")).to_be_visible()
     expect(dashboard.locator(".candidate-status-chip").first).to_be_visible()
     mobile_section = page.locator("[data-dashboard-tab-select]")

@@ -207,7 +207,7 @@
         const active = [];
         for (const [input,param,label] of filters) {
           const value=searchValue(input);
-          if(value){ qs.set(param,value); active.push([label,value]); }
+          if(value){ qs.set(param,value); active.push([label,value,input]); }
         }
         const sort=searchValue('sort-filter') || 'recent';
         qs.set('sort',sort);
@@ -215,14 +215,17 @@
         const jobs = result.jobs || [];
         $('#jobs-count').textContent = `Найдено: ${jobs.length}`;
         const sortLabels={salary_desc:'Сначала выше зарплата',salary_asc:'Сначала ниже зарплата'};
-        if(sortLabels[sort]) active.push(['Сортировка',sortLabels[sort]]);
-        $('#job-filter-summary').innerHTML = active.map(([label,value])=>`<span class="filter-chip">${esc(label)}: ${esc(value)}</span>`).join('');
+        if(sortLabels[sort]) active.push(['Сортировка',sortLabels[sort],'sort-filter']);
+        $('#job-filter-summary').innerHTML = active.map(([label,value,input])=>`<button type="button" class="filter-chip filter-chip-action" data-v02-action="remove-public-job-filter" data-filter-id="${input}" aria-label="Убрать фильтр: ${esc(label)}, ${esc(value)}">${esc(label)}: ${esc(value)} <span aria-hidden="true">×</span></button>`).join('');
+        const hasFilters = active.length > 0;
         $('#public-jobs').innerHTML = jobs.length
           ? jobs.map(j=>jobMarkup(j)).join('')
-          : '<div class="empty-state"><strong>По этим условиям вакансий нет.</strong><p>Уберите один из фильтров или сбросьте поиск, чтобы увидеть больше вариантов.</p></div>';
+          : hasFilters
+            ? '<div class="empty-state empty-state-action jobs-empty-state" role="status"><strong>По этим условиям вакансий пока нет.</strong><p>Попробуйте расширить поиск или посмотрите все доступные предложения.</p><button type="button" class="btn btn-outline" data-v02-action="reset-public-job-filters">Показать все вакансии</button></div>'
+            : '<div class="empty-state empty-state-action jobs-empty-state" role="status"><strong>Открытых вакансий пока нет.</strong><p>Новые предложения появятся здесь после публикации работодателями. Пока можно посмотреть материалы о поиске работы.</p><a class="btn btn-outline" href="/journal">Перейти в журнал</a></div>';
       } catch(e) {
         toast(e.message,true);
-        $('#public-jobs').innerHTML='<div class="empty-state">Не удалось загрузить вакансии. Попробуйте ещё раз.</div>';
+        $('#public-jobs').innerHTML='<div class="empty-state empty-state-action jobs-empty-state" role="status"><strong>Не удалось загрузить вакансии.</strong><p>Проверьте подключение и повторите поиск.</p><button type="button" class="btn btn-outline" data-v02-action="retry-public-jobs">Повторить поиск</button></div>';
       }
     };
 
@@ -829,6 +832,29 @@
       const btn=event.target.closest('[data-v02-action]');
       if(!btn)return;
       const type=btn.dataset.v02Action,id=Number(btn.dataset.id);
+      if (type === 'reset-public-job-filters') {
+        event.preventDefault();
+        $('#jobs-reset').click();
+        return;
+      }
+      if (type === 'retry-public-jobs') {
+        event.preventDefault();
+        await loadPublicJobs();
+        return;
+      }
+      if (type === 'remove-public-job-filter') {
+        event.preventDefault();
+        const allowed = ['profession-filter','city-filter','salary-filter','schedule-filter','employment-filter','sort-filter'];
+        const fieldId = btn.dataset.filterId;
+        if (!allowed.includes(fieldId)) return;
+        const field = document.getElementById(fieldId);
+        if (!field) return;
+        field.value = fieldId === 'sort-filter' ? 'recent' : '';
+        field.dispatchEvent(new Event('input',{bubbles:true}));
+        await loadPublicJobs();
+        field.focus({preventScroll:true});
+        return;
+      }
       if (btn.disabled) return;
       if (type==='application-status' && btn.dataset.status==='rejected' &&
           !window.confirm('Отказать по этому отклику? Кандидат увидит ваш отказ.')) return;

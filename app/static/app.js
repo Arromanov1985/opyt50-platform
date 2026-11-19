@@ -1566,6 +1566,21 @@ function candidateOverviewInvitationCard(item) {
     <button type="button" class="btn btn-primary btn-tiny" data-action="open-candidate-invitations" data-filter="decision" data-invitation-id="${Number(item.id)}">Ответить на приглашение →</button>
   </article>`;
 }
+function overviewTaskListMarkup(title, items) {
+  // Actions are markup assembled only from fixed, local buttons. Text from
+  // user-owned content is always escaped before rendering.
+  const visible = items.slice(0, 4);
+  if (!visible.length) return '';
+  return `<section class="panel overview-action-center" aria-label="${esc(title)}">
+    <div class="split-header"><div><span class="section-kicker">НЕСКОЛЬКО ДЕЙСТВИЙ</span><h3>${esc(title)}</h3></div></div>
+    <div class="overview-action-list">${visible.map((item, index) => `
+      <div class="overview-action-item ${item.urgent ? 'is-urgent' : ''}">
+        <span class="overview-action-step" aria-hidden="true">${index+1}</span>
+        <div><strong>${esc(item.title)}</strong><p>${esc(item.description)}</p></div>
+        ${item.action}
+      </div>`).join('')}</div>
+  </section>`;
+}
 function candidateStatusChip(ok, yes, no) {
   return `<span class="candidate-status-chip ${ok?'is-ok':'is-pending'}"><i aria-hidden="true">${ok?'✓':'!'}</i>${esc(ok?yes:no)}</span>`;
 }
@@ -1643,6 +1658,44 @@ async function renderCandidate() {
         nextText = 'Строгих совпадений пока нет — можно посмотреть все открытые вакансии.';
         nextAction = '<a class="btn btn-primary" href="#jobs">Все вакансии →</a>';
       }
+      const candidateTasks = [];
+      if (pendingInvitations) candidateTasks.push({
+        title: 'Приглашения, ожидающие ответа',
+        description: `Ожидают решения: ${pendingInvitations}. Контакты не открываются без согласия.`,
+        action: '<button class="btn btn-outline btn-tiny" data-action="open-candidate-invitations" data-filter="decision">Ответить</button>',
+        urgent: true
+      });
+      if (unreadChanges) candidateTasks.push({
+        title: 'Изменения условий вакансий',
+        description: `Новых изменений: ${unreadChanges}. Проверьте их до дальнейшего общения.`,
+        action: '<button class="btn btn-outline btn-tiny" data-tab="changes">Проверить</button>',
+        urgent: true
+      });
+      if (!emailVerified) candidateTasks.push({
+        title: 'Подтвердить электронную почту',
+        description: 'Для восстановления доступа и получения важных уведомлений.',
+        action: '<button class="btn btn-outline btn-tiny" data-tab="email">К подтверждению</button>'
+      });
+      if (!profileActive || health.percent < 80) candidateTasks.push({
+        title: !profileActive ? 'Сделать профиль доступным для подбора' : 'Уточнить профессиональный профиль',
+        description: !profileActive ? 'Сейчас работодатели не видят ваш профиль в подборе.' : health.next,
+        action: '<button class="btn btn-outline btn-tiny" data-tab="profile">Мой профиль</button>'
+      });
+      if (waitingEmployerInvitations.length) candidateTasks.push({
+        title: 'Проверить согласованные знакомства',
+        description: `Ожидается продолжение работодателем: ${waitingEmployerInvitations.length}.`,
+        action: '<button class="btn btn-outline btn-tiny" data-action="open-candidate-invitations" data-filter="waiting">Статус</button>'
+      });
+      if (activeApplications) candidateTasks.push({
+        title: 'Просмотреть активные отклики',
+        description: `Сейчас в процессе: ${activeApplications}.`,
+        action: '<button class="btn btn-outline btn-tiny" data-tab="applications">К откликам</button>'
+      });
+      if (!candidateTasks.length) candidateTasks.push({
+        title: jobs.length ? 'Выбрать подходящую вакансию' : 'Посмотреть доступные вакансии',
+        description: jobs.length ? `Рекомендаций по профилю: ${jobs.length}.` : 'Можно расширить поиск и посмотреть все открытые предложения.',
+        action: jobs.length ? '<button class="btn btn-outline btn-tiny" data-tab="offers">Рекомендации</button>' : '<a class="btn btn-outline btn-tiny" href="#jobs">Открыть поиск</a>'
+      });
       target.innerHTML = `<div class="overview-stack">
         <section class="panel dashboard-overview-hero">
           <span class="section-kicker">ВАШ СЛЕДУЮЩИЙ ШАГ</span>
@@ -1662,6 +1715,7 @@ async function renderCandidate() {
           <button type="button" class="overview-stat-card" data-action="open-candidate-invitations" data-filter="${introductionOverviewFilter}"><strong>${activeIntroductions}</strong><span>Знакомства</span><small>${pendingInvitations ? `Требуют ответа: ${pendingInvitations}` : waitingEmployerInvitations.length ? `Ждём работодателя: ${waitingEmployerInvitations.length}` : 'Новых действий нет'}</small></button>
           <button type="button" class="overview-stat-card" data-tab="favorites"><strong>${favorites.length}</strong><span>Избранное</span><small>Сохранённые вакансии</small></button>
         </section>
+        ${overviewTaskListMarkup('Что сделать дальше', candidateTasks)}
         ${pendingInvitationsList.length ? `<section class="panel candidate-overview-section candidate-invitations-preview"><div class="split-header"><div><span class="section-kicker">ТРЕБУЕТ ОТВЕТА</span><h3>Новые приглашения</h3><p class="muted">Решение за вами: контакты остаются закрытыми, пока вы не согласитесь.</p></div><button class="btn btn-outline btn-tiny" data-tab="invitations">Все знакомства</button></div><div class="candidate-overview-list">${pendingInvitationsList.slice(0,2).map(candidateOverviewInvitationCard).join('')}</div></section>` : ''}
         <section class="candidate-overview-grid">
           <div class="panel candidate-overview-section">
@@ -1943,6 +1997,37 @@ async function renderEmployer() {
         nextAction = `<button class="btn btn-primary" data-action="resume-vacancy-draft" data-id="${Number(recentDraft.id)}">Продолжить заполнение →</button>`;
       }
       const showDraftReminder = drafts.length && nextTitle !== 'Продолжите черновик вакансии';
+      const employerTasks = [];
+      if (activeOpenedContacts.length) employerTasks.push({
+        title: 'Зафиксировать результат знакомства',
+        description: `Контактов без итогового решения: ${activeOpenedContacts.length}.`,
+        action: '<button class="btn btn-outline btn-tiny" data-action="open-employer-invitations" data-filter="introduced">К результатам</button>',
+        urgent: true
+      });
+      if (acceptedInvitations.length) employerTasks.push({
+        title: 'Продолжить согласованные знакомства',
+        description: `Кандидатов с согласием: ${acceptedInvitations.length}. Контакты открываются в кабинете.`,
+        action: '<button class="btn btn-outline btn-tiny" data-action="open-employer-invitations" data-filter="action">Продолжить</button>',
+        urgent: true
+      });
+      if (actionableApplications.length) employerTasks.push({
+        title: 'Рассмотреть отклики',
+        description: `Требуют внимания: ${actionableApplications.length}.`,
+        action: '<button class="btn btn-outline btn-tiny" data-tab="applications">К откликам</button>',
+        urgent: true
+      });
+      // A dedicated draft reminder or the hero already has the resume button.
+      // Do not render a second identical action (ambiguous for keyboard/QA).
+      if (openJobs.length) employerTasks.push({
+        title: 'Посмотреть подходящих специалистов',
+        description: `Открытых вакансий: ${openJobs.length}. Можно начать подбор без раскрытия контактов.`,
+        action: '<button class="btn btn-outline btn-tiny" data-tab="vacancies">Мои вакансии</button>'
+      });
+      if (!employerTasks.length && !recentDraft) employerTasks.push({
+        title: 'Опубликовать первую вакансию',
+        description: 'Начните с обязанностей, города и условий работы.',
+        action: '<button class="btn btn-outline btn-tiny" data-tab="create">Создать</button>'
+      });
       target.innerHTML = `<div class="overview-stack">
         <section class="panel dashboard-overview-hero employer-overview-hero">
           <span class="section-kicker">ПРИОРИТЕТ СЕЙЧАС</span>
@@ -1964,6 +2049,7 @@ async function renderEmployer() {
           <button type="button" class="overview-stat-card" data-action="open-employer-invitations" data-filter="action"><strong>${acceptedInvitations.length}</strong><span>Есть согласие</span><small>Можно открыть контакт</small></button>
           <button type="button" class="overview-stat-card" data-action="open-employer-invitations" data-filter="introduced"><strong>${activeOpenedContacts.length}</strong><span>Ждут итога</span><small>Контакт уже открыт</small></button>
         </section>
+        ${overviewTaskListMarkup('В работе у компании', employerTasks)}
         <section class="panel overview-funnel employer-outcome-funnel">
           <div class="split-header"><div><span class="section-kicker">ВОРОНКА</span><h3>От вакансии до результата</h3></div><button class="btn btn-outline btn-tiny" data-tab="vacancies">Управлять вакансиями</button></div>
           <div class="overview-funnel-steps">

@@ -120,6 +120,12 @@ def run_browser(page):
     expect(page.locator("#jobs-count")).to_contain_text("Найдено: 1")
     expect(page.locator("#job-filter-summary")).to_contain_text("Занятость: Полная")
     expect(page.locator("#job-filter-summary")).to_contain_text("Сортировка: Сначала выше зарплата")
+    # Individual filter chips remove only one condition.
+    page.locator("#job-filter-summary [data-filter-id='employment-filter']").click()
+    expect(page.locator("#employment-filter")).to_have_value("")
+    expect(page.locator("#job-filter-summary")).not_to_contain_text("Занятость:")
+    page.locator("#employment-filter").select_option(label="Полная")
+    expect(page.locator("#job-filter-summary")).to_contain_text("Занятость: Полная")
     expect(page.locator("#public-jobs .job-card")).to_contain_text("Кладовщик")
     expect(page.locator("#public-jobs .job-skill-tags")).to_contain_text("склад")
 
@@ -128,6 +134,17 @@ def run_browser(page):
     expect(page.locator("#job-dialog-content")).to_contain_text("Складской учёт")
     page.locator("#job-dialog-close").click()
     expect(page.locator("#job-dialog")).not_to_be_visible()
+
+    # A search with no results must offer a clear recovery action, preserving
+    # the original job-search workflow and keyboard-accessible controls.
+    page.locator("#profession-filter").fill("несуществующая профессия 98765")
+    page.locator("#jobs-filter").click()
+    empty = page.locator("#public-jobs .jobs-empty-state")
+    expect(empty).to_contain_text("По этим условиям вакансий пока нет.")
+    expect(empty.locator("[data-v02-action='reset-public-job-filters']")).to_be_visible()
+    empty.locator("[data-v02-action='reset-public-job-filters']").click()
+    expect(page.locator("#profession-filter")).to_have_value("")
+    expect(page.locator("#public-jobs .job-card").first).to_be_visible()
 
     login(page, "kladovshik@demo.example")
     expect(page.locator("#dashboard-main")).to_contain_text("ВАШ СЛЕДУЮЩИЙ ШАГ")
@@ -447,6 +464,9 @@ def run_browser(page):
     expect(page.locator("#dashboard-main")).to_contain_text("ПРИОРИТЕТ СЕЙЧАС")
     expect(page.locator("#dashboard-main .overview-stat-card")).to_have_count(4)
     expect(page.locator("#dashboard-main .overview-funnel")).to_be_visible()
+    expect(page.locator("#dashboard-main .overview-action-center")).to_be_visible()
+    expect(page.locator("#dashboard-main .overview-action-center")).to_contain_text("В работе у компании")
+    expect(page.locator("#dashboard-main .overview-action-center .overview-action-item").first).to_be_visible()
     expect(page.locator("#dashboard-main .overview-funnel")).to_contain_text("Согласия")
     expect(page.locator("#dashboard-main .overview-funnel")).to_contain_text("Контакты")
     expect(page.locator("#dashboard-main .overview-funnel")).to_contain_text("Положительные итоги")
