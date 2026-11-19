@@ -8,6 +8,9 @@ SLUGS = (
     "kak-pokazat-opyt-v-profile",
     "kak-proverit-vakansiyu",
     "proektnaya-rabota-posle-50",
+    "sobesedovanie-posle-50",
+    "cifrovye-navyki-dlya-raboty",
+    "rabotodatelyu-ocenit-opyt",
 )
 
 
@@ -18,8 +21,11 @@ def test_journal_public_pages_and_no_leaks(tmp_path):
         assert index.status_code == 200
         assert index.headers["content-type"].startswith("text/html")
         assert 'href="https://stazhno.ru/journal"' in index.text
-        assert 'href="/static/journal.css?v=2"' in index.text
+        assert 'href="/static/journal.css?v=3"' in index.text
         assert 'id="reading-mode-toggle"' in index.text
+        assert 'id="jr-article-search"' in index.text
+        assert 'data-jr-category-filter="all"' in index.text
+        assert 'id="jr-no-results"' in index.text
         assert 'href="/#jobs"' in index.text
         for slug in SLUGS:
             assert f'href="/journal/{slug}"' in index.text
@@ -29,6 +35,7 @@ def test_journal_public_pages_and_no_leaks(tmp_path):
             assert '<meta name="description"' in article.text
             assert '<h1>' in article.text
             assert 'Редакция СТАЖНО' in article.text
+            assert 'Читайте также' in article.text
             assert 'href="/#candidate-path"' in article.text
             assert 'type="password"' not in article.text
         assert client.get("/journal/no-such-article").status_code == 404
