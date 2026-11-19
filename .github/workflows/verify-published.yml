@@ -58,6 +58,8 @@ jobs:
           for name, item in report.get("deployed_assets", {}).items():
               lines.append(f"| {name} | {item.get('result', 'unknown')} |")
           lines.append(f"| HTML-версии | {report.get('index_asset_revisions', {}).get('result', 'unknown')} |")
+          lines.append(f"| Журнал (все страницы) | {report.get('journal_pages', {}).get('result', 'unknown')} |")
+          lines.append(f"| robots.txt и sitemap.xml | {report.get('search_metadata', {}).get('result', 'unknown')} |")
           lines.append(f"| Защищённый API | {report.get('drafts_api', {}).get('result', 'unknown')} |")
           for name, item in report.get("backend_routes", {}).items():
               lines.append(f"| Backend {name} | {item.get('result', 'unknown')} |")

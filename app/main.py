@@ -915,6 +915,9 @@ def create_app(db_path: str | None = None) -> FastAPI:
         if production_runtime():
             csp += "; upgrade-insecure-requests"
         response.headers["Content-Security-Policy"] = csp
+        # Never index the temporary Timeweb preview or other noncanonical hosts.
+        if request.url.hostname not in {"stazhno.ru", "www.stazhno.ru"}:
+            response.headers["X-Robots-Tag"] = "noindex, nofollow"
         if request.url.path.startswith("/api/"):
             response.headers["Cache-Control"] = "no-store"
             response.headers["Pragma"] = "no-cache"
