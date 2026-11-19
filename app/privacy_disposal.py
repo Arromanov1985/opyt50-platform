@@ -149,6 +149,9 @@ def review_state(db, request_key: str) -> dict | None:
     }
     current = impact_preview(db, request_key)
     changed = row is not None and row["impact_digest"] != _impact_digest(current)
+    from .privacy_external import external_review_status
+    external = external_review_status(db, request_key)
+    external_ready = bool(external and external["ready_for_manual_closure"])
     return {
         "request_key": request_key,
         "kind": request["kind"],
@@ -156,7 +159,8 @@ def review_state(db, request_key: str) -> dict | None:
         "checks": fields,
         "labels": REVIEW_LABELS,
         "counts_changed_since_review": bool(changed),
-        "ready_for_manual_closure": all(fields.values()) and not changed,
+        "external_checks_ready": external_ready,
+        "ready_for_manual_closure": all(fields.values()) and not changed and external_ready,
         "reviewed_at": row["reviewed_at"] if row is not None else None,
         "actual_deletion_performed_by_system": False,
     }
