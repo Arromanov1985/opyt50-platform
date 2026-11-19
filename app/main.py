@@ -40,7 +40,7 @@ from typing import Any, Literal
 from urllib.parse import urlsplit
 
 from fastapi import Depends, FastAPI, HTTPException, Query, Request, Response
-from fastapi.responses import FileResponse, HTMLResponse
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from starlette.middleware.trustedhost import TrustedHostMiddleware
 from pydantic import BaseModel, Field, field_validator, model_validator
@@ -53,6 +53,7 @@ from .legal_config import render_template as render_legal_template, legal_approv
 from .privacy_rights import (
     requests_for_user, submit_request, admin_request_list, admin_change_status,
 )
+from .data_export import build_personal_data_snapshot
 from .growth import VALID_SOURCES, record_event, aggregate_snapshot
 from .security import (
     ADMIN_SESSION_IDLE_SECONDS, ADMIN_SESSION_SECONDS, COOKIE_NAME,
@@ -1608,6 +1609,30 @@ def create_app(db_path: str | None = None) -> FastAPI:
     @app.get("/api/me")
     def me(user: dict = Depends(active_user), db: sqlite3.Connection = Depends(get_connection)):
         return {"user": user_response(user, db)}
+
+    @app.get("/api/account/data-export")
+    def own_account_data_export(
+        user: dict = Depends(active_user),
+        db: sqlite3.Connection = Depends(get_connection),
+    ):
+        """Private subset of account-owned data, not a complete legal disclosure.
+
+        A valid authenticated session is required. The response is never saved
+        on the server, never cached, and never includes third-party contacts,
+        secrets, session tokens or internal administrator records.
+        """
+        snapshot = build_personal_data_snapshot(db, user["id"])
+        filename = "stazhno-my-data-" + datetime.now(timezone.utc).strftime("%Y-%m-%d") + ".json"
+        return JSONResponse(
+            snapshot,
+            headers={
+                "Cache-Control": "private, no-store, max-age=0",
+                "Pragma": "no-cache",
+                "Content-Disposition": f'attachment; filename="{filename}"',
+                "X-Content-Type-Options": "nosniff",
+                "X-Robots-Tag": "noindex, nofollow",
+            },
+        )
 
     @app.get("/api/account/privacy-requests")
     def own_privacy_requests(
