@@ -25,3 +25,18 @@
 .privacy-rights-admin-actions label{display:block;font-size:12px;max-width:330px;min-width:220px}
 .privacy-rights-admin-actions .btn{min-height:42px}
 @media(max-width:600px){.privacy-rights-admin-actions{width:100%}.privacy-rights-admin-actions label{max-width:none;width:100%}.privacy-rights-admin-actions .btn{width:100%}}
+
+/* Administrative dry-run only: never an erasure button. */
+.privacy-disposal-preview{flex:1 1 100%;min-width:0}
+.privacy-disposal-report{border:1px solid #cfdfd2;border-radius:14px;background:#f8fbf9;padding:16px;margin:12px 0;max-width:760px}
+.privacy-disposal-report h4{margin:6px 0 12px}
+.privacy-disposal-counts{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:8px;margin:14px 0}
+.privacy-disposal-counts>div{border:1px solid #dde9df;border-radius:9px;padding:9px 12px;background:#fff;display:flex;justify-content:space-between;align-items:center;gap:10px}
+.privacy-disposal-counts span{font-size:12px;color:#4a6655;line-height:1.35}
+.privacy-disposal-counts strong{color:#184d31;font-size:17px;font-variant-numeric:tabular-nums}
+.privacy-disposal-risks{padding-left:22px;font-size:13px;line-height:1.6}
+.privacy-disposal-checks{display:grid;gap:8px;margin-bottom:14px}
+.privacy-disposal-checks label{display:flex;align-items:flex-start;gap:11px;padding:8px 10px;background:#fff;border:1px solid #e0eae2;border-radius:8px;font-size:13px;line-height:1.5;cursor:pointer}
+.privacy-disposal-checks input{flex:none;margin-top:2px;width:18px;height:18px;accent-color:#2e805a}
+.privacy-disposal-checks input:focus-visible{outline:2px solid #ce9739;outline-offset:3px}
+@media(max-width:650px){.privacy-disposal-report{padding:12px}.privacy-disposal-counts{grid-template-columns:1fr}}
