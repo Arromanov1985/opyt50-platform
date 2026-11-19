@@ -931,6 +931,12 @@ function updateAuth() {
   $('#auth-company-row').classList.toggle('hidden', !(reg && employer));
   $('#password-hint').classList.toggle('hidden', !reg);
   $('#auth-route').classList.toggle('hidden', !reg);
+  const legallyApproved = document.querySelector('meta[name="legal-profile-ready"]')?.content === 'yes';
+  $('#auth-terms-row')?.classList.toggle('hidden', !(reg && legallyApproved));
+  if (!reg) {
+    const checkbox = $('#auth-terms-accepted');
+    if (checkbox) checkbox.checked = false;
+  }
   $('#auth-name').required = reg;
   $('#auth-company').required = reg && employer;
   $('#auth-password').type = 'password';
@@ -1024,6 +1030,11 @@ async function submitAuth(event) {
       showError('Для регистрации нужен пароль не короче 15 символов.', password);
       return;
     }
+    const approved = document.querySelector('meta[name="legal-profile-ready"]')?.content === 'yes';
+    if (approved && !$('#auth-terms-accepted')?.checked) {
+      showError('Примите актуальное Пользовательское соглашение для создания аккаунта.', $('#auth-terms-accepted'));
+      return;
+    }
   } else if (!password.value) {
     showError('Введите пароль.', password);
     return;
@@ -1032,6 +1043,10 @@ async function submitAuth(event) {
   if (state.mode === 'register') {
     body.role = state.role; body.name = $('#auth-name').value.trim();
     if (body.role === 'employer') body.company_name = $('#auth-company').value.trim();
+    if (document.querySelector('meta[name="legal-profile-ready"]')?.content === 'yes') {
+      body.terms_accepted = Boolean($('#auth-terms-accepted')?.checked);
+      body.terms_version = document.querySelector('meta[name="legal-terms-version"]')?.content || '';
+    }
   }
   const btn = $('#auth-submit'); btn.disabled = true;
   if (message) message.textContent = '';
