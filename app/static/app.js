@@ -2566,6 +2566,14 @@ function adminSecurityEventStat(label, value) {
 async function renderAdmin() {
   $('#account-content').innerHTML = `<div class="admin-dashboard-stack">
     <section class="panel"><h3>Панель управления</h3><p class="muted">Статистика работы MVP, без раскрытия персональных данных.</p><div class="stat-grid" id="admin-stats"><div class="loading">Загрузка...</div></div></section>
+    <section class="panel">
+      <span class="section-kicker">ПРИВЛЕЧЕНИЕ АУДИТОРИИ</span>
+      <h3>Журнал и регистрации — 30 дней</h3>
+      <p class="muted">Агрегированные события без идентификаторов посетителей. Регистрации отображаются отдельно, без привязки к статьям.</p>
+      <div class="stat-grid" id="admin-growth-stats"><div class="loading">Загрузка…</div></div>
+      <div id="admin-growth-articles" class="admin-growth-overflow" aria-live="polite"></div>
+      <p class="muted">Загрузки — не уникальные посетители; переходы не равны регистрациям. Роботы, блокировщики и обновления страницы могут влиять на показатели.</p>
+    </section>
     <section class="panel admin-security-panel admin-security-ops">
       <div class="split-header"><div><span class="section-kicker">КОНТУР БЕЗОПАСНОСТИ</span><h3>Состояние защиты</h3><p class="muted">Сводка ключевых настроек и событий за последние 24 часа. Секреты и токены здесь никогда не отображаются.</p></div><span class="mini-badge" id="admin-security-summary">Проверяем…</span></div>
       <div id="admin-security-checks" class="admin-security-check-grid"><div class="loading">Проверяем настройки...</div></div>
@@ -2599,11 +2607,12 @@ async function renderAdmin() {
     </section>
   </div>`;
   try {
-    const [stats, security, securityOverview, mailDiagnostics] = await Promise.all([
+    const [stats, security, securityOverview, mailDiagnostics, growth] = await Promise.all([
       api('/api/admin/stats'),
       api('/api/account/security'),
       api('/api/admin/security-overview'),
-      api('/api/admin/mail-diagnostics').catch(() => null)
+      api('/api/admin/mail-diagnostics').catch(() => null),
+      api('/api/admin/growth?days=30').catch(() => null)
     ]);
     const diagnosticLabels = {
       new_application: 'Новые отклики работодателю',
@@ -2680,6 +2689,49 @@ async function renderAdmin() {
     }
     const units = [['Соискатели',stats.candidates],['Работодатели',stats.employers],['Открытые вакансии',stats.open_vacancies],['Всего откликов',stats.applications_total],['Активные отклики',stats.applications_active],['Отозванные отклики',stats.applications_withdrawn],['Приглашения',stats.invitations],['Подтверждения',stats.confirmed],['Демо-знакомства',stats.demo_transactions],['Демо-оборот, ₽',stats.demo_turnover_rub]];
     $('#admin-stats').innerHTML = units.map(([title,value]) => `<div class="stat-tile"><strong>${Number(value).toLocaleString('ru-RU')}</strong><span>${esc(title)}</span></div>`).join('');
+
+    const growthSummary = growth?.summary || null;
+    const growthArea = $('#admin-growth-stats');
+    const growthArticlesArea = $('#admin-growth-articles');
+    if (growthArea && growthArticlesArea) {
+      if (!growthSummary) {
+        growthArea.innerHTML = '<p class="muted">Показатели временно недоступны.</p>';
+        growthArticlesArea.innerHTML = '';
+      } else {
+        const growthUnits = [
+          ['Загрузки журнала', growthSummary.journal_requests],
+          ['Переходы к вакансиям', growthSummary.jobs_clicks],
+          ['Переходы к профилю', growthSummary.profile_clicks],
+          ['Новые кандидаты', growthSummary.new_candidates],
+          ['Новые работодатели', growthSummary.new_employers]
+        ];
+        growthArea.innerHTML = growthUnits.map(([title, value]) =>
+          '<div class="stat-tile"><strong>' + Number(value || 0).toLocaleString('ru-RU') +
+          '</strong><span>' + esc(title) + '</span></div>'
+        ).join('');
+        const articles = [
+          ['journal', 'Журнал — список статей'],
+          ['kak-pokazat-opyt-v-profile', 'Как показать свой опыт'],
+          ['kak-proverit-vakansiyu', 'Как проверить вакансию'],
+          ['proektnaya-rabota-posle-50', 'Подработка и проекты']
+        ];
+        const events = Array.isArray(growth.by_article) ? growth.by_article : [];
+        const countFor = (source, action) =>
+          events.filter(item => item.source === source && item.action === action)
+            .reduce((sum, item) => sum + Number(item.total || 0), 0);
+        growthArticlesArea.innerHTML =
+          '<table class="admin-growth-table"><caption>Действия по материалам за 30 дней</caption>' +
+          '<thead><tr><th scope="col">Материал</th><th scope="col">Загрузки</th>' +
+          '<th scope="col">К вакансиям</th><th scope="col">К профилю</th></tr></thead><tbody>' +
+          articles.map(([source, title]) =>
+            '<tr><th scope="row">' + esc(title) + '</th>' +
+            ['view','jobs_click','profile_click'].map(action =>
+              '<td>' + countFor(source, action).toLocaleString('ru-RU') + '</td>'
+            ).join('') + '</tr>'
+          ).join('') + '</tbody></table>';
+      }
+    }
+
     const checks = Array.isArray(securityOverview.checks) ? securityOverview.checks : [];
     const dangerCount = checks.filter(item => item.status === 'danger').length;
     const warningCount = checks.filter(item => item.status === 'warning').length;
