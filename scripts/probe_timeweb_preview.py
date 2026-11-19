@@ -9,6 +9,7 @@ import json
 import os
 import socket
 import ssl
+import sys
 from pathlib import Path
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, build_opener, HTTPRedirectHandler
@@ -205,6 +206,9 @@ def probe_public_journal_pages():
 
     No accounts, cookies, contact fields, POSTs or external services.
     """
+    root = str(Path(__file__).resolve().parents[1])
+    if root not in sys.path:
+        sys.path.insert(0, root)
     from app.journal import ARTICLES, journal_index, journal_article
 
     expected_pages = {"/journal": journal_index().body}
