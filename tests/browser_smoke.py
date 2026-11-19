@@ -1214,6 +1214,38 @@ def run_browser(page):
     expect(page.locator("#admin-growth-stats")).to_contain_text("Переходы к вакансиям")
     expect(page.locator("#admin-growth-articles tbody tr")).to_have_count(4)
 
+    # Editorial workflow, on an isolated browser test database only.
+    page.goto(URL + "/admin/journal", wait_until="networkidle")
+    expect(page.locator("#article-list .article-list-item")).to_have_count(10)
+    page.locator("#new-article").click()
+    page.locator("#article-slug").fill("test-redakcionnaya-statia")
+    page.locator("#article-title").fill("Как спокойно сравнить условия новой работы")
+    page.locator("#article-description").fill(
+        "Практический набор вопросов для сравнения двух предложений работодателя.")
+    page.locator("#article-category").fill("Карьера")
+    page.locator("#article-read").fill("5 минут")
+    page.locator("#article-body").fill(
+        "## Проверьте основные условия\\n"
+        "Перед согласием уточните график, задачи, состав оплаты и оформление. "
+        "Сравните предложения на одинаковой основе и запишите различия.\\n\\n"
+        "## Выберите следующий шаг\\n"
+        "Уточните сроки ответа и критерии оценки результата. "
+        "Не отправляйте коды подтверждения или банковские данные неожиданным собеседникам.")
+    page.locator("#preview").click()
+    expect(page.locator("#article-preview")).to_be_visible()
+    page.locator("#save").click()
+    expect(page.locator("#notice")).to_contain_text("Черновик сохранён")
+    assert page.request.get(URL + "/journal/test-redakcionnaya-statia").status == 404
+    page.on("dialog", lambda dialog: dialog.accept())
+    page.locator("#publish").click()
+    expect(page.locator("#notice")).to_contain_text("Статья опубликована")
+    assert page.request.get(URL + "/journal/test-redakcionnaya-statia").status == 200
+    page.locator("#hide").click()
+    expect(page.locator("#notice")).to_contain_text("Статья снята с публикации")
+    assert page.request.get(URL + "/journal/test-redakcionnaya-statia").status == 404
+    page.goto(URL, wait_until="networkidle")
+    expect(page.locator("#admin-stats")).to_contain_text("Активные отклики")
+
     expect(page.locator("[data-v02-action='admin-users']")).to_be_visible()
     page.locator("[data-v02-action='admin-users']").click()
     expect(page.locator("#admin-v02-results")).to_contain_text("Пользователи")
