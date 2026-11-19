@@ -50,6 +50,9 @@ from .matching import lead_price, match_candidate, taxonomy_payload
 from .journal import install_journal_routes
 from .legal_pages import install_legal_draft_routes
 from .legal_config import render_template as render_legal_template, legal_approved, legal_profile
+from .privacy_rights import (
+    requests_for_user, submit_request, admin_request_list, admin_change_status,
+)
 from .growth import VALID_SOURCES, record_event, aggregate_snapshot
 from .security import (
     ADMIN_SESSION_IDLE_SECONDS, ADMIN_SESSION_SECONDS, COOKIE_NAME,
@@ -71,6 +74,18 @@ EMPLOYMENTS = {"Любая", "Полная", "Частичная", "Проект
 class GrowthEventIn(BaseModel):
     source: str = Field(min_length=1, max_length=80)
     action: Literal["view", "jobs_click", "profile_click"]
+
+
+class PrivacyRightsRequestIn(BaseModel):
+    kind: Literal["access", "correction", "deletion", "stop_processing"]
+
+
+class PrivacyRightsStatusIn(BaseModel):
+    status: Literal["in_review", "completed", "declined"]
+    manual_response_confirmed: bool = False
+    closure_reason: Literal[
+        "fulfilled", "retention_required", "identity_unverified", "other"
+    ] | None = None
 
 
 class DirectInvitationOutcomeIn(BaseModel):
@@ -1590,6 +1605,27 @@ def create_app(db_path: str | None = None) -> FastAPI:
     def me(user: dict = Depends(active_user), db: sqlite3.Connection = Depends(get_connection)):
         return {"user": user_response(user, db)}
 
+    @app.get("/api/account/privacy-requests")
+    def own_privacy_requests(
+        user: dict = Depends(active_user),
+        db: sqlite3.Connection = Depends(get_connection),
+    ):
+        return {
+            "requests": requests_for_user(db, user["id"]),
+            "automatic_fulfillment": False,
+            "note": "Регистрация обращения не означает немедленного удаления или раскрытия данных.",
+        }
+
+    @app.post("/api/account/privacy-requests", status_code=201)
+    def create_privacy_request(
+        payload: PrivacyRightsRequestIn,
+        user: dict = Depends(active_user),
+        db: sqlite3.Connection = Depends(get_connection),
+    ):
+        item = submit_request(db, user["id"], payload.kind)
+        return {"request": item, "automatic_fulfillment": False}
+
+
     @app.get("/api/account/action-summary")
     def account_action_summary(
         user: dict = Depends(active_user),
@@ -2532,6 +2568,46 @@ def create_app(db_path: str | None = None) -> FastAPI:
     ):
         allowed(user, "admin")
         return aggregate_snapshot(db, days)
+
+    @app.get("/api/admin/privacy-requests")
+    def admin_privacy_requests(
+        status: str | None = Query(default=None, max_length=16),
+        limit: int = Query(default=100, ge=1, le=100),
+        user: dict = Depends(active_user),
+        db: sqlite3.Connection = Depends(get_connection),
+    ):
+        allowed(user, "admin")
+        try:
+            items = admin_request_list(db, status=status, limit=limit)
+        except ValueError:
+            raise HTTPException(422, "Недопустимый статус обращения") from None
+        return {
+            "requests": items,
+            "note": "Решение и ответ пользователю выполняются оператором вручную; "
+                    "статус не свидетельствует об автоматическом удалении данных.",
+        }
+
+    @app.post("/api/admin/privacy-requests/{request_key}/status")
+    def admin_privacy_request_status(
+        request_key: str,
+        payload: PrivacyRightsStatusIn,
+        user: dict = Depends(active_user),
+        db: sqlite3.Connection = Depends(get_connection),
+    ):
+        allowed(user, "admin")
+        if not re.fullmatch(r"[A-Za-z0-9_-]{16,64}", request_key):
+            raise HTTPException(422, "Некорректный номер обращения")
+        try:
+            result = admin_change_status(
+                db, request_key, user["id"], payload.status,
+                manual_response_confirmed=payload.manual_response_confirmed,
+                closure_reason=payload.closure_reason,
+            )
+        except ValueError as exc:
+            raise HTTPException(409, str(exc)) from None
+        if result is None:
+            raise HTTPException(404, "Обращение не найдено")
+        return {"request": result, "automatic_fulfillment": False}
 
     @app.get("/api/admin/stats")
     def stats(user: dict = Depends(active_user), db: sqlite3.Connection = Depends(get_connection)):
