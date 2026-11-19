@@ -120,5 +120,5 @@ def test_growth_frontend_is_first_party_and_fails_open(tmp_path):
         assert article.status_code == 200
         assert 'data-growth-action="profile_click"' in article.text
         assert 'data-growth-action="jobs_click"' in article.text
-        assert '/static/journal.js?v=3' in article.text
+        assert '/static/journal.js?v=4' in article.text
         assert client.get("/static/growth-admin.css").status_code == 200
