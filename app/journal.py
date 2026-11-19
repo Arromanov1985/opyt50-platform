@@ -52,7 +52,10 @@ def _layout(title: str, description: str, path: str, body: str) -> str:
         f"<main id=\"jr-content\" class=\"jr-wrap\">{body}</main>"
         "<footer class=\"jr-footer\"><div class=\"jr-wrap jr-footer-row\">"
         "<span>СТАЖНО.РУ — ваш опыт работает на вас</span>"
-        "<a href=\"/\">На главную</a></div></footer>"
+        "<a href=\"/\">На главную</a></div>"
+        "<p class=\"jr-analytics-note jr-wrap\">Для оценки полезности материалов мы считаем только "
+        "суточные суммы просмотров и переходов — без аналитических cookie и хранения "
+        "данных о конкретных посетителях.</p></footer>"
         "</body></html>"
     )
 
