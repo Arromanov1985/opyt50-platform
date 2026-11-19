@@ -2624,6 +2624,38 @@ function adminSecurityCheckMarkup(item) {
 function adminSecurityEventStat(label, value) {
   return `<div class="admin-security-event-stat"><strong>${Number(value || 0).toLocaleString('ru-RU')}</strong><span>${esc(label)}</span></div>`;
 }
+function adminPrivacyRightsMarkup(requests, available) {
+  if (!available) return '<p class="muted">Очередь обращений временно недоступна.</p>';
+  const rows = Array.isArray(requests) ? requests.slice(0,50) : [];
+  if (!rows.length) return '<p class="muted">Обращений пока нет.</p>';
+  return rows.map(item => {
+    const key = esc(item.request_key || '');
+    const status = String(item.status || '');
+    const header = '<div class="privacy-rights-record privacy-rights-admin"><div>' +
+      '<strong>' + esc(rightsKindLabels[item.kind] || 'Обращение') + '</strong>' +
+      '<small>№ ' + key.slice(0,8) + ' · ' + rightsDate(item.submitted_at) +
+      ' · ' + esc(item.email || '') + '</small>' +
+      '<span class="status">' + esc(rightsStatusLabels[status] || status) + '</span></div>';
+    if (status === 'received') {
+      return header + '<button type="button" class="btn btn-outline btn-small" ' +
+        'data-action="privacy-rights-review" data-rights-key="' + key +
+        '">Взять в работу</button></div>';
+    }
+    if (status === 'in_review') {
+      return header + '<div class="privacy-rights-admin-actions">' +
+        '<label>Результат ручной обработки<select data-rights-closure-reason="' + key + '">' +
+        '<option value="fulfilled">Запрос выполнен</option>' +
+        '<option value="retention_required">Ограничение по закону</option>' +
+        '<option value="identity_unverified">Требуется подтверждение личности</option>' +
+        '<option value="other">Иное обоснованное решение</option>' +
+        '</select></label>' +
+        '<button type="button" class="btn btn-outline btn-small" ' +
+        'data-action="privacy-rights-close" data-rights-key="' + key +
+        '">Закрыть после ответа пользователю</button></div></div>';
+    }
+    return header + '</div>';
+  }).join('');
+}
 async function renderAdmin() {
   $('#account-content').innerHTML = `<div class="admin-dashboard-stack">
     <section class="panel"><h3>Панель управления</h3><p class="muted">Статистика работы MVP, без раскрытия персональных данных.</p><div class="stat-grid" id="admin-stats"><div class="loading">Загрузка...</div></div></section>
@@ -2634,6 +2666,13 @@ async function renderAdmin() {
       <div class="stat-grid" id="admin-growth-stats"><div class="loading">Загрузка…</div></div>
       <div id="admin-growth-articles" class="admin-growth-overflow" aria-live="polite"></div>
       <p class="muted">Загрузки — не уникальные посетители; переходы не равны регистрациям. Роботы, блокировщики и обновления страницы могут влиять на показатели.</p>
+    </section>
+    <section class="panel admin-privacy-rights">
+      <span class="section-kicker">ПРАВА ПОЛЬЗОВАТЕЛЕЙ</span>
+      <h3>Обращения по персональным данным</h3>
+      <p class="muted">Здесь фиксируются запросы пользователей, а не их автоматическое исполнение. Оператор проверяет личность и основания, выполняет необходимые действия и отдельно отвечает заявителю. Закрытие заявки доступно только после подтверждения ручного ответа.</p>
+      <div id="admin-privacy-rights" aria-live="polite"><p class="loading">Загрузка обращений…</p></div>
+      <p class="muted">В очереди показываются первые 50 обращений. Если указан тестовый email, реальный ответ через него невозможен.</p>
     </section>
     <section class="panel admin-security-panel admin-security-ops">
       <div class="split-header"><div><span class="section-kicker">КОНТУР БЕЗОПАСНОСТИ</span><h3>Состояние защиты</h3><p class="muted">Сводка ключевых настроек и событий за последние 24 часа. Секреты и токены здесь никогда не отображаются.</p></div><span class="mini-badge" id="admin-security-summary">Проверяем…</span></div>
@@ -2668,13 +2707,17 @@ async function renderAdmin() {
     </section>
   </div>`;
   try {
-    const [stats, security, securityOverview, mailDiagnostics, growth] = await Promise.all([
+    const [stats, security, securityOverview, mailDiagnostics, growth, privacyRights] = await Promise.all([
       api('/api/admin/stats'),
       api('/api/account/security'),
       api('/api/admin/security-overview'),
       api('/api/admin/mail-diagnostics').catch(() => null),
-      api('/api/admin/growth?days=30').catch(() => null)
+      api('/api/admin/growth?days=30').catch(() => null),
+      api('/api/admin/privacy-requests?limit=50').catch(() => null)
     ]);
+    const privacyRightsTarget = $('#admin-privacy-rights');
+    if (privacyRightsTarget) privacyRightsTarget.innerHTML =
+      adminPrivacyRightsMarkup(privacyRights?.requests, Boolean(privacyRights));
     const diagnosticLabels = {
       new_application: 'Новые отклики работодателю',
       invitation: 'Приглашения соискателю',
