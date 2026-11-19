@@ -2023,7 +2023,7 @@ async function renderEmployer() {
         description: `Открытых вакансий: ${openJobs.length}. Можно начать подбор без раскрытия контактов.`,
         action: '<button class="btn btn-outline btn-tiny" data-tab="vacancies">Мои вакансии</button>'
       });
-      if (!employerTasks.length) employerTasks.push({
+      if (!employerTasks.length && !recentDraft) employerTasks.push({
         title: 'Опубликовать первую вакансию',
         description: 'Начните с обязанностей, города и условий работы.',
         action: '<button class="btn btn-outline btn-tiny" data-tab="create">Создать</button>'
