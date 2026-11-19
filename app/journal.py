@@ -198,7 +198,13 @@ def journal_sitemap(articles: list[dict] | None = None) -> Response:
     """Only published editorial pages when a live catalog is supplied."""
     if articles is None:
         articles = ARTICLES
-    paths = ["/", "/employers", "/journal"] + ["/journal/" + article["slug"] for article in articles]
+    from .journal_paths import visible_paths
+    paths = (
+        ["/", "/employers", "/journal"]
+        + ["/journal/" + article["slug"] for article in articles]
+        + ["/journal/paths"]
+        + ["/journal/paths/" + path["slug"] for path in visible_paths(articles)]
+    )
     urls = "".join(
         "<url><loc>" + _e(ORIGIN + path) + "</loc>"
         "<lastmod>" + PUBLISHED + "</lastmod></url>"
