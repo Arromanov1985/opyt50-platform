@@ -143,9 +143,6 @@ def run_browser(page):
     page.locator("#privacy-rights-kind").select_option("access")
     page.locator("#privacy-rights-request-form button[type='submit']").click()
     expect(page.locator("#privacy-rights-history")).to_contain_text("Получить сведения об обработке")
-    page.locator("#privacy-rights-kind").select_option("deletion")
-    page.locator("#privacy-rights-request-form button[type='submit']").click()
-    expect(page.locator("#privacy-rights-history")).to_contain_text("Запросить удаление данных")
     with page.expect_download() as exported_file:
         page.locator("#dashboard-main a[href='/api/account/data-export']").click()
     assert exported_file.value.suggested_filename.startswith("stazhno-my-data-")
@@ -1525,6 +1522,26 @@ def run_browser(page):
     )
     assert len(ids) == len(set(ids)) == 21
     page.unroute("**/api/candidate/vacancy-updates?*", paginated_changes)
+
+    # Privacy request is intentionally LAST: new marketplace actions must be
+    # rejected after it. Earlier tests exercise an ordinary active account.
+    page.locator("[data-dashboard-tab-select]").select_option("security")
+    expect(page.locator("#privacy-rights-request-form")).to_be_visible()
+    page.locator("#privacy-rights-kind").select_option("deletion")
+    with page.expect_response(lambda response: (
+        response.url.endswith("/api/account/privacy-requests")
+        and response.request.method == "POST"
+    )) as privacy_reply:
+        page.locator("#privacy-rights-request-form button[type='submit']").click()
+    assert privacy_reply.value.status == 201, privacy_reply.value.text()
+    expect(page.locator("#privacy-rights-history")).to_contain_text("Запросить удаление данных")
+    assert page.request.get(URL + "/api/account/data-export").status == 200
+    assert page.request.get(URL + "/api/candidate/jobs").status == 409
+    assert page.request.post(
+        URL + "/api/candidate/applications",
+        headers={"X-Requested-With": "OPYT50"},
+        data={"vacancy_id": 1},
+    ).status == 409
 
     if console_errors:
         raise AssertionError("Uncaught browser errors: " + " | ".join(console_errors))
