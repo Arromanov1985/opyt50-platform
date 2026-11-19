@@ -11,6 +11,10 @@ SLUGS = (
     "sobesedovanie-posle-50",
     "cifrovye-navyki-dlya-raboty",
     "rabotodatelyu-ocenit-opyt",
+    "perehod-v-novuyu-professiyu",
+    "kak-obsuzhdat-zarplatu",
+    "nastavnichestvo-peredacha-opyta",
+    "udalyonnaya-rabota-bez-riskov",
 )
 
 
@@ -48,6 +52,11 @@ def test_journal_no_mutations_and_home_links(tmp_path):
         assert homepage.status_code == 200
         assert 'id="journal-preview"' in homepage.text
         assert 'href="/journal"' in homepage.text
+        assert 'href="/community"' in homepage.text
+        assert 'id="journal-home-highlights"' in homepage.text
+        assert 'editorial-directions-grid' in homepage.text
+        assert client.get("/api/public/journal/highlights").status_code == 200
+        assert len(client.get("/api/public/journal/highlights").json()["articles"]) == 4
         assert 'href="/static/journal-preview.css?v=1"' in homepage.text
         assert client.post("/journal").status_code == 405
         assert client.post("/journal/kak-proverit-vakansiyu").status_code == 405
@@ -62,6 +71,10 @@ def test_journal_assets_exist_and_accessible(tmp_path):
             ("journal.css", "text/css"),
             ("journal-preview.css", "text/css"),
             ("journal.js", "javascript"),
+            ("journal-home.js", "javascript"),
+            ("editorial-home.css", "text/css"),
+            ("journal-admin.js", "javascript"),
+            ("journal-admin.css", "text/css"),
         ):
             assert (STATIC / name).is_file()
             response = client.get("/static/" + name)
