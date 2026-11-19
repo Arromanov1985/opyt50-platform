@@ -1135,6 +1135,9 @@ def run_browser(page):
     login(page, "admin@demo.example")
     expect(page.locator("#admin-stats")).to_contain_text("Активные отклики")
     expect(page.locator("#admin-stats")).to_contain_text("Отозванные отклики")
+    expect(page.locator("#admin-growth-stats")).to_contain_text("Переходы к вакансиям")
+    expect(page.locator("#admin-growth-articles tbody tr")).to_have_count(4)
+
     expect(page.locator("[data-v02-action='admin-users']")).to_be_visible()
     page.locator("[data-v02-action='admin-users']").click()
     expect(page.locator("#admin-v02-results")).to_contain_text("Пользователи")

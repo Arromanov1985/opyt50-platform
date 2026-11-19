@@ -208,3 +208,26 @@ def test_first_draft_create_key_is_atomic_in_postgres(runtime_db):
                (employer_id,request_key,payload_sha256) VALUES(?,?,?)""",
             (2, key, "sha256-test"),
         ).rowcount == 0
+
+
+def test_growth_aggregate_is_atomic_and_private_in_postgresql(runtime_db):
+    from app.growth import aggregate_snapshot, record_event
+    from app.release02 import init_release02
+
+    # Startup is idempotent for existing production schemas.
+    init_release02("ignored-when-DATABASE_URL-present")
+    init_release02("ignored-when-DATABASE_URL-present")
+    record_event("ignored-when-DATABASE_URL-present", "journal", "view")
+    record_event("ignored-when-DATABASE_URL-present", "journal", "view")
+    record_event("ignored-when-DATABASE_URL-present", "kak-proverit-vakansiyu", "jobs_click")
+    with postgres_database(runtime_db) as db:
+        payload = aggregate_snapshot(db, days=30)
+        assert payload["summary"]["journal_requests"] == 2
+        assert payload["summary"]["jobs_clicks"] == 1
+        assert payload["summary"]["new_candidates"] == 1
+        assert payload["summary"]["new_employers"] == 1
+        rows = db.execute("SELECT source,action,total FROM growth_daily_counts ORDER BY source").fetchall()
+        assert [(r["source"], r["action"], r["total"]) for r in rows] == [
+            ("journal", "view", 2),
+            ("kak-proverit-vakansiyu", "jobs_click", 1),
+        ]

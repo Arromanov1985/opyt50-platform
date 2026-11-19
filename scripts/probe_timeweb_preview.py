@@ -20,6 +20,8 @@ BASE = os.getenv("STAZHNO_PREVIEW_URL", DEFAULT_BASE).rstrip("/")
 REPORT = Path(os.getenv("STAZHNO_PREVIEW_REPORT", "preview-reachability.json"))
 STATIC = Path(__file__).resolve().parents[1] / "app" / "static"
 CLIENT_ASSETS = ("app.js", "release02.js", "vacancy-wizard.js", "release09-dashboard.css")
+ADDITIONAL_ASSETS = ("journal.js", "growth-admin.css")
+CHECKED_ASSETS = CLIENT_ASSETS + ADDITIONAL_ASSETS
 
 
 def git_blob_revision(path):
@@ -174,6 +176,7 @@ BACKEND_ROUTE_CAPABILITIES = {
     "direct_invitation_outcome": ("/api/employer/invitations/0/outcome", "PATCH"),
     "candidate_invitation_response": ("/api/candidate/invitations/0/respond", "POST"),
     "employer_contact_unlock": ("/api/employer/invitations/0/demo-pay", "POST"),
+    "growth_event": ("/api/growth/event", "POST"),
 }
 
 
@@ -324,7 +327,7 @@ def main():
             result["paths"][path] = probe(path)
         result["deployed_assets"] = {
             name: probe_asset("/static/" + name, STATIC / name)
-            for name in CLIENT_ASSETS
+            for name in CHECKED_ASSETS
         }
         # Retain the original field for existing dashboards and logs.
         result["deployed_app_js"] = result["deployed_assets"]["app.js"]
@@ -342,7 +345,7 @@ def main():
             "/": {"result": "not-tested-dns-failure"},
         }
         result["deployed_assets"] = {
-            name: {"result": "not-tested-dns-failure"} for name in CLIENT_ASSETS
+            name: {"result": "not-tested-dns-failure"} for name in CHECKED_ASSETS
         }
         result["deployed_app_js"] = result["deployed_assets"]["app.js"]
         result["index_asset_revisions"] = {"result": "not-tested-dns-failure"}

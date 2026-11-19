@@ -35,8 +35,8 @@ def _layout(title: str, description: str, path: str, body: str) -> str:
         f"<meta property=\"og:title\" content=\"{_e(title)}\">"
         f"<meta property=\"og:description\" content=\"{_e(description)}\">"
         f"<meta property=\"og:url\" content=\"{_e(canonical)}\">"
-        "<link rel=\"stylesheet\" href=\"/static/journal.css?v=1\">"
-        "<script src=\"/static/journal.js?v=1\" defer></script>"
+        "<link rel=\"stylesheet\" href=\"/static/journal.css?v=2\">"
+        "<script src=\"/static/journal.js?v=2\" defer></script>"
         "</head><body class=\"jr-page\">"
         "<a class=\"jr-skip\" href=\"#jr-content\">К основному содержанию</a>"
         "<header class=\"jr-header\"><div class=\"jr-wrap jr-top\">"
@@ -52,7 +52,10 @@ def _layout(title: str, description: str, path: str, body: str) -> str:
         f"<main id=\"jr-content\" class=\"jr-wrap\">{body}</main>"
         "<footer class=\"jr-footer\"><div class=\"jr-wrap jr-footer-row\">"
         "<span>СТАЖНО.РУ — ваш опыт работает на вас</span>"
-        "<a href=\"/\">На главную</a></div></footer>"
+        "<a href=\"/\">На главную</a></div>"
+        "<p class=\"jr-analytics-note jr-wrap\">Для оценки полезности материалов мы считаем только "
+        "суточные суммы просмотров и переходов — без аналитических cookie и хранения "
+        "данных о конкретных посетителях.</p></footer>"
         "</body></html>"
     )
 
@@ -79,7 +82,7 @@ def journal_index() -> HTMLResponse:
         f'<div class="jr-grid">{cards}</div></section>'
         '<aside class="jr-bottom"><h2>Готовы использовать свой опыт?</h2>'
         '<p>Посмотрите вакансии или начните с профессионального профиля. Контакты защищены.</p>'
-        '<a class="jr-primary" href="/#jobs">Посмотреть вакансии →</a></aside>'
+        '<a class="jr-primary" href="/#jobs" data-growth-action="jobs_click">Посмотреть вакансии →</a></aside>'
     )
     return HTMLResponse(_layout("Журнал: работа и новые возможности после 50", 
                                "Практические статьи СТАЖНО о профессиональном опыте, работе, проектах и безопасности.",
@@ -111,8 +114,8 @@ def journal_article(slug: str) -> HTMLResponse:
         '<aside class="jr-aside"><h2>Следующий шаг</h2>'
         '<p>Профессиональный профиль помогает показать навыки и условия работы.'
         ' Контакты не публикуются автоматически.</p>'
-        '<a class="jr-primary" href="/#candidate-path">Создать профиль →</a>'
-        '<a class="jr-secondary" href="/#jobs">Посмотреть вакансии</a></aside></div>'
+        '<a class="jr-primary" href="/#candidate-path" data-growth-action="profile_click">Создать профиль →</a>'
+        '<a class="jr-secondary" href="/#jobs" data-growth-action="jobs_click">Посмотреть вакансии</a></aside></div>'
         '<p class="jr-back"><a href="/journal">← Все статьи журнала</a></p>'
     )
     return HTMLResponse(_layout(article["title"], article["description"],
