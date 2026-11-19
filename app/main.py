@@ -785,6 +785,8 @@ def create_app(db_path: str | None = None) -> FastAPI:
         init_db(app.state.db_path)
         from .release02 import init_release02
         init_release02(app.state.db_path)
+        from .journal_cms import init_journal
+        init_journal(app.state.db_path)
         # Production defaults to automatic retry. Pytest runs use an explicit
         # processor, so parallel TestClient lifespans never send from a
         # background task while asserting deterministic mail state.
@@ -940,9 +942,10 @@ def create_app(db_path: str | None = None) -> FastAPI:
     def growth_event(payload: GrowthEventIn):
         # Anonymous, strictly whitelisted and strictly aggregated. Never read cookies,
         # user identity, browser metadata, IP address or full referrer.
-        if payload.source not in VALID_SOURCES:
-            raise HTTPException(422, "Неизвестный материал журнала")
-        record_event(db_location, payload.source, payload.action)
+        try:
+            record_event(db_location, payload.source, payload.action)
+        except ValueError:
+            raise HTTPException(422, "Неизвестный материал журнала") from None
         return Response(status_code=204)
 
     @app.get("/api/health")

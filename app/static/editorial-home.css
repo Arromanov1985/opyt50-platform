@@ -1,0 +1,17 @@
+/* Multi-path editorial homepage, additive to the approved STAZHNO layout. */
+.editorial-hero-actions{display:flex;gap:9px;flex-wrap:wrap}
+.editorial-hero-actions .btn{min-height:46px}
+.editorial-directions{padding:54px 0 58px;background:#F3F8F4}
+.editorial-directions-heading{margin-bottom:24px}
+.editorial-directions-heading h2{font-size:clamp(27px,3vw,39px);line-height:1.2;margin:10px 0}
+.editorial-directions-heading p{max-width:660px;color:#587063;margin:0}
+.editorial-directions-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px}
+.editorial-direction{display:flex;flex-direction:column;align-items:flex-start;gap:12px;padding:25px;background:#fff;border:1px solid #DAE8DF;border-radius:18px;min-width:0;color:#183D30;text-decoration:none;box-shadow:0 10px 28px #163b3012}
+.editorial-direction:hover,.editorial-direction:focus-visible{border-color:#8AC4A0;box-shadow:0 12px 30px #163b3020}
+.editorial-direction-icon{display:grid;place-items:center;background:#E7F6EB;color:#187145;border-radius:12px;width:47px;height:47px;font-weight:850}
+.editorial-direction strong{font-size:22px;line-height:1.25}
+.editorial-direction>span:not(.editorial-direction-icon){font-size:15px;line-height:1.6;color:#537064;flex:1}
+.editorial-direction b{color:#16724B;font-size:14px;margin-top:6px}
+@media(max-width:850px){.editorial-directions-grid{grid-template-columns:1fr}.editorial-direction{min-height:auto}}
+@media(max-width:620px){.editorial-directions{padding:32px 0}.editorial-hero-actions .btn{width:100%}.editorial-direction{padding:20px}}
+body.comfortable-view .editorial-direction>span:not(.editorial-direction-icon){font-size:1rem}

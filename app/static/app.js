@@ -2662,6 +2662,7 @@ function adminSecurityEventStat(label, value) {
 }
 async function renderAdmin() {
   $('#account-content').innerHTML = `<div class="admin-dashboard-stack">
+    <section class="panel"><span class="section-kicker">РЕДАКЦИЯ</span><h3>Журнал и публикации</h3><p class="muted">Управляйте статьями: черновики, предпросмотр, публикация и отзыв материала. Все действия фиксируются.</p><a class="btn btn-primary" href="/admin/journal">Открыть редактор Журнала →</a></section>
     <section class="panel"><h3>Профессиональное сообщество</h3><p class="muted">Проверяйте новые профили перед публикацией и рассматривайте жалобы участников.</p><a class="btn btn-primary" href="/community/moderation">Модерация профилей и жалоб →</a></section><section class="panel"><h3>Панель управления</h3><p class="muted">Статистика работы MVP, без раскрытия персональных данных.</p><div class="stat-grid" id="admin-stats"><div class="loading">Загрузка...</div></div></section>
     <section class="panel">
       <span class="section-kicker">ПРИВЛЕЧЕНИЕ АУДИТОРИИ</span>
