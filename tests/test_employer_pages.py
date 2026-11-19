@@ -74,7 +74,9 @@ def test_public_employer_page_preserves_moderation_and_privacy(tmp_path: Path):
 
         with database(app.state.db_path) as db:
             db.execute(
-                "UPDATE account_controls SET status='disabled' WHERE user_id=?",
+                """INSERT INTO account_controls(user_id,status,email_verified)
+                   VALUES(?,'disabled',0)
+                   ON CONFLICT(user_id) DO UPDATE SET status='disabled'""",
                 (owner_id,),
             )
         assert visitor.get(f"/companies/{owner_id}").status_code == 404
