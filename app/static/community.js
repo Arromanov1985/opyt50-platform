@@ -255,7 +255,14 @@
       form.addEventListener('submit',event=>{event.preventDefault();const body=form.elements.body.value.trim();if(!body)return;
         if(!state.messageKey || state.messageBody!==body){state.messageKey=crypto.randomUUID();state.messageBody=body;}
         const clientKey=state.messageKey;
-        busy(form,async()=>{await api('/api/community/connections/'+encodeURIComponent(id)+'/messages',{method:'POST',body:{body,client_key:clientKey}});form.elements.body.value='';if(request===state.threadRequest&&state.selected?.id===id){state.messageDirty=false;state.messageKey=null;state.messageBody=null;}$('.form-error',form)?.remove();await loadMessages(id,false,request);});
+        busy(form,async()=>{
+          await api('/api/community/connections/'+encodeURIComponent(id)+'/messages',{method:'POST',body:{body,client_key:clientKey}});
+          form.elements.body.value='';
+          if(request===state.threadRequest&&state.selected?.id===id){state.messageDirty=false;state.messageKey=null;state.messageBody=null;notice('Сообщение отправлено.');}
+          $('.form-error',form)?.remove();
+          try { await loadMessages(id,false,request); }
+          catch { if(request===state.threadRequest&&state.selected?.id===id)notice('Сообщение отправлено, но не удалось обновить переписку. Нажмите «Обновить разговор».','warning'); }
+        });
       });
     }
     if (['accepted','blocked'].includes(c.status)) {

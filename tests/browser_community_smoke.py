@@ -248,6 +248,8 @@ def run_browser(browser, base, database):
         message = checked(sent.value)["message"]
         assert len(sends) == 1
         expect(boris.locator(f'#thread-history [data-message-id="{message["id"]}"]')).to_contain_text(message_body)
+        expect(boris.locator("#community-notice")).to_have_text("Сообщение отправлено.")
+        expect(boris.locator("#community-notice")).not_to_have_class(re.compile(r".*\berror\b.*"))
         assert boris.evaluate("window.communityXss || 0") == 0
         replay = checked(boris.request.post(
             base + "/api/community/connections/" + connection_id + "/messages", headers=HEADERS,
