@@ -64,3 +64,41 @@ def test_journal_assets_exist_and_accessible(tmp_path):
     assert "stazhno-large-text" in script
     assert "aria-pressed" in script
     assert "localStorage" in script
+
+
+def test_public_sitemap_lists_only_public_editorial_pages(tmp_path):
+    import xml.etree.ElementTree as ET
+
+    app = create_app(str(tmp_path / "seo.sqlite"))
+    with TestClient(app, base_url="https://stazhno.ru") as client:
+        response = client.get("/sitemap.xml")
+        assert response.status_code == 200
+        assert "application/xml" in response.headers["content-type"]
+        root = ET.fromstring(response.text)
+        namespace = {"s": "http://www.sitemaps.org/schemas/sitemap/0.9"}
+        urls = [item.text for item in root.findall("s:url/s:loc", namespace)]
+        assert urls == [
+            "https://stazhno.ru/",
+            "https://stazhno.ru/journal",
+            *["https://stazhno.ru/journal/" + slug for slug in SLUGS],
+        ]
+        assert all("/api/" not in url for url in urls)
+        assert all("/dashboard" not in url for url in urls)
+
+
+def test_preview_not_indexed_and_canonical_domain_indexable(tmp_path):
+    app = create_app(str(tmp_path / "seo.sqlite"))
+    with TestClient(app, base_url="https://preview.twc1.net") as preview:
+        robots = preview.get("/robots.txt")
+        assert robots.status_code == 200
+        assert "Disallow: /\\n" in robots.text
+        assert "Sitemap:" not in robots.text
+        assert preview.get("/journal").headers.get("x-robots-tag") == "noindex, nofollow"
+        assert preview.get("/").headers.get("x-robots-tag") == "noindex, nofollow"
+    with TestClient(app, base_url="https://stazhno.ru") as public:
+        robots = public.get("/robots.txt")
+        assert robots.status_code == 200
+        assert "Disallow: /api/" in robots.text
+        assert "https://stazhno.ru/sitemap.xml" in robots.text
+        assert "Disallow: /\\n" not in robots.text
+        assert public.get("/journal").headers.get("x-robots-tag") is None
