@@ -2869,6 +2869,31 @@ function formValue(form, name) { return form.elements.namedItem(name).value.trim
 function parseNumber(form, name) { return Number(formValue(form,name)); }
 async function handleDashboardSubmit(event) {
   const form = event.target;
+  if (form.id === 'privacy-rights-request-form') {
+    event.preventDefault();
+    const kind = String(form.elements.namedItem('kind')?.value || '');
+    const message = $('#privacy-rights-message');
+    if (!Object.hasOwn(rightsKindLabels, kind)) {
+      if (message) message.textContent = 'Выберите вид обращения.';
+      return;
+    }
+    const submit = form.querySelector('button[type="submit"]');
+    if (submit) submit.disabled = true;
+    if (message) message.textContent = 'Сохраняем обращение…';
+    try {
+      await api('/api/account/privacy-requests', {
+        method: 'POST', body: JSON.stringify({kind})
+      });
+      await renderAccountSecurity($('#dashboard-main'));
+      toast('Обращение сохранено в кабинете. Оператор рассмотрит его отдельно.');
+    } catch (error) {
+      if (message) message.textContent = error.message || 'Не удалось сохранить обращение.';
+      toast(error.message || 'Не удалось сохранить обращение.', true);
+    } finally {
+      if (submit?.isConnected) submit.disabled = false;
+    }
+    return;
+  }
   if (form.id === 'security-password-form') {
     event.preventDefault();
     const message = $('#security-password-message');
@@ -3342,6 +3367,39 @@ async function handleDashboardClick(event) {
       await api(`/api/admin/passkeys/${encodeURIComponent(passkeyId)}`,{method:'DELETE'});
       await renderAdmin();
       toast('Passkey удалён.');
+      return;
+    }
+    if (action === 'privacy-rights-review' || action === 'privacy-rights-close') {
+      const requestKey = String(btn.dataset.rightsKey || '');
+      if (!/^[A-Za-z0-9_-]{16,64}$/.test(requestKey)) return;
+      const isReview = action === 'privacy-rights-review';
+      let payload = {status:'in_review'};
+      if (!isReview) {
+        const selector = document.querySelector('[data-rights-closure-reason="' + requestKey + '"]');
+        const reason = String(selector?.value || '');
+        const allowedReasons = ['fulfilled','retention_required','identity_unverified','other'];
+        if (!allowedReasons.includes(reason)) throw new Error('Укажите основание решения.');
+        const approved = window.confirm(
+          'Подтверждаете, что оператор вручную проверил основания, предпринял необходимые действия ' +
+          'и отдельно сообщил пользователю результат? Изменение статуса НЕ удаляет персональные данные автоматически.'
+        );
+        if (!approved) return;
+        payload = {
+          status: reason === 'fulfilled' ? 'completed' : 'declined',
+          manual_response_confirmed: true,
+          closure_reason: reason
+        };
+      }
+      btn.disabled = true;
+      try {
+        await api('/api/admin/privacy-requests/' + encodeURIComponent(requestKey) + '/status', {
+          method: 'POST', body: JSON.stringify(payload)
+        });
+        await renderAdmin();
+        toast(isReview ? 'Обращение взято в работу.' : 'Решение зарегистрировано. Запись не означает автоматического удаления данных.');
+      } finally {
+        if (btn.isConnected) btn.disabled = false;
+      }
       return;
     }
     if (action === 'revoke-other-sessions') {
