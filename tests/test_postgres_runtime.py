@@ -271,3 +271,31 @@ def test_privacy_requests_are_private_idempotent_and_audited_in_postgres(runtime
         assert db.execute(
             "SELECT COUNT(*) FROM privacy_rights_admin_actions WHERE admin_user_id=?", (4,)
         ).fetchone()[0] == 2
+
+
+
+def test_personal_data_export_is_bounded_and_private_in_postgresql(runtime_db):
+    from app.data_export import build_personal_data_snapshot
+    from app.release02 import init_release02
+
+    init_release02("ignored-when-DATABASE_URL-present")
+    with postgres_database(runtime_db) as db:
+        db.execute(
+            """INSERT INTO privacy_rights_requests
+               (request_key,user_id,kind,status,submitted_at,updated_at)
+               VALUES(?,?,?,'received',?,?)""",
+            ("pg-self-data-request", 1, "access",
+             "2026-11-19T00:00:00+00:00", "2026-11-19T00:00:00+00:00"),
+        )
+        account = build_personal_data_snapshot(db, 1)
+        employer = build_personal_data_snapshot(db, 2)
+        assert account["account"]["role"] == "candidate"
+        assert account["account"]["email"] == "c@example.invalid"
+        assert len(account["sections"]["privacy_requests"]) == 1
+        assert account["candidate_profile"]["profession"] == "Кладовщик"
+        assert employer["company_profile"]["company_name"] == "Тест"
+        assert "candidate_profile" not in employer
+        assert "my_applications" not in employer["sections"]
+        assert "password_hash" not in account["account"]
+        assert "token_hash" not in str(account)
+        assert "c@example.invalid" not in str(employer)
