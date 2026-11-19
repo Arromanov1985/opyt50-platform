@@ -98,7 +98,34 @@ def render_template(content: str, profile: dict | None = None, html: bool = True
     for key in TEMPLATE_FIELDS:
         value = str(p.get(key, ""))
         content = content.replace("{{" + key.upper() + "}}", escape(value, quote=True) if html else value)
-    # The warning is always kept until a lawyer approves final document wording.
+    approved = not readiness_failures(p)
+    status = {
+        "LEGAL_BANNER": "" if approved else (
+            '<div class="banner" role="status"><strong>ТЕСТОВЫЕ ДАННЫЕ — НЕ УТВЕРЖДЕНО.</strong> '
+            'Реквизиты вымышленные и не подтверждают существование указанного ИП. '
+            'Публичная регистрация и публикация до юридической приёмки запрещены.</div>'
+        ),
+        "LEGAL_STATUS_SUFFIX": "" if approved else " (тестовый проект)",
+        "LEGAL_DOCUMENT_STATUS": (
+            f"Утверждено для версии {p.get('effective_date', '')}"
+            if approved else "ТЕСТОВЫЙ ПРОЕКТ, НЕ ДЕЙСТВУЕТ"
+        ),
+        "LEGAL_FOOTER_STATUS": (
+            "Юридическая информация" if approved else "ТЕСТОВЫЕ ЮРИДИЧЕСКИЕ МАКЕТЫ — НЕ ДЕЙСТВУЮТ"
+        ),
+        "LEGAL_IDENTITY_STATUS": (
+            "Реквизиты оператора и данные действующей редакции указаны ниже."
+            if approved else "Факт регистрации предпринимателя и реквизиты НЕ ПОДТВЕРЖДЕНЫ."
+        ),
+        "LEGAL_REGISTRATION_NOTICE": (
+            "Перед регистрацией ознакомьтесь с условиями и политикой обработки персональных данных."
+            if approved else "ТЕСТОВЫЕ ДАННЫЕ: документы и регистрация ещё не согласованы юристом."
+        ),
+        "LEGAL_LINK_SUFFIX": "" if approved else " (тестовый проект)",
+        "LEGAL_READY_ATTR": "yes" if approved else "no",
+    }
+    for key, value in status.items():
+        content = content.replace("{{" + key + "}}", value)
     if re.search(r"{{[A-Z_]+}}", content):
         raise ValueError("Unresolved legal template token")
     return content
