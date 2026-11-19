@@ -141,12 +141,12 @@ def journal_robots(request: Request) -> PlainTextResponse:
     canonical_hosts = {"stazhno.ru", "www.stazhno.ru"}
     if request.url.hostname in canonical_hosts:
         policy = (
-            "User-agent: *\\n"
-            "Disallow: /api/\\n"
-            "Sitemap: https://stazhno.ru/sitemap.xml\\n"
+            "User-agent: *\n"
+            "Disallow: /api/\n"
+            "Sitemap: https://stazhno.ru/sitemap.xml\n"
         )
     else:
-        policy = "User-agent: *\\nDisallow: /\\n"
+        policy = "User-agent: *\nDisallow: /\n"
     return PlainTextResponse(policy, headers={"Cache-Control": "public, max-age=300"})
 
 
