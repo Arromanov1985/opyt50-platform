@@ -2747,6 +2747,12 @@ async function renderAdmin() {
       <div id="admin-growth-articles" class="admin-growth-overflow" aria-live="polite"></div>
       <p class="muted">Загрузки — не уникальные посетители; переходы не равны регистрациям. Роботы, блокировщики и обновления страницы могут влиять на показатели.</p>
     </section>
+    <section class="panel admin-retention-policy">
+      <span class="section-kicker">ЮРИДИЧЕСКАЯ ГОТОВНОСТЬ</span>
+      <h3>Сроки хранения персональных данных</h3>
+      <p class="muted">Реестр категорий данных требует согласования с юристом. Программа не назначает универсальный срок и не удаляет записи автоматически.</p>
+      <div id="admin-retention-status" aria-live="polite"><p class="loading">Проверяем реестр…</p></div>
+    </section>
     <section class="panel admin-privacy-rights">
       <span class="section-kicker">ПРАВА ПОЛЬЗОВАТЕЛЕЙ</span>
       <h3>Обращения по персональным данным</h3>
@@ -2787,14 +2793,28 @@ async function renderAdmin() {
     </section>
   </div>`;
   try {
-    const [stats, security, securityOverview, mailDiagnostics, growth, privacyRights] = await Promise.all([
+    const [stats, security, securityOverview, mailDiagnostics, growth, privacyRights, retention] = await Promise.all([
       api('/api/admin/stats'),
       api('/api/account/security'),
       api('/api/admin/security-overview'),
       api('/api/admin/mail-diagnostics').catch(() => null),
       api('/api/admin/growth?days=30').catch(() => null),
-      api('/api/admin/privacy-requests?limit=50').catch(() => null)
+      api('/api/admin/privacy-requests?limit=50').catch(() => null),
+      api('/api/admin/privacy-retention-readiness').catch(() => null)
     ]);
+    const retentionTarget = $('#admin-retention-status');
+    if (retentionTarget) {
+      const total = Number(retention?.total || 0);
+      const approved = Number(retention?.approved_count || 0);
+      retentionTarget.innerHTML = !retention ? '<p class="muted">Реестр временно недоступен.</p>' :
+        '<p><strong>' + approved + ' из ' + total + ' категорий согласовано</strong>' +
+        (retention.approved ? '' : ' — выпуск заблокирован') + '</p>' +
+        '<p class="muted">Автоматическое удаление: отключено. Категории без утверждения:</p>' +
+        '<ul class="admin-retention-list">' +
+        (retention.categories || []).filter(c => c.approval_status !== 'APPROVED')
+          .map(c => '<li>' + esc(c.purpose || c.code) + '</li>').join('') +
+        '</ul>';
+    }
     const privacyRightsTarget = $('#admin-privacy-rights');
     if (privacyRightsTarget) privacyRightsTarget.innerHTML =
       adminPrivacyRightsMarkup(privacyRights?.requests, Boolean(privacyRights));
