@@ -137,6 +137,12 @@ def run_browser(page):
     expect(page.locator(".dashboard-tabs [data-tab='applications']")).to_contain_text("Отклики")
     expect(page.locator(".dashboard-tabs [data-tab='invitations']")).to_contain_text("Знакомства")
     expect(page.locator(".dashboard-tabs [data-tab='security']")).to_be_visible()
+    page.locator(".dashboard-tabs [data-tab='security']").click()
+    expect(page.locator("#privacy-rights-request-form")).to_be_visible()
+    expect(page.locator("#privacy-rights-history")).to_contain_text("Обращений пока нет.")
+    page.locator("#privacy-rights-kind").select_option("access")
+    page.locator("#privacy-rights-request-form button[type='submit']").click()
+    expect(page.locator("#privacy-rights-history")).to_contain_text("Получить сведения об обработке")
     page.locator(".dashboard-tabs [data-tab='profile']").click()
     expect(page.locator("#profile-form")).to_be_visible()
     expect(page.locator(".profile-health")).to_be_visible()
@@ -1137,6 +1143,9 @@ def run_browser(page):
     expect(page.locator("#admin-stats")).to_contain_text("Отозванные отклики")
     expect(page.locator("#admin-growth-stats")).to_contain_text("Переходы к вакансиям")
     expect(page.locator("#admin-growth-articles tbody tr")).to_have_count(4)
+    expect(page.locator("#admin-privacy-rights")).to_contain_text("Получить сведения об обработке")
+    expect(page.locator("#admin-privacy-rights")).to_contain_text("kladovshik@demo.example")
+
 
     expect(page.locator("[data-v02-action='admin-users']")).to_be_visible()
     page.locator("[data-v02-action='admin-users']").click()
