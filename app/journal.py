@@ -159,6 +159,16 @@ def journal_article(slug: str, request: Request) -> HTMLResponse:
 
 
 
+def journal_highlights(request: Request) -> dict:
+    """No visitor data and no unapproved editor drafts."""
+    articles = _catalog(request)
+    return {"articles": [
+        {"slug": item["slug"], "title": item["title"],
+         "description": item["description"], "category": item["category"]}
+        for item in reversed(articles[-4:])
+    ]}
+
+
 def journal_sitemap(request: Request) -> Response:
     """Only currently published editorial pages; never index hidden drafts."""
     articles = _catalog(request)
@@ -193,6 +203,7 @@ def install_journal_routes(app: FastAPI) -> None:
     app.add_api_route("/robots.txt", journal_robots, methods=["GET"], include_in_schema=False)
     app.add_api_route("/sitemap.xml", journal_sitemap, methods=["GET"], include_in_schema=False)
     app.add_api_route("/journal", journal_index, methods=["GET"], include_in_schema=False)
+    app.add_api_route("/api/public/journal/highlights", journal_highlights, methods=["GET"], include_in_schema=False)
     app.add_api_route("/journal/{slug}", journal_article, methods=["GET"], include_in_schema=False)
     from .journal_cms import install_journal_admin_routes
     install_journal_admin_routes(app)
