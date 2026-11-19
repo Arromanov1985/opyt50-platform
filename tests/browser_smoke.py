@@ -253,6 +253,51 @@ def run_browser(page):
     expect(page.locator(".profile-public-preview")).to_contain_text("Старший кладовщик")
     expect(page.locator(".profile-public-preview")).to_contain_text("Настроил складской учёт")
     expect(page.locator(".profile-public-preview")).not_to_contain_text("kladovshik@demo.example")
+    # Release 0.5.33: only saved resume data is printed; contacts require opt-in.
+    page.locator("[data-action='open-resume-print']").click()
+    dialog = page.locator("#resume-print-dialog")
+    expect(dialog).to_be_visible()
+    sheet = dialog.locator("#resume-print-document")
+    expect(sheet).to_contain_text("Старший кладовщик")
+    expect(sheet).to_contain_text("Управление складом в 1С")
+    expect(sheet).to_contain_text("Складская логистика, 1С")
+    expect(sheet).to_contain_text("Без имени и контактных данных")
+    expect(sheet).not_to_contain_text("kladovshik@demo.example")
+    expect(dialog.locator("#resume-print-include-contacts")).not_to_be_checked()
+    # Public resume text is escaped and obvious contact strings are masked
+    # even if an old legacy profile contained them.
+    unsafe = page.evaluate("""() => resumePrintDocumentMarkup({
+      profession: '<img src=x onerror=alert(1)>',
+      city: 'Москва',
+      skills: 'Excel, hidden@example.invalid',
+      about: 'Пишите +7 999 111-22-33, @privatehandle или https://example.invalid',
+      work_history: [{position:'Администратор',period:'2020–2024',
+                      duties:'Контакт hidden@example.invalid'}],
+      courses: [{title:'Курс',provider:'https://example.invalid'}]
+    }, {name:'Частное имя',email:'private@example.invalid'}, false)""")
+    assert "<img" not in unsafe and "&lt;img" in unsafe
+    for secret in ("hidden@example.invalid", "private@example.invalid",
+                   "https://example.invalid", "+7 999 111-22-33", "@privatehandle", "Частное имя"):
+        assert secret not in unsafe
+    dialog.locator("#resume-print-include-contacts").check()
+    expect(sheet).to_contain_text("kladovshik@demo.example")
+    dialog.locator("#resume-print-include-contacts").uncheck()
+    expect(sheet).not_to_contain_text("kladovshik@demo.example")
+    page.evaluate("""() => {
+        window.__resumePrintCount = 0;
+        window.print = () => { window.__resumePrintCount++; };
+    }""")
+    dialog.locator("[data-resume-print='print']").click()
+    assert page.evaluate("window.__resumePrintCount") == 1
+    assert page.locator("body").evaluate("el=>el.classList.contains('resume-printing')")
+    page.emulate_media(media="print")
+    assert sheet.evaluate("el=>getComputedStyle(el).display") != "none"
+    pdf = page.pdf(format="A4", print_background=True)
+    assert pdf.startswith(b"%PDF") and len(pdf) > 4000
+    page.emulate_media(media="screen")
+    dialog.locator("[data-resume-print='close']").click()
+    expect(dialog).to_have_count(0)
+    assert not page.locator("body").evaluate("el=>el.classList.contains('resume-printing')")
     expect(page.locator(".profile-optional")).not_to_have_attribute("open", "")
     expect(page.locator("#experience-start")).to_contain_text("Помочь описать опыт")
     # Open the editor again; the description must still be available.

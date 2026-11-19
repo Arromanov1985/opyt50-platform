@@ -3360,3 +3360,73 @@ body.comfortable-view .candidate-application-counter {font-size: 1rem}
 }
 body.comfortable-view .resume-training-section>summary,
 body.comfortable-view .resume-course-entry legend{font-size:1.05rem}
+
+
+/* Release 0.5.33: a private-by-default, print-to-PDF resume. */
+.resume-print-dialog{
+  box-sizing:border-box;
+  width:min(920px,calc(100% - 24px));
+  max-height:min(92vh,1200px);
+  border:1px solid #C9DED2;
+  border-radius:16px;
+  box-shadow:0 18px 64px #102B2430;
+  background:#F3F7F4;
+  padding:0;
+  color:#1B332B;
+  overflow:auto;
+}
+.resume-print-dialog::backdrop{background:#102B2485}
+.resume-print-actions{padding:20px 24px 16px}
+.resume-print-actions h2{margin:0 0 9px;color:#173A30;font-size:23px}
+.resume-print-actions p{margin:6px 0 12px;color:#42594E}
+.resume-print-consent{display:flex;align-items:center;gap:12px;font-size:16px;font-weight:750;padding:12px;background:#E7F2EA;border-radius:9px}
+.resume-print-consent input{width:20px;height:20px;min-width:20px;accent-color:#0B6B4E}
+.resume-print-actions .resume-print-privacy{font-size:14px}
+.resume-print-buttons{display:flex;flex-wrap:wrap;gap:10px;margin-top:12px}
+.resume-print-buttons .btn{min-height:44px;white-space:normal}
+.resume-print-document{margin:0 18px 20px;background:#fff;border-radius:10px;box-shadow:0 2px 10px #102B2410}
+.resume-print-sheet{font-family:Arial,'Segoe UI',sans-serif;font-size:14px;line-height:1.55;color:#1B2923;max-width:760px;margin:0 auto;padding:32px 38px;overflow-wrap:anywhere}
+.resume-print-heading{border-bottom:2px solid #2D7656;margin-bottom:12px;padding-bottom:12px}
+.resume-print-brand{font-size:13px;letter-spacing:.09em;font-weight:800;color:#2D7656}
+.resume-print-heading h1{margin:8px 0 5px;font-size:28px;line-height:1.18;color:#173A30}
+.resume-print-heading p{margin:0;color:#496055}
+.resume-print-meta{display:flex;gap:8px 20px;flex-wrap:wrap;margin:12px 0}
+.resume-print-meta p{margin:0}
+.resume-print-sheet section{margin:18px 0}
+.resume-print-sheet h2{font-size:16px;color:#215D43;border-bottom:1px solid #D9E8DE;padding-bottom:5px;margin:0 0 9px}
+.resume-print-sheet .resume-public-job,
+.resume-print-sheet .resume-public-course{background:none;border-left:2px solid #94BFA7;border-radius:0;margin:7px 0}
+.resume-print-sheet .resume-print-about{white-space:pre-wrap}
+.resume-print-contacts p{margin:4px 0}
+.resume-print-private{font-style:italic;font-size:13px;color:#5B6C62}
+.resume-print-footer{font-size:11px;border-top:1px solid #D9E8DE;margin-top:22px;padding-top:8px;color:#66786C}
+@media(max-width:560px){
+  .resume-print-actions{padding:16px}
+  .resume-print-buttons{display:grid;grid-template-columns:1fr}
+  .resume-print-document{margin:0 8px 12px}
+  .resume-print-sheet{padding:20px 16px}
+  .resume-print-heading h1{font-size:23px}
+}
+@media print{
+  @page{size:A4;margin:16mm 14mm}
+  body.resume-printing{background:#fff!important;color:#000!important;margin:0!important}
+  body.resume-printing > :not(#resume-print-dialog){display:none!important}
+  body.resume-printing #resume-print-dialog{
+    position:static!important;inset:auto!important;display:block!important;
+    width:100%!important;max-width:none!important;max-height:none!important;
+    height:auto!important;margin:0!important;padding:0!important;border:0!important;
+    border-radius:0!important;overflow:visible!important;box-shadow:none!important;
+    background:#fff!important;color:#000!important
+  }
+  body.resume-printing #resume-print-dialog::backdrop{display:none!important}
+  body.resume-printing .resume-print-actions{display:none!important}
+  body.resume-printing .resume-print-document{margin:0!important;box-shadow:none!important}
+  body.resume-printing .resume-print-sheet{padding:0!important;max-width:none!important;font-size:10.5pt;line-height:1.45}
+  body.resume-printing .resume-print-heading h1{font-size:22pt}
+  body.resume-printing .resume-print-sheet section{margin:13px 0}
+  body.resume-printing .resume-print-sheet h2{font-size:12pt}
+  body.resume-printing .resume-public-job,
+  body.resume-printing .resume-public-course{break-inside:avoid;page-break-inside:avoid}
+  body.resume-printing .resume-print-heading,
+  body.resume-printing .resume-print-footer{break-inside:avoid}
+}

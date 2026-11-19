@@ -1327,6 +1327,105 @@ function professionalResumeMarkup(profile = {}) {
     ${courses.length ? `<div class="resume-public-courses"><strong>Курсы и повышение квалификации</strong>${courses.map(course=>`<div class="resume-public-course"><b>${esc(course.title)}</b>${course.provider ? `<span>${esc(course.provider)}</span>` : ''}${course.year ? `<span>${Number(course.year)}</span>` : ''}${course.has_certificate ? '<small>Есть документ об обучении (со слов соискателя, не проверен)</small>' : ''}</div>`).join('')}</div>` : ''}
   </div>`;
 }
+// Printing never calls a server or sends the resume to an external PDF provider.
+// Free-text fields are masked even in contact-enabled exports: the opt-in only
+// adds the account's verified-visible name, email and saved telephone explicitly.
+function resumePrintSafeText(value) {
+  return String(value ?? '')
+    .replace(/[^\s@]+@[^\s@]+\.[^\s@]+/gi, '[контакт скрыт]')
+    .replace(/(?:https?:\/\/|www\.|t\.me\/|wa\.me\/|vk\.com\/|max\.ru\/)\S+/gi, '[ссылка скрыта]')
+    .replace(/@[A-Za-z0-9_]{4,}/g, '[контакт скрыт]')
+    .replace(/(?:\+?\d[\s().-]*){10,15}/g, '[телефон скрыт]');
+}
+function resumePrintData(profile = {}) {
+  const clean = resumePrintSafeText;
+  return {
+    ...profile,
+    profession: clean(profile.profession),
+    city: clean(profile.city),
+    skills: clean(profile.skills),
+    schedule: clean(profile.schedule),
+    employment: clean(profile.employment),
+    about: clean(profile.about),
+    education: clean(profile.education),
+    achievements: clean(profile.achievements),
+    specializations: clean(profile.specializations),
+    work_history: (Array.isArray(profile.work_history) ? profile.work_history : []).slice(0,5)
+      .map(item=>({position:clean(item.position),period:clean(item.period),duties:clean(item.duties)})),
+    courses: (Array.isArray(profile.courses) ? profile.courses : []).slice(0,6)
+      .map(item=>({...item,title:clean(item.title),provider:clean(item.provider)})),
+  };
+}
+function resumePrintDocumentMarkup(profile = {}, user = {}, includeContacts = false) {
+  const saved = resumePrintData(profile);
+  const skills = String(saved.skills || '').split(',').map(x=>x.trim()).filter(Boolean);
+  const contacts = includeContacts
+    ? [user.name ? '<p><strong>Имя:</strong> '+esc(user.name)+'</p>' : '',
+       user.email ? '<p><strong>Email:</strong> '+esc(user.email)+'</p>' : '',
+       user.phone ? '<p><strong>Телефон:</strong> '+esc(user.phone)+'</p>' : ''].join('')
+    : '<p class="resume-print-private">Без имени и контактных данных</p>';
+  return '<article class="resume-print-sheet" aria-label="Резюме для печати">' +
+    '<header class="resume-print-heading"><span class="resume-print-brand">СТАЖНО.РУ</span>' +
+    '<h1>'+esc(saved.profession || 'Профессиональное резюме')+'</h1>' +
+    '<p>'+esc(saved.city || 'Город не указан')+'</p></header>' +
+    '<div class="resume-print-meta">' +
+    '<p><strong>Зарплата:</strong> от '+money(saved.salary_min || 0)+'</p>' +
+    '<p><strong>График:</strong> '+esc(saved.schedule || 'Любой')+'</p>' +
+    (saved.employment ? '<p><strong>Занятость:</strong> '+esc(saved.employment)+'</p>' : '') +
+    '</div>' +
+    (skills.length ? '<section><h2>Профессиональные навыки</h2><p>'+skills.map(esc).join(' · ')+'</p></section>' : '') +
+    '<section><h2>Опыт, образование и квалификация</h2>'+professionalResumeMarkup(saved)+'</section>' +
+    (saved.about ? '<section><h2>О себе</h2><p class="resume-print-about">'+esc(saved.about)+'</p></section>' : '') +
+    (includeContacts ? '<section class="resume-print-contacts"><h2>Контакты</h2>'+contacts+'</section>' : contacts) +
+    '<footer class="resume-print-footer">Сформировано в СТАЖНО.РУ. Сведения об опыте и обучении предоставлены соискателем.</footer>' +
+    '</article>';
+}
+function openResumePrintPreview() {
+  if (state.user?.role !== 'candidate' || !state.user.profile) {
+    toast('Сначала сохраните резюме.',true);
+    return;
+  }
+  document.querySelector('#resume-print-dialog')?.remove();
+  const dialog = document.createElement('dialog');
+  dialog.id = 'resume-print-dialog';
+  dialog.className = 'resume-print-dialog';
+  dialog.innerHTML = '<div class="resume-print-actions">' +
+    '<h2>Печать или сохранение PDF</h2>' +
+    '<p>Используются только последние сохранённые данные. Изменения в форме сначала сохраните.</p>' +
+    '<label class="resume-print-consent"><input type="checkbox" id="resume-print-include-contacts">' +
+    '<span>Добавить моё имя, email и телефон в печатное резюме</span></label>' +
+    '<p class="resume-print-privacy">По умолчанию контакты скрыты. Проверьте свободные описания на личные сведения перед сохранением PDF. Если включите контакты, они попадут в документ.</p>' +
+    '<div class="resume-print-buttons">' +
+    '<button type="button" class="btn btn-primary" data-resume-print="print">Печать / сохранить PDF</button>' +
+    '<button type="button" class="btn btn-outline" data-resume-print="close">Вернуться к резюме</button>' +
+    '</div></div><div id="resume-print-document" class="resume-print-document"></div>';
+  const preview = () => {
+    const contacts = Boolean(dialog.querySelector('#resume-print-include-contacts')?.checked);
+    dialog.querySelector('#resume-print-document').innerHTML =
+      resumePrintDocumentMarkup(state.user.profile, state.user, contacts);
+  };
+  dialog.addEventListener('change', event => {
+    if (event.target.id === 'resume-print-include-contacts') preview();
+  });
+  dialog.addEventListener('click', event => {
+    const action = event.target.closest('[data-resume-print]')?.dataset.resumePrint;
+    if (action === 'close') dialog.close();
+    if (action === 'print') {
+      document.body.classList.add('resume-printing');
+      window.print();
+    }
+  });
+  dialog.addEventListener('close', () => {
+    document.body.classList.remove('resume-printing');
+    dialog.remove();
+  });
+  document.body.append(dialog);
+  preview();
+  dialog.showModal();
+  dialog.querySelector('#resume-print-include-contacts')?.focus();
+}
+window.addEventListener('afterprint', () => document.body.classList.remove('resume-printing'));
+
 function profileMarkup(profile = {}, user = {}) {
   const health = candidateProfileHealth(profile);
   // Additional details stay optional; open them explicitly when the candidate is ready.
@@ -1446,6 +1545,7 @@ function profileMarkup(profile = {}, user = {}) {
     </section>
     <div class="profile-next-actions" aria-label="Следующие шаги">
       <strong>После сохранения:</strong>
+      <button type="button" class="btn btn-outline" data-action="open-resume-print">Печать / сохранить PDF</button>
       <button type="button" class="btn btn-outline" data-tab="offers">Посмотреть подходящие вакансии →</button>
       <button type="button" class="btn btn-outline" data-tab="applications">Проверить мои отклики</button>
     </div>
@@ -2916,6 +3016,10 @@ async function handleDashboardClick(event) {
   const btn = event.target.closest('[data-action]'); if (!btn) return;
   const action = btn.dataset.action, id = Number(btn.dataset.id);
   if (btn.disabled) return;
+  if (action === 'open-resume-print') {
+    openResumePrintPreview();
+    return;
+  }
   if (action === 'add-resume-course') {
     const list = document.querySelector('#profile-form #resume-course-list');
     if (!list || list.children.length >= 6) return;
