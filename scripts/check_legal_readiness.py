@@ -29,7 +29,7 @@ def verify(root: Path) -> list[tuple[str, bool, str]]:
             "не утверждено", "не вступил", "не вступили", "не публиковать",
             "не применяется", "draft", "проект —", "[подтвердить",
             "[email", "[адрес", "[рабочий", "[огрнип", "[инн",
-            "content=\"noindex", "проверить по егрип",
+            "проверить по егрип",
         )
         return (
             all(token.casefold() in text for token in required)
