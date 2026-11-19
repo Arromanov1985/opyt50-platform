@@ -116,6 +116,10 @@ def admin_change_status(
             raise ValueError("Confirm an actual manual response to the user")
         if closure_reason not in CLOSURE_REASONS:
             raise ValueError("Provide a categorical reason for closure")
+        if next_status == "completed" and closure_reason != "fulfilled":
+            raise ValueError("A completed request must be fulfilled")
+        if next_status == "declined" and closure_reason == "fulfilled":
+            raise ValueError("A fulfilled request must not be marked declined")
     elif closure_reason is not None:
         raise ValueError("Do not set closure reason for review")
     now = utc_timestamp()
