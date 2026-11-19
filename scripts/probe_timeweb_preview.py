@@ -254,6 +254,63 @@ def probe_public_journal_pages():
     }
 
 
+
+def probe_public_search_metadata():
+    """Check robots/sitemap bytes and the noindex header on preview hosts."""
+    root = str(Path(__file__).resolve().parents[1])
+    if root not in sys.path:
+        sys.path.insert(0, root)
+    from app.journal import journal_sitemap
+    from urllib.parse import urlsplit
+
+    host = urlsplit(BASE).hostname
+    is_canonical = host in {"stazhno.ru", "www.stazhno.ru"}
+    robots = (
+        "User-agent: *\\nDisallow: /api/\\nSitemap: https://stazhno.ru/sitemap.xml\\n"
+        if is_canonical else "User-agent: *\\nDisallow: /\\n"
+    ).encode("utf-8")
+    resources = {
+        "/robots.txt": (robots, "text/plain"),
+        "/sitemap.xml": (journal_sitemap().body, "application/xml"),
+    }
+    results = {}
+    for path, (expected_body, mime) in resources.items():
+        request = Request(
+            BASE + path + "?revision_check=" + hashlib.sha256(expected_body).hexdigest()[:16],
+            headers={
+                "User-Agent": "Stazhno-Preview-ReadOnly-Probe/1.0",
+                "Cache-Control": "no-cache", "Pragma": "no-cache",
+            },
+            method="GET",
+        )
+        try:
+            with build_opener(NoRedirect).open(request, timeout=12) as response:
+                payload = response.read(250_001)
+                content_type = response.headers.get("Content-Type", "").lower()
+                noindex = response.headers.get("X-Robots-Tag", "").lower()
+                tag_ok = "noindex" not in noindex if is_canonical else "noindex" in noindex
+                if len(payload) > 250_000:
+                    status = "too-large"
+                elif not content_type.startswith(mime):
+                    status = "incorrect-content-type"
+                elif payload != expected_body:
+                    status = "mismatch"
+                elif not tag_ok:
+                    status = "incorrect-robots-tag"
+                else:
+                    status = "exact-match"
+                item = {"status": response.status, "result": status}
+        except HTTPError as error:
+            item = {"status": error.code, "result": "route-not-found" if error.code == 404 else "http-error"}
+        except (URLError, OSError, ssl.SSLError, TimeoutError) as error:
+            item = {"result": "connection-error", "type": type(error).__name__}
+        results[path] = item
+    return {
+        "result": "exact-match" if all(item["result"] == "exact-match" for item in results.values()) else "unverified",
+        "resources": results,
+    }
+
+
 def main():
     host = BASE.removeprefix("https://").split("/", 1)[0].split(":", 1)[0]
     result = {"preview_url": BASE, "read_only": True, "dns": "unknown", "paths": {}}
@@ -273,6 +330,7 @@ def main():
         result["deployed_app_js"] = result["deployed_assets"]["app.js"]
         result["index_asset_revisions"] = probe_index_revisions()
         result["journal_pages"] = probe_public_journal_pages()
+        result["search_metadata"] = probe_public_search_metadata()
         result["drafts_api"] = probe_private_draft_route()
         result["backend_routes"] = {
             name: probe_backend_route(path, method)
@@ -289,6 +347,7 @@ def main():
         result["deployed_app_js"] = result["deployed_assets"]["app.js"]
         result["index_asset_revisions"] = {"result": "not-tested-dns-failure"}
         result["journal_pages"] = {"result": "not-tested-dns-failure", "pages": {}}
+        result["search_metadata"] = {"result": "not-tested-dns-failure", "resources": {}}
         result["drafts_api"] = {"result": "not-tested-dns-failure"}
         result["backend_routes"] = {
             name: {"result": "not-tested-dns-failure"}
@@ -307,11 +366,12 @@ def main():
         and result["drafts_api"]["result"] == "present-and-protected"
     )
     journal_matches = result["journal_pages"]["result"] == "exact-match"
+    search_matches = result["search_metadata"]["result"] == "exact-match"
     backend_matches = all(
         item["result"] == "route-present-method-protected"
         for item in result["backend_routes"].values()
     )
-    if frontend_matches and backend_matches and journal_matches:
+    if frontend_matches and backend_matches and journal_matches and search_matches:
         result["release_evidence"] = "frontend-and-backend-match"
     elif "mismatch" in asset_results or html_result == "mismatch":
         result["release_evidence"] = "frontend-version-mismatch"
@@ -319,6 +379,8 @@ def main():
         result["release_evidence"] = "backend-version-unverified"
     elif frontend_matches and backend_matches and not journal_matches:
         result["release_evidence"] = "journal-version-unverified"
+    elif frontend_matches and backend_matches and journal_matches and not search_matches:
+        result["release_evidence"] = "search-metadata-unverified"
     else:
         result["release_evidence"] = "unverified"
     REPORT.write_text(json.dumps(result, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
