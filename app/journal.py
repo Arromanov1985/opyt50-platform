@@ -79,7 +79,7 @@ def journal_index() -> HTMLResponse:
         f'<div class="jr-grid">{cards}</div></section>'
         '<aside class="jr-bottom"><h2>Готовы использовать свой опыт?</h2>'
         '<p>Посмотрите вакансии или начните с профессионального профиля. Контакты защищены.</p>'
-        '<a class="jr-primary" href="/#jobs">Посмотреть вакансии →</a></aside>'
+        '<a class="jr-primary" href="/#jobs" data-growth-action="jobs_click">Посмотреть вакансии →</a></aside>'
     )
     return HTMLResponse(_layout("Журнал: работа и новые возможности после 50", 
                                "Практические статьи СТАЖНО о профессиональном опыте, работе, проектах и безопасности.",
@@ -111,8 +111,8 @@ def journal_article(slug: str) -> HTMLResponse:
         '<aside class="jr-aside"><h2>Следующий шаг</h2>'
         '<p>Профессиональный профиль помогает показать навыки и условия работы.'
         ' Контакты не публикуются автоматически.</p>'
-        '<a class="jr-primary" href="/#candidate-path">Создать профиль →</a>'
-        '<a class="jr-secondary" href="/#jobs">Посмотреть вакансии</a></aside></div>'
+        '<a class="jr-primary" href="/#candidate-path" data-growth-action="profile_click">Создать профиль →</a>'
+        '<a class="jr-secondary" href="/#jobs" data-growth-action="jobs_click">Посмотреть вакансии</a></aside></div>'
         '<p class="jr-back"><a href="/journal">← Все статьи журнала</a></p>'
     )
     return HTMLResponse(_layout(article["title"], article["description"],
