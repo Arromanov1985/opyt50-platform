@@ -21,7 +21,14 @@ REPORT = Path(os.getenv("STAZHNO_PREVIEW_REPORT", "preview-reachability.json"))
 STATIC = Path(__file__).resolve().parents[1] / "app" / "static"
 CLIENT_ASSETS = ("app.js", "release02.js", "vacancy-wizard.js", "release09-dashboard.css")
 ADDITIONAL_ASSETS = ("journal.js", "growth-admin.css")
-CHECKED_ASSETS = CLIENT_ASSETS + ADDITIONAL_ASSETS
+COMMUNITY_ASSETS = ("community.js", "community.css")
+CHECKED_ASSETS = CLIENT_ASSETS + ADDITIONAL_ASSETS + COMMUNITY_ASSETS
+COMMUNITY_PRIVATE_ROUTES = {
+    "profile": "/api/community/profile",
+    "connections": "/api/community/connections",
+    "moderation_profiles": "/api/admin/community/profiles",
+    "moderation_reports": "/api/admin/community/reports",
+}
 
 
 def git_blob_revision(path):
@@ -144,16 +151,16 @@ def probe_index_revisions():
         return {"result": "connection-error", "type": type(error).__name__}
 
 
-def probe_private_draft_route():
+def probe_private_route(path):
     """Unauthenticated read-only request. Protected API returns JSON 401, not 404."""
     request = Request(
-        BASE + "/api/employer/vacancy-drafts",
+        BASE + path,
         headers={"User-Agent": "Stazhno-Preview-ReadOnly-Probe/1.0"},
         method="GET",
     )
     try:
         with build_opener(NoRedirect).open(request, timeout=10) as response:
-            # The endpoint must not disclose private draft data.
+            # Do not read or retain a response that might contain private data.
             return {"status": response.status, "result": "unexpected-public-access"}
     except HTTPError as error:
         content_type = error.headers.get("Content-Type", "").lower()
@@ -167,6 +174,10 @@ def probe_private_draft_route():
         return {"status": error.code, "result": "unexpected-status"}
     except (URLError, OSError, ssl.SSLError, TimeoutError) as error:
         return {"result": "connection-error", "type": type(error).__name__}
+
+
+def probe_private_draft_route():
+    return probe_private_route("/api/employer/vacancy-drafts")
 
 
 # GET on a PATCH/POST-only route is safe and never executes its mutation.
@@ -257,6 +268,46 @@ def probe_public_journal_pages():
     }
 
 
+def probe_public_community_page():
+    """Compare only the public directory shell; never request member data.
+
+    The server-rendered shell has no user-specific values. Its exact bytes also
+    verify that the live HTML references this release's versioned JS and CSS.
+    """
+    root = str(Path(__file__).resolve().parents[1])
+    if root not in sys.path:
+        sys.path.insert(0, root)
+    from app.community_pages import community_page
+
+    fingerprint = hashlib.sha256(community_page(mode="directory").body).hexdigest()
+    request = Request(
+        BASE + "/community?revision_check=" + fingerprint[:16],
+        headers={
+            "User-Agent": "Stazhno-Preview-ReadOnly-Probe/1.0",
+            "Cache-Control": "no-cache", "Pragma": "no-cache",
+        },
+        method="GET",
+    )
+    try:
+        with build_opener(NoRedirect).open(request, timeout=12) as response:
+            payload = response.read(250_001)
+            if len(payload) > 250_000:
+                return {"status": response.status, "result": "html-too-large"}
+            if not response.headers.get("Content-Type", "").lower().startswith("text/html"):
+                return {"status": response.status, "result": "not-html"}
+            observed = hashlib.sha256(payload).hexdigest()
+            return {
+                "status": response.status,
+                "result": "exact-match" if observed == fingerprint else "mismatch",
+                "expected_sha256": fingerprint,
+                "observed_sha256": observed,
+            }
+    except HTTPError as error:
+        return {"status": error.code, "result": "route-not-found" if error.code == 404 else "http-error"}
+    except (URLError, OSError, ssl.SSLError, TimeoutError) as error:
+        return {"result": "connection-error", "type": type(error).__name__}
+
+
 
 def probe_public_search_metadata():
     """Check robots/sitemap bytes and the noindex header on preview hosts."""
@@ -333,6 +384,11 @@ def main():
         result["deployed_app_js"] = result["deployed_assets"]["app.js"]
         result["index_asset_revisions"] = probe_index_revisions()
         result["journal_pages"] = probe_public_journal_pages()
+        result["community_page"] = probe_public_community_page()
+        result["community_api"] = {
+            name: probe_private_route(path)
+            for name, path in COMMUNITY_PRIVATE_ROUTES.items()
+        }
         result["search_metadata"] = probe_public_search_metadata()
         result["drafts_api"] = probe_private_draft_route()
         result["backend_routes"] = {
@@ -350,6 +406,11 @@ def main():
         result["deployed_app_js"] = result["deployed_assets"]["app.js"]
         result["index_asset_revisions"] = {"result": "not-tested-dns-failure"}
         result["journal_pages"] = {"result": "not-tested-dns-failure", "pages": {}}
+        result["community_page"] = {"result": "not-tested-dns-failure"}
+        result["community_api"] = {
+            name: {"result": "not-tested-dns-failure"}
+            for name in COMMUNITY_PRIVATE_ROUTES
+        }
         result["search_metadata"] = {"result": "not-tested-dns-failure", "resources": {}}
         result["drafts_api"] = {"result": "not-tested-dns-failure"}
         result["backend_routes"] = {
@@ -369,12 +430,16 @@ def main():
         and result["drafts_api"]["result"] == "present-and-protected"
     )
     journal_matches = result["journal_pages"]["result"] == "exact-match"
+    community_matches = (
+        result["community_page"]["result"] == "exact-match"
+        and all(item["result"] == "present-and-protected" for item in result["community_api"].values())
+    )
     search_matches = result["search_metadata"]["result"] == "exact-match"
     backend_matches = all(
         item["result"] == "route-present-method-protected"
         for item in result["backend_routes"].values()
     )
-    if frontend_matches and backend_matches and journal_matches and search_matches:
+    if frontend_matches and backend_matches and journal_matches and search_matches and community_matches:
         result["release_evidence"] = "frontend-and-backend-match"
     elif "mismatch" in asset_results or html_result == "mismatch":
         result["release_evidence"] = "frontend-version-mismatch"
@@ -384,6 +449,8 @@ def main():
         result["release_evidence"] = "journal-version-unverified"
     elif frontend_matches and backend_matches and journal_matches and not search_matches:
         result["release_evidence"] = "search-metadata-unverified"
+    elif frontend_matches and backend_matches and journal_matches and search_matches and not community_matches:
+        result["release_evidence"] = "community-version-unverified"
     else:
         result["release_evidence"] = "unverified"
     REPORT.write_text(json.dumps(result, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
