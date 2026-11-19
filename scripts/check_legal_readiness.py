@@ -23,8 +23,9 @@ def verify(root: Path) -> list[tuple[str, bool, str]]:
     site = root / "app" / "static"
     index_path = site / "index.html"
     page = index_path.read_text(encoding="utf-8") if index_path.is_file() else ""
-    privacy = site / "privacy.html"
-    terms = site / "terms.html"
+    templates = root / "app" / "legal_templates"
+    privacy = templates / "privacy.html"
+    terms = templates / "terms.html"
     approval = root / "docs" / "legal" / "LEGAL_APPROVAL.md"
     profile_ready = not readiness_failures(legal_profile())
 
