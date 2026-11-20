@@ -4013,7 +4013,7 @@ async function start() {
     const registerButton = $('#register-open');
     registerButton.disabled = true;
     registerButton.textContent = 'Регистрация пока закрыта';
-    $('[data-register]').forEach(button => {
+    $$('[data-register]').forEach(button => {
       button.disabled = true;
       button.setAttribute('aria-disabled', 'true');
       button.title = 'Регистрация закрыта до юридического утверждения';

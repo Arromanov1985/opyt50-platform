@@ -281,6 +281,8 @@ def run_fixture(browser, env, log_path, cases):
                     assert not errors, errors
                     print(f"{run.__name__}: PASSED")
                 except Exception:
+                    if errors:
+                        print(f'Browser page errors: {errors}', file=sys.stderr)
                     OUTPUT.mkdir(parents=True, exist_ok=True)
                     page.screenshot(path=str(OUTPUT / (run.__name__ + "-failure.png")), full_page=True)
                     log_file.flush()
