@@ -119,7 +119,9 @@ def test_growth_frontend_is_first_party_and_fails_open(tmp_path):
     with TestClient(app) as client:
         article = client.get("/journal/kak-proverit-vakansiyu")
         assert article.status_code == 200
-        assert 'data-growth-action="profile_click"' in article.text
+        # A profile click must not be recorded when registration is legally closed.
+        assert 'data-growth-action="profile_click"' not in article.text
+        assert 'href="/journal/paths/nayti-rabotu"' in article.text
         assert 'data-growth-action="jobs_click"' in article.text
         assert '/static/journal.js?v=4' in article.text
         assert client.get("/static/growth-admin.css").status_code == 200
