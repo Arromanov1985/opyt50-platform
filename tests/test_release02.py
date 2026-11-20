@@ -786,11 +786,15 @@ def test_account_email_links_use_public_origin(app, monkeypatch):
         assert "token=" not in body
 
 
-def test_private_action_summary_follows_existing_workflow_without_extra_emails(app):
+@pytest.mark.parametrize("introduction_source", ["application", "direct"])
+@pytest.mark.parametrize("outcome", ["hired", "rejected"])
+def test_private_action_summary_follows_existing_workflow_without_extra_emails(
+    app, introduction_source, outcome,
+):
     """Counts are per-user pending actions, not duplicated notification sends."""
     with TestClient(app) as candidate, TestClient(app) as employer, TestClient(app) as outsider, TestClient(app) as guest:
         assert guest.get("/api/account/action-summary").status_code == 401
-        register(candidate, "attention-candidate@demo.example")
+        candidate_id = register(candidate, "attention-candidate@demo.example")
         register(employer, "attention-employer@demo.example", "employer")
         register(outsider, "attention-other@demo.example", "employer")
         profile(candidate)
@@ -801,25 +805,45 @@ def test_private_action_summary_follows_existing_workflow_without_extra_emails(a
             assert response.status_code == 200, response.text
             return response.json()
 
+        def assert_employer_counts(applications=0, consents=0, outcomes=0):
+            # The complete response is counts only, scoped to this employer.
+            assert summary(employer) == {
+                "role": "employer",
+                "action_count": applications + consents + outcomes,
+                "applications_to_review": applications,
+                "consents_to_continue": consents,
+                "introductions_to_finish": outcomes,
+            }
+            assert summary(outsider) == {
+                "role": "employer", "action_count": 0,
+                "applications_to_review": 0, "consents_to_continue": 0,
+                "introductions_to_finish": 0,
+            }
+
         assert summary(candidate) == {
             "role": "candidate", "action_count": 0,
             "invitations_pending": 0, "vacancy_changes_unread": 0,
         }
-        assert summary(employer)["action_count"] == 0
-        assert summary(outsider)["action_count"] == 0
+        assert_employer_counts()
 
-        created = post(candidate, "/api/candidate/applications", {"vacancy_id": jid})
-        assert created.status_code == 201, created.text
-        aid = created.json()["id"]
-        assert summary(employer)["applications_to_review"] == 1
-        assert summary(employer)["action_count"] == 1
-        assert summary(outsider)["action_count"] == 0
+        if introduction_source == "application":
+            created = post(candidate, "/api/candidate/applications", {"vacancy_id": jid})
+            assert created.status_code == 201, created.text
+            aid = created.json()["id"]
+            assert_employer_counts(applications=1)
+            invitation = post(employer, f"/api/employer/applications/{aid}/interest")
+            assert invitation.status_code == 200, invitation.text
+            invitation_id = invitation.json()["invitation_id"]
+            outcome_path = f"/api/employer/applications/{aid}/status"
+        else:
+            invitation = post(employer, "/api/employer/invitations", {
+                "vacancy_id": jid, "candidate_id": candidate_id,
+            })
+            assert invitation.status_code == 201, invitation.text
+            invitation_id = invitation.json()["id"]
+            outcome_path = f"/api/employer/invitations/{invitation_id}/outcome"
 
-        invitation = post(employer, f"/api/employer/applications/{aid}/interest")
-        assert invitation.status_code == 200, invitation.text
-        invitation_id = invitation.json()["invitation_id"]
-        assert summary(employer)["applications_to_review"] == 0
-        assert summary(employer)["action_count"] == 0
+        assert_employer_counts()
         assert summary(candidate)["invitations_pending"] == 1
         assert summary(candidate)["action_count"] == 1
 
@@ -827,7 +851,7 @@ def test_private_action_summary_follows_existing_workflow_without_extra_emails(a
         with database(app.state.db_path) as db:
             outbox_before = db.execute("SELECT COUNT(*) FROM email_outbox").fetchone()[0]
         assert summary(candidate)["action_count"] == 1
-        assert summary(employer)["action_count"] == 0
+        assert_employer_counts()
         with database(app.state.db_path) as db:
             assert db.execute("SELECT COUNT(*) FROM email_outbox").fetchone()[0] == outbox_before
 
@@ -836,25 +860,19 @@ def test_private_action_summary_follows_existing_workflow_without_extra_emails(a
         })
         assert accepted.status_code == 200, accepted.text
         assert summary(candidate)["action_count"] == 0
-        assert summary(employer)["consents_to_continue"] == 1
-        assert summary(employer)["action_count"] == 1
-        assert summary(outsider)["action_count"] == 0
+        assert_employer_counts(consents=1)
         employer_invitations = employer.get("/api/employer/invitations").json()["invitations"]
         assert all("contact" not in item for item in employer_invitations)
 
         opened = post(employer, f"/api/employer/invitations/{invitation_id}/demo-pay")
         assert opened.status_code == 200, opened.text
-        assert summary(employer)["consents_to_continue"] == 0
-        assert summary(employer)["introductions_to_finish"] == 1
-        assert summary(employer)["action_count"] == 1
+        assert_employer_counts(outcomes=1)
 
         decided = employer.patch(
-            f"/api/employer/applications/{aid}/status",
-            json={"status": "hired"}, headers=HEADERS,
+            outcome_path, json={"status": outcome}, headers=HEADERS,
         )
         assert decided.status_code == 200, decided.text
-        assert summary(employer)["introductions_to_finish"] == 0
-        assert summary(employer)["action_count"] == 0
+        assert_employer_counts()
         assert summary(candidate)["action_count"] == 0
 
 

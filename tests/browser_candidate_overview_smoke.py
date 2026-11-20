@@ -1,5 +1,6 @@
 """Browser smoke for the candidate career overview."""
 import os
+import sqlite3
 import subprocess
 import sys
 import tempfile
@@ -15,6 +16,124 @@ URL = "http://127.0.0.1:8767"
 HEADERS = {"X-Requested-With": "OPYT50"}
 
 
+def seed_readiness_profiles(db_file):
+    # Registration may leave a partial profile. Keep optional fields complete
+    # so the old percentage gate cannot accidentally pass these required fields.
+    with sqlite3.connect(db_file) as db:
+        for email, profession, city in (
+            ("buhgalter@demo.example", "", "Москва"),
+            ("inzhen@demo.example", "Инженер", ""),
+        ):
+            user_id = db.execute("SELECT id FROM users WHERE email=?", (email,)).fetchone()[0]
+            db.execute(
+                "UPDATE candidate_profiles SET profession=?,city=?,about=? WHERE user_id=?",
+                (profession, city, "Демонстрационный опыт для проверки кабинета.", user_id),
+            )
+            db.execute(
+                "INSERT INTO account_controls(user_id,email_verified) VALUES(?,1) "
+                "ON CONFLICT(user_id) DO UPDATE SET email_verified=1", (user_id,),
+            )
+
+
+def exercise_application_destinations(page, jobs):
+    # Two real applications make the older target distinguishable from the
+    # default newest-first queue. They use this test's existing temporary DB.
+    applications = []
+    for title in ("Бухгалтер", "Инженер по эксплуатации"):
+        vacancy_id = next(job["id"] for job in jobs if job["title"] == title)
+        response = page.request.post(
+            URL + "/api/candidate/applications", headers=HEADERS,
+            data={"vacancy_id": vacancy_id},
+        )
+        assert response.status == 201, response.text()
+        applications.append(response.json()["id"])
+    target_id = applications[0]
+    before = page.request.get(URL + "/api/candidate/applications").json()["applications"]
+    selector = page.locator("[data-dashboard-tab-select]")
+    selector.select_option("applications")
+    expect(page.locator(".candidate-application-card:visible").first).to_have_attribute(
+        "data-application-id", str(applications[1])
+    )
+    page.locator("#candidate-application-search").fill("несуществующая вакансия")
+    page.locator("[data-candidate-app-action='filter'][data-filter='closed']").click()
+    expect(page.locator(".candidate-application-card:visible")).to_have_count(0)
+    selector.select_option("overview")
+    page.locator(
+        f"[data-v02-action='open-candidate-applications'][data-application-id='{target_id}']"
+    ).click()
+    expect(page.locator("#candidate-application-search")).to_have_value("")
+    expect(page.locator("[data-candidate-app-action='filter'][data-filter='all']")).to_have_attribute(
+        "aria-pressed", "true"
+    )
+    target = page.locator(f".candidate-application-card[data-application-id='{target_id}']")
+    expect(target).to_be_visible()
+    expect(target).to_be_focused()
+    expect(page.locator(".candidate-application-card:visible").first).to_have_attribute(
+        "data-application-id", str(target_id)
+    )
+    assert page.request.get(URL + "/api/candidate/applications").json()["applications"] == before
+
+    assert page.request.post(URL + "/api/logout", headers=HEADERS).status == 200
+    login(page, "company@demo.example")
+    selector.select_option("applications")
+    stale_vacancy = next(job["id"] for job in jobs if job["title"] == "Кладовщик")
+    page.locator("#employer-applications-vacancy").select_option(str(stale_vacancy))
+    page.locator("[data-v02-action='employer-application-filter'][data-filter='closed']").click()
+    page.locator("#employer-application-search").fill("нет такого кандидата")
+    expect(page.locator(".application-review-card:visible")).to_have_count(0)
+    selector.select_option("overview")
+    page.locator(".overview-priority [data-v02-action='open-employer-applications']").click()
+    expect(page.locator("#employer-applications-vacancy")).to_have_value("all")
+    expect(page.locator("#employer-application-search")).to_have_value("")
+    expect(page.locator("[data-v02-action='employer-application-filter'][data-filter='attention']")).to_have_attribute(
+        "aria-pressed", "true"
+    )
+    expect(page.locator(".application-review-card:visible")).to_have_count(2)
+    for application_id in applications:
+        expect(page.locator(f".application-review-card[data-application-id='{application_id}']")).to_be_visible()
+    # These overview links only navigate; application decisions remain explicit.
+    result = page.request.get(URL + "/api/employer/applications")
+    assert result.status == 200, result.text()
+    assert all(item["status"] == "applied" for item in result.json()["applications"])
+
+
+def exercise_profile_readiness(page):
+    for email, field, heading in (
+        ("buhgalter@demo.example", "profession", "Укажите профессию"),
+        ("inzhen@demo.example", "city", "Укажите город"),
+    ):
+        assert page.request.post(URL + "/api/logout", headers=HEADERS).status == 200
+        login(page, email)
+        expect(page.locator(".overview-health")).to_contain_text("Заполненность анкеты")
+        expect(page.locator(".overview-health > strong")).to_have_text("80%")
+        expect(page.locator(".overview-priority h3")).to_have_text(heading)
+        profile_before = page.request.get(URL + "/api/me").json()["user"]["profile"]
+        assert profile_before[field] == ""
+        page.locator(
+            f".overview-priority [data-action='open-candidate-profile'][data-profile-field='{field}']"
+        ).click()
+        expect(page.locator(f"#profile-{field}")).to_be_focused()
+        expect(page.locator(f"#profile-{field}")).to_have_value("")
+        assert page.request.get(URL + "/api/me").json()["user"]["profile"] == profile_before
+
+    user = page.request.get(URL + "/api/me").json()["user"]
+    profile = {key: user["profile"][key] for key in (
+        "profession", "city", "skills", "salary_min", "schedule", "employment", "about",
+    )}
+    profile.update(city="Москва", is_active=False, phone=user["phone"])
+    response = page.request.put(URL + "/api/candidate/profile", headers=HEADERS, data=profile)
+    assert response.status == 200, response.text()
+    page.goto(URL, wait_until="networkidle")
+    expect(page.locator(".overview-health > strong")).to_have_text("100%")
+    expect(page.locator(".overview-priority h3")).to_have_text("Подбор на паузе")
+    page.locator(
+        ".overview-priority [data-action='open-candidate-profile'][data-profile-field='is_active']"
+    ).click()
+    expect(page.locator("#profile-active")).to_be_focused()
+    expect(page.locator("#profile-active")).not_to_be_checked()
+    assert page.request.get(URL + "/api/me").json()["user"]["profile"]["is_active"] == 0
+
+
 def login(page, email, password="DemoPass2026!"):
     response = page.request.post(
         URL + "/api/login",
@@ -28,6 +147,10 @@ def login(page, email, password="DemoPass2026!"):
 def run_overview(page):
     browser_errors = []
     page.on("pageerror", lambda error: browser_errors.append(str(error)))
+    navigation_writes = []
+    page.on("request", lambda request: navigation_writes.append((request.method, request.url))
+            if "/api/" in request.url and request.method not in {"GET", "HEAD", "OPTIONS"}
+            else None)
 
     # A real pending invitation must beat an unverified email in the main CTA.
     # These are isolated fictional demo accounts in a temporary local database.
@@ -142,6 +265,10 @@ def run_overview(page):
     expect(dashboard.locator("[data-action='revoke-other-sessions']")).to_be_visible()
     expect(dashboard.locator(".account-security-summary")).to_be_visible()
 
+    exercise_application_destinations(page, vacancy_list.json()["jobs"])
+    exercise_profile_readiness(page)
+    assert not navigation_writes, "Overview navigation must not mutate account or application state: " + str(navigation_writes)
+
     if browser_errors:
         raise AssertionError("Uncaught browser errors: " + " | ".join(browser_errors))
 
@@ -190,6 +317,7 @@ def main():
             else:
                 raise RuntimeError("Local server did not become ready")
 
+            seed_readiness_profiles(env["OPYT50_DB_PATH"])
             with sync_playwright() as p:
                 browser = p.chromium.launch(headless=True, args=["--no-sandbox"])
                 try:

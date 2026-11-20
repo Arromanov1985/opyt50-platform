@@ -81,6 +81,20 @@ def reading_mode(page, enabled):
     expect(button).to_have_attribute("aria-pressed", str(enabled).lower())
 
 
+def review_large_dashboard(page, prefix):
+    reading_mode(page, True)
+    for label, width in (("mobile-large", 390), ("narrow-large", 320)):
+        capture(page, f"{prefix}-{label}", width, 844, "#dashboard")
+        # The dashboard and its priority action need to fit independently of
+        # the page; a clipped inner panel can otherwise hide overflowing text.
+        for selector in ("#dashboard-main", ".overview-priority", ".overview-action-center"):
+            metrics = page.locator(selector).evaluate(
+                "el => ({content: el.scrollWidth, available: el.clientWidth})"
+            )
+            assert metrics["content"] <= metrics["available"] + 3, (prefix, width, selector, metrics)
+    reading_mode(page, False)
+
+
 def review_public_job_pages(page):
     """Inspect the same factual offer in its card, modal and shareable pages."""
     card = page.locator("#public-jobs .job-card").filter(has_text="Кладовщик")
@@ -191,6 +205,7 @@ def main():
                         ("mobile", 390, 844),
                     ):
                         capture(page, f"02-candidate-{label}", width, height, "#dashboard")
+                    review_large_dashboard(page, "02-candidate")
 
                     page.locator(".overview-priority [data-action='open-candidate-invitations']").click()
                     expect(page.locator("#dashboard-main")).to_contain_text("Знакомства")
@@ -211,6 +226,7 @@ def main():
                                 return stats && trust &&
                                     stats.getBoundingClientRect().top < trust.getBoundingClientRect().top;
                             }"""), "Employer KPIs should appear above trust details on phones"
+                    review_large_dashboard(page, "04-employer")
                 finally:
                     browser.close()
         finally:

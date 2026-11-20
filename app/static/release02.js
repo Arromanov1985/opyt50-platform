@@ -124,7 +124,7 @@
         : applicationByVacancy.get(jobId);
       if (!known) return `<button type="button" class="btn btn-primary btn-tiny" data-v02-action="apply" data-id="${jobId}">Откликнуться</button>`;
       if (known.status === 'withdrawn') return `<button type="button" class="btn btn-primary btn-tiny" data-v02-action="reapply" data-id="${jobId}">Откликнуться повторно</button>`;
-      return `<button type="button" class="btn btn-outline btn-tiny" data-v02-action="see-applications">Отклик: ${esc(candidateWorkflowStatus(known,status[known.status] || known.status))} · история</button>`;
+      return `<button type="button" class="btn btn-outline btn-tiny" data-v02-action="see-applications" data-application-id="${Number(known.id || 0)}" data-vacancy-id="${Number(jobId)}">Отклик: ${esc(candidateWorkflowStatus(known,status[known.status] || known.status))} · история</button>`;
     }
     function jobApplicationReceipt(jobId, job = null) {
       const known = (job && job.application_status)
@@ -287,8 +287,8 @@
     });
     function vacancyUpdateMarkup(update) {
       const fromInvitation=update.relationship==='invitation';
-      const nextTab=fromInvitation?'invitations':'applications';
-      const nextLabel=fromInvitation?'Открыть знакомства':'Посмотреть отклики';
+      const nextAction=fromInvitation?'open-introductions':'open-candidate-applications';
+      const nextLabel=fromInvitation?'Открыть знакомство':'Посмотреть отклик';
       const details=vacancyChangeDetails(update.changes);
       return `<article class="item-card vacancy-change-item ${update.read_at ? 'is-read' : 'is-new'}" data-vacancy-update-id="${Number(update.id)}">
         <header><div><h4>${esc(update.title)}</h4>
@@ -299,7 +299,7 @@
         <div class="vacancy-changes-list">${vacancyChangesMarkup(update.changes)}</div>
         <p class="vacancy-change-next">Следующий шаг: проверьте обновлённые условия и текущий статус ${fromInvitation?'знакомства':'отклика'}.</p>
         <div class="item-actions vacancy-change-actions">
-          <button type="button" class="btn btn-outline btn-tiny" data-tab="${nextTab}">${nextLabel} →</button>
+          <button type="button" class="btn btn-outline btn-tiny" data-v02-action="${nextAction}" data-filter="all" data-vacancy-id="${Number(update.vacancy_id)}">${nextLabel} →</button>
           ${update.read_at ? '' : `<button type="button" class="btn btn-primary btn-tiny" data-v02-action="mark-vacancy-update-read" data-id="${Number(update.id)}">Отметить прочитанным</button>`}
         </div>
         ${update.read_at?'':`<p class="muted vacancy-change-read-help">Отметка подтверждает только прочтение, но не согласие с изменёнными условиями.</p>`}
@@ -347,6 +347,44 @@
     let candidateApplicationStageFilter = 'all';
     let candidateApplicationQuery = '';
     let candidateApplicationVisibleLimit = candidateApplicationPageSize;
+    let candidateApplicationTarget = null;
+
+    function navigationId(value) {
+      const id = Number(value);
+      return Number.isSafeInteger(id) && id > 0 ? id : null;
+    }
+
+    function focusApplicationDestination(selector) {
+      const target = document.querySelector(selector) ||
+        document.querySelector('#dashboard-main h3') || $('#dashboard-main');
+      if (!target) return;
+      target.tabIndex = -1;
+      target.focus({preventScroll: true});
+      target.scrollIntoView({block: 'nearest'});
+    }
+
+    async function openCandidateApplications(applicationId, vacancyId) {
+      if (state.user?.role !== 'candidate' || !mayLeaveEditor()) return;
+      const ownerId = state.user.id;
+      const targetId = navigationId(applicationId);
+      const targetVacancy = navigationId(vacancyId);
+      candidateApplicationStageFilter = 'all';
+      candidateApplicationQuery = '';
+      candidateApplicationVisibleLimit = candidateApplicationPageSize;
+      candidateApplicationTarget = targetId || targetVacancy
+        ? {ownerId, applicationId: targetId, vacancyId: targetVacancy} : null;
+      if ($('#job-dialog').open) $('#job-dialog').close();
+      state.tab = 'applications';
+      state.activeVacancy = null;
+      try {
+        await showDashboard();
+      } finally {
+        candidateApplicationTarget = null;
+      }
+      if (state.user?.id === ownerId && state.tab === 'applications') {
+        focusApplicationDestination('.candidate-application-card.is-targeted');
+      }
+    }
 
     function candidateApplicationBucket(item) {
       if (item.invitation_status === 'sent' &&
@@ -359,7 +397,13 @@
     function setupCandidateApplicationQueue(applications) {
       const root = document.querySelector('#dashboard-main');
       const list = root?.querySelector('.dashboard-list');
-      if (!list || !applications.length) return;
+      const requested = candidateApplicationTarget?.ownerId === state.user?.id
+        ? candidateApplicationTarget : null;
+      candidateApplicationTarget = null;
+      if (!list || !applications.length) {
+        if (requested) toast('Этот отклик больше недоступен. Открыта ваша история откликов.');
+        return;
+      }
       const cards = Array.from(list.children).filter(node => node.matches('article.item-card'));
       if (cards.length !== applications.length) return;
       list.id = 'candidate-application-results';
@@ -371,10 +415,23 @@
         priority[left.bucket] - priority[right.bucket] ||
         Number(right.item.id || 0) - Number(left.item.id || 0)
       );
+      const selected = requested ? entries.find(entry => requested.applicationId
+        ? Number(entry.item.id) === requested.applicationId
+        : Number(entry.item.vacancy_id) === requested.vacancyId) : null;
+      // A contextual link must reveal its record even beyond the first page.
+      // Ordinary tab navigation and in-list filters retain their usual order.
+      if (selected) {
+        entries.splice(entries.indexOf(selected), 1);
+        entries.unshift(selected);
+      } else if (requested) {
+        toast('Этот отклик больше недоступен. Показываем вашу историю откликов.');
+      }
       const counts = {all: entries.length, reply: 0, active: 0, closed: 0};
       for (const entry of entries) {
         counts[entry.bucket] += 1;
         entry.card.classList.add('candidate-application-card');
+        entry.card.classList.toggle('is-targeted', entry === selected);
+        entry.card.dataset.applicationId = String(Number(entry.item.id));
         entry.card.dataset.candidateApplicationStage = entry.bucket;
         entry.card.dataset.candidateApplicationSearch =
           [entry.item.title, entry.item.company_name, entry.item.city]
@@ -499,7 +556,7 @@
           }
         }
         await oldCandidate();
-        if (state.tab === 'offers') {
+        if (state.tab === 'offers' && candidateSearchReadiness(state.user?.profile || {}).ready) {
           const target = document.getElementById('dashboard-main');
           if (target) {
             try {
@@ -595,6 +652,24 @@
 
     const employerApplicationPageSize = 20;
     let employerApplicationVisibleLimit = employerApplicationPageSize;
+
+    async function openEmployerApplications(filter, vacancyId) {
+      if (state.user?.role !== 'employer' || !mayLeaveEditor()) return;
+      const ownerId = state.user.id;
+      const targetVacancy = navigationId(vacancyId);
+      state.employerApplicationsVacancyFilter = targetVacancy ? String(targetVacancy) : 'all';
+      state.employerApplicationsStatusFilter = Object.hasOwn(employerApplicationFilterLabels, filter)
+        ? filter : 'all';
+      state.employerApplicationsQuery = '';
+      employerApplicationVisibleLimit = employerApplicationPageSize;
+      state.tab = 'applications';
+      state.activeVacancy = null;
+      await showDashboard();
+      if (state.user?.id === ownerId && state.tab === 'applications') {
+        focusApplicationDestination('#dashboard-main h3');
+      }
+    }
+
     function applyEmployerApplicationsSearch() {
       const list = document.querySelector('#employer-application-results');
       if (!list) return;
@@ -1025,9 +1100,11 @@
           await showDashboard();
           toast('Изменение отмечено прочитанным.');
         }
-        else if(type==='see-applications'){
-          if($('#job-dialog').open) $('#job-dialog').close();
-          state.tab='applications'; await showDashboard(true);
+        else if(type==='open-candidate-applications' || type==='see-applications'){
+          await openCandidateApplications(btn.dataset.applicationId, btn.dataset.vacancyId);
+        }
+        else if(type==='open-employer-applications'){
+          await openEmployerApplications(btn.dataset.filter, btn.dataset.vacancyId);
         }
         else if(type==='employer-application-filter'){
           if(!Object.hasOwn(employerApplicationFilterLabels,btn.dataset.filter))return;
@@ -1072,20 +1149,31 @@
           toast(data.created?'Кандидату направлен запрос на знакомство (демо)':'Запрос уже существует — повторно не отправлен');
         }
         else if(type==='open-introductions'){
+          if (!mayLeaveEditor()) return;
           if(state.user?.role==='candidate') {
+            const ownerId = state.user.id;
+            let targetId = navigationId(btn.dataset.invitationId);
+            const vacancyId = navigationId(btn.dataset.vacancyId);
+            if (!targetId && vacancyId) {
+              const result = await api('/api/candidate/invitations');
+              if (state.user?.id !== ownerId) return;
+              targetId = navigationId((result.invitations || [])
+                .find(item => Number(item.vacancy_id) === vacancyId)?.id);
+              if (!targetId) toast('Это знакомство больше недоступно. Открыта ваша история знакомств.');
+            }
             state.candidateInvitationsFilter=btn.dataset.filter||'decision';
-            const targetId=Number(btn.dataset.invitationId||0);
-            state.candidateInvitationTargetId=Number.isSafeInteger(targetId)&&targetId>0?targetId:null;
+            state.candidateInvitationTargetId=targetId;
+            state.candidateInvitationPinnedId=null;
             state.candidateInvitationsQuery='';
             state.candidateInvitationsData=null;
-          } else {
+          } else if (state.user?.role === 'employer') {
             state.employerInvitationsFilter=btn.dataset.filter||'all';
             const targetId=Number(btn.dataset.invitationId||0);
             state.employerInvitationsTargetId=Number.isSafeInteger(targetId)&&targetId>0?targetId:null;
             state.employerInvitationsVacancyFilter='all';
             state.employerInvitationsQuery='';
             state.employerInvitationsData=null;
-          }
+          } else return;
           state.tab='invitations';
           await showDashboard();
         }
