@@ -67,3 +67,16 @@ def test_guides_use_only_published_versions():
     assert len(result) == 1
     assert len(result[0]["steps"]) == 1
     assert result[0]["steps"][0]["article"]["title"] == "Действующая редакция"
+
+
+def test_paths_prelaunch_status_does_not_block_reading(tmp_path: Path):
+    app = create_app(str(tmp_path / "prelaunch-paths.db"))
+    with TestClient(app) as client:
+        listing = client.get("/journal/paths")
+        detail = client.get("/journal/paths/nayti-rabotu")
+        for response in (listing, detail):
+            assert response.status_code == 200
+            assert 'class="jr-prelaunch-note"' in response.text
+            assert "регистрация закрыта" in response.text
+            assert 'type="password"' not in response.text
+        assert 'href="/#jobs" data-growth-action="jobs_click"' in detail.text

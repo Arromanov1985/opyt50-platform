@@ -38,7 +38,7 @@ def _layout(title: str, description: str, path: str, body: str) -> str:
         f"<meta property=\"og:title\" content=\"{_e(title)}\">"
         f"<meta property=\"og:description\" content=\"{_e(description)}\">"
         f"<meta property=\"og:url\" content=\"{_e(canonical)}\">"
-        "<link rel=\"stylesheet\" href=\"/static/journal.css?v=4\">"
+        "<link rel=\"stylesheet\" href=\"/static/journal.css?v=5\">"
         "<script src=\"/static/journal.js?v=4\" defer></script>"
         "</head><body class=\"jr-page\">"
         "<a class=\"jr-skip\" href=\"#jr-content\">К основному содержанию</a>"
@@ -60,6 +60,24 @@ def _layout(title: str, description: str, path: str, body: str) -> str:
         "суточные суммы просмотров и переходов — без аналитических cookie и хранения "
         "данных о конкретных посетителях.</p></footer>"
         "</body></html>"
+    )
+
+
+def _signup_available() -> bool:
+    """Match the legal registration gate without identifying the visitor."""
+    from .legal_config import legal_approved
+    return legal_approved()
+
+
+def _prelaunch_note() -> str:
+    if _signup_available():
+        return ""
+    return (
+        '<aside class="jr-prelaunch-note" role="status">'
+        '<strong>Сайт готовится к запуску</strong>'
+        '<p>Пока регистрация закрыта. Читайте статьи, изучайте вакансии и '
+        'подготовьте описание опыта — личные данные вводить не нужно.</p>'
+        '</aside>'
     )
 
 
@@ -94,6 +112,7 @@ def journal_index(articles: list[dict] | None = None) -> HTMLResponse:
         '<h1>Опыт открывает новые возможности</h1>'
         '<p>Практические материалы о работе, профессиональном опыте и навыках.'
         ' Выбирайте тему и переходите к полезному действию.</p></section>'
+        + _prelaunch_note() +
         '<section class="jr-list" aria-label="Статьи"><h2 class="jr-list-title">Начните с полезного</h2>'
         '<div class="jr-discovery" role="search" aria-label="Поиск материалов журнала">'
         '<label for="jr-article-search">Поиск по статьям</label>'
@@ -113,9 +132,13 @@ def journal_index(articles: list[dict] | None = None) -> HTMLResponse:
         '<p>Поиск работы, новые навыки или обмен опытом. Начните без регистрации.</p>'
         '<a class="jr-primary" href="/journal/paths">Посмотреть маршруты →</a></aside>'
         '<aside class="jr-bottom"><h2>Готовы использовать свой опыт?</h2>'
-        '<p>Посмотрите вакансии или начните с профессионального профиля. Контакты защищены.</p>'
+        '<p>Посмотрите вакансии и выберите следующий шаг по своей цели.</p>'
         '<a class="jr-primary" href="/#jobs" data-growth-action="jobs_click">Посмотреть вакансии →</a>'
-        '<a class="jr-secondary" href="/#candidate-path" data-growth-action="profile_click">Создать профиль</a>'
+        + (
+            '<a class="jr-secondary" href="/#candidate-path" data-growth-action="profile_click">Создать профиль</a>'
+            if _signup_available()
+            else '<a class="jr-secondary" href="/journal/paths/nayti-rabotu">Подготовиться к поиску работы</a>'
+        ) +
         '</aside>'
     )
     return HTMLResponse(_layout("Журнал: работа и новые возможности после 50",
@@ -155,7 +178,13 @@ def journal_article(slug: str, articles: list[dict] | None = None) -> HTMLRespon
         '<aside class="jr-aside"><h2>Следующий шаг</h2>'
         '<p>Профессиональный профиль помогает показать навыки и условия работы.'
         ' Контакты не публикуются автоматически.</p>'
-        '<a class="jr-primary" href="/#candidate-path" data-growth-action="profile_click">Создать профиль →</a>'
+        + (
+            '<a class="jr-primary" href="/#candidate-path" data-growth-action="profile_click">Создать профиль →</a>'
+            if _signup_available()
+            else '<p class="jr-prelaunch-inline">Регистрация пока закрыта. Начните с подготовки '
+                 'описания своего опыта — без передачи личных данных.</p>'
+                 '<a class="jr-primary" href="/journal/paths/nayti-rabotu">План подготовки →</a>'
+        ) +
         '<a class="jr-secondary" href="/#jobs" data-growth-action="jobs_click">Посмотреть вакансии</a>'
         '<a class="jr-secondary" href="/community" data-growth-action="community_click">Найти коллег</a></aside></div>'
         '<section class="jr-related" aria-label="Другие полезные материалы">'

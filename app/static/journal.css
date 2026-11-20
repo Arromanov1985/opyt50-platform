@@ -78,3 +78,11 @@ body.comfortable-view .jr-results-count{font-size:1rem}
 .jr-path-step p{color:#516B5D;margin:0 0 12px}
 @media(max-width:780px){.jr-path-grid{grid-template-columns:1fr}.jr-path-card{padding:21px}}
 @media(max-width:480px){.jr-path-step{grid-template-columns:32px minmax(0,1fr);padding:15px;gap:12px}.jr-path-number{width:30px;height:30px}.jr-path-step h2{font-size:19px}}
+
+/* Prelaunch guidance is readable without JS and does not request user data. */
+.jr-prelaunch-note{margin:20px 0 24px;padding:18px 22px;border:1px solid #D5E4D9;border-left:4px solid #28674A;border-radius:12px;background:#F5FAF6;color:#244F3B}
+.jr-prelaunch-note strong{display:block;font-size:1.08rem;margin-bottom:5px}
+.jr-prelaunch-note p{margin:0;line-height:1.6}
+.jr-prelaunch-inline{font-size:0.98rem;line-height:1.5;color:#3B634E}
+body.comfortable-view .jr-prelaunch-note,body.comfortable-view .jr-prelaunch-inline{font-size:1.15rem}
+@media(max-width:480px){.jr-prelaunch-note{padding:15px 16px;margin:16px 0}}

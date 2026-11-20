@@ -25,7 +25,7 @@ def test_journal_public_pages_and_no_leaks(tmp_path):
         assert index.status_code == 200
         assert index.headers["content-type"].startswith("text/html")
         assert 'href="https://stazhno.ru/journal"' in index.text
-        assert 'href="/static/journal.css?v=4"' in index.text
+        assert 'href="/static/journal.css?v=5"' in index.text
         assert 'id="reading-mode-toggle"' in index.text
         assert 'id="jr-article-search"' in index.text
         assert 'data-jr-category-filter="all"' in index.text
@@ -40,7 +40,9 @@ def test_journal_public_pages_and_no_leaks(tmp_path):
             assert '<h1>' in article.text
             assert 'Редакция СТАЖНО' in article.text
             assert 'Читайте также' in article.text
-            assert 'href="/#candidate-path"' in article.text
+            assert 'href="/journal/paths/nayti-rabotu"' in article.text
+            assert 'data-growth-action="profile_click"' not in article.text
+            assert "Регистрация пока закрыта" in article.text
             assert 'type="password"' not in article.text
         assert client.get("/journal/no-such-article").status_code == 404
 
@@ -125,3 +127,22 @@ def test_preview_and_unapproved_canonical_domain_are_not_indexable(tmp_path):
         assert "Disallow: /\n" in robots.text
         assert "Sitemap:" not in robots.text
         assert public.get("/journal").headers.get("x-robots-tag") == "noindex, nofollow"
+
+
+def test_journal_preactivation_and_approved_actions(monkeypatch, tmp_path):
+    """Reading can continue during prelaunch; approved signup restores normal CTA."""
+    from app import journal
+    app = create_app(str(tmp_path / "prelaunch-journal.db"))
+    with TestClient(app) as client:
+        first = client.get("/journal")
+        assert first.status_code == 200
+        assert 'class="jr-prelaunch-note"' in first.text
+        assert 'href="/journal/paths/nayti-rabotu"' in first.text
+        assert 'data-growth-action="profile_click"' not in first.text
+        assert 'data-growth-action="jobs_click"' in first.text
+        monkeypatch.setattr(journal, "_signup_available", lambda: True)
+        ready = client.get("/journal")
+        assert 'class="jr-prelaunch-note"' not in ready.text
+        assert 'href="/#candidate-path" data-growth-action="profile_click"' in ready.text
+        article = client.get("/journal/kak-proverit-vakansiyu")
+        assert 'href="/#candidate-path" data-growth-action="profile_click"' in article.text

@@ -77,6 +77,11 @@ def _shell(title: str, description: str, canonical: str, body: str) -> HTMLRespo
     )
 
 
+def _prelaunch_note() -> str:
+    from .journal import _prelaunch_note as notice
+    return notice()
+
+
 def paths_index(articles: list[dict]) -> HTMLResponse:
     paths = visible_paths(articles)
     cards = "".join(
@@ -93,6 +98,7 @@ def paths_index(articles: list[dict]) -> HTMLResponse:
         '<section class="jr-hero"><span class="jr-kicker">ПОЛЕЗНЫЕ МАРШРУТЫ</span>'
         '<h1>С чего начать?</h1><p>Выберите свою цель. Материалы расположены по шагам, '
         'а личные данные для чтения не нужны.</p></section>'
+        + _prelaunch_note() +
         f'<section class="jr-path-grid" aria-label="Маршруты чтения">{cards}</section>'
         '<p class="jr-back"><a href="/journal">← Все статьи журнала</a></p>'
     )
@@ -122,6 +128,7 @@ def path_detail(slug: str, articles: list[dict]) -> HTMLResponse:
         '<a href="/journal">Журнал</a> / <a href="/journal/paths">Маршруты</a></div>'
         '<section class="jr-hero"><span class="jr-kicker">ПЛАН ДЕЙСТВИЙ</span>'
         f'<h1>{_e(path["title"])}</h1><p>{_e(path["description"])}</p></section>'
+        + _prelaunch_note() +
         f'<ol class="jr-path-steps">{steps}</ol>'
         '<aside class="jr-bottom"><h2>Готовы к следующему шагу?</h2>'
         '<p>Выберите подходящее действие, когда закончите чтение.</p>'
