@@ -37,7 +37,32 @@ def no_overflow(page):
         viewport: document.documentElement.clientWidth,
         document: document.documentElement.scrollWidth
     })""")
-    assert dimensions["document"] <= dimensions["viewport"] + 2, dimensions
+    if dimensions["document"] > dimensions["viewport"] + 2:
+        dimensions["overflowing_elements"] = page.evaluate("""() => {
+          const width = document.documentElement.clientWidth;
+          const label = el => el.tagName.toLowerCase() + (el.id ? '#' + el.id : '')
+            + (el.classList.length ? '.' + [...el.classList].join('.') : '');
+          const details = el => {
+            const rect = el.getBoundingClientRect(), style = getComputedStyle(el);
+            return {element:label(el), left:rect.left, right:rect.right, width:rect.width,
+              minWidth:style.minWidth, gridColumns:style.gridTemplateColumns,
+              fontSize:style.fontSize, overflowX:style.overflowX};
+          };
+          return [...document.querySelectorAll('body *')].filter(el => {
+            const rect = el.getBoundingClientRect();
+            if (!rect.width || !rect.height || (rect.right <= width + 2 && rect.left >= -2)) return false;
+            // Deliberate inner table scrolling must not obscure the actual
+            // document-overflow culprit in the diagnostic output.
+            for (let parent = el.parentElement; parent; parent = parent.parentElement) {
+              const style = getComputedStyle(parent), box = parent.getBoundingClientRect();
+              if (['auto','scroll','hidden','clip'].includes(style.overflowX)
+                && box.left >= 0 && box.right <= width + 2) return false;
+            }
+            return true;
+          }).slice(0,12).map(el => ({...details(el),
+            parent:el.parentElement ? details(el.parentElement) : null}));
+        }""")
+        raise AssertionError(dimensions)
 
 
 def capture(page, name):
@@ -48,6 +73,15 @@ def capture(page, name):
 def matches_event(request, source, action):
     return (request.url.endswith("/api/growth/event") and request.method == "POST"
             and request.post_data_json == {"source": source, "action": action})
+
+
+def assert_destination(page, base, destination):
+    if destination == "/community":
+        # The directory normalizes its first page in history.replaceState.
+        expect(page).to_have_url(re.compile("^" + re.escape(base + destination) + r"(?:\?page=1)?$"))
+        expect(page.locator("#community-main")).to_be_visible()
+    else:
+        expect(page).to_have_url(base + destination)
 
 
 def send(page, base, source, action):
@@ -152,7 +186,7 @@ def exercise(browser, base, receipts_path):
             # still prove that every CTA was persisted exactly once.
             with page.expect_request(lambda request: matches_event(request, source, action)) as click:
                 page.locator(f'.jr-bottom a[data-growth-action="{action}"]').click()
-            expect(page).to_have_url(base + destination)
+            assert_destination(page, base, destination)
             assert click.value.post_data_json == {"source": source, "action": action}
 
         # Server-received headers remain authoritative when navigation detaches
@@ -166,7 +200,7 @@ def exercise(browser, base, receipts_path):
         for slug, action, destination in (PATHS[0], PATHS[2]):
             page.goto(base + "/journal/paths/" + slug, wait_until="networkidle")
             page.locator(f'.jr-bottom a[data-growth-action="{action}"]').click()
-            expect(page).to_have_url(base + destination)
+            assert_destination(page, base, destination)
         page.unroute("**/api/growth/event", block_analytics)
 
         checked(admin.request.post(base + "/api/login", headers=HEADERS,
