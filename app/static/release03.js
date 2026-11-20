@@ -82,7 +82,7 @@ document.addEventListener('DOMContentLoaded', () => {
   // have already described the same experience with slightly different formatting.
   function normalized(value) {
     return String(value || '').toLocaleLowerCase('ru-RU')
-      .replace(/ё/g, 'е').replace(/[^a-zа-я0-9]+/gi, ' ').replace(/\\s+/g, ' ').trim();
+      .replace(/ё/g, 'е').replace(/[^a-zа-я0-9]+/gi, ' ').replace(/\s+/g, ' ').trim();
   }
   function experienceAlreadyDescribed(existing, composed) {
     const oldText = normalized(existing);
@@ -108,7 +108,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
     const combined = existing ? existing + '\n\n' + text : text;
     if (combined.length > input.maxLength) {
-      say('В поле «Немного о вашем опыте» недостаточно места. Сократите прежний текст или ответы.', true);
+      say('В описании опыта недостаточно места. Сократите прежний текст или ответы.', true);
       return;
     }
     input.value = combined;
