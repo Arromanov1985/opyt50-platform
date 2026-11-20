@@ -120,7 +120,8 @@ def exercise_profile_readiness(page):
     profile = {key: user["profile"][key] for key in (
         "profession", "city", "skills", "salary_min", "schedule", "employment", "about",
     )}
-    profile.update(city="Москва", is_active=False, phone=user["phone"])
+    profile.update(city="Москва", is_active=False, phone=user["phone"],
+                   skills="", about="", salary_min=0)
     response = page.request.put(URL + "/api/candidate/profile", headers=HEADERS, data=profile)
     assert response.status == 200, response.text()
     page.goto(URL, wait_until="networkidle")
