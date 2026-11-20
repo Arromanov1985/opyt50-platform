@@ -73,7 +73,7 @@ def exercise_editor(page, review_dir):
     expect(page.locator("#profile-form")).to_have_attribute("data-editor-ready", "1")
     # A usable profile shows 100% for required fields; optional experience is
     # summarized by its content, never as a misleading empty biography.
-    expect(page.locator("#profile-form [data-profile-saved-percent]")).to_have_text("100%")
+    expect(page.locator(".candidate-profile [data-profile-saved-percent]")).to_have_text("100%")
     expect(page.locator("#resume-history-section [data-profile-history-count]")).to_have_text("Мест работы: 1")
     expect(page.locator("#resume-training-section [data-profile-course-count]")).to_have_text("Курсов и сертификатов: 1")
     writes = []
