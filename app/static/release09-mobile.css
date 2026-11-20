@@ -671,6 +671,8 @@ body.comfortable-view .job-preparation-link{font-size:18px}
   .job-card-v08 .job-actions [data-v02-action="details"]{min-height:46px!important;font-size:14px}
   .job-card-v08 .job-actions .btn-primary[data-v02-action="details"]{font-size:15px}
   #job-dialog .job-detail-facts{grid-template-columns:1fr!important}
+  #job-dialog .job-detail-action{flex-wrap:nowrap}
+  #job-dialog .job-entry-note{flex-basis:auto}
   #job-dialog .job-detail-facts>span{display:grid;grid-template-columns:minmax(0,.8fr) minmax(0,1.2fr);gap:12px;align-items:baseline}
   body.comfortable-view .job-essential-facts>div,
   body.comfortable-view #job-dialog .job-detail-facts>span{grid-template-columns:1fr;gap:3px}
