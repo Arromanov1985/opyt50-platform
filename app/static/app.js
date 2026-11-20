@@ -2357,12 +2357,12 @@ async function renderEmployer() {
       });
       // A dedicated draft reminder or the hero already has the resume button.
       // Do not render a second identical action (ambiguous for keyboard/QA).
-      if (openJobs.length) employerTasks.push({
+      if (openJobs.length && nextTitle !== 'Запустите подбор по открытой вакансии') employerTasks.push({
         title: 'Посмотреть подходящих специалистов',
         description: `Открытых вакансий: ${openJobs.length}. Можно начать подбор без раскрытия контактов.`,
         action: `<button type="button" class="btn btn-outline btn-tiny" data-action="open-employer-matches" data-id="${Number(openJobs[0].id)}">Начать подбор</button>`
       });
-      if (!employerTasks.length && !recentDraft) employerTasks.push({
+      if (!employerTasks.length && !recentDraft && !openJobs.length) employerTasks.push({
         title: 'Опубликовать первую вакансию',
         description: 'Начните с обязанностей, города и условий работы.',
         action: '<button class="btn btn-outline btn-tiny" data-tab="create">Создать</button>'
