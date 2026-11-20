@@ -116,6 +116,10 @@ def test_employer_request_hides_public_pages_and_blocks_new_activity(tmp_path: P
         assert any(j["id"] == vacancy_id for j in candidate.get("/api/jobs").json()["jobs"])
         assert candidate.get(f"/api/jobs/{vacancy_id}").status_code == 200
         assert candidate.get(f"/api/companies/{employer_id}").status_code == 200
+        assert candidate.get(f"/employers/{employer_id}").status_code == 200
+        directory_before = candidate.get("/employers")
+        assert directory_before.status_code == 200
+        assert "Тестовая компания" in directory_before.text
         request_restriction(employer, "deletion")
 
         assert employer.get("/api/me").status_code == 200
@@ -141,6 +145,11 @@ def test_employer_request_hides_public_pages_and_blocks_new_activity(tmp_path: P
         assert all(j["id"] != vacancy_id for j in candidate.get("/api/jobs").json()["jobs"])
         assert candidate.get(f"/api/jobs/{vacancy_id}").status_code == 404
         assert candidate.get(f"/api/companies/{employer_id}").status_code == 404
+        assert candidate.get(f"/employers/{employer_id}").status_code == 404
+        directory_after = candidate.get("/employers")
+        assert directory_after.status_code == 200
+        assert directory_after.headers.get("cache-control") == "no-store"
+        assert "Тестовая компания" not in directory_after.text
         assert candidate.post(
             "/api/candidate/applications", headers=XHR,
             json={"vacancy_id": vacancy_id},
