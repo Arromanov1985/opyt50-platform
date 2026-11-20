@@ -3746,7 +3746,7 @@ body.comfortable-view .candidate-profile .profile-preview-hidden small{font-size
   cursor:not-allowed;opacity:.6;
 }
 #employer-candidate-comparison{
-  min-width:0;max-width:100%;margin:20px 0 0;scroll-margin-top:20px;outline-offset:5px;
+  min-width:0;max-width:100%;margin:20px 0 0;scroll-margin-top:100px;outline-offset:5px;
 }
 #employer-candidate-comparison:focus-visible,
 .candidate-match-card[data-match-candidate-id]:focus-visible{

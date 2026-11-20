@@ -19,15 +19,12 @@ HEADERS = {"X-Requested-With": "OPYT50"}
 CANDIDATES = (81001, 81002, 81003, 81004)
 
 
-def save_review(page, filename, region=None):
+def save_review(page, filename):
     review_dir = os.environ.get("STAZHNO_COMPARISON_REVIEW_DIR")
     if review_dir:
         destination = Path(review_dir)
         destination.mkdir(parents=True, exist_ok=True)
-        if region is not None:
-            region.screenshot(path=str(destination / filename))
-        else:
-            page.screenshot(path=str(destination / filename), full_page=False)
+        page.screenshot(path=str(destination / filename), full_page=False)
 
 
 def run_comparison(page):
@@ -78,6 +75,10 @@ def run_comparison(page):
         specializations="", work_history=[], courses=[],
         cautions=["Не указаны в вашем профиле: Excel"],
     )
+    for factor in fixtures[1]["score_breakdown"]:
+        if factor["key"] == "salary":
+            factor["text"] = "Минимальная зарплата в профиле не задана"
+            factor["caution"] = ""
     fixtures[2].update(invitation_id=71003, invitation_status="accepted")
 
     def invitation(invitation_id, candidate_id, status):
@@ -152,6 +153,18 @@ def run_comparison(page):
         for candidate_id in CANDIDATES:
             expect(toggle(candidate_id)).to_be_enabled()
 
+    def show_comparison_heading():
+        # Override the page's smooth-scroll CSS so capture never races with a
+        # still-running animation from the homepage or the preceding action.
+        comparison.evaluate("element => element.scrollIntoView({block:'start',behavior:'instant'})")
+        assert page.evaluate("""() => {
+          const heading = document.querySelector('#employer-candidate-comparison .candidate-comparison-heading h4');
+          const header = document.querySelector('.site-header');
+          const rect = heading.getBoundingClientRect();
+          return rect.top >= (header?.getBoundingClientRect().bottom || 0) &&
+            rect.bottom <= window.innerHeight;
+        }"""), "Comparison heading must be visible below the sticky navigation"
+
     open_matches(job_id)
     expect(panel.locator("#employer-compare-status")).to_be_visible()
     expect_empty_selection()
@@ -215,7 +228,8 @@ def run_comparison(page):
     toggle(CANDIDATES[1]).click()
     show.click()
     expect(cell("profession", CANDIDATES[2])).to_be_visible()
-    save_review(page, "comparison-desktop.png", comparison)
+    show_comparison_heading()
+    save_review(page, "comparison-desktop.png")
 
     page.set_viewport_size({"width": 390, "height": 844})
     for comfortable in (False, True):
@@ -234,11 +248,21 @@ def run_comparison(page):
             comparison.scrollWidth <= comparison.clientWidth + 3 &&
             buttons.length > 0 && buttons.every(button => button.getBoundingClientRect().height >= 44);
         }"""), f"Comparison must fit 390px with touch-sized controls (comfortable={comfortable})"
-        comparison.evaluate("element => element.scrollIntoView({block:'start'})")
+        show_comparison_heading()
         save_review(page, "comparison-mobile-comfortable.png" if comfortable else "comparison-mobile.png")
-        comparison.locator("[data-compare-field='next']").evaluate(
-            "element => element.scrollIntoView({block:'start'})"
-        )
+        next_row = comparison.locator("[data-compare-field='next']")
+        next_row.evaluate("""element => {
+          const headerHeight = document.querySelector('.site-header')?.getBoundingClientRect().height || 0;
+          window.scrollTo({top:window.scrollY + element.getBoundingClientRect().top - headerHeight - 16,
+            behavior:'instant'});
+        }""")
+        assert next_row.evaluate("""element => {
+          const headerBottom = document.querySelector('.site-header')?.getBoundingClientRect().bottom || 0;
+          const heading = element.querySelector('th').getBoundingClientRect();
+          const button = element.querySelector('button').getBoundingClientRect();
+          return heading.top >= headerBottom && heading.bottom <= window.innerHeight &&
+            button.top >= headerBottom && button.bottom <= window.innerHeight;
+        }"""), "Mobile review image must show the next-step heading and an action control"
         save_review(page, "comparison-mobile-comfortable-actions.png" if comfortable else "comparison-mobile-actions.png")
     page.locator("#reading-mode-toggle").click()
     page.set_viewport_size({"width": 1280, "height": 820})
