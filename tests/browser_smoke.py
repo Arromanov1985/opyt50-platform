@@ -37,6 +37,38 @@ def run_browser(page, playwright):
     console_errors = []
     page.on("pageerror", lambda error: console_errors.append(str(error)))
     page.goto(URL, wait_until="networkidle")
+    # Journal discovery is local-only; suppress reporting in the browser test
+    # so editorial visits do not change unrelated admin growth assertions.
+    page.route("**/api/growth/event", lambda route: route.fulfill(status=204))
+    page.goto(URL + "/journal", wait_until="networkidle")
+    expect(page.locator("#jr-article-grid .jr-card")).to_have_count(10)
+    journal_search = page.locator("#jr-article-search")
+    journal_search.fill("подготовиться")
+    expect(page.locator("#jr-article-grid .jr-card:visible")).to_have_count(1)
+    expect(page.locator("#jr-results-count")).to_contain_text("1 из 10")
+    page.locator("[data-jr-category-filter='Работодателям']").click()
+    expect(page.locator("#jr-no-results")).to_be_visible()
+    page.locator("#jr-reset-search").click()
+    expect(page.locator("#jr-article-grid .jr-card:visible")).to_have_count(10)
+    page.locator("[data-jr-category-filter='Работодателям']").click()
+    expect(page.locator("#jr-article-grid .jr-card:visible")).to_have_count(1)
+    page.locator("#jr-article-grid .jr-card:visible").click()
+    expect(page.locator(".jr-article h1")).to_contain_text("Работодателю")
+    expect(page.locator(".jr-related .jr-card")).to_have_count(2)
+    # A company is discoverable only with active moderated vacancies.
+    page.goto(URL + "/employers", wait_until="networkidle")
+    expect(page.locator("#employer-cards .employer-card").first).to_be_visible()
+    directory_query = page.locator('input[name="q"]')
+    directory_query.fill("абсолютно-несуществующая-компания-98998")
+    page.locator('.employer-search button[type="submit"]').click()
+    expect(page.locator(".empty-list")).to_be_visible()
+    page.locator(".empty-list a[href='/employers']").click()
+    expect(page.locator("#employer-cards .employer-card").first).to_be_visible()
+    page.locator("#employer-cards .employer-card h2 a").first.click()
+    expect(page.locator(".company-vacancies .company-job").first).to_be_visible()
+    assert page.locator(".company-vacancies .company-job a[href^='/vacancies/']").count() >= 1
+    page.goto(URL, wait_until="networkidle")
+    page.unroute("**/api/growth/event")
     expect(page.locator(".brand-word").first).to_contain_text("стажно")
     assert "СТАЖНО" in page.title()
     assert "опытно.рф" not in page.locator("body").inner_text().casefold()
@@ -120,6 +152,12 @@ def run_browser(page, playwright):
     expect(page.locator("#jobs-count")).to_contain_text("Найдено: 1")
     expect(page.locator("#job-filter-summary")).to_contain_text("Занятость: Полная")
     expect(page.locator("#job-filter-summary")).to_contain_text("Сортировка: Сначала выше зарплата")
+    # Individual filter chips remove only one condition.
+    page.locator("#job-filter-summary [data-filter-id='employment-filter']").click()
+    expect(page.locator("#employment-filter")).to_have_value("")
+    expect(page.locator("#job-filter-summary")).not_to_contain_text("Занятость:")
+    page.locator("#employment-filter").select_option(label="Полная")
+    expect(page.locator("#job-filter-summary")).to_contain_text("Занятость: Полная")
     expect(page.locator("#public-jobs .job-card")).to_contain_text("Кладовщик")
     expect(page.locator("#public-jobs .job-skill-tags")).to_contain_text("склад")
 
@@ -128,6 +166,40 @@ def run_browser(page, playwright):
     expect(page.locator("#job-dialog-content")).to_contain_text("Складской учёт")
     page.locator("#job-dialog-close").click()
     expect(page.locator("#job-dialog")).not_to_be_visible()
+
+    # Public job URL is shareable and returns to the SAME vacancy without
+    # submitting an application or exposing applicant contact data.
+    shared_id = int(page.locator("#public-jobs .job-card").first.get_attribute("data-job-id"))
+    share_link = page.locator("#public-jobs .job-card").first.locator(
+        f"a[href='/vacancies/{shared_id}']"
+    )
+    expect(share_link).to_be_visible()
+    landing = page.request.get(URL + f"/vacancies/{shared_id}")
+    assert landing.status == 200, landing.text()
+    assert "Кладовщик" in landing.text()
+    assert f'/?vacancy={shared_id}#jobs' in landing.text()
+    application_posts = []
+    page.on("request", lambda request: application_posts.append(request.url) if (
+        request.method == "POST" and request.url.endswith("/api/candidate/applications")
+    ) else None)
+    page.goto(URL + f"/?vacancy={shared_id}#jobs", wait_until="networkidle")
+    expect(page.locator("#job-dialog")).to_be_visible()
+    expect(page.locator("#job-dialog-title")).to_have_text("Кладовщик")
+    assert not application_posts, "Opening a shared vacancy must never submit an application"
+    assert "vacancy=" not in page.evaluate("location.search"), "Link should be consumed once"
+    page.locator("#job-dialog-close").click()
+    expect(page.locator("#job-dialog")).not_to_be_visible()
+
+    # A search with no results must offer a clear recovery action, preserving
+    # the original job-search workflow and keyboard-accessible controls.
+    page.locator("#profession-filter").fill("несуществующая профессия 98765")
+    page.locator("#jobs-filter").click()
+    empty = page.locator("#public-jobs .jobs-empty-state")
+    expect(empty).to_contain_text("По этим условиям вакансий пока нет.")
+    expect(empty.locator("[data-v02-action='reset-public-job-filters']")).to_be_visible()
+    empty.locator("[data-v02-action='reset-public-job-filters']").click()
+    expect(page.locator("#profession-filter")).to_have_value("")
+    expect(page.locator("#public-jobs .job-card").first).to_be_visible()
 
     login(page, "kladovshik@demo.example")
     expect(page.locator("#dashboard-main")).to_contain_text("ВАШ СЛЕДУЮЩИЙ ШАГ")
@@ -457,6 +529,9 @@ def run_browser(page, playwright):
     expect(page.locator("#dashboard-main")).to_contain_text("ПРИОРИТЕТ СЕЙЧАС")
     expect(page.locator("#dashboard-main .overview-stat-card")).to_have_count(4)
     expect(page.locator("#dashboard-main .overview-funnel")).to_be_visible()
+    expect(page.locator("#dashboard-main .overview-action-center")).to_be_visible()
+    expect(page.locator("#dashboard-main .overview-action-center")).to_contain_text("В работе у компании")
+    expect(page.locator("#dashboard-main .overview-action-center .overview-action-item").first).to_be_visible()
     expect(page.locator("#dashboard-main .overview-funnel")).to_contain_text("Согласия")
     expect(page.locator("#dashboard-main .overview-funnel")).to_contain_text("Контакты")
     expect(page.locator("#dashboard-main .overview-funnel")).to_contain_text("Положительные итоги")
@@ -1164,9 +1239,12 @@ def run_browser(page, playwright):
 
     login(page, "admin@demo.example")
     expect(page.locator("#admin-stats")).to_contain_text("Активные отклики")
+    expect(page.locator('a[href="/admin/journal"]')).to_be_visible()
     expect(page.locator("#admin-stats")).to_contain_text("Отозванные отклики")
     expect(page.locator("#admin-growth-stats")).to_contain_text("Переходы к вакансиям")
-    expect(page.locator("#admin-growth-articles tbody tr")).to_have_count(4)
+    expect(page.locator("#admin-growth-articles tbody tr")).to_have_count(14)
+    expect(page.locator('#admin-growth-articles tr[data-growth-source="path:delitsya-opytom"]')).to_contain_text("Делиться опытом")
+    expect(page.locator("#admin-product-period")).to_contain_text("Демо-открытия контактов")
     expect(page.locator("#admin-privacy-rights")).to_contain_text("Получить сведения об обработке")
     expect(page.locator("#admin-privacy-rights")).to_contain_text("kladovshik@demo.example")
     expect(page.locator("#admin-retention-status")).to_contain_text("0 из 16 категорий")
@@ -1189,6 +1267,39 @@ def run_browser(page, playwright):
     expect(deletion_row.locator(".privacy-disposal-report")).to_contain_text(
         "Закрытие со статусом «выполнено» запрещено"
     )
+
+    # Editorial workflow, on an isolated browser test database only.
+    page.goto(URL + "/admin/journal", wait_until="networkidle")
+    expect(page.locator("#article-list .article-list-item")).to_have_count(10)
+    page.locator("#new-article").click()
+    page.locator("#article-slug").fill("test-redakcionnaya-statia")
+    page.locator("#article-title").fill("Как спокойно сравнить условия новой работы")
+    page.locator("#article-description").fill(
+        "Практический набор вопросов для сравнения двух предложений работодателя.")
+    page.locator("#article-category").fill("Карьера")
+    page.locator("#article-read").fill("5 минут")
+    page.locator("#article-body").fill(
+        "## Проверьте основные условия\n"
+        "Перед согласием уточните график, задачи, состав оплаты и оформление. "
+        "Сравните предложения на одинаковой основе и запишите различия.\n\n"
+        "## Выберите следующий шаг\n"
+        "Уточните сроки ответа и критерии оценки результата. "
+        "Не отправляйте коды подтверждения или банковские данные неожиданным собеседникам.")
+    page.locator("#preview").click()
+    expect(page.locator("#article-preview")).to_be_visible()
+    page.locator("#save").click()
+    expect(page.locator("#notice")).to_contain_text("Черновик сохранён")
+    assert page.request.get(URL + "/journal/test-redakcionnaya-statia").status == 404
+    page.once("dialog", lambda dialog: dialog.accept())
+    page.locator("#publish").click()
+    expect(page.locator("#notice")).to_contain_text("Статья опубликована")
+    assert page.request.get(URL + "/journal/test-redakcionnaya-statia").status == 200
+    page.once("dialog", lambda dialog: dialog.accept())
+    page.locator("#hide").click()
+    expect(page.locator("#notice")).to_contain_text("Статья снята с публикации")
+    assert page.request.get(URL + "/journal/test-redakcionnaya-statia").status == 404
+    page.goto(URL, wait_until="networkidle")
+    expect(page.locator("#admin-stats")).to_contain_text("Активные отклики")
 
     expect(page.locator("[data-v02-action='admin-users']")).to_be_visible()
     page.locator("[data-v02-action='admin-users']").click()

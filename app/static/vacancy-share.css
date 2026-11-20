@@ -1,0 +1,51 @@
+/* Shareable vacancy page: independent from logged-in dashboard UI. */
+:root{font-family:system-ui,-apple-system,"Segoe UI",Arial,sans-serif;color:#14372D;background:#F6FAF7}
+*{box-sizing:border-box}
+body{margin:0;min-width:320px;font-size:16px;line-height:1.55}
+a{color:#116D46;text-decoration-thickness:1px;text-underline-offset:3px}
+a:hover{color:#0C4B30}
+a:focus-visible{outline:3px solid #0B8F57;outline-offset:3px}
+.wrap{width:min(1040px,calc(100% - 32px));margin:0 auto}
+.skip-link{position:absolute;left:-10000px;top:0;background:#fff;padding:12px;z-index:10}
+.skip-link:focus{left:12px}
+.share-header{background:#fff;border-bottom:1px solid #DCE9E1}
+.share-header .wrap{display:flex;align-items:center;justify-content:space-between;gap:16px;min-height:76px}
+.share-header .brand{display:inline-flex;align-items:center;gap:8px;color:#0A3328;font-size:25px;font-weight:800;text-decoration:none;white-space:nowrap}
+.share-header .brand span{color:#17A467}
+.share-header nav{display:flex;gap:20px;flex-wrap:wrap;font-weight:700;font-size:14px}
+.breadcrumbs{display:flex;gap:9px;flex-wrap:wrap;margin:28px 0 18px;font-size:13px;color:#61766B}
+.vacancy-sheet,.tips{border:1px solid #DFE9E2;background:#fff;box-shadow:0 12px 35px #163B3010;border-radius:22px;padding:clamp(20px,4vw,42px)}
+.kicker{font-size:12px;font-weight:800;letter-spacing:.09em;color:#0D8350}
+h1{font-size:clamp(30px,4vw,46px);line-height:1.13;letter-spacing:-.025em;margin:14px 0 12px;overflow-wrap:anywhere}
+.company{color:#536A60;font-size:17px;margin:0}
+.salary{font-size:clamp(23px,3.5vw,31px);font-weight:850;color:#077745;margin:22px 0}
+.facts{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}
+.facts>div{display:grid;gap:3px;padding:14px;border:1px solid #E3EEE7;border-radius:13px;background:#F7FBF8;min-width:0}
+.facts span{font-size:13px;color:#6A7D72}
+.facts strong{font-size:15px;overflow-wrap:anywhere}
+.skills{display:flex;flex-wrap:wrap;gap:8px;margin-top:18px}
+.skills span{padding:6px 12px;background:#EEF7F1;border-radius:100px;font-size:13px;font-weight:650}
+.details{margin-top:30px}
+h2{font-size:22px;margin:0 0 12px}
+.description{white-space:pre-wrap;overflow-wrap:anywhere;margin:0;font-size:16px;color:#365046}
+.share-privacy{margin-top:28px;background:#EFF8F2;border:1px solid #D1E9D8;border-radius:15px;padding:17px 20px}
+.share-privacy strong{font-size:16px}
+.share-privacy p{font-size:14px;margin:7px 0 0;color:#426454}
+.share-actions{display:flex;flex-wrap:wrap;gap:12px;margin-top:24px}
+.button{display:inline-flex;justify-content:center;align-items:center;min-height:48px;padding:11px 20px;border-radius:10px;text-decoration:none;font-size:15px;font-weight:760;text-align:center}
+.button.primary{background:#0B6942;color:#fff}
+.button.primary:hover{background:#075433}
+.button.secondary{border:1px solid #B9D6C3;color:#184D38;background:#fff}
+.tips{margin:20px 0}
+.tips p{margin:0 0 8px;color:#4B6657}
+.share-footer{display:flex;justify-content:space-between;gap:16px;flex-wrap:wrap;color:#698073;padding:10px 0 38px;font-size:13px}
+@media(max-width:650px){
+  .share-header .wrap{min-height:70px;align-items:flex-start;flex-direction:column;justify-content:center;padding:10px 0}
+  .share-header .brand{font-size:22px}
+  .facts{grid-template-columns:1fr}
+  .facts>div{padding:11px 14px}
+  .share-actions{display:grid}
+  .button{width:100%}
+  .breadcrumbs{margin-top:18px}
+}
+body.comfortable-view{font-size:19px}

@@ -212,26 +212,76 @@ def test_first_draft_create_key_is_atomic_in_postgres(runtime_db):
 
 def test_growth_aggregate_is_atomic_and_private_in_postgresql(runtime_db):
     from app.growth import aggregate_snapshot, record_event
+    from app.journal_cms import init_journal
     from app.release02 import init_release02
 
     # Startup is idempotent for existing production schemas.
     init_release02("ignored-when-DATABASE_URL-present")
     init_release02("ignored-when-DATABASE_URL-present")
+    init_journal("ignored-when-DATABASE_URL-present")
     record_event("ignored-when-DATABASE_URL-present", "journal", "view")
     record_event("ignored-when-DATABASE_URL-present", "journal", "view")
     record_event("ignored-when-DATABASE_URL-present", "kak-proverit-vakansiyu", "jobs_click")
+    record_event("ignored-when-DATABASE_URL-present", "path:delitsya-opytom", "view")
+    record_event("ignored-when-DATABASE_URL-present", "path:delitsya-opytom", "community_click")
     with postgres_database(runtime_db) as db:
         payload = aggregate_snapshot(db, days=30)
-        assert payload["summary"]["journal_requests"] == 2
+        assert payload["summary"]["journal_requests"] == 3
         assert payload["summary"]["jobs_clicks"] == 1
+        assert payload["summary"]["community_clicks"] == 1
         assert payload["summary"]["new_candidates"] == 1
         assert payload["summary"]["new_employers"] == 1
-        rows = db.execute("SELECT source,action,total FROM growth_daily_counts ORDER BY source").fetchall()
+        rows = db.execute("SELECT source,action,total FROM growth_daily_counts ORDER BY source,action").fetchall()
         assert [(r["source"], r["action"], r["total"]) for r in rows] == [
             ("journal", "view", 2),
             ("kak-proverit-vakansiyu", "jobs_click", 1),
+            ("path:delitsya-opytom", "community_click", 1),
+            ("path:delitsya-opytom", "view", 1),
         ]
 
+
+
+def test_existing_growth_check_upgrades_without_losing_postgres_counts(runtime_db):
+    from app.release02 import init_release02
+
+    # Simulate the schema already deployed before community_click existed.
+    with postgres_database(runtime_db) as db:
+        db.execute("""ALTER TABLE growth_daily_counts
+            DROP CONSTRAINT growth_daily_counts_action_check,
+            ADD CONSTRAINT growth_daily_counts_action_check
+            CHECK(action IN ('view','jobs_click','profile_click'))""")
+        db.execute("INSERT INTO growth_daily_counts VALUES(?,?,?,?)",
+                   ("2026-11-01", "journal", "view", 17))
+        db.execute("INSERT INTO growth_daily_counts VALUES(?,?,?,?)",
+                   ("2026-11-02", "kak-proverit-vakansiyu", "jobs_click", 5))
+
+    init_release02("ignored-for-postgres")
+    init_release02("ignored-for-postgres")
+    with postgres_database(runtime_db) as db:
+        rows = db.execute(
+            "SELECT event_date,source,action,total FROM growth_daily_counts ORDER BY event_date"
+        ).fetchall()
+        assert [(r["event_date"], r["source"], r["action"], r["total"]) for r in rows] == [
+            ("2026-11-01", "journal", "view", 17),
+            ("2026-11-02", "kak-proverit-vakansiyu", "jobs_click", 5),
+        ]
+        assert [row["column_name"] for row in db.execute(
+            """SELECT column_name FROM information_schema.columns
+               WHERE table_schema=current_schema() AND table_name='growth_daily_counts'
+               ORDER BY ordinal_position"""
+        ).fetchall()] == ["event_date", "source", "action", "total"]
+        db.execute("INSERT INTO growth_daily_counts VALUES(?,?,?,?)",
+                   ("2026-11-03", "journal", "community_click", 2))
+
+    for action, total in (("unknown", 1), ("community_click", -1)):
+        with pytest.raises(sqlite3.IntegrityError):
+            with postgres_database(runtime_db) as db:
+                db.execute("INSERT INTO growth_daily_counts VALUES(?,?,?,?)",
+                           ("2026-11-04", "journal", action, total))
+    with pytest.raises(sqlite3.IntegrityError):
+        with postgres_database(runtime_db) as db:
+            db.execute("INSERT INTO growth_daily_counts VALUES(?,?,?,?)",
+                       ("2026-11-01", "journal", "view", 1))
 
 def test_privacy_requests_are_private_idempotent_and_audited_in_postgres(runtime_db):
     from app.release02 import init_release02

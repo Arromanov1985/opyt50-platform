@@ -24,8 +24,10 @@ document.addEventListener('DOMContentLoaded', () => {
     ? window.location.pathname.slice(0, -1) : window.location.pathname;
   const source = path === '/journal'
     ? 'journal'
+    : path.startsWith('/journal/paths/') ? 'path:' + path.slice('/journal/paths/'.length)
+    : path === '/journal/paths' ? ''
     : path.startsWith('/journal/') ? path.slice('/journal/'.length) : '';
-  if (!source || !/^[a-z0-9-]{1,80}$/.test(source)) return;
+  if (!source || source.length > 90 || !/^(?:path:)?[a-z0-9]+(?:-[a-z0-9]+)*$/.test(source)) return;
   function sendGrowthEvent(action) {
     try {
       fetch('/api/growth/event', {
@@ -43,9 +45,54 @@ document.addEventListener('DOMContentLoaded', () => {
   document.querySelectorAll('a[data-growth-action]').forEach(link => {
     link.addEventListener('click', () => {
       const action = link.getAttribute('data-growth-action');
-      if (action === 'jobs_click' || action === 'profile_click') {
+      if (action === 'jobs_click' || action === 'profile_click' || action === 'community_click') {
         sendGrowthEvent(action);
       }
     });
   });
+});
+
+
+// Local-only discovery for the public Journal: no searches, filters, or
+// visitor identities are sent to the server or written to browser storage.
+document.addEventListener('DOMContentLoaded', () => {
+  const search = document.getElementById('jr-article-search');
+  const grid = document.getElementById('jr-article-grid');
+  if (!search || !grid) return;
+  const cards = Array.from(grid.querySelectorAll('.jr-card'));
+  const filters = Array.from(document.querySelectorAll('[data-jr-category-filter]'));
+  const count = document.getElementById('jr-results-count');
+  const empty = document.getElementById('jr-no-results');
+  let activeCategory = 'all';
+  const normalize = text => String(text || '').trim().toLocaleLowerCase('ru-RU');
+  function update() {
+    const query = normalize(search.value);
+    let found = 0;
+    for (const card of cards) {
+      const categoryMatch = activeCategory === 'all'
+        || card.dataset.jrCategory === activeCategory;
+      const textMatch = !query || normalize(card.textContent).includes(query);
+      card.hidden = !(categoryMatch && textMatch);
+      if (!card.hidden) found++;
+    }
+    if (count) count.textContent = `Показано: ${found} из ${cards.length}`;
+    if (empty) empty.hidden = found > 0;
+    for (const button of filters) {
+      button.setAttribute('aria-pressed', String(button.dataset.jrCategoryFilter === activeCategory));
+    }
+  }
+  search.addEventListener('input', update);
+  for (const button of filters) {
+    button.addEventListener('click', () => {
+      activeCategory = button.dataset.jrCategoryFilter;
+      update();
+    });
+  }
+  document.getElementById('jr-reset-search')?.addEventListener('click', () => {
+    search.value = '';
+    activeCategory = 'all';
+    update();
+    search.focus();
+  });
+  update();
 });

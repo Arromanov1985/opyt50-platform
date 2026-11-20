@@ -1,5 +1,6 @@
 """Release 0.5.36 — aggregate growth metrics and access boundaries."""
 from datetime import datetime, timezone
+from hashlib import sha1
 from pathlib import Path
 
 from fastapi.testclient import TestClient
@@ -80,6 +81,7 @@ def test_admin_only_aggregate_report_counts_signups_independently(tmp_path):
             "journal_requests": 1,
             "jobs_clicks": 1,
             "profile_clicks": 1,
+            "community_clicks": 0,
             "new_candidates": 1,
             "new_employers": 1,
         }
@@ -108,11 +110,16 @@ def test_growth_frontend_is_first_party_and_fails_open(tmp_path):
     assert "localStorage.setItem('growth" not in script
     html = (STATIC / "index.html").read_text(encoding="utf-8")
     assert 'growth-admin.css?v=1' in html
-    assert 'app.js?v=da543a17836c' in html
+    # Require cache-busting URLs to match the current committed bytes rather
+    # than hard-coding a revision from an older UX release.
+    for asset in ("app.js", "release02.js", "release09-dashboard.css"):
+        data = (STATIC / asset).read_bytes()
+        revision = sha1(f"blob {len(data)}".encode() + bytes([0]) + data).hexdigest()[:12]
+        assert f"/static/{asset}?v={revision}" in html
     with TestClient(app) as client:
         article = client.get("/journal/kak-proverit-vakansiyu")
         assert article.status_code == 200
         assert 'data-growth-action="profile_click"' in article.text
         assert 'data-growth-action="jobs_click"' in article.text
-        assert '/static/journal.js?v=2' in article.text
+        assert '/static/journal.js?v=4' in article.text
         assert client.get("/static/growth-admin.css").status_code == 200

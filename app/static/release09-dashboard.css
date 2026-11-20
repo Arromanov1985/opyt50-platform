@@ -1895,6 +1895,7 @@ body.comfortable-view .account-security-event small{
 /* Administrator security operations center */
 .admin-security-ops {
   gap: 16px;
+  grid-template-columns: minmax(0, 1fr);
 }
 .admin-security-check-grid {
   display: grid;
@@ -1903,7 +1904,7 @@ body.comfortable-view .account-security-event small{
 }
 .admin-security-check {
   display: grid;
-  grid-template-columns: auto 1fr;
+  grid-template-columns: auto minmax(0, 1fr);
   align-items: center;
   gap: 12px;
   min-height: 72px;
@@ -1964,6 +1965,8 @@ body.comfortable-view .account-security-event small{
   gap: 10px;
 }
 .admin-security-event-stat {
+  min-width: 0;
+  overflow-wrap: anywhere;
   padding: 12px;
   border-radius: 12px;
   background: #f8fafc;
@@ -1990,11 +1993,15 @@ body.comfortable-view .account-security-event small{
   }
 }
 @media (max-width: 700px) {
+  .admin-security-ops > .split-header {
+    flex-direction: column;
+    align-items: flex-start;
+  }
   .admin-security-check-grid {
-    grid-template-columns: 1fr;
+    grid-template-columns: minmax(0, 1fr);
   }
   .admin-security-event-stats {
-    grid-template-columns: 1fr 1fr;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
 
@@ -3430,3 +3437,59 @@ body.comfortable-view .resume-course-entry legend{font-size:1.05rem}
   body.resume-printing .resume-print-heading,
   body.resume-printing .resume-print-footer{break-inside:avoid}
 }
+
+
+/* Cross-role action center: a compact to-do list instead of another dashboard table. */
+.overview-action-center{padding:20px!important}
+.overview-action-center .split-header{margin-bottom:12px}
+.overview-action-center .split-header h3{margin:3px 0 0;font-size:19px}
+.overview-action-list{display:grid;gap:8px}
+.overview-action-item{
+  display:grid;grid-template-columns:30px minmax(0,1fr) auto;
+  gap:12px;align-items:center;
+  border:1px solid #E2ECE5;border-radius:13px;
+  padding:12px 14px;background:#FBFDFC;
+}
+.overview-action-item.is-urgent{background:#F3FAF6;border-color:#CCE6D6}
+.overview-action-step{
+  display:grid;place-items:center;width:28px;height:28px;border-radius:50%;
+  background:#EAF2ED;color:#225344;font-size:12px;font-weight:850;
+}
+.overview-action-item.is-urgent .overview-action-step{background:#D6EFE0;color:#146439}
+.overview-action-item>div{min-width:0;display:grid;gap:3px}
+.overview-action-item strong{color:#113C30;font-size:13px;line-height:1.35}
+.overview-action-item p{margin:0;font-size:12px;color:#5D766C;line-height:1.45}
+.overview-action-item .btn{min-height:38px;white-space:normal;text-align:center}
+body.comfortable-view .overview-action-item strong{font-size:1rem}
+body.comfortable-view .overview-action-item p{font-size:.95rem}
+@media(max-width:680px){
+  .overview-action-center{padding:16px!important}
+  .overview-action-item{grid-template-columns:28px minmax(0,1fr);gap:8px 11px;padding:12px}
+  .overview-action-item .btn{grid-column:2;justify-self:start;min-width:128px}
+}
+@media(max-width:360px){
+  .overview-action-item .btn{grid-column:1/-1;width:100%}
+}
+.filter-chip-action{
+  appearance:none;cursor:pointer;border:1px solid #D2E7D9;
+  font:inherit;line-height:1.4;min-height:32px;
+  gap:7px;transition:background-color .15s,border-color .15s;
+}
+.filter-chip-action:hover{background:#DDF2E4;border-color:#9FCCAA}
+.filter-chip-action:focus-visible{outline:2px solid #08793A;outline-offset:2px}
+.filter-chip-action span{font-size:15px;line-height:1}
+
+
+/* Short, optional candidate checklist before sending a first application. */
+.profile-preapply-guide{
+  margin:16px 0 20px;padding:15px 17px;
+  border:1px solid #D2E6D9;border-radius:14px;background:#F6FBF8;color:#254A37;
+}
+.profile-preapply-guide summary{font-size:14px;font-weight:800;cursor:pointer}
+.profile-preapply-guide ol{margin:13px 0 10px;padding-left:21px;display:grid;gap:7px}
+.profile-preapply-guide li,.profile-preapply-guide p{font-size:13px;line-height:1.5}
+.profile-preapply-guide p{margin:8px 0}
+.profile-preapply-guide a{font-weight:750}
+body.comfortable-view .profile-preapply-guide summary,
+body.comfortable-view .profile-preapply-guide li,
+body.comfortable-view .profile-preapply-guide p{font-size:1rem}

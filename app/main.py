@@ -58,7 +58,8 @@ from .privacy_restriction import marketplace_action_restricted, restriction_is_a
 from .privacy_external import external_review_status, save_external_review
 from .retention_register import retention_readiness
 from .data_export import build_personal_data_snapshot
-from .growth import VALID_SOURCES, record_event, aggregate_snapshot
+from .employer_directory import install_employer_directory
+from .growth import record_event, aggregate_snapshot
 from .security import (
     ADMIN_SESSION_IDLE_SECONDS, ADMIN_SESSION_SECONDS, COOKIE_NAME,
     SESSION_SECONDS, SESSION_TOUCH_SECONDS, USER_SESSION_IDLE_SECONDS,
@@ -77,8 +78,9 @@ EMPLOYMENTS = {"Любая", "Полная", "Частичная", "Проект
 
 
 class GrowthEventIn(BaseModel):
-    source: str = Field(min_length=1, max_length=80)
-    action: Literal["view", "jobs_click", "profile_click"]
+    model_config = {"extra": "forbid"}
+    source: str = Field(min_length=1, max_length=90)
+    action: Literal["view", "jobs_click", "profile_click", "community_click"]
 
 
 class PrivacyRightsRequestIn(BaseModel):
@@ -831,6 +833,8 @@ def create_app(db_path: str | None = None) -> FastAPI:
         init_db(app.state.db_path)
         from .release02 import init_release02
         init_release02(app.state.db_path)
+        from .journal_cms import init_journal
+        init_journal(app.state.db_path)
         # Production defaults to automatic retry. Pytest runs use an explicit
         # processor, so parallel TestClient lifespans never send from a
         # background task while asserting deterministic mail state.
@@ -987,9 +991,10 @@ def create_app(db_path: str | None = None) -> FastAPI:
     def growth_event(payload: GrowthEventIn):
         # Anonymous, strictly whitelisted and strictly aggregated. Never read cookies,
         # user identity, browser metadata, IP address or full referrer.
-        if payload.source not in VALID_SOURCES:
-            raise HTTPException(422, "Неизвестный материал журнала")
-        record_event(db_location, payload.source, payload.action)
+        try:
+            record_event(db_location, payload.source, payload.action)
+        except ValueError:
+            raise HTTPException(422, "Неизвестный материал журнала") from None
         return Response(status_code=204)
 
     @app.get("/api/health")
@@ -3025,6 +3030,11 @@ def create_app(db_path: str | None = None) -> FastAPI:
     from .release02 import install_routes
     install_routes(app)
     install_journal_routes(app)
+    install_employer_directory(app)
+    from .community import install_community_routes
+    from .community_pages import install_community_pages
+    install_community_routes(app)
+    install_community_pages(app)
     install_legal_draft_routes(app)
     return app
 

@@ -7,6 +7,7 @@ a PR pass/fail gate: an unavailable preview must not hide valid PR test results.
 import hashlib
 import json
 import os
+import re
 import socket
 import ssl
 import sys
@@ -20,8 +21,15 @@ BASE = os.getenv("STAZHNO_PREVIEW_URL", DEFAULT_BASE).rstrip("/")
 REPORT = Path(os.getenv("STAZHNO_PREVIEW_REPORT", "preview-reachability.json"))
 STATIC = Path(__file__).resolve().parents[1] / "app" / "static"
 CLIENT_ASSETS = ("app.js", "release02.js", "vacancy-wizard.js", "release09-dashboard.css")
-ADDITIONAL_ASSETS = ("journal.js", "growth-admin.css")
-CHECKED_ASSETS = CLIENT_ASSETS + ADDITIONAL_ASSETS
+ADDITIONAL_ASSETS = ("journal.js", "growth-admin.css", "journal-admin.js", "journal-admin.css", "journal-home.js", "editorial-home.css")
+COMMUNITY_ASSETS = ("community.js", "community.css")
+CHECKED_ASSETS = CLIENT_ASSETS + ADDITIONAL_ASSETS + COMMUNITY_ASSETS
+COMMUNITY_PRIVATE_ROUTES = {
+    "profile": "/api/community/profile",
+    "connections": "/api/community/connections",
+    "moderation_profiles": "/api/admin/community/profiles",
+    "moderation_reports": "/api/admin/community/reports",
+}
 
 
 def git_blob_revision(path):
@@ -144,16 +152,16 @@ def probe_index_revisions():
         return {"result": "connection-error", "type": type(error).__name__}
 
 
-def probe_private_draft_route():
+def probe_private_route(path):
     """Unauthenticated read-only request. Protected API returns JSON 401, not 404."""
     request = Request(
-        BASE + "/api/employer/vacancy-drafts",
+        BASE + path,
         headers={"User-Agent": "Stazhno-Preview-ReadOnly-Probe/1.0"},
         method="GET",
     )
     try:
         with build_opener(NoRedirect).open(request, timeout=10) as response:
-            # The endpoint must not disclose private draft data.
+            # Do not read or retain a response that might contain private data.
             return {"status": response.status, "result": "unexpected-public-access"}
     except HTTPError as error:
         content_type = error.headers.get("Content-Type", "").lower()
@@ -167,6 +175,10 @@ def probe_private_draft_route():
         return {"status": error.code, "result": "unexpected-status"}
     except (URLError, OSError, ssl.SSLError, TimeoutError) as error:
         return {"result": "connection-error", "type": type(error).__name__}
+
+
+def probe_private_draft_route():
+    return probe_private_route("/api/employer/vacancy-drafts")
 
 
 # GET on a PATCH/POST-only route is safe and never executes its mutation.
@@ -204,57 +216,172 @@ def probe_backend_route(path, expected_method):
 
 
 
-def probe_public_journal_pages():
-    """Compare exact bytes of public editorial HTML with the checked-out code.
+def _journal_article_slug(path):
+    match = re.fullmatch(r"/journal/([a-z0-9]+(?:-[a-z0-9]+)*)", path)
+    return match[1] if match and len(match[1]) <= 90 and match[1] != "paths" else None
 
-    No accounts, cookies, contact fields, POSTs or external services.
+
+def probe_public_journal_pages():
+    """GET-only parity for published CMS pages, including later editor updates.
+
+    A public manifest provides hashes for *currently published* pages.
+    Matching renderer source digests tie those hashes to the checked-out code,
+    while allowing editorial CMS content to change independently. An older
+    server falls back to seed checks but cannot confirm the current release.
+    No unpublished article, cookie or administrator API is ever requested.
     """
     root = str(Path(__file__).resolve().parents[1])
     if root not in sys.path:
         sys.path.insert(0, root)
-    from app.journal import ARTICLES, journal_index, journal_article
+    from app.journal import ARTICLES, journal_index, journal_article, journal_renderer_sha256
+    from app.journal_paths import PATHS, path_detail, paths_index, visible_paths
 
-    expected_pages = {"/journal": journal_index().body}
-    expected_pages.update({
-        "/journal/" + article["slug"]: journal_article(article["slug"]).body
+    route_urls = {"/journal/paths/" + item["slug"] for item in PATHS}
+
+    static_expected = {"/journal": hashlib.sha256(journal_index().body).hexdigest()}
+    static_expected.update({
+        "/journal/" + article["slug"]:
+            hashlib.sha256(journal_article(article["slug"]).body).hexdigest()
         for article in ARTICLES
     })
+    static_expected["/journal/paths"] = hashlib.sha256(paths_index(ARTICLES).body).hexdigest()
+    static_expected.update({
+        "/journal/paths/" + item["slug"]:
+            hashlib.sha256(path_detail(item["slug"], ARTICLES).body).hexdigest()
+        for item in visible_paths(ARTICLES)
+    })
+    expected = static_expected
+    source = "seed-catalog"
+    manifest_result = "unavailable"
+    renderer = {"result": "unverified", "expected_sha256": journal_renderer_sha256()}
+    manifest_request = Request(
+        BASE + "/api/public/journal/manifest",
+        headers={"User-Agent": "Stazhno-Preview-ReadOnly-Probe/1.0",
+                 "Cache-Control": "no-cache", "Pragma": "no-cache"},
+        method="GET",
+    )
+    try:
+        with build_opener(NoRedirect).open(manifest_request, timeout=12) as response:
+            raw = response.read(40_001)
+            if len(raw) > 40_000:
+                raise ValueError("Editorial manifest too large")
+            manifest = json.loads(raw)
+        if not isinstance(manifest, dict):
+            raise ValueError("Invalid editorial manifest")
+        pages = manifest.get("pages")
+        if not isinstance(pages, dict) or not 1 <= len(pages) <= 51:
+            raise ValueError("Invalid editorial manifest")
+        if not all(
+            path in {"/journal", "/journal/paths", "/sitemap.xml"}
+            or path in route_urls or _journal_article_slug(path)
+            for path in pages
+        ) or not all(
+            isinstance(digest,str) and len(digest)==64
+            and all(ch in "0123456789abcdef" for ch in digest)
+            for digest in pages.values()
+        ):
+            raise ValueError("Invalid editorial page digests")
+        published_slugs = {slug for path in pages if (slug := _journal_article_slug(path))}
+        required_routes = {
+            "/journal/paths/" + item["slug"] for item in PATHS
+            if any(slug in published_slugs for slug, _label in item["steps"])
+        }
+        if not {"/journal", "/journal/paths"} <= pages.keys() or (
+            route_urls.intersection(pages) != required_routes
+        ):
+            raise ValueError("Editorial manifest omitted or added a journey")
+        # The digest identifies the local renderer code, not the editable
+        # article content; old code cannot confirm its own stale route HTML.
+        observed_renderer = manifest.get("renderer_sha256")
+        if isinstance(observed_renderer, str) and re.fullmatch(r"[0-9a-f]{64}", observed_renderer):
+            renderer["observed_sha256"] = observed_renderer
+            renderer["result"] = ("exact-match" if observed_renderer == renderer["expected_sha256"]
+                                  else "mismatch")
+        expected = {"/journal": pages["/journal"]}
+        expected.update({path: digest for path, digest in pages.items()
+                         if path not in {"/journal", "/sitemap.xml"}})
+        source = "cms-public-manifest"
+        manifest_result = "accepted"
+    except (HTTPError, URLError, OSError, ssl.SSLError, TimeoutError, ValueError, TypeError, KeyError):
+        # The fallback checks local current routes too. An incomplete manifest
+        # must never silently reduce verification to articles alone.
+        manifest_result = "unavailable-or-invalid"
+
     results = {}
-    for path, expected_body in expected_pages.items():
-        fingerprint = hashlib.sha256(expected_body).hexdigest()
+    for path, fingerprint in expected.items():
         request = Request(
             BASE + path + "?revision_check=" + fingerprint[:16],
-            headers={
-                "User-Agent": "Stazhno-Preview-ReadOnly-Probe/1.0",
-                "Cache-Control": "no-cache",
-                "Pragma": "no-cache",
-            },
+            headers={"User-Agent":"Stazhno-Preview-ReadOnly-Probe/1.0",
+                     "Cache-Control":"no-cache", "Pragma":"no-cache"},
             method="GET",
         )
         try:
             with build_opener(NoRedirect).open(request, timeout=12) as response:
                 payload = response.read(250_001)
                 if len(payload) > 250_000:
-                    item = {"status": response.status, "result": "html-too-large"}
+                    item = {"status":response.status,"result":"html-too-large"}
                 elif not response.headers.get("Content-Type", "").lower().startswith("text/html"):
-                    item = {"status": response.status, "result": "not-html"}
+                    item = {"status":response.status,"result":"not-html"}
                 else:
                     observed = hashlib.sha256(payload).hexdigest()
                     item = {
-                        "status": response.status,
-                        "result": "exact-match" if observed == fingerprint else "mismatch",
-                        "expected_sha256": fingerprint,
-                        "observed_sha256": observed,
+                        "status":response.status,
+                        "result":"exact-match" if observed==fingerprint else "mismatch",
+                        "expected_sha256":fingerprint,"observed_sha256":observed,
                     }
         except HTTPError as error:
-            item = {"status": error.code, "result": "route-not-found" if error.code == 404 else "http-error"}
+            item = {"status":error.code,
+                    "result":"route-not-found" if error.code==404 else "http-error"}
         except (URLError, OSError, ssl.SSLError, TimeoutError) as error:
-            item = {"result": "connection-error", "type": type(error).__name__}
+            item = {"result":"connection-error","type":type(error).__name__}
         results[path] = item
     return {
-        "result": "exact-match" if all(item["result"] == "exact-match" for item in results.values()) else "unverified",
-        "pages": results,
+        "result": "exact-match" if (
+            renderer["result"] == "exact-match" and manifest_result == "accepted"
+            and all(item["result"] == "exact-match" for item in results.values())
+        ) else "unverified",
+        "catalog_source":source,"manifest_result":manifest_result,"renderer":renderer,"pages":results,
     }
+
+
+def probe_public_community_page():
+    """Compare only the public directory shell; never request member data.
+
+    The server-rendered shell has no user-specific values. Its exact bytes also
+    verify that the live HTML references this release's versioned JS and CSS.
+    """
+    root = str(Path(__file__).resolve().parents[1])
+    if root not in sys.path:
+        sys.path.insert(0, root)
+    from app.community_pages import community_page
+
+    fingerprint = hashlib.sha256(community_page(mode="directory").body).hexdigest()
+    request = Request(
+        BASE + "/community?revision_check=" + fingerprint[:16],
+        headers={
+            "User-Agent": "Stazhno-Preview-ReadOnly-Probe/1.0",
+            "Cache-Control": "no-cache", "Pragma": "no-cache",
+        },
+        method="GET",
+    )
+    try:
+        with build_opener(NoRedirect).open(request, timeout=12) as response:
+            payload = response.read(250_001)
+            if len(payload) > 250_000:
+                return {"status": response.status, "result": "html-too-large"}
+            if not response.headers.get("Content-Type", "").lower().startswith("text/html"):
+                return {"status": response.status, "result": "not-html"}
+            observed = hashlib.sha256(payload).hexdigest()
+            return {
+                "status": response.status,
+                "result": "exact-match" if observed == fingerprint else "mismatch",
+                "expected_sha256": fingerprint,
+                "observed_sha256": observed,
+            }
+    except HTTPError as error:
+        return {"status": error.code, "result": "route-not-found" if error.code == 404 else "http-error"}
+    except (URLError, OSError, ssl.SSLError, TimeoutError) as error:
+        return {"result": "connection-error", "type": type(error).__name__}
 
 
 
@@ -296,10 +423,29 @@ def probe_public_search_metadata():
                     status = "too-large"
                 elif not content_type.startswith(mime):
                     status = "incorrect-content-type"
-                elif payload != expected_body:
-                    status = "mismatch"
                 elif not tag_ok:
                     status = "incorrect-robots-tag"
+                elif payload != expected_body:
+                    status = "mismatch"
+                    # CMS may have hidden, published or edited articles after
+                    # the release; use the public page manifest's sitemap hash.
+                    if path == "/sitemap.xml":
+                        manifest_req = Request(
+                            BASE + "/api/public/journal/manifest",
+                            headers={"User-Agent":"Stazhno-Preview-ReadOnly-Probe/1.0"},
+                            method="GET",
+                        )
+                        try:
+                            with build_opener(NoRedirect).open(manifest_req, timeout=12) as manifest_response:
+                                digests = json.loads(manifest_response.read(40_001)).get("pages", {})
+                            digest = digests.get("/sitemap.xml")
+                            if isinstance(digest,str) and len(digest)==64 and (
+                                hashlib.sha256(payload).hexdigest()==digest
+                            ):
+                                status = "exact-match"
+                        except (HTTPError, URLError, OSError, ssl.SSLError, TimeoutError,
+                                ValueError, TypeError, KeyError):
+                            pass
                 else:
                     status = "exact-match"
                 item = {"status": response.status, "result": status}
@@ -333,6 +479,11 @@ def main():
         result["deployed_app_js"] = result["deployed_assets"]["app.js"]
         result["index_asset_revisions"] = probe_index_revisions()
         result["journal_pages"] = probe_public_journal_pages()
+        result["community_page"] = probe_public_community_page()
+        result["community_api"] = {
+            name: probe_private_route(path)
+            for name, path in COMMUNITY_PRIVATE_ROUTES.items()
+        }
         result["search_metadata"] = probe_public_search_metadata()
         result["drafts_api"] = probe_private_draft_route()
         result["backend_routes"] = {
@@ -350,6 +501,11 @@ def main():
         result["deployed_app_js"] = result["deployed_assets"]["app.js"]
         result["index_asset_revisions"] = {"result": "not-tested-dns-failure"}
         result["journal_pages"] = {"result": "not-tested-dns-failure", "pages": {}}
+        result["community_page"] = {"result": "not-tested-dns-failure"}
+        result["community_api"] = {
+            name: {"result": "not-tested-dns-failure"}
+            for name in COMMUNITY_PRIVATE_ROUTES
+        }
         result["search_metadata"] = {"result": "not-tested-dns-failure", "resources": {}}
         result["drafts_api"] = {"result": "not-tested-dns-failure"}
         result["backend_routes"] = {
@@ -369,12 +525,16 @@ def main():
         and result["drafts_api"]["result"] == "present-and-protected"
     )
     journal_matches = result["journal_pages"]["result"] == "exact-match"
+    community_matches = (
+        result["community_page"]["result"] == "exact-match"
+        and all(item["result"] == "present-and-protected" for item in result["community_api"].values())
+    )
     search_matches = result["search_metadata"]["result"] == "exact-match"
     backend_matches = all(
         item["result"] == "route-present-method-protected"
         for item in result["backend_routes"].values()
     )
-    if frontend_matches and backend_matches and journal_matches and search_matches:
+    if frontend_matches and backend_matches and journal_matches and search_matches and community_matches:
         result["release_evidence"] = "frontend-and-backend-match"
     elif "mismatch" in asset_results or html_result == "mismatch":
         result["release_evidence"] = "frontend-version-mismatch"
@@ -384,6 +544,8 @@ def main():
         result["release_evidence"] = "journal-version-unverified"
     elif frontend_matches and backend_matches and journal_matches and not search_matches:
         result["release_evidence"] = "search-metadata-unverified"
+    elif frontend_matches and backend_matches and journal_matches and search_matches and not community_matches:
+        result["release_evidence"] = "community-version-unverified"
     else:
         result["release_evidence"] = "unverified"
     REPORT.write_text(json.dumps(result, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")

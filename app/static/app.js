@@ -1210,7 +1210,7 @@ function tabsMarkup(items, heading, subtitle) {
     <span class="section-kicker dashboard-menu-kicker">${esc(heading)}</span>
     <label class="dashboard-mobile-switch"><span>Раздел кабинета</span><select data-dashboard-tab-select aria-label="Раздел личного кабинета">${items.map(t => `<option value="${esc(t.id)}" ${state.tab === t.id ? 'selected' : ''} data-base-label="${esc(t.label)}">${esc(t.label)}${actionCountForTab(t.id) ? ' · '+actionCountForTab(t.id) : ''}</option>`).join('')}</select></label>
     <nav class="dashboard-tabs" aria-label="Разделы личного кабинета">${items.map(t => `<button type="button" data-tab="${esc(t.id)}" class="${state.tab === t.id ? 'active' : ''}"><span class="dashboard-tab-icon" aria-hidden="true">${icons[t.id]||'•'}</span><span>${esc(t.label)}</span><span class="dashboard-action-count" data-action-count-for="${esc(t.id)}" ${actionCountForTab(t.id) ? '' : 'hidden'} aria-label="Требует действия: ${actionCountForTab(t.id)}">${actionCountForTab(t.id) || ''}</span></button>`).join('')}</nav>
-    <div class="dashboard-side-note"><span>Приватность</span><small>Контакты открываются только в сценарии знакомства.</small></div>
+    <div class="dashboard-side-note"><span>Профессиональное сообщество</span><small><a href="/community">Участники и обмен опытом</a></small><small><a href="/community/connections">Мои профессиональные связи</a></small>${state.user?.role === 'candidate' ? '<small><a href="/community/profile">Мой публичный профиль</a></small>' : ''}</div><div class="dashboard-side-note"><span>Приватность</span><small>Контакты открываются только в сценарии знакомства.</small></div>
   </aside>`;
 }
 function candidateProfileHealth(profile = {}) {
@@ -1599,6 +1599,16 @@ function profileMarkup(profile = {}, user = {}) {
       <p class="form-note">* Поля, необходимые для поиска вакансий. Ваши контакты не передаются работодателю автоматически.</p>
       <button class="btn btn-primary btn-lg" type="submit">Сохранить профиль</button>
     </form>
+    <details class="profile-preapply-guide">
+      <summary>Проверьте профиль перед первым откликом</summary>
+      <ol>
+        <li>Профессия и город соответствуют тому, что вы ищете сейчас.</li>
+        <li>Навыки и достижения описывают конкретные задачи, а не общие качества.</li>
+        <li>В свободных описаниях нет телефона, адреса и личной почты.</li>
+      </ol>
+      <p>Отклик отправляет профессиональный профиль без открытия личных контактов. Для знакомства требуется отдельное согласие.</p>
+      <a href="/journal/kak-pokazat-opyt-v-profile">Как лучше рассказать о своём опыте →</a>
+    </details>
     <section class="profile-public-preview" aria-label="Предпросмотр профиля для работодателя">
       <div class="split-header"><div><span class="section-kicker">ЧТО УВИДИТ РАБОТОДАТЕЛЬ</span><h4>${esc(profile.profession || 'Профессия пока не указана')}</h4></div><span class="privacy-chip">Контакты скрыты</span></div>
       <div class="profile-preview-meta"><span>⌖ ${esc(profile.city || 'Город не указан')}</span><span>от ${money(profile.salary_min || 0)}</span><span>${esc(profile.schedule || 'График не указан')}</span></div>
@@ -1628,6 +1638,21 @@ function candidateOverviewInvitationCard(item) {
     ${employerPublicTrustMarkup(item)}
     <button type="button" class="btn btn-primary btn-tiny" data-action="open-candidate-invitations" data-filter="decision" data-invitation-id="${Number(item.id)}">Ответить на приглашение →</button>
   </article>`;
+}
+function overviewTaskListMarkup(title, items) {
+  // Actions are markup assembled only from fixed, local buttons. Text from
+  // user-owned content is always escaped before rendering.
+  const visible = items.slice(0, 4);
+  if (!visible.length) return '';
+  return `<section class="panel overview-action-center" aria-label="${esc(title)}">
+    <div class="split-header"><div><span class="section-kicker">НЕСКОЛЬКО ДЕЙСТВИЙ</span><h3>${esc(title)}</h3></div></div>
+    <div class="overview-action-list">${visible.map((item, index) => `
+      <div class="overview-action-item ${item.urgent ? 'is-urgent' : ''}">
+        <span class="overview-action-step" aria-hidden="true">${index+1}</span>
+        <div><strong>${esc(item.title)}</strong><p>${esc(item.description)}</p></div>
+        ${item.action}
+      </div>`).join('')}</div>
+  </section>`;
 }
 function candidateStatusChip(ok, yes, no) {
   return `<span class="candidate-status-chip ${ok?'is-ok':'is-pending'}"><i aria-hidden="true">${ok?'✓':'!'}</i>${esc(ok?yes:no)}</span>`;
@@ -1706,6 +1731,44 @@ async function renderCandidate() {
         nextText = 'Строгих совпадений пока нет — можно посмотреть все открытые вакансии.';
         nextAction = '<a class="btn btn-primary" href="#jobs">Все вакансии →</a>';
       }
+      const candidateTasks = [];
+      if (pendingInvitations) candidateTasks.push({
+        title: 'Приглашения, ожидающие ответа',
+        description: `Ожидают решения: ${pendingInvitations}. Контакты не открываются без согласия.`,
+        action: '<button class="btn btn-outline btn-tiny" data-action="open-candidate-invitations" data-filter="decision">Ответить</button>',
+        urgent: true
+      });
+      if (unreadChanges) candidateTasks.push({
+        title: 'Изменения условий вакансий',
+        description: `Новых изменений: ${unreadChanges}. Проверьте их до дальнейшего общения.`,
+        action: '<button class="btn btn-outline btn-tiny" data-tab="changes">Проверить</button>',
+        urgent: true
+      });
+      if (!emailVerified) candidateTasks.push({
+        title: 'Подтвердить электронную почту',
+        description: 'Для восстановления доступа и получения важных уведомлений.',
+        action: '<button class="btn btn-outline btn-tiny" data-tab="email">К подтверждению</button>'
+      });
+      if (!profileActive || health.percent < 80) candidateTasks.push({
+        title: !profileActive ? 'Сделать профиль доступным для подбора' : 'Уточнить профессиональный профиль',
+        description: !profileActive ? 'Сейчас работодатели не видят ваш профиль в подборе.' : health.next,
+        action: '<button class="btn btn-outline btn-tiny" data-tab="profile">Мой профиль</button>'
+      });
+      if (waitingEmployerInvitations.length) candidateTasks.push({
+        title: 'Проверить согласованные знакомства',
+        description: `Ожидается продолжение работодателем: ${waitingEmployerInvitations.length}.`,
+        action: '<button class="btn btn-outline btn-tiny" data-action="open-candidate-invitations" data-filter="waiting">Статус</button>'
+      });
+      if (activeApplications) candidateTasks.push({
+        title: 'Просмотреть активные отклики',
+        description: `Сейчас в процессе: ${activeApplications}.`,
+        action: '<button class="btn btn-outline btn-tiny" data-tab="applications">К откликам</button>'
+      });
+      if (!candidateTasks.length) candidateTasks.push({
+        title: jobs.length ? 'Выбрать подходящую вакансию' : 'Посмотреть доступные вакансии',
+        description: jobs.length ? `Рекомендаций по профилю: ${jobs.length}.` : 'Можно расширить поиск и посмотреть все открытые предложения.',
+        action: jobs.length ? '<button class="btn btn-outline btn-tiny" data-tab="offers">Рекомендации</button>' : '<a class="btn btn-outline btn-tiny" href="#jobs">Открыть поиск</a>'
+      });
       target.innerHTML = `<div class="overview-stack">
         <section class="panel dashboard-overview-hero">
           <span class="section-kicker">ВАШ СЛЕДУЮЩИЙ ШАГ</span>
@@ -1725,6 +1788,7 @@ async function renderCandidate() {
           <button type="button" class="overview-stat-card" data-action="open-candidate-invitations" data-filter="${introductionOverviewFilter}"><strong>${activeIntroductions}</strong><span>Знакомства</span><small>${pendingInvitations ? `Требуют ответа: ${pendingInvitations}` : waitingEmployerInvitations.length ? `Ждём работодателя: ${waitingEmployerInvitations.length}` : 'Новых действий нет'}</small></button>
           <button type="button" class="overview-stat-card" data-tab="favorites"><strong>${favorites.length}</strong><span>Избранное</span><small>Сохранённые вакансии</small></button>
         </section>
+        ${overviewTaskListMarkup('Что сделать дальше', candidateTasks)}
         ${pendingInvitationsList.length ? `<section class="panel candidate-overview-section candidate-invitations-preview"><div class="split-header"><div><span class="section-kicker">ТРЕБУЕТ ОТВЕТА</span><h3>Новые приглашения</h3><p class="muted">Решение за вами: контакты остаются закрытыми, пока вы не согласитесь.</p></div><button class="btn btn-outline btn-tiny" data-tab="invitations">Все знакомства</button></div><div class="candidate-overview-list">${pendingInvitationsList.slice(0,2).map(candidateOverviewInvitationCard).join('')}</div></section>` : ''}
         <section class="candidate-overview-grid">
           <div class="panel candidate-overview-section">
@@ -1933,6 +1997,7 @@ function employerCompanyMarkup(result) {
   return `<div class="panel company-profile-panel">
     <div class="split-header"><div><span class="section-kicker">КОМПАНИЯ</span><h3>Профиль работодателя</h3><p class="muted">Эти данные помогают соискателю понимать, кто разместил вакансию. ИНН публично не показывается.</p></div>${trust.verified?'<span class="verified-company-badge">✓ Компания проверена</span>':''}</div>
     ${companyTrustMarkup(trust)}
+    ${state.user?.id ? `<p class="company-public-link"><a class="btn btn-outline btn-tiny" href="/companies/${Number(state.user.id)}">Посмотреть публичную страницу компании</a> <small>Этой ссылкой можно делиться с кандидатами.</small></p>` : ''}
     <div class="company-verification-note ${trust.verified?'is-verified':''}"><strong>${trust.verified?'Проверка пройдена':'Статус проверки'}</strong><p>${esc(verificationText)}</p></div>
     <form id="company-form" class="company-form">
       <div class="form-grid">
@@ -2006,6 +2071,37 @@ async function renderEmployer() {
         nextAction = `<button class="btn btn-primary" data-action="resume-vacancy-draft" data-id="${Number(recentDraft.id)}">Продолжить заполнение →</button>`;
       }
       const showDraftReminder = drafts.length && nextTitle !== 'Продолжите черновик вакансии';
+      const employerTasks = [];
+      if (activeOpenedContacts.length) employerTasks.push({
+        title: 'Зафиксировать результат знакомства',
+        description: `Контактов без итогового решения: ${activeOpenedContacts.length}.`,
+        action: '<button class="btn btn-outline btn-tiny" data-action="open-employer-invitations" data-filter="introduced">К результатам</button>',
+        urgent: true
+      });
+      if (acceptedInvitations.length) employerTasks.push({
+        title: 'Продолжить согласованные знакомства',
+        description: `Кандидатов с согласием: ${acceptedInvitations.length}. Контакты открываются в кабинете.`,
+        action: '<button class="btn btn-outline btn-tiny" data-action="open-employer-invitations" data-filter="action">Продолжить</button>',
+        urgent: true
+      });
+      if (actionableApplications.length) employerTasks.push({
+        title: 'Рассмотреть отклики',
+        description: `Требуют внимания: ${actionableApplications.length}.`,
+        action: '<button class="btn btn-outline btn-tiny" data-tab="applications">К откликам</button>',
+        urgent: true
+      });
+      // A dedicated draft reminder or the hero already has the resume button.
+      // Do not render a second identical action (ambiguous for keyboard/QA).
+      if (openJobs.length) employerTasks.push({
+        title: 'Посмотреть подходящих специалистов',
+        description: `Открытых вакансий: ${openJobs.length}. Можно начать подбор без раскрытия контактов.`,
+        action: '<button class="btn btn-outline btn-tiny" data-tab="vacancies">Мои вакансии</button>'
+      });
+      if (!employerTasks.length && !recentDraft) employerTasks.push({
+        title: 'Опубликовать первую вакансию',
+        description: 'Начните с обязанностей, города и условий работы.',
+        action: '<button class="btn btn-outline btn-tiny" data-tab="create">Создать</button>'
+      });
       target.innerHTML = `<div class="overview-stack">
         <section class="panel dashboard-overview-hero employer-overview-hero">
           <span class="section-kicker">ПРИОРИТЕТ СЕЙЧАС</span>
@@ -2027,6 +2123,7 @@ async function renderEmployer() {
           <button type="button" class="overview-stat-card" data-action="open-employer-invitations" data-filter="action"><strong>${acceptedInvitations.length}</strong><span>Есть согласие</span><small>Можно открыть контакт</small></button>
           <button type="button" class="overview-stat-card" data-action="open-employer-invitations" data-filter="introduced"><strong>${activeOpenedContacts.length}</strong><span>Ждут итога</span><small>Контакт уже открыт</small></button>
         </section>
+        ${overviewTaskListMarkup('В работе у компании', employerTasks)}
         <section class="panel overview-funnel employer-outcome-funnel">
           <div class="split-header"><div><span class="section-kicker">ВОРОНКА</span><h3>От вакансии до результата</h3></div><button class="btn btn-outline btn-tiny" data-tab="vacancies">Управлять вакансиями</button></div>
           <div class="overview-funnel-steps">
@@ -2287,7 +2384,7 @@ function jobEmployerMarkup(x, stats = {total: 0, interested: 0, attention: 0, re
     <div class="vacancy-pipeline-mini"><span><strong>${stats.total}</strong><small>Отклики</small></span><span><strong>${stats.outcome}</strong><small>Ждут итога</small></span><span><strong>${stats.hired}</strong><small>Выбраны</small></span><span><strong>${stats.rejected}</strong><small>Не договорились</small></span></div>
     <div class="vacancy-quality ${qualityClass}"><div class="vacancy-quality-head"><span>Качество объявления</span><strong>${quality.percent}%</strong></div><div class="vacancy-quality-track"><span style="width:${quality.percent}%"></span></div>${quality.suggestions.length?`<p>${esc(quality.suggestions.slice(0,2).join(' · '))}</p>`:'<p>Основные условия заполнены хорошо.</p>'}</div>
     <div class="employer-vacancy-primary">${needsOutcome ? `<button type="button" class="btn btn-primary" data-action="open-employer-invitations" data-filter="introduced" data-vacancy-id="${x.id}">Зафиксировать итог →</button>` : hasReadyIntroduction ? `<button type="button" class="btn btn-primary" data-action="open-employer-invitations" data-filter="action" data-vacancy-id="${x.id}">Продолжить знакомство →</button>` : needsAttention ? `<button type="button" class="btn btn-primary" data-action="vacancy-applications-primary" data-id="${x.id}">Разобрать отклики →</button>` : `<button class="btn btn-dark" data-action="matches-primary" data-id="${x.id}" ${x.status === 'closed' ? 'disabled':''}>Подобрать кандидатов →</button>`}</div>
-    <div class="item-actions employer-vacancy-secondary"><button type="button" class="btn btn-outline btn-tiny" data-action="vacancy-applications" data-id="${x.id}">Отклики</button><button class="btn btn-outline btn-tiny" data-action="matches" data-id="${x.id}" ${x.status === 'closed' ? 'disabled':''}>Подбор</button><button class="btn btn-outline btn-tiny" data-action="edit-job" data-id="${x.id}">Редактировать</button><button type="button" class="btn btn-outline btn-tiny" data-action="vacancy-history" data-id="${Number(x.id)}" aria-expanded="false" aria-controls="employer-vacancy-history-${Number(x.id)}">История условий</button><button class="btn btn-outline btn-tiny" data-action="job-status" data-id="${x.id}" data-status="${x.status === 'open' ? 'closed' : 'open'}">${x.status === 'open' ? 'Закрыть' : 'Открыть'}</button></div>
+    <div class="item-actions employer-vacancy-secondary"><button type="button" class="btn btn-outline btn-tiny" data-action="vacancy-applications" data-id="${x.id}">Отклики</button><button class="btn btn-outline btn-tiny" data-action="matches" data-id="${x.id}" ${x.status === 'closed' ? 'disabled':''}>Подбор</button><button class="btn btn-outline btn-tiny" data-action="edit-job" data-id="${x.id}">Редактировать</button>${x.status==='open' && (x.moderation_status||'approved')==='approved' ? `<a class="btn btn-outline btn-tiny" href="/vacancies/${Number(x.id)}">Ссылка на вакансию</a>` : ''}<button type="button" class="btn btn-outline btn-tiny" data-action="vacancy-history" data-id="${Number(x.id)}" aria-expanded="false" aria-controls="employer-vacancy-history-${Number(x.id)}">История условий</button><button class="btn btn-outline btn-tiny" data-action="job-status" data-id="${x.id}" data-status="${x.status === 'open' ? 'closed' : 'open'}">${x.status === 'open' ? 'Закрыть' : 'Открыть'}</button></div>
     <section class="employer-vacancy-history" id="employer-vacancy-history-${Number(x.id)}" aria-label="История изменений условий вакансии" hidden></section>
   </article>`;
 }
@@ -2738,14 +2835,26 @@ function disposalPreviewMarkup(impact, review, external) {
 }
 async function renderAdmin() {
   $('#account-content').innerHTML = `<div class="admin-dashboard-stack">
-    <section class="panel"><h3>Панель управления</h3><p class="muted">Статистика работы MVP, без раскрытия персональных данных.</p><div class="stat-grid" id="admin-stats"><div class="loading">Загрузка...</div></div></section>
+    <section class="panel"><span class="section-kicker">РЕДАКЦИЯ</span><h3>Журнал и публикации</h3><p class="muted">Управляйте статьями: черновики, предпросмотр, публикация и отзыв материала. Все действия фиксируются.</p><a class="btn btn-primary" href="/admin/journal">Открыть редактор Журнала →</a></section>
+    <section class="panel"><h3>Профессиональное сообщество</h3><p class="muted">Проверяйте новые профили перед публикацией и рассматривайте жалобы участников.</p><a class="btn btn-primary" href="/community/moderation">Модерация профилей и жалоб →</a></section><section class="panel"><h3>Панель управления</h3><p class="muted">Статистика работы MVP, без раскрытия персональных данных.</p><div class="stat-grid" id="admin-stats"><div class="loading">Загрузка...</div></div></section>
     <section class="panel">
       <span class="section-kicker">ПРИВЛЕЧЕНИЕ АУДИТОРИИ</span>
-      <h3>Журнал и регистрации — 30 дней</h3>
+      <h3>Журнал, маршруты и регистрации — 30 дней</h3>
       <p class="muted">Агрегированные события без идентификаторов посетителей. Регистрации отображаются отдельно, без привязки к статьям.</p>
       <div class="stat-grid" id="admin-growth-stats"><div class="loading">Загрузка…</div></div>
-      <div id="admin-growth-articles" class="admin-growth-overflow" aria-live="polite"></div>
+      <div id="admin-growth-articles" class="admin-growth-overflow" tabindex="0" aria-label="Таблица событий, прокрутка по горизонтали" aria-live="polite"></div>
       <p class="muted">Загрузки — не уникальные посетители; переходы не равны регистрациям. Роботы, блокировщики и обновления страницы могут влиять на показатели.</p>
+    </section>
+    <section class="panel" id="admin-product-growth">
+      <span class="section-kicker">ДЕЙСТВИЯ В ПРОДУКТЕ</span>
+      <h3>Профили, отклики и знакомства</h3>
+      <p class="muted">Независимые агрегаты из рабочих записей сервиса, без привязки к чтению статей. Тестовые и демо-записи также входят в показатели.</p>
+      <h4>Текущее состояние профилей</h4>
+      <div class="stat-grid" id="admin-product-current"><div class="loading">Загрузка…</div></div>
+      <p class="muted">Заполненный профиль: указаны профессия, город, навыки, рассказ о себе и зарплата больше нуля; поиск включён, аккаунт доступен. Дата первого заполнения не фиксируется.</p>
+      <h4>Действия за 30 дней, по UTC</h4>
+      <div class="stat-grid" id="admin-product-period"><div class="loading">Загрузка…</div></div>
+      <div id="admin-product-limitations" class="muted"></div>
     </section>
     <section class="panel admin-retention-policy">
       <span class="section-kicker">ЮРИДИЧЕСКАЯ ГОТОВНОСТЬ</span>
@@ -2903,9 +3012,10 @@ async function renderAdmin() {
         growthArticlesArea.innerHTML = '';
       } else {
         const growthUnits = [
-          ['Загрузки журнала', growthSummary.journal_requests],
+          ['Загрузки журнала и маршрутов', growthSummary.journal_requests],
           ['Переходы к вакансиям', growthSummary.jobs_clicks],
           ['Переходы к профилю', growthSummary.profile_clicks],
+          ['Переходы в сообщество', growthSummary.community_clicks],
           ['Новые кандидаты', growthSummary.new_candidates],
           ['Новые работодатели', growthSummary.new_employers]
         ];
@@ -2913,26 +3023,54 @@ async function renderAdmin() {
           '<div class="stat-tile"><strong>' + Number(value || 0).toLocaleString('ru-RU') +
           '</strong><span>' + esc(title) + '</span></div>'
         ).join('');
-        const articles = [
-          ['journal', 'Журнал — список статей'],
-          ['kak-pokazat-opyt-v-profile', 'Как показать свой опыт'],
-          ['kak-proverit-vakansiyu', 'Как проверить вакансию'],
-          ['proektnaya-rabota-posle-50', 'Подработка и проекты']
-        ];
-        const events = Array.isArray(growth.by_article) ? growth.by_article : [];
-        const countFor = (source, action) =>
-          events.filter(item => item.source === source && item.action === action)
-            .reduce((sum, item) => sum + Number(item.total || 0), 0);
+        const sources = Array.isArray(growth.by_source) ? growth.by_source : [];
         growthArticlesArea.innerHTML =
-          '<table class="admin-growth-table"><caption>Действия по материалам за 30 дней</caption>' +
+          '<table class="admin-growth-table"><caption>События по маршрутам и материалам за 30 дней, по UTC</caption>' +
           '<thead><tr><th scope="col">Материал</th><th scope="col">Загрузки</th>' +
-          '<th scope="col">К вакансиям</th><th scope="col">К профилю</th></tr></thead><tbody>' +
-          articles.map(([source, title]) =>
-            '<tr><th scope="row">' + esc(title) + '</th>' +
-            ['view','jobs_click','profile_click'].map(action =>
-              '<td>' + countFor(source, action).toLocaleString('ru-RU') + '</td>'
-            ).join('') + '</tr>'
-          ).join('') + '</tbody></table>';
+          '<th scope="col">К вакансиям</th><th scope="col">К профилю</th><th scope="col">В сообщество</th><th scope="col">Клики / загрузки*</th></tr></thead><tbody>' +
+          sources.map(item =>
+            '<tr data-growth-source="' + esc(item.source) + '"><th scope="row">' +
+            (item.kind === 'path' ? 'Маршрут: ' : '') + esc(item.title) +
+            (item.published ? '' : ' (снят с публикации)') + '</th>' +
+            ['view','jobs_click','profile_click','community_click'].map(action =>
+              '<td>' + Number(item[action] || 0).toLocaleString('ru-RU') + '</td>'
+            ).join('') + '<td>' + (item.clicks_per_view_percent != null
+              ? Number(item.clicks_per_view_percent).toLocaleString('ru-RU', {maximumFractionDigits: 1}) + '%'
+              : '—') + '</td></tr>'
+          ).join('') + '</tbody></table><p class="muted">* Соотношение событий, не конверсия уникальных людей. Может превышать 100%.</p>';
+      }
+    }
+
+    const product = growth?.product;
+    const productCurrent = $('#admin-product-current');
+    const productPeriod = $('#admin-product-period');
+    const productLimitations = $('#admin-product-limitations');
+    if (productCurrent && productPeriod && productLimitations) {
+      if (!product?.current || !product?.period) {
+        productCurrent.innerHTML = '<p class="muted">Сводка временно недоступна.</p>';
+        productPeriod.innerHTML = '';
+      } else {
+        const current = product.current;
+        const period = product.period;
+        const tiles = units => units.map(([title, value]) =>
+          '<div class="stat-tile"><strong>' + Number(value || 0).toLocaleString('ru-RU') +
+          '</strong><span>' + esc(title) + '</span></div>'
+        ).join('');
+        productCurrent.innerHTML = tiles([
+          ['Доступные аккаунты кандидатов', current.enabled_candidate_accounts],
+          ['Заполненные профили с включённым поиском', current.completed_active_candidate_profiles]
+        ]);
+        productPeriod.innerHTML = tiles([
+          ['Созданные вакансии', period.vacancies_created],
+          ['Новые отклики', period.new_applications],
+          ['Принятые приглашения с согласием', period.consented_introductions],
+          ['Демо-открытия контактов', period.demo_contacts_opened],
+          ['Зафиксированные итоги знакомств', period.introductions_completed],
+          ['Положительные итоги', period.positive_outcomes],
+          ['Без договорённости', period.no_agreement_outcomes]
+        ]);
+        productLimitations.innerHTML = (product.limitations || [])
+          .map(note => '<p>' + esc(note) + '</p>').join('');
       }
     }
 
@@ -3884,6 +4022,9 @@ async function start() {
   await reloadUser();
   await loadPublicJobs();
   if (state.user) { state.tab = 'overview'; await showDashboard(); }
+  // Feature modules may now open deep-linked public content with correct
+  // authenticated state, without creating applications on behalf of users.
+  document.dispatchEvent(new Event('stazhno:ready'));
 }
 // Refresh when a signed-in user returns, never by background polling.
 document.addEventListener('visibilitychange', () => {
