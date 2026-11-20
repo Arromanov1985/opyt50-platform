@@ -444,6 +444,11 @@ body.comfortable-view .application-timeline span{font-size:.9rem}
 }
 
 
+.vacancy-compose .vacancy-salary-hint{
+  grid-column:1/-1;margin:0 0 6px;color:#526A60;
+  font-size:13px;line-height:1.55;
+}
+body.comfortable-view .vacancy-compose .vacancy-salary-hint{font-size:1rem}
 /* Guided employer workflow: three obvious actions, details on demand. */
 .employer-vacancy-totals{
  display:flex;align-items:center;flex-wrap:wrap;gap:8px 10px;
