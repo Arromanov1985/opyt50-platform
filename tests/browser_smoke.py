@@ -230,12 +230,14 @@ def run_browser(page, playwright):
     page.locator("#resume-history-section > summary").click()
     page.locator("#resume-years").fill("24")
     page.locator("#resume-achievements").fill("Настроил складской учёт")
+    expect(page.locator("#resume-history-section [data-profile-history-count]")).to_have_text("Опыт описан")
     page.locator("#resume-add-role").click()
     first_role = page.locator("#resume-work-list [data-resume-role]").first
     expect(first_role.locator("[data-role-position]")).to_be_focused()
     first_role.locator("[data-role-position]").fill("Старший кладовщик")
     first_role.locator("[data-role-period]").fill("2014–2024")
     first_role.locator("[data-role-duties]").fill("Приёмка и инвентаризация")
+    expect(page.locator("#resume-history-section [data-profile-history-count]")).to_have_text("Мест работы: 1")
     page.locator("#resume-add-role").click()
     expect(page.locator("#resume-work-list [data-resume-role]")).to_have_count(2)
     page.locator("#resume-work-list [data-resume-role]").last.locator(
@@ -245,6 +247,7 @@ def run_browser(page, playwright):
     expect(page.locator("#resume-training-section")).not_to_have_attribute("open", "")
     page.locator("#resume-training-section summary").click()
     page.locator("#resume-education").fill("Среднее профессиональное — логистика")
+    expect(page.locator("#resume-training-section [data-profile-course-count]")).to_have_text("Сведения добавлены")
     page.locator("#resume-specializations").fill("Складская логистика, 1С")
     page.locator("#resume-add-course").click()
     first_course = page.locator("#resume-course-list [data-resume-course]").first
@@ -253,6 +256,7 @@ def run_browser(page, playwright):
     first_course.locator("[data-course-provider]").fill("Учебный центр")
     first_course.locator("[data-course-year]").fill("2021")
     first_course.locator("[data-course-certificate]").check()
+    expect(page.locator("#resume-training-section [data-profile-course-count]")).to_have_text("Курсов и сертификатов: 1")
     page.locator("#resume-add-course").click()
     expect(page.locator("#resume-course-list [data-resume-course]")).to_have_count(2)
     page.locator("#resume-course-list [data-resume-course]").last.locator(

@@ -104,8 +104,8 @@ def exercise_profile_readiness(page):
     ):
         assert page.request.post(URL + "/api/logout", headers=HEADERS).status == 200
         login(page, email)
-        expect(page.locator(".overview-health")).to_contain_text("Заполненность анкеты")
-        expect(page.locator(".overview-health > strong")).to_have_text("80%")
+        expect(page.locator(".overview-health")).to_contain_text("Основные сведения")
+        expect(page.locator(".overview-health > strong")).to_have_text("50%")
         expect(page.locator(".overview-priority h3")).to_have_text(heading)
         profile_before = page.request.get(URL + "/api/me").json()["user"]["profile"]
         assert profile_before[field] == ""
@@ -120,7 +120,8 @@ def exercise_profile_readiness(page):
     profile = {key: user["profile"][key] for key in (
         "profession", "city", "skills", "salary_min", "schedule", "employment", "about",
     )}
-    profile.update(city="Москва", is_active=False, phone=user["phone"])
+    profile.update(city="Москва", is_active=False, phone=user["phone"],
+                   skills="", about="", salary_min=0)
     response = page.request.put(URL + "/api/candidate/profile", headers=HEADERS, data=profile)
     assert response.status == 200, response.text()
     page.goto(URL, wait_until="networkidle")
@@ -132,6 +133,16 @@ def exercise_profile_readiness(page):
     expect(page.locator("#profile-active")).to_be_focused()
     expect(page.locator("#profile-active")).not_to_be_checked()
     assert page.request.get(URL + "/api/me").json()["user"]["profile"]["is_active"] == 0
+
+    # Turning search back on with only profession/city must prioritize jobs,
+    # not pressure the candidate to write optional experience a second time.
+    profile["is_active"] = True
+    response = page.request.put(URL + "/api/candidate/profile", headers=HEADERS, data=profile)
+    assert response.status == 200, response.text()
+    page.goto(URL, wait_until="networkidle")
+    expect(page.locator(".overview-health > strong")).to_have_text("100%")
+    first_task = page.locator(".overview-action-center .overview-action-item").first
+    expect(first_task).to_contain_text("ваканси")
 
 
 def login(page, email, password="DemoPass2026!"):
