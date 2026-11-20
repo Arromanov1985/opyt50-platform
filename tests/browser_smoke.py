@@ -746,7 +746,7 @@ def run_browser(page, playwright):
     expect(quick_cards.first).to_be_focused()
     expect(page.locator("#employer-application-quick-position")).to_have_text("Отклик 1 из 44")
     assert quick_writes == [("status", "PATCH"), ("interest", "POST")], quick_writes
-    assert page.request.get(URL + "/api/employer/applications").json()["applications"][0]["id"] == 50000
+    assert page.request.get(URL + "/api/employer/applications").json()["applications"][0]["status"] == "applied", "Fictional quick review must not mutate the local database"
     page.unroute("**/api/employer/applications/50044/status", fake_quick_review_status)
     page.unroute("**/api/employer/applications/50044/interest", fake_quick_review_interest)
     page.locator("[data-v02-action='employer-quick-toggle']").click()
