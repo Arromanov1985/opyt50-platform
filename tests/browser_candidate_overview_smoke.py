@@ -104,8 +104,8 @@ def exercise_profile_readiness(page):
     ):
         assert page.request.post(URL + "/api/logout", headers=HEADERS).status == 200
         login(page, email)
-        expect(page.locator(".overview-health")).to_contain_text("Заполненность анкеты")
-        expect(page.locator(".overview-health > strong")).to_have_text("80%")
+        expect(page.locator(".overview-health")).to_contain_text("Основные сведения")
+        expect(page.locator(".overview-health > strong")).to_have_text("50%")
         expect(page.locator(".overview-priority h3")).to_have_text(heading)
         profile_before = page.request.get(URL + "/api/me").json()["user"]["profile"]
         assert profile_before[field] == ""
