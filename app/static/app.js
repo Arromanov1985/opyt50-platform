@@ -1280,6 +1280,7 @@ async function reloadUser() {
       ? previousUser : null;
   }
   if (state.user?.id !== previousUserId) state.actionSummary = null;
+  syncEmployerMatchAccount();
   updateActionBadges();
   $('#guest-actions').classList.toggle('hidden', !!state.user);
   $('#member-actions').classList.toggle('hidden', !state.user);
@@ -1291,6 +1292,9 @@ async function reloadUser() {
   document.body.classList.toggle('member-logged-in', Boolean(state.user));
 }
 async function showDashboard(scroll = false) {
+  if (state.user?.role !== 'employer' || state.tab !== 'vacancies' || !state.activeVacancy) {
+    resetEmployerCandidateComparison();
+  }
   // A new destination supersedes any queued search in the previous view.
   clearTimeout(employerInvitationSearchTimer);
   clearTimeout(candidateInvitationSearchTimer);
@@ -2541,18 +2545,32 @@ function applyEmployerVacancySearch() {
       panel.classList.add('hidden');
       panel.innerHTML = '';
       state.activeVacancy = null;
+      resetEmployerCandidateComparison();
     }
   }
 }
 async function loadEmployerVacancies() {
+  const ownerId = state.user?.id;
+  const target = $('#dashboard-main');
+  const loadSequence = ++employerVacancyLoadSequence;
   const [jobsResult, applicationsResult, invitationsResult, draftsResult] = await Promise.all([
     api('/api/employer/vacancies'),
     api('/api/employer/applications'),
     api('/api/employer/invitations'),
     api('/api/employer/vacancy-drafts')
   ]);
+  if (state.user?.role !== 'employer' || state.user.id !== ownerId || state.tab !== 'vacancies' ||
+      !target?.isConnected || target !== $('#dashboard-main') || loadSequence !== employerVacancyLoadSequence) return;
+  syncEmployerMatchAccount();
   const drafts = draftsResult.drafts || [];
   const jobs = jobsResult.jobs || [];
+  employerOwnedVacancies.clear();
+  for (const job of jobs) {
+    const jobId = positiveRecordId(job.id);
+    if (jobId) employerOwnedVacancies.set(jobId,Object.fromEntries(
+      ['id','title','city','salary_min','salary_max','schedule','employment','skills','status'].map(key=>[key,job[key]])
+    ));
+  }
   const applications = applicationsResult.applications || [];
   const invitations = invitationsResult.invitations || [];
   const applicationsByJob = new Map();
@@ -2689,6 +2707,89 @@ function jobEmployerMarkup(x, stats = {total: 0, interested: 0, attention: 0, re
     </details>
   </article>`;
 }
+// Comparison stays in this tab's memory and only uses the public professional DTO.
+const employerOwnedVacancies = new Map();
+const pendingEmployerMatchInvitations = new Set();
+const savedEmployerMatchInvitations = new Map();
+let employerMatchAccountId = null;
+let employerMatchAccountVersion = 0;
+let employerMatchRequestSequence = 0;
+let employerVacancyLoadSequence = 0;
+const employerCandidateComparison = {
+  ownerId: null, vacancyId: null, vacancy: null, matches: [],
+  selected: new Set(), visible: false, returnFocusId: null
+};
+function positiveRecordId(value) {
+  const id = Number(value);
+  return Number.isSafeInteger(id) && id > 0 ? id : null;
+}
+function resetEmployerCandidateComparison() {
+  employerMatchRequestSequence += 1;
+  employerCandidateComparison.ownerId = null;
+  employerCandidateComparison.vacancyId = null;
+  employerCandidateComparison.vacancy = null;
+  employerCandidateComparison.matches = [];
+  employerCandidateComparison.selected.clear();
+  employerCandidateComparison.visible = false;
+  employerCandidateComparison.returnFocusId = null;
+}
+function syncEmployerMatchAccount() {
+  const ownerId = state.user?.role === 'employer' ? positiveRecordId(state.user.id) : null;
+  if (ownerId === employerMatchAccountId) return;
+  resetEmployerCandidateComparison();
+  employerOwnedVacancies.clear();
+  savedEmployerMatchInvitations.clear();
+  employerMatchAccountVersion += 1;
+  employerMatchAccountId = ownerId;
+}
+function employerMatchText(value) {
+  return String(value || '')
+    .replaceAll('в вашем профиле', 'в профиле кандидата')
+    .replaceAll('вашей указанной профессии', 'указанной профессии кандидата')
+    .replaceAll('Ваш минимум', 'Минимум кандидата')
+    .replaceAll('ваших ожиданий', 'ожиданий кандидата')
+    .replaceAll('Уточните специализацию в профиле — сейчас профессия указана слишком широко',
+      'Профессия кандидата указана широко — уточните специализацию');
+}
+function employerMatchSnapshot(item = {}) {
+  const textFields = ['profession','city','skills','schedule','employment','education','achievements','specializations','match_level'];
+  const result = Object.fromEntries(textFields.map(key => [key, String(item[key] || '')]));
+  result.candidate_id = positiveRecordId(item.candidate_id);
+  result.invitation_id = positiveRecordId(item.invitation_id);
+  result.invitation_status = ['sent','accepted','declined'].includes(item.invitation_status) ? item.invitation_status : null;
+  result.contact_shared = item.contact_shared === true || Number(item.contact_shared) === 1;
+  result.salary_min = Math.max(0, Number(item.salary_min) || 0);
+  result.experience_years = Math.max(0, Number(item.experience_years) || 0);
+  result.score = Math.max(0, Math.min(100, Number(item.score) || 0));
+  for (const key of ['strengths','reasons','cautions']) {
+    result[key] = Array.isArray(item[key]) ? item[key].map(employerMatchText).filter(Boolean) : [];
+  }
+  result.score_breakdown = (Array.isArray(item.score_breakdown) ? item.score_breakdown : [])
+    .filter(factor => factor && typeof factor === 'object')
+    .map(factor => ({
+      key: String(factor.key || ''), label: String(factor.label || ''),
+      text: employerMatchText(factor.text), caution: employerMatchText(factor.caution),
+      state: ['strong','good','weak'].includes(factor.state) ? factor.state : 'good',
+      points: Number(factor.points) || 0, max_points: Number(factor.max_points) || 0,
+      percent: Math.max(0, Math.min(100, Number(factor.percent) || 0))
+    }));
+  result.work_history = (Array.isArray(item.work_history) ? item.work_history : []).slice(0,5)
+    .filter(entry => entry && typeof entry === 'object')
+    .map(entry => ({position:String(entry.position || ''), period:String(entry.period || ''), duties:String(entry.duties || '')}));
+  result.courses = (Array.isArray(item.courses) ? item.courses : []).slice(0,6)
+    .filter(entry => entry && typeof entry === 'object')
+    .map(entry => ({title:String(entry.title || ''), provider:String(entry.provider || ''),
+      year:Number(entry.year) || null, has_certificate:entry.has_certificate === true}));
+  return result;
+}
+function employerMatchHasResume(item) {
+  return Boolean(item.experience_years > 0 || item.education || item.achievements ||
+    item.specializations || item.work_history.length || item.courses.length);
+}
+function employerMatchResumeMarkup(item) {
+  return employerMatchHasResume(item) ? professionalResumeMarkup(item)
+    : '<p class="muted">Не указано в резюме.</p>';
+}
 function employerMatchBreakdownMarkup(item) {
   const factors = Array.isArray(item.score_breakdown) ? item.score_breakdown : [];
   const cautions = Array.isArray(item.cautions) ? item.cautions : [];
@@ -2696,10 +2797,205 @@ function employerMatchBreakdownMarkup(item) {
   const rows = factors.map(factor => `<div class="match-factor-row ${esc(factor.state||'good')}">
     <div class="match-factor-head"><span>${esc(factor.label||factor.key||'Фактор')}</span><strong>${Number(factor.points||0).toLocaleString('ru-RU')} / ${Number(factor.max_points||0).toLocaleString('ru-RU')}</strong></div>
     <div class="match-factor-track"><span style="width:${Math.max(0,Math.min(100,Number(factor.percent||0)))}%"></span></div>
-    <small>${esc(factor.text||'')}</small>
+    <small>${esc(employerMatchText(factor.text))}</small>
   </div>`).join('');
-  const cautionMarkup = cautions.length ? `<div class="match-cautions"><strong>Что уточнить до приглашения</strong>${cautions.slice(0,3).map(text=>`<span>! ${esc(text)}</span>`).join('')}</div>` : '';
-  return `<div class="match-breakdown compact">${rows}${cautionMarkup}<p class="match-method-note">Оценка строится только по профессиональному профилю и условиям вакансии. Возраст не используется.</p></div>`;
+  const cautionMarkup = cautions.length ? `<div class="match-cautions"><strong>Что уточнить до приглашения</strong>${cautions.map(text=>`<span>! ${esc(employerMatchText(text))}</span>`).join('')}</div>` : '';
+  return `<div class="match-breakdown compact">${rows}${cautionMarkup}<p class="match-method-note">Процент отражает совпадение профессии, навыков и условий вакансии. Опыт и достижения в этот расчёт не входят. Возраст не используется.</p></div>`;
+}
+function employerMatchInvitationKey(ownerId, jobId, candidateId) {
+  return `${ownerId}:${jobId}:${candidateId}`;
+}
+function employerMatchInvitationMarkup(item, jobId) {
+  const candidateId = positiveRecordId(item.candidate_id);
+  if (!candidateId || !positiveRecordId(jobId)) return '';
+  if (item.invitation_id || item.invitation_status === 'sent') {
+    const label = item.contact_shared ? 'Контакт уже открыт →'
+      : item.invitation_status === 'accepted' ? 'Согласие получено · продолжить →'
+      : item.invitation_status === 'sent' ? 'Приглашение отправлено · ожидаем ответ'
+      : item.invitation_status === 'declined' ? 'Кандидат отказался · история →' : 'Открыть знакомство →';
+    return `<button type="button" class="btn ${!item.contact_shared && item.invitation_status === 'accepted' ? 'btn-primary' : 'btn-outline'} btn-tiny" data-action="open-employer-invitations" data-filter="all" data-vacancy-id="${jobId}" data-invitation-id="${item.invitation_id || ''}">${label}</button>`;
+  }
+  const busy = pendingEmployerMatchInvitations.has(employerMatchInvitationKey(state.user?.id, jobId, candidateId));
+  return `<button type="button" class="btn btn-primary btn-tiny" data-action="invite" data-job="${jobId}" data-id="${candidateId}" ${busy ? 'disabled aria-busy="true"' : ''}>${busy ? 'Отправляем приглашение…' : 'Пригласить кандидата →'}</button>`;
+}
+function employerMatchInvitationSlot(item, jobId) {
+  return `<div class="candidate-match-invitation-action" data-match-invitation-candidate="${item.candidate_id}" data-match-invitation-vacancy="${jobId}">${employerMatchInvitationMarkup(item,jobId)}</div>`;
+}
+function refreshEmployerMatchInvitationControls(item, jobId) {
+  const candidateId = positiveRecordId(item.candidate_id);
+  if (!candidateId || !positiveRecordId(jobId)) return;
+  document.querySelectorAll(`#employer-matches [data-match-invitation-candidate="${candidateId}"][data-match-invitation-vacancy="${jobId}"]`)
+    .forEach(slot => { slot.innerHTML = employerMatchInvitationMarkup(item,jobId); });
+}
+function employerCandidateQuestions(item) {
+  const questions = [...item.cautions, ...item.score_breakdown.map(factor => factor.caution).filter(Boolean)];
+  if (!item.salary_min) questions.push('Зарплатные ожидания не указаны — обсудите сумму и состав оплаты.');
+  if (!item.skills.trim()) questions.push('Навыки не указаны в профиле — уточните необходимые для вакансии умения.');
+  if (!item.experience_years && !item.work_history.length && !item.achievements.trim()) {
+    questions.push('Опыт работы не описан — уточните задачи и результаты, связанные с вакансией.');
+  }
+  return [...new Set(questions.map(employerMatchText).filter(Boolean))];
+}
+function employerCandidateComparisonMarkup() {
+  const comparison = employerCandidateComparison;
+  const selected = [...comparison.selected].map(id => comparison.matches.find(item => item.candidate_id === id)).filter(Boolean);
+  const vacancy = comparison.vacancy || {};
+  const factorText = (item,key) => {
+    const factor = item.score_breakdown.find(entry => entry.key === key);
+    return factor?.text ? `<small class="candidate-compare-fact">${esc(employerMatchText(factor.text))}</small>` : '';
+  };
+  const value = (item,key) => `<p>${esc(item[key] || 'Не указано')}</p>${factorText(item,key === 'city' ? 'location' : key)}`;
+  const rows = [
+    {key:'score',title:'Совпадение по анкете',requirement:'Профессия, навыки и условия вакансии; опыт не оценивается этим процентом.',
+      markup:item=>`<p><strong>${item.score}%</strong></p>`},
+    {key:'profession',title:'Профессия и специализация',requirement:vacancy.title || 'Название не указано',
+      markup:item=>`<p><strong>${esc(item.profession || 'Не указано')}</strong></p>${item.specializations ? `<p>${esc(item.specializations)}</p>` : ''}${factorText(item,'profession')}`},
+    {key:'skills',title:'Навыки',requirement:vacancy.skills || 'Отдельно не указаны',markup:item=>value(item,'skills')},
+    {key:'salary',title:'Зарплатные ожидания',requirement:formatPay(vacancy),
+      markup:item=>`<p>${esc(candidateSalaryText(item.salary_min))}</p>${factorText(item,'salary')}`},
+    {key:'location',title:'Город или формат работы',requirement:vacancy.city || 'Не указано',markup:item=>value(item,'city')},
+    {key:'schedule',title:'График',requirement:vacancy.schedule || 'Не указан',markup:item=>value(item,'schedule')},
+    {key:'employment',title:'Занятость',requirement:vacancy.employment || 'Не указана',markup:item=>value(item,'employment')},
+    {key:'experience',title:'Опыт и образование',requirement:'Сведения из резюме; оцените применимость к задачам вакансии.',
+      markup:item=>employerMatchResumeMarkup(item)},
+    {key:'questions',title:'Что уточнить',requirement:'Вопросы перед знакомством по этой вакансии',
+      markup:item=>{const questions=employerCandidateQuestions(item); return questions.length
+        ? `<ul class="candidate-compare-list">${questions.map(text=>`<li class="candidate-compare-question">${esc(text)}</li>`).join('')}</ul>`
+        : '<p>Подбор не выделил дополнительных вопросов по указанным условиям. Обсудите задачи и ожидания при знакомстве.</p>'; }},
+    {key:'next',title:'Следующий шаг',requirement:'Выберите действие по каждой анкете',
+      markup:item=>`<div class="candidate-compare-actions"><button type="button" class="btn btn-outline btn-tiny" data-action="compare-open-profile" data-id="${item.candidate_id}">Открыть резюме</button>${employerMatchInvitationSlot(item,comparison.vacancyId)}</div>`}
+  ];
+  return `<div class="candidate-comparison-heading"><h4>Сравнение выбранных анкет</h4><p>${esc(vacancy.title || 'Выбранная вакансия')}</p></div>
+    <p class="candidate-comparison-note">Процент отражает совпадение профессии, навыков и условий. Опыт и достижения показаны со слов кандидата и не входят в расчёт. Возраст не используется. Решение о знакомстве принимаете вы.</p>
+    <table class="candidate-compare-table"><caption>Анкеты и условия вакансии «${esc(vacancy.title || 'Выбранная вакансия')}»</caption>
+      <thead><tr><th scope="col" id="candidate-compare-criterion">Критерий и условия вакансии</th>${selected.map(item=>`<th scope="col" id="candidate-compare-column-${item.candidate_id}">Анкета №${item.candidate_id}<small class="candidate-compare-fact">Совпадение условий: ${item.score}%</small></th>`).join('')}</tr></thead>
+      <tbody>${rows.map(row=>`<tr class="candidate-compare-row" data-compare-field="${row.key}"><th scope="row" id="candidate-compare-row-${row.key}">${row.title}<small class="candidate-compare-requirement">${esc(row.requirement)}</small></th>${selected.map(item=>`<td data-compare-candidate-id="${item.candidate_id}" headers="candidate-compare-row-${row.key} candidate-compare-column-${item.candidate_id}"><span class="candidate-compare-mobile-label" aria-hidden="true">Анкета №${item.candidate_id}</span><div class="candidate-compare-value">${row.markup(item)}</div></td>`).join('')}</tr>`).join('')}</tbody>
+    </table>`;
+}
+function updateEmployerCandidateComparison() {
+  const panel = $('#employer-matches');
+  if (!panel || employerCandidateComparison.vacancyId !== state.activeVacancy) return;
+  const comparison = employerCandidateComparison;
+  const count = comparison.selected.size;
+  if (count < 2) comparison.visible = false;
+  const status = panel.querySelector('#employer-compare-status');
+  if (status) status.textContent = count === 0 ? 'Выберите две или три анкеты. Приглашения отправляются отдельно.'
+    : count === 1 ? 'Выбрана 1 анкета из 3. Добавьте ещё одну для сравнения.'
+    : count === 3 ? 'Выбраны 3 анкеты из 3. Чтобы добавить другую, снимите выбор с одной из них.'
+    : 'Выбраны 2 анкеты из 3. Можно сравнить их или добавить третью.';
+  panel.querySelectorAll('[data-action="compare-toggle-candidate"]').forEach(button => {
+    const id = Number(button.dataset.id);
+    const selected = comparison.selected.has(id);
+    button.setAttribute('aria-pressed',String(selected));
+    button.setAttribute('aria-label',`${selected ? 'Убрать из сравнения' : 'Добавить в сравнение'} анкету №${id}`);
+    button.disabled = !selected && count >= 3;
+    button.textContent = selected ? 'Убрать из сравнения' : 'Добавить в сравнение';
+    button.classList.toggle('btn-dark',selected);
+    button.classList.toggle('btn-outline',!selected);
+    button.closest('.candidate-match-card')?.classList.toggle('is-compared',selected);
+  });
+  const show = panel.querySelector('[data-action="compare-show"]');
+  if (show) { show.disabled = count < 2; show.hidden = comparison.visible; show.textContent = `Сравнить${count ? ' (' + count + ')' : ''}`; }
+  const clear = panel.querySelector('[data-action="compare-clear"]');
+  if (clear) clear.disabled = count === 0;
+  const back = panel.querySelector('[data-action="compare-back"]');
+  if (back) back.hidden = !comparison.visible;
+  const list = panel.querySelector('[data-employer-match-list]');
+  if (list) list.hidden = comparison.visible;
+  const region = panel.querySelector('#employer-candidate-comparison');
+  if (region) {
+    region.hidden = !comparison.visible;
+    if (comparison.visible) region.innerHTML = employerCandidateComparisonMarkup();
+    else region.innerHTML = '';
+  }
+}
+function focusEmployerComparisonCard(id, openResume = false) {
+  const card = positiveRecordId(id) && document.querySelector(`#employer-matches .candidate-match-card[data-match-candidate-id="${Number(id)}"]`);
+  if (card) {
+    if (openResume) { const details = card.querySelector('.candidate-resume-details'); if (details) details.open = true; }
+    card.focus({preventScroll:true});
+    card.scrollIntoView({block:'nearest'});
+  } else $('#employer-matches [data-action="compare-show"]')?.focus({preventScroll:true});
+}
+function handleEmployerComparisonAction(action, id) {
+  const comparison = employerCandidateComparison;
+  if (state.user?.role !== 'employer' || state.tab !== 'vacancies' ||
+      comparison.ownerId !== state.user.id || comparison.vacancyId !== state.activeVacancy) return;
+  if (action === 'compare-toggle-candidate') {
+    if (!positiveRecordId(id) || !comparison.matches.some(item => item.candidate_id === id)) return;
+    if (comparison.selected.has(id)) comparison.selected.delete(id);
+    else if (comparison.selected.size < 3) comparison.selected.add(id);
+    comparison.returnFocusId = id;
+    updateEmployerCandidateComparison();
+  } else if (action === 'compare-show') {
+    if (comparison.selected.size < 2) return;
+    comparison.visible = true;
+    updateEmployerCandidateComparison();
+    const region = $('#employer-candidate-comparison');
+    region?.focus({preventScroll:true});
+    region?.scrollIntoView({block:'start'});
+  } else if (action === 'compare-back' || action === 'compare-clear' || action === 'compare-open-profile') {
+    if (action === 'compare-open-profile' && (!positiveRecordId(id) || !comparison.selected.has(id))) return;
+    const focusId = action === 'compare-open-profile' ? id : comparison.returnFocusId;
+    comparison.visible = false;
+    if (action === 'compare-clear') comparison.selected.clear();
+    updateEmployerCandidateComparison();
+    focusEmployerComparisonCard(focusId,action === 'compare-open-profile');
+  }
+}
+async function sendEmployerMatchInvitation(button, candidateId) {
+  const jobId = positiveRecordId(button.dataset.job);
+  const ownerId = positiveRecordId(state.user?.id);
+  const comparison = employerCandidateComparison;
+  if (!jobId || !positiveRecordId(candidateId) || state.user?.role !== 'employer' ||
+      state.tab !== 'vacancies' || comparison.ownerId !== ownerId || comparison.vacancyId !== jobId || state.activeVacancy !== jobId) return;
+  const item = comparison.matches.find(candidate => candidate.candidate_id === candidateId);
+  if (!item || item.invitation_id || item.invitation_status === 'sent') return;
+  const key = employerMatchInvitationKey(ownerId,jobId,candidateId);
+  if (pendingEmployerMatchInvitations.has(key) || savedEmployerMatchInvitations.has(key)) return;
+  const panel = $('#employer-matches');
+  const requestSequence = employerMatchRequestSequence;
+  const accountVersion = employerMatchAccountVersion;
+  const sameAccount = () => state.user?.role === 'employer' && state.user?.id === ownerId && employerMatchAccountVersion === accountVersion;
+  const sameView = () => sameAccount() && panel?.isConnected && state.tab === 'vacancies' &&
+    state.activeVacancy === jobId && employerMatchRequestSequence === requestSequence;
+  pendingEmployerMatchInvitations.add(key);
+  refreshEmployerMatchInvitationControls(item,jobId);
+  let saved = false;
+  try {
+    const result = await api('/api/employer/invitations',{method:'POST',body:JSON.stringify({vacancy_id:jobId,candidate_id:candidateId})});
+    saved = true;
+    if (!sameAccount()) return;
+    const receipt = {invitation_id:positiveRecordId(result.id),invitation_status:'sent',contact_shared:false};
+    savedEmployerMatchInvitations.set(key,receipt);
+    Object.assign(item,receipt);
+    if (comparison.ownerId === ownerId && comparison.vacancyId === jobId) {
+      const current = comparison.matches.find(candidate => candidate.candidate_id === candidateId);
+      if (current) Object.assign(current,receipt);
+      refreshEmployerMatchInvitationControls(current || item,jobId);
+    }
+    // A late response must not move a person away from the page they chose.
+    if (!sameView()) return;
+    toast('Приглашение отправлено.');
+    employerInvitationVisibleLimit = employerInvitationPageSize;
+    state.employerInvitationsTargetId = receipt.invitation_id;
+    state.employerInvitationsFilter = 'waiting';
+    state.employerInvitationsVacancyFilter = String(jobId);
+    state.employerInvitationsQuery = '';
+    state.employerInvitationsData = null;
+    state.tab = 'invitations';
+    state.activeVacancy = null;
+    try { await showDashboard(); }
+    catch (error) { if (sameAccount()) toast('Приглашение отправлено, но список пока не обновился. Откройте раздел «Знакомства и контакты».',true); }
+  } catch (error) {
+    if (sameView()) toast(saved ? 'Приглашение отправлено. Откройте раздел «Знакомства и контакты».' : error.message,true);
+  } finally {
+    pendingEmployerMatchInvitations.delete(key);
+    if (sameAccount() && comparison.ownerId === ownerId && comparison.vacancyId === jobId) {
+      const current = comparison.matches.find(candidate => candidate.candidate_id === candidateId);
+      if (current) refreshEmployerMatchInvitationControls(current,jobId);
+    }
+  }
 }
 function employerVacancyHistoryEntries(updates, view) {
   return updates.map(update=>`
@@ -2778,55 +3074,76 @@ async function loadMoreEmployerVacancyHistory(btn,jobId) {
   }
 }
 async function loadMatches(jobId) {
+  jobId = positiveRecordId(jobId);
   const target = $('#employer-matches');
-  if (!target) return;
-  const card = document.querySelector(`#employer-vacancy-results .employer-vacancy-card[data-employer-vacancy-id="${Number(jobId)}"]`);
-  const vacancyTitle = card?.querySelector('h4')?.textContent?.trim() || 'выбранная вакансия';
-  // Open the candidates directly below their vacancy, not at the end of the
-  // complete vacancies list; keep the surrounding vacancy visible for context.
+  const ownerId = positiveRecordId(state.user?.id);
+  syncEmployerMatchAccount();
+  if (!target || !jobId || !ownerId || state.user?.role !== 'employer' || state.tab !== 'vacancies') return;
+  const vacancy = employerOwnedVacancies.get(jobId);
+  if (!vacancy) return;
+  const comparison = employerCandidateComparison;
+  if (comparison.ownerId !== ownerId || comparison.vacancyId !== jobId) resetEmployerCandidateComparison();
+  comparison.ownerId = ownerId;
+  comparison.vacancyId = jobId;
+  comparison.vacancy = vacancy;
+  const requestSequence = ++employerMatchRequestSequence;
+  const accountVersion = employerMatchAccountVersion;
+  const card = document.querySelector(`#employer-vacancy-results .employer-vacancy-card[data-employer-vacancy-id="${jobId}"]`);
   if (card) card.after(target);
-  target.setAttribute('role', 'region');
-  target.setAttribute('aria-label', 'Подходящие кандидаты по вакансии');
+  target.setAttribute('role','region');
+  target.setAttribute('aria-label','Подходящие кандидаты по вакансии');
   target.tabIndex = -1;
   target.classList.remove('hidden');
   target.innerHTML = '<div class="panel"><div class="loading">Подбираем кандидатов...</div></div>';
   state.activeVacancy = jobId;
+  const isCurrent = () => state.user?.role === 'employer' && state.user?.id === ownerId &&
+    employerMatchAccountVersion === accountVersion && requestSequence === employerMatchRequestSequence &&
+    state.tab === 'vacancies' && state.activeVacancy === jobId && target.isConnected;
   try {
-    const {matches} = await api(`/api/employer/vacancies/${jobId}/matches`);
-    if (state.activeVacancy !== jobId || !target.isConnected) return;
-    target.innerHTML = `<div class="panel matches-panel"><div class="split-header"><div><span class="section-kicker">ПОДБОР ПО ВАКАНСИИ</span><h3>Подходящие кандидаты</h3><p class="employer-match-vacancy-title">${esc(vacancyTitle)}</p><p class="muted">Сравните профессию, навыки и условия. Контакты остаются скрытыми до отдельного согласия кандидата.</p></div><div class="employer-matches-head-actions"><span class="mini-badge">${matches.length} совпадений</span><button type="button" class="btn btn-outline btn-tiny" data-action="close-employer-matches">К списку вакансий</button></div></div><div class="matches-guide"><span><b>1</b>Оцените факторы</span><span><b>2</b>Отправьте приглашение</span><span><b>3</b>Дождитесь согласия</span></div><div class="dashboard-list">${matches.length ? matches.map(m => {
-      const score = Number(m.score||0);
-      const scoreClass = score >= 90 ? 'excellent' : score >= 80 ? 'high' : score >= 70 ? 'medium' : 'basic';
-      const reasons = Array.isArray(m.strengths) ? m.strengths : (Array.isArray(m.reasons) ? m.reasons : []);
-      const cautions = Array.isArray(m.cautions) ? m.cautions : [];
-      const level = m.match_level || (score>=90?'Очень сильное совпадение':score>=80?'Сильное совпадение':score>=70?'Хорошее совпадение':'Подходит по основным условиям');
-      let action = `<button class="btn btn-primary btn-tiny" data-action="invite" data-job="${jobId}" data-id="${m.candidate_id}">Пригласить кандидата →</button>`;
-      if (m.invitation_id) {
-        const label = m.contact_shared ? 'Контакт уже открыт →'
-          : m.invitation_status === 'accepted' ? 'Согласие получено · продолжить →'
-          : m.invitation_status === 'sent' ? 'Приглашение отправлено · ожидаем ответ'
-          : m.invitation_status === 'declined' ? 'Кандидат отказался · история →' : 'Открыть знакомство →';
-        // The match DTO has no final outcome. Open the exact invitation across
-        // all stages, including an introduction that has already been completed.
-        action = `<button type="button" class="btn ${!m.contact_shared && m.invitation_status === 'accepted' ? 'btn-primary' : 'btn-outline'} btn-tiny" data-action="open-employer-invitations" data-filter="all" data-vacancy-id="${Number(jobId)}" data-invitation-id="${Number(m.invitation_id)}">${label}</button>`;
-      }
-      return `<article class="item-card candidate-match-card ${scoreClass}">
-        <header><div><h4>${esc(m.profession)}</h4><div class="candidate-match-meta"><span>⌖ ${esc(m.city)}</span><span>${esc(candidateSalaryText(m.salary_min))}</span><span>${esc(m.schedule)}</span><span>${esc(m.employment)}</span></div></div><div class="candidate-match-score"><span class="match-score-dot"></span><strong>${score}%</strong><small>${esc(level)}</small></div></header>
-        <div class="job-skill-tags">${String(m.skills || '').split(',').map(s=>s.trim()).filter(Boolean).slice(0,5).map(skill=>`<span>${esc(skill)}</span>`).join('') || '<span>Навыки не указаны</span>'}</div>
-        <div class="candidate-match-reasons">${reasons.slice(0,3).map(reason=>`<span>✓ ${esc(reason)}</span>`).join('')}</div>
-        <details class="candidate-resume-details"><summary>Профессиональное резюме</summary>${professionalResumeMarkup(m)}</details>
-        ${cautions.length ? `<div class="candidate-match-cautions">${cautions.slice(0,2).map(text=>`<span>! ${esc(text)}</span>`).join('')}</div>` : ''}
-        <details class="candidate-match-explanation"><summary>Показать расчёт совпадения</summary>${employerMatchBreakdownMarkup(m)}</details>
-        <div class="item-actions">${action}</div>
-      </article>`;
-    }).join('') : '<div class="empty-state"><strong>Точных совпадений пока нет.</strong><p>Попробуйте расширить график, город или зарплатный диапазон вакансии.</p></div>'}</div></div>`;
+    const result = await api(`/api/employer/vacancies/${jobId}/matches`);
+    if (!isCurrent()) return;
+    const seen = new Set();
+    const matches = (Array.isArray(result.matches) ? result.matches : []).map(employerMatchSnapshot)
+      .filter(item => item.candidate_id && !seen.has(item.candidate_id) && seen.add(item.candidate_id));
+    for (const item of matches) {
+      const key = employerMatchInvitationKey(ownerId,jobId,item.candidate_id);
+      const receipt = savedEmployerMatchInvitations.get(key);
+      if (!item.invitation_id && receipt) Object.assign(item,receipt);
+      else if (item.invitation_id) savedEmployerMatchInvitations.delete(key);
+    }
+    comparison.matches = matches;
+    comparison.selected = new Set([...comparison.selected].filter(id=>matches.some(item=>item.candidate_id===id)).slice(0,3));
+    if (comparison.selected.size < 2) comparison.visible = false;
+    target.innerHTML = `<div class="panel matches-panel"><div class="split-header"><div><span class="section-kicker">ПОДБОР ПО ВАКАНСИИ</span><h3>Подходящие кандидаты</h3><p class="employer-match-vacancy-title">${esc(vacancy.title)}</p><p class="muted">Сравните профессию, навыки и условия. Контакты остаются скрытыми до отдельного согласия кандидата.</p></div><div class="employer-matches-head-actions"><span class="mini-badge">${matches.length} совпадений</span><button type="button" class="btn btn-outline btn-tiny" data-action="close-employer-matches">К списку вакансий</button></div></div>
+      <div class="matches-guide"><span><b>1</b>Сравните анкеты</span><span><b>2</b>Отправьте приглашение</span><span><b>3</b>Дождитесь согласия</span></div>
+      ${matches.length ? `<div class="candidate-compare-toolbar"><div><strong>Сравнение по выбранной вакансии</strong><p id="employer-compare-status" role="status" aria-live="polite"></p></div><div class="candidate-compare-toolbar-actions"><button type="button" class="btn btn-primary" data-action="compare-show" disabled>Сравнить</button><button type="button" class="btn btn-outline" data-action="compare-back" hidden>Вернуться к анкетам</button><button type="button" class="btn btn-outline" data-action="compare-clear" disabled>Сбросить выбор</button></div></div>` : ''}
+      <section id="employer-candidate-comparison" role="region" aria-label="Сравнение выбранных кандидатов" tabindex="-1" hidden></section>
+      <div class="dashboard-list" data-employer-match-list>${matches.length ? matches.map(item => {
+        const score = item.score;
+        const scoreClass = score >= 90 ? 'excellent' : score >= 80 ? 'high' : score >= 70 ? 'medium' : 'basic';
+        const reasons = item.strengths.length ? item.strengths : item.reasons;
+        const level = item.match_level || (score>=90?'Очень сильное совпадение':score>=80?'Сильное совпадение':score>=70?'Хорошее совпадение':'Подходит по основным условиям');
+        return `<article class="item-card candidate-match-card ${scoreClass}" data-match-candidate-id="${item.candidate_id}" tabindex="-1">
+          <header><div><span class="candidate-match-label">Анкета №${item.candidate_id}</span><h4>${esc(item.profession)}</h4><div class="candidate-match-meta"><span>⌖ ${esc(item.city)}</span><span>${esc(candidateSalaryText(item.salary_min))}</span><span>${esc(item.schedule)}</span><span>${esc(item.employment)}</span></div></div><div class="candidate-match-score"><span class="match-score-dot"></span><strong>${score}%</strong><small>${esc(level)}</small></div></header>
+          <div class="job-skill-tags">${item.skills.split(',').map(skill=>skill.trim()).filter(Boolean).slice(0,5).map(skill=>`<span>${esc(skill)}</span>`).join('') || '<span>Навыки не указаны</span>'}</div>
+          <div class="candidate-match-reasons">${reasons.slice(0,3).map(reason=>`<span>✓ ${esc(reason)}</span>`).join('')}</div>
+          <details class="candidate-resume-details"><summary>Профессиональное резюме</summary>${employerMatchResumeMarkup(item)}</details>
+          ${item.cautions.length ? `<div class="candidate-match-cautions">${item.cautions.slice(0,2).map(text=>`<span>! ${esc(text)}</span>`).join('')}</div>` : ''}
+          <details class="candidate-match-explanation"><summary>Показать расчёт совпадения</summary>${employerMatchBreakdownMarkup(item)}</details>
+          <div class="item-actions"><button type="button" class="btn btn-outline btn-tiny" data-action="compare-toggle-candidate" data-id="${item.candidate_id}" aria-pressed="false" aria-describedby="employer-compare-status">Добавить в сравнение</button>${employerMatchInvitationSlot(item,jobId)}</div>
+        </article>`;
+      }).join('') : '<div class="empty-state"><strong>Точных совпадений пока нет.</strong><p>Попробуйте расширить график, город или зарплатный диапазон вакансии.</p></div>'}</div></div>`;
+    updateEmployerCandidateComparison();
     target.focus({preventScroll:true});
     target.scrollIntoView({behavior:'smooth',block:'start'});
-  } catch(e) {
-    if (state.activeVacancy !== jobId || !target.isConnected) return;
-    target.innerHTML = `<div class="panel"><p>${esc(e.message)}</p><button type="button" class="btn btn-outline" data-action="close-employer-matches">К списку вакансий</button></div>`;
+  } catch(error) {
+    if (!isCurrent()) return;
+    comparison.matches = [];
+    comparison.selected.clear();
+    comparison.visible = false;
+    target.innerHTML = `<div class="panel"><p>${esc(error.message)}</p><button type="button" class="btn btn-outline" data-action="close-employer-matches">К списку вакансий</button></div>`;
     target.focus({preventScroll:true});
-    toast(e.message,true);
+    toast(error.message,true);
   }
 }
 const employerInvitationFilterLabels = {
@@ -3757,6 +4074,14 @@ async function handleDashboardClick(event) {
   const btn = event.target.closest('[data-action]'); if (!btn) return;
   const action = btn.dataset.action, id = Number(btn.dataset.id);
   if (btn.disabled) return;
+  if (['compare-toggle-candidate','compare-show','compare-clear','compare-back','compare-open-profile'].includes(action)) {
+    handleEmployerComparisonAction(action,id);
+    return;
+  }
+  if (action === 'invite') {
+    await sendEmployerMatchInvitation(btn,id);
+    return;
+  }
   if (action === 'open-candidate-profile-preview') {
     openCandidateProfilePreview();
     return;
@@ -4215,6 +4540,7 @@ async function handleDashboardClick(event) {
     if (action === 'close-employer-matches') {
       const sourceId = state.activeVacancy;
       state.activeVacancy = null;
+      resetEmployerCandidateComparison();
       const target = $('#employer-matches');
       if (target) { target.classList.add('hidden'); target.innerHTML = ''; }
       const card = document.querySelector(`#employer-vacancy-results .employer-vacancy-card[data-employer-vacancy-id="${Number(sourceId)}"]`);
@@ -4227,22 +4553,6 @@ async function handleDashboardClick(event) {
     if (action === 'cancel-job-edit') { if (!mayLeaveEditor()) return; state.editVacancy=null; state.tab='vacancies'; await showDashboard(); }
     if (action === 'matches' || action === 'matches-primary') { await loadMatches(id); }
     if (action === 'job-status') { await api(`/api/employer/vacancies/${id}/status`,{method:'PATCH',body:JSON.stringify({status:btn.dataset.status})}); await showDashboard(); toast('Статус вакансии обновлён.'); }
-    if (action === 'invite') {
-      const vacancyId = Number(btn.dataset.job);
-      const result = await api('/api/employer/invitations',{method:'POST',body:JSON.stringify({vacancy_id:vacancyId,candidate_id:id})});
-      const invitationId = Number(result.id || 0);
-      employerInvitationVisibleLimit = employerInvitationPageSize;
-      state.employerInvitationsTargetId = Number.isSafeInteger(invitationId) && invitationId > 0 ? invitationId : null;
-      state.employerInvitationsFilter = 'waiting';
-      state.employerInvitationsVacancyFilter = String(vacancyId);
-      state.employerInvitationsQuery = '';
-      state.employerInvitationsData = null;
-      state.tab = 'invitations';
-      state.activeVacancy = null;
-      toast('Приглашение отправлено.');
-      await showDashboard();
-      return;
-    }
     if (action === 'refresh-candidate-introductions') {
       await loadCandidateInvitations($('#dashboard-main'), true);
       refreshActionSummary().catch(() => {});
@@ -4402,7 +4712,7 @@ async function start() {
   });
   $$('[data-register]').forEach(button=>button.addEventListener('click',()=>openAuth('register',button.dataset.register)));
   $('#account-open').addEventListener('click',()=>{ if (mayLeaveEditor()) showDashboard(true); });
-  $('#logout').addEventListener('click',async()=>{ if (!mayLeaveEditor()) return; try { await api('/api/logout',{method:'POST'}); state.user=null; $('#account-content').innerHTML=''; await reloadUser(); await loadPublicJobs(); window.scrollTo({top:0,behavior:'smooth'}); toast('Вы вышли из аккаунта.'); } catch(e) { toast(e.message,true); }});
+  $('#logout').addEventListener('click',async()=>{ if (!mayLeaveEditor()) return; try { await api('/api/logout',{method:'POST'}); state.user=null; syncEmployerMatchAccount(); $('#account-content').innerHTML=''; await reloadUser(); await loadPublicJobs(); window.scrollTo({top:0,behavior:'smooth'}); toast('Вы вышли из аккаунта.'); } catch(e) { toast(e.message,true); }});
   $('#jobs-filter').addEventListener('click',loadPublicJobs);
   $('#city-filter').addEventListener('keydown',e=>{if(e.key==='Enter')loadPublicJobs();});
   $('#account-content').addEventListener('click',handleDashboardClick);

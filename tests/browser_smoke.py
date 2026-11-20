@@ -770,6 +770,7 @@ def run_browser(page, playwright):
         item.update(id=new_id, status=status_value, invitation_status=invitation_value,
                     invitation_id=new_id if invitation_value else None,
                     contact_shared=contact_shared, timeline=[])
+        item["skills"] = "уникальный-навык-61001" if new_id == 61001 else "1С"
         guided_applications.append(item)
 
     def fake_guided_applications(route):
@@ -786,9 +787,36 @@ def run_browser(page, playwright):
     page.route("**/api/employer/applications", fake_guided_applications)
     page.route("**/api/employer/applications/61001/status", fake_guided_refusal)
     page.locator("[data-v02-action='employer-application-filter'][data-filter='all']").click()
+    # Entering quick review must retain a search match from the attention
+    # stage even when unrelated introduced/ready applications take priority.
+    guided_search = page.locator("#employer-application-search")
+    guided_search.fill("  уникальный-навык-61001  ")
+    visible_guided = page.locator("#employer-application-results .application-review-card:visible")
+    expect(visible_guided).to_have_count(1)
+    expect(visible_guided.first).to_have_attribute("data-application-id", "61001")
+    search_toggle_writes = []
+    def record_search_toggle_writes(request):
+        if request.method not in ("GET", "HEAD", "OPTIONS") and "/api/" in request.url:
+            search_toggle_writes.append((request.method, request.url))
+    page.on("request", record_search_toggle_writes)
+    page.locator("[data-v02-action='employer-quick-toggle']").click()
+    expect(page.locator("[data-v02-action='employer-quick-toggle']")).to_have_attribute("aria-pressed", "true")
+    expect(page.locator(".employer-application-stage-filter [data-filter='all']")).to_have_attribute("aria-pressed", "true")
+    expect(guided_search).to_have_value("  уникальный-навык-61001  ")
+    expect(visible_guided).to_have_count(1)
+    expect(visible_guided.first).to_have_attribute("data-application-id", "61001")
+    expect(visible_guided.first).to_be_focused()
+    expect(page.locator("#employer-application-quick-position")).to_have_text("Отклик 1 из 1")
+    expect(page.locator("#employer-application-search-empty")).to_be_hidden()
+    expect(page.locator("[data-v02-action='employer-quick-stage']")).to_be_hidden()
+    page.locator("[data-v02-action='employer-quick-toggle']").click()
+    expect(visible_guided.first).to_have_attribute("data-application-id", "61001")
+    expect(guided_search).to_have_value("  уникальный-навык-61001  ")
+    page.remove_listener("request", record_search_toggle_writes)
+    assert not search_toggle_writes, "Changing review presentation must not mutate applications or consent"
+    guided_search.fill("")
     page.locator("[data-v02-action='employer-quick-toggle']").click()
     expect(page.locator(".employer-application-stage-filter [data-filter='introduced']")).to_have_attribute("aria-pressed", "true")
-    visible_guided = page.locator("#employer-application-results .application-review-card:visible")
     expect(visible_guided).to_have_count(1)
     expect(visible_guided.first).to_have_attribute("data-application-id", "61003")
     # Switching to new applications is explicit; no contacts become visible.
