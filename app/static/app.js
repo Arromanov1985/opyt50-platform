@@ -5,6 +5,8 @@ const $$ = (selector, root = document) => [...root.querySelectorAll(selector)];
 const state = { user: null, mode: 'register', role: 'candidate', tab: 'overview', activeVacancy: null, editVacancy: null, activeDraft: null, employerVacancyFilter: 'all', employerVacancySearch: '', employerApplicationsVacancyFilter: 'all', employerApplicationsStatusFilter: 'all', employerApplicationsQuery: '', employerInvitationsFilter: 'all', employerInvitationsVacancyFilter: 'all', employerInvitationsQuery: '', employerInvitationsData: null, candidateInvitationsFilter: 'all', candidateInvitationsQuery: '', candidateInvitationsData: null, pendingApplicationVacancyId: null, mfaChallenge: null, mfaMethod: null, mfaCodeLength: 8, mfaPublicKey: null, mfaTotpFallback: false, actionSummary: null };
 const esc = value => String(value ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const money = value => Number(value || 0).toLocaleString('ru-RU') + ' ₽';
+const candidateSalaryText = value => Number(value) > 0
+  ? `от ${money(value)}` : 'Зарплата не указана';
 const formatPay = job => {
   const low = Math.max(0, Number(job.salary_min) || 0);
   const high = Math.max(0, Number(job.salary_max) || 0);
@@ -645,9 +647,84 @@ async function applyPublishedVacancyConflict(form) {
   }
 }
 const EDITOR_IDS = new Set(['profile-form', 'company-form', 'vacancy-form']);
+function candidateProfileFormData(form) {
+  const work_history = Array.from(form.querySelectorAll('[data-resume-role]')).map(entry => ({
+    position: String(entry.querySelector('[data-role-position]')?.value || '').trim(),
+    period: String(entry.querySelector('[data-role-period]')?.value || '').trim(),
+    duties: String(entry.querySelector('[data-role-duties]')?.value || '').trim()
+  })).filter(entry => entry.position || entry.period || entry.duties);
+  const courses = Array.from(form.querySelectorAll('[data-resume-course]')).map(entry => ({
+    title: String(entry.querySelector('[data-course-title]')?.value || '').trim(),
+    provider: String(entry.querySelector('[data-course-provider]')?.value || '').trim(),
+    year: entry.querySelector('[data-course-year]')?.value
+      ? Number(entry.querySelector('[data-course-year]').value) : null,
+    has_certificate: Boolean(entry.querySelector('[data-course-certificate]')?.checked)
+  })).filter(course => course.title || course.provider || course.year || course.has_certificate);
+  return {
+    profession: formValue(form, 'profession'), city: formValue(form, 'city'),
+    skills: formValue(form, 'skills'), salary_min: parseNumber(form, 'salary_min'),
+    phone: formValue(form, 'phone'), schedule: formValue(form, 'schedule'),
+    employment: formValue(form, 'employment'), about: formValue(form, 'about'),
+    is_active: form.elements.namedItem('is_active').checked,
+    experience_years: parseNumber(form, 'experience_years') || 0,
+    education: formValue(form, 'education'), achievements: formValue(form, 'achievements'),
+    specializations: formValue(form, 'specializations'), work_history, courses
+  };
+}
 function editorFingerprint(form) {
+  if (form.id === 'profile-form') {
+    // Work history and course controls have no names and are absent from
+    // FormData. Track raw values and empty rows too, without persisting them
+    // anywhere outside this open editor. Helper answers are not profile fields.
+    return JSON.stringify(Array.from(form.elements)
+      .filter(control => control.matches('input,textarea,select') && !control.closest('#experience-helper'))
+      .map(control => [control.type, control.type === 'checkbox' ? control.checked : control.value]));
+  }
   return JSON.stringify([...new FormData(form).entries()]);
 }
+function revealProfileField(field) {
+  for (let details = field?.closest('details'); details; details = details.parentElement?.closest('details')) {
+    details.open = true;
+  }
+}
+function profileFieldError(form, field, message) {
+  revealProfileField(field);
+  setEditorStatus(form, message, true);
+  field?.focus();
+  toast(message, true);
+  return false;
+}
+function validateCandidateProfileRows(form) {
+  for (const name of ['profession', 'city']) {
+    const field = form.elements.namedItem(name);
+    if (String(field.value || '').trim().length < 2) {
+      return profileFieldError(form, field, name === 'profession'
+        ? 'Укажите профессию: не меньше двух символов.' : 'Укажите город: не меньше двух символов.');
+    }
+  }
+  for (const entry of form.querySelectorAll('[data-resume-role]')) {
+    const position = entry.querySelector('[data-role-position]');
+    const period = entry.querySelector('[data-role-period]');
+    const duties = entry.querySelector('[data-role-duties]');
+    if (![position, period, duties].some(field => field.value.trim())) continue;
+    if (position.value.trim().length < 2 || period.value.trim().length < 2) {
+      return profileFieldError(form, position.value.trim().length < 2 ? position : period,
+        'В каждом месте работы укажите должность и период. Либо удалите незаполненную запись.');
+    }
+  }
+  for (const entry of form.querySelectorAll('[data-resume-course]')) {
+    const title = entry.querySelector('[data-course-title]');
+    const hasData = [...entry.querySelectorAll('input')].some(field =>
+      field.type === 'checkbox' ? field.checked : field.value.trim());
+    if (hasData && title.value.trim().length < 2) {
+      return profileFieldError(form, title, 'Для каждого курса укажите название либо удалите пустую запись.');
+    }
+  }
+  return true;
+}
+document.addEventListener('invalid', event => {
+  if (event.target.form?.id === 'profile-form') revealProfileField(event.target);
+}, true);
 function editorForControl(control) {
   const form = control?.form || control?.closest?.('form');
   return form && EDITOR_IDS.has(form.id) ? form : null;
@@ -677,6 +754,7 @@ function prepareEditorForms() {
     const submit = form.querySelector('button[type="submit"]');
     if (submit) submit.before(status);
     form.dataset.editorReady = '1';
+    if (form.id === 'profile-form') updateCandidateProfilePreview(form);
     if (form.id === 'vacancy-form' && form.dataset.draftId) {
       draftServerBaselines.set(form, draftFields(form));
       setEditorStatus(form, 'Черновик на сервере. Дальнейшие изменения сохраняются автоматически.');
@@ -692,6 +770,7 @@ function editorChanged(form) {
   setEditorStatus(form, editorIsDirty(form)
     ? 'Есть несохранённые изменения. Нажмите «Сохранить», прежде чем уходить из раздела.'
     : '');
+  if (form.id === 'profile-form') updateCandidateProfilePreview(form);
 }
 function editorSaved(form) {
   editorBaselines.set(form, editorFingerprint(form));
@@ -1496,7 +1575,7 @@ function resumePrintDocumentMarkup(profile = {}, user = {}, includeContacts = fa
     '<h1>'+esc(saved.profession || 'Профессиональное резюме')+'</h1>' +
     '<p>'+esc(saved.city || 'Город не указан')+'</p></header>' +
     '<div class="resume-print-meta">' +
-    '<p><strong>Зарплата:</strong> от '+money(saved.salary_min || 0)+'</p>' +
+    '<p><strong>Зарплатные ожидания:</strong> '+(Number(saved.salary_min) > 0 ? esc(candidateSalaryText(saved.salary_min)) : 'не указаны')+'</p>' +
     '<p><strong>График:</strong> '+esc(saved.schedule || 'Любой')+'</p>' +
     (saved.employment ? '<p><strong>Занятость:</strong> '+esc(saved.employment)+'</p>' : '') +
     '</div>' +
@@ -1512,13 +1591,19 @@ function openResumePrintPreview() {
     toast('Сначала сохраните резюме.',true);
     return;
   }
+  if (editorSubmitting.has(currentEditor())) {
+    toast('Профиль ещё сохраняется. Дождитесь результата.', true);
+    return;
+  }
   document.querySelector('#resume-print-dialog')?.remove();
   const dialog = document.createElement('dialog');
   dialog.id = 'resume-print-dialog';
   dialog.className = 'resume-print-dialog';
   dialog.innerHTML = '<div class="resume-print-actions">' +
     '<h2>Печать или сохранение PDF</h2>' +
-    '<p>Используются только последние сохранённые данные. Изменения в форме сначала сохраните.</p>' +
+    '<p>' + (editorIsDirty(currentEditor())
+      ? 'В форме есть несохранённые изменения. В PDF попадёт последняя сохранённая версия. Вернитесь к резюме и сохраните правки, чтобы добавить их в документ.'
+      : 'Используются последние сохранённые данные профиля.') + '</p>' +
     '<label class="resume-print-consent"><input type="checkbox" id="resume-print-include-contacts">' +
     '<span>Добавить моё имя, email и телефон в печатное резюме</span></label>' +
     '<p class="resume-print-privacy">По умолчанию контакты скрыты. Проверьте свободные описания на личные сведения перед сохранением PDF. Если включите контакты, они попадут в документ.</p>' +
@@ -1553,25 +1638,103 @@ function openResumePrintPreview() {
 }
 window.addEventListener('afterprint', () => document.body.classList.remove('resume-printing'));
 
+function candidateProfilePreviewMarkup(profile = {}) {
+  const safe = resumePrintData(profile);
+  const skills = String(safe.skills || '').split(',').map(value => value.trim()).filter(Boolean);
+  const texts = [profile.profession, profile.city, profile.skills, profile.about,
+    profile.education, profile.achievements, profile.specializations,
+    ...(profile.work_history || []).flatMap(item => [item.position, item.period, item.duties]),
+    ...(profile.courses || []).flatMap(item => [item.title, item.provider])];
+  const hasMaskedContacts = texts.some(value => resumePrintSafeText(value) !== String(value ?? ''));
+  return `<div class="split-header"><div><span class="section-kicker">ПРОФЕССИОНАЛЬНАЯ ЧАСТЬ ПРОФИЛЯ</span><h4>${esc(safe.profession || 'Профессия пока не указана')}</h4></div><span class="privacy-chip">Контакты скрыты</span></div>
+    ${hasMaskedContacts ? '<p class="candidate-profile-contact-notice">В тексте найдены сведения, похожие на контакты. Они замаскированы только в этом предпросмотре и PDF. Маска не удаляет их из полей профиля: уберите контакты из профессии, города, навыков и описаний перед сохранением.</p>' : ''}
+    <div class="profile-preview-meta"><span>Город: ${esc(safe.city || 'не указан')}</span><span>${esc(candidateSalaryText(safe.salary_min))}</span><span>График: ${esc(safe.schedule || 'Любой')}</span>${safe.employment ? `<span>Занятость: ${esc(safe.employment)}</span>` : ''}</div>
+    <div class="job-skill-tags">${skills.slice(0, 10).map(skill => `<span>${esc(skill)}</span>`).join('') || '<span>Навыки пока не указаны</span>'}</div>
+    ${professionalResumeMarkup(safe)}
+    ${safe.about ? `<section class="candidate-profile-preview-about"><h5>О вашем опыте</h5><p>${esc(safe.about)}</p></section>` : ''}
+    <div class="profile-preview-hidden"><span aria-hidden="true">🔒</span><div><strong>Имя, телефон и email аккаунта скрыты</strong><small>Контакты открываются только после отдельного согласия на знакомство. Перед сохранением проверьте свободные описания: в них не должно быть личных контактов.</small></div></div>`;
+}
+function updateCandidateProfilePreview(form) {
+  if (!form || form.id !== 'profile-form' || !form.isConnected) return;
+  const panel = form.closest('.candidate-profile');
+  const content = panel?.querySelector('#candidate-profile-preview-content');
+  if (!content) return;
+  const draft = candidateProfileFormData(form);
+  content.innerHTML = candidateProfilePreviewMarkup(draft);
+  const dirty = editorIsDirty(form);
+  const status = panel.querySelector('#candidate-profile-preview-state');
+  if (status) {
+    const message = dirty ? 'Есть несохранённые изменения' : 'Последняя сохранённая версия';
+    if (status.textContent !== message) status.textContent = message;
+    status.classList.toggle('is-dirty', dirty);
+  }
+  const switchLabel = form.querySelector('[data-profile-active-label]');
+  if (switchLabel) switchLabel.textContent = draft.is_active ? 'Включён' : 'Выключен';
+  const intent = form.querySelector('[data-profile-search-intent]');
+  if (intent) {
+    const changed = draft.is_active !== (form.dataset.savedActive === 'true');
+    intent.textContent = changed
+      ? (draft.is_active ? 'После сохранения подбор будет включён.' : 'После сохранения подбор будет на паузе.')
+      : 'Изменение настройки применяется после сохранения профиля.';
+    intent.classList.toggle('is-dirty', changed);
+  }
+  const historyCount = form.querySelector('[data-profile-history-count]');
+  if (historyCount) historyCount.textContent = `Записей о работе: ${form.querySelectorAll('[data-resume-role]').length}`;
+  const courseCount = form.querySelector('[data-profile-course-count]');
+  if (courseCount) courseCount.textContent = `Записей об обучении: ${form.querySelectorAll('[data-resume-course]').length}`;
+}
+function updateCandidateProfileSavedState(profile) {
+  const panel = document.querySelector('#dashboard-main .candidate-profile');
+  if (!panel) return;
+  const health = candidateProfileHealth(profile || {});
+  const readiness = candidateSearchReadiness(profile || {});
+  const setText = (selector, value) => {
+    const target = panel.querySelector(selector);
+    if (target) target.textContent = value;
+  };
+  setText('[data-profile-saved-percent]', `${health.percent}%`);
+  setText('[data-profile-saved-next]', health.next);
+  const progress = panel.querySelector('[data-profile-saved-progress]');
+  if (progress) progress.style.width = `${health.percent}%`;
+  setText('[data-profile-saved-title]', readiness.title);
+  setText('[data-profile-saved-description]', readiness.ready
+    ? 'Работодатели могут увидеть профессиональную часть профиля без ваших контактов.'
+    : readiness.description);
+  panel.querySelector('[data-profile-saved-dot]')?.classList.toggle('is-active', readiness.ready);
+  const form = panel.querySelector('#profile-form');
+  if (form) {
+    form.dataset.savedActive = String(readiness.active);
+    updateCandidateProfilePreview(form);
+  }
+}
+function openCandidateProfilePreview() {
+  const form = document.querySelector('#dashboard-main #profile-form');
+  if (!form) return;
+  updateCandidateProfilePreview(form);
+  const preview = document.querySelector('#candidate-profile-preview');
+  preview?.scrollIntoView({block:'start'});
+  preview?.focus({preventScroll:true});
+}
+
 function profileMarkup(profile = {}, user = {}) {
   const health = candidateProfileHealth(profile);
   const readiness = candidateSearchReadiness(profile);
   // Additional details stay optional; open them explicitly when the candidate is ready.
   return `<div class="panel candidate-profile">
-    <span class="section-kicker">ВАШ ПРОФЕССИОНАЛЬНЫЙ ОПЫТ</span>
-    <h3>Расскажите, какую работу вы ищете</h3>
+    <div class="candidate-profile-heading"><div><span class="section-kicker">ВАШ ПРОФЕССИОНАЛЬНЫЙ ОПЫТ</span>
+    <h3>Расскажите, какую работу вы ищете</h3></div><button type="button" class="btn btn-outline" data-action="open-candidate-profile-preview" aria-controls="candidate-profile-preview">Посмотреть профиль</button></div>
     <p class="muted">Для начала поиска достаточно профессии и города. Остальные сведения помогают точнее подобрать вакансии; большое резюме не требуется.</p>
     <div class="profile-health" role="status" aria-label="Заполненность анкеты">
-      <div class="profile-health-copy"><span>Заполненность анкеты</span><strong>${health.percent}%</strong></div>
-      <div class="profile-health-track"><span style="width:${health.percent}%"></span></div>
-      <small>${esc(health.next)}</small>
+      <div class="profile-health-copy"><span>Заполненность сохранённой анкеты</span><strong data-profile-saved-percent>${health.percent}%</strong></div>
+      <div class="profile-health-track"><span data-profile-saved-progress style="width:${health.percent}%"></span></div>
+      <small data-profile-saved-next>${esc(health.next)}</small>
     </div>
+    <form id="profile-form" data-saved-active="${String(readiness.active)}">
     <div class="profile-visibility">
-      <div><span class="profile-visibility-dot ${readiness.ready ? 'is-active' : ''}"></span><div><strong>${esc(readiness.title)}</strong><small>${readiness.ready ? 'Работодатели могут увидеть профессиональную часть профиля без ваших контактов.' : esc(readiness.description)}</small></div></div>
-      <label class="switch-control"><input type="checkbox" id="profile-active" name="is_active" form="profile-form" aria-label="Участвовать в подборе" ${readiness.active ? 'checked':''}><span aria-hidden="true"></span><b>${readiness.active ? 'Включён' : 'Выключен'}</b></label>
+      <div class="candidate-profile-saved-readiness"><span data-profile-saved-dot class="profile-visibility-dot ${readiness.ready ? 'is-active' : ''}"></span><div><small>Сейчас по сохранённому профилю</small><strong data-profile-saved-title>${esc(readiness.title)}</strong><small data-profile-saved-description>${readiness.ready ? 'Работодатели могут увидеть профессиональную часть профиля без ваших контактов.' : esc(readiness.description)}</small></div></div>
+      <div class="candidate-profile-search-control"><label class="switch-control"><input type="checkbox" id="profile-active" name="is_active" aria-label="Участвовать в подборе" aria-describedby="profile-search-intent" ${readiness.active ? 'checked':''}><span aria-hidden="true"></span><b data-profile-active-label>${readiness.active ? 'Включён' : 'Выключен'}</b></label><small id="profile-search-intent" data-profile-search-intent>Изменение настройки применяется после сохранения профиля.</small></div>
     </div>
-    <div class="profile-progress" role="note"><span class="profile-progress-step">1</span><div><strong>Основные сведения</strong><small>Профессия, город, навыки, зарплата и график</small></div></div>
-    <form id="profile-form">
+    <div class="profile-progress" role="note"><span class="profile-progress-step">1</span><div><strong>Начните с профессии и города</strong><small>Отмечены звёздочкой. Остальное можно добавить позже.</small></div></div>
       <div class="form-grid">
         <div class="field"><label for="profile-profession">Ваша профессия <span class="required-mark">*</span></label>
           <input id="profile-profession" name="profession" value="${esc(profile.profession)}" placeholder="Например, бухгалтер" required minlength="2" maxlength="120" autocomplete="organization-title">
@@ -1581,13 +1744,13 @@ function profileMarkup(profile = {}, user = {}) {
         <div class="field wide"><label for="profile-skills">Что вы хорошо умеете? (необязательно)</label>
           <input id="profile-skills" name="skills" value="${esc(profile.skills)}" placeholder="Например: 1С, учёт, Excel" maxlength="300" aria-describedby="profile-skills-help">
           <small class="field-help" id="profile-skills-help">Напишите несколько навыков через запятую. Это поможет точнее подобрать работу.</small></div>
-        <div class="field"><label for="profile-salary">Желаемая зарплата от, ₽ <span class="required-mark">*</span></label>
-          <input id="profile-salary" name="salary_min" type="number" inputmode="numeric" value="${profile.salary_min || 0}" min="0" max="10000000" required></div>
+        <div class="field"><label for="profile-salary">Желаемая зарплата от, ₽ (необязательно)</label>
+          <input id="profile-salary" name="salary_min" type="number" inputmode="numeric" value="${Number(profile.salary_min || 0) > 0 ? Number(profile.salary_min) : ''}" min="0" max="10000000" placeholder="Например, 60 000" aria-describedby="profile-salary-help"><small class="field-help" id="profile-salary-help">Можно оставить пустым, если пока не определились.</small></div>
         <div class="field"><label for="profile-schedule">Удобный график</label>
           <select id="profile-schedule" name="schedule">${optList(schedules,profile.schedule)}</select></div>
         <div class="field wide">
-          <details class="resume-history-section" open>
-            <summary>Опыт работы, образование и достижения</summary>
+          <details class="resume-history-section" id="resume-history-section">
+            <summary>Опыт работы, образование и достижения <small data-profile-history-count>Записей о работе: ${Array.isArray(profile.work_history) ? profile.work_history.length : 0}</small></summary>
             <p class="field-help">Расскажите о своём опыте. Эти сведения можно показать работодателю без раскрытия контактов. Указывать названия компаний необязательно.</p>
             <div class="form-grid">
               <div class="field"><label for="resume-years">Общий стаж, лет</label>
@@ -1604,7 +1767,7 @@ function profileMarkup(profile = {}, user = {}) {
         </div>
         <div class="field wide">
           <details class="resume-training-section" id="resume-training-section">
-            <summary>Специализации, курсы и сертификаты (по желанию)</summary>
+            <summary>Специализации, курсы и сертификаты (по желанию) <small data-profile-course-count>Записей об обучении: ${Array.isArray(profile.courses) ? profile.courses.length : 0}</small></summary>
             <p class="field-help">Можно добавить профессиональные направления и обучение. Подтверждающие документы загружать не нужно; они не проверяются платформой.</p>
             <div class="field"><label for="resume-specializations">В каких направлениях специализируетесь?</label>
               <textarea id="resume-specializations" name="specializations" maxlength="240" rows="2" placeholder="Например: кадровый учёт, зарплата, отчётность">${esc(profile.specializations || '')}</textarea></div>
@@ -1661,8 +1824,8 @@ function profileMarkup(profile = {}, user = {}) {
           </details>
         </div>
       </div>
-      <p class="form-note">* Поля, необходимые для поиска вакансий. Ваши контакты не передаются работодателю автоматически.</p>
-      <button class="btn btn-primary btn-lg" type="submit">Сохранить профиль</button>
+      <p class="form-note">* Профессия и город нужны для подбора. Все изменения вступят в силу после сохранения. Ваши контакты не передаются автоматически.</p>
+      <div class="candidate-profile-save-bar"><button class="btn btn-primary btn-lg" type="submit">Сохранить профиль</button></div>
     </form>
     <details class="profile-preapply-guide">
       <summary>Проверьте профиль перед первым откликом</summary>
@@ -1674,12 +1837,10 @@ function profileMarkup(profile = {}, user = {}) {
       <p>Отклик отправляет профессиональный профиль без открытия личных контактов. Для знакомства требуется отдельное согласие.</p>
       <a href="/journal/kak-pokazat-opyt-v-profile">Как лучше рассказать о своём опыте →</a>
     </details>
-    <section class="profile-public-preview" aria-label="Предпросмотр профиля для работодателя">
-      <div class="split-header"><div><span class="section-kicker">ЧТО УВИДИТ РАБОТОДАТЕЛЬ</span><h4>${esc(profile.profession || 'Профессия пока не указана')}</h4></div><span class="privacy-chip">Контакты скрыты</span></div>
-      <div class="profile-preview-meta"><span>⌖ ${esc(profile.city || 'Город не указан')}</span><span>от ${money(profile.salary_min || 0)}</span><span>${esc(profile.schedule || 'График не указан')}</span></div>
-      <div class="job-skill-tags">${String(profile.skills || '').split(',').map(x=>x.trim()).filter(Boolean).slice(0,6).map(x=>`<span>${esc(x)}</span>`).join('') || '<span>Добавьте навыки</span>'}</div>
-      ${professionalResumeMarkup(profile)}
-      <div class="profile-preview-hidden"><span>🔒</span><div><strong>Имя, телефон и email не показываются</strong><small>Они открываются только после вашего отдельного согласия на знакомство.</small></div></div>
+    <section class="profile-public-preview" id="candidate-profile-preview" tabindex="-1" aria-label="Предпросмотр вашего резюме">
+      <div class="candidate-profile-preview-heading"><h4>Предпросмотр профиля</h4><p id="candidate-profile-preview-state" role="status" aria-live="polite">Последняя сохранённая версия</p></div>
+      <p class="candidate-profile-preview-help">Проверьте своё резюме перед сохранением. Здесь видны и текущие правки — их пока видите только вы. Это не точная копия карточки работодателя: состав сведений зависит от этапа знакомства.</p>
+      <div id="candidate-profile-preview-content">${candidateProfilePreviewMarkup(profile)}</div>
     </section>
     <div class="profile-next-actions" aria-label="Следующие шаги">
       <strong>После сохранения:</strong>
@@ -2585,7 +2746,7 @@ async function loadMatches(jobId) {
         action = `<button type="button" class="btn ${!m.contact_shared && m.invitation_status === 'accepted' ? 'btn-primary' : 'btn-outline'} btn-tiny" data-action="open-employer-invitations" data-filter="all" data-vacancy-id="${Number(jobId)}" data-invitation-id="${Number(m.invitation_id)}">${label}</button>`;
       }
       return `<article class="item-card candidate-match-card ${scoreClass}">
-        <header><div><h4>${esc(m.profession)}</h4><div class="candidate-match-meta"><span>⌖ ${esc(m.city)}</span><span>от ${money(m.salary_min)}</span><span>${esc(m.schedule)}</span><span>${esc(m.employment)}</span></div></div><div class="candidate-match-score"><span class="match-score-dot"></span><strong>${score}%</strong><small>${esc(level)}</small></div></header>
+        <header><div><h4>${esc(m.profession)}</h4><div class="candidate-match-meta"><span>⌖ ${esc(m.city)}</span><span>${esc(candidateSalaryText(m.salary_min))}</span><span>${esc(m.schedule)}</span><span>${esc(m.employment)}</span></div></div><div class="candidate-match-score"><span class="match-score-dot"></span><strong>${score}%</strong><small>${esc(level)}</small></div></header>
         <div class="job-skill-tags">${String(m.skills || '').split(',').map(s=>s.trim()).filter(Boolean).slice(0,5).map(skill=>`<span>${esc(skill)}</span>`).join('') || '<span>Навыки не указаны</span>'}</div>
         <div class="candidate-match-reasons">${reasons.slice(0,3).map(reason=>`<span>✓ ${esc(reason)}</span>`).join('')}</div>
         <details class="candidate-resume-details"><summary>Профессиональное резюме</summary>${professionalResumeMarkup(m)}</details>
@@ -3265,41 +3426,31 @@ async function handleDashboardSubmit(event) {
   }
   if (form.id === 'profile-form') {
     event.preventDefault();
+    if (editorSubmitting.has(form) || !validateCandidateProfileRows(form)) return;
+    const body = candidateProfileFormData(form);
+    const savingUserId = state.user?.id;
     const submit = beginEditorSave(form);
     if (!submit) return;
-    const work_history = Array.from(form.querySelectorAll('[data-resume-role]')).map(entry=>({
-      position:String(entry.querySelector('[data-role-position]')?.value || '').trim(),
-      period:String(entry.querySelector('[data-role-period]')?.value || '').trim(),
-      duties:String(entry.querySelector('[data-role-duties]')?.value || '').trim()
-    })).filter(entry=>entry.position || entry.period || entry.duties);
-    if (work_history.some(entry=>entry.position.length < 2 || entry.period.length < 2)) {
-      endEditorSave(form, submit);
-      toast('В каждом месте работы укажите должность и период. Либо удалите незаполненную запись.',true);
-      return;
-    }
-    const courses = Array.from(form.querySelectorAll('[data-resume-course]')).map(entry=>({
-      title:String(entry.querySelector('[data-course-title]')?.value || '').trim(),
-      provider:String(entry.querySelector('[data-course-provider]')?.value || '').trim(),
-      year:entry.querySelector('[data-course-year]')?.value
-        ? Number(entry.querySelector('[data-course-year]').value) : null,
-      has_certificate:Boolean(entry.querySelector('[data-course-certificate]')?.checked)
-    })).filter(course=>course.title || course.provider || course.year || course.has_certificate);
-    if (courses.some(course=>course.title.length < 2)) {
-      endEditorSave(form, submit);
-      toast('Для каждого курса укажите название либо удалите пустую запись.',true);
-      return;
-    }
-    const body = {profession:formValue(form,'profession'),city:formValue(form,'city'),skills:formValue(form,'skills'),salary_min:parseNumber(form,'salary_min'),phone:formValue(form,'phone'),schedule:formValue(form,'schedule'),employment:formValue(form,'employment'),about:formValue(form,'about'),is_active:form.elements.namedItem('is_active').checked,
-      experience_years:parseNumber(form,'experience_years')||0,
-      education:formValue(form,'education'),achievements:formValue(form,'achievements'),work_history,
-      specializations:formValue(form,'specializations'),courses};
+    let persisted = false;
     try {
-      await api('/api/candidate/profile',{method:'PUT',body:JSON.stringify(body)});
+      const result = await api('/api/candidate/profile',{method:'PUT',body:JSON.stringify(body)});
+      persisted = true;
+      // The PUT returns the committed profile. A separate /api/me read can fail
+      // after a successful write and must not leave the preview or PDF stale.
+      if (state.user?.id === savingUserId) {
+        state.user = {...state.user, profile:result.profile, phone:body.phone};
+      }
       editorSaved(form);
-      await reloadUser();
+      updateCandidateProfileSavedState(result.profile);
+      updateCandidateProfilePreview(form);
       toast('Профиль сохранён.');
       resumePendingApplicationVacancy();
-    } catch(e) { editorSaveFailure(form, e); }
+    } catch(e) {
+      if (persisted) {
+        setEditorStatus(form, 'Профиль сохранён. Не удалось обновить отображение — откройте раздел снова.', true);
+        toast('Профиль сохранён. Откройте раздел снова, чтобы обновить отображение.', true);
+      } else editorSaveFailure(form, e);
+    }
     finally { endEditorSave(form, submit); }
     return;
   }
@@ -3534,6 +3685,10 @@ async function handleDashboardClick(event) {
   const btn = event.target.closest('[data-action]'); if (!btn) return;
   const action = btn.dataset.action, id = Number(btn.dataset.id);
   if (btn.disabled) return;
+  if (action === 'open-candidate-profile-preview') {
+    openCandidateProfilePreview();
+    return;
+  }
   if (action === 'open-resume-print') {
     openResumePrintPreview();
     return;
@@ -3544,6 +3699,7 @@ async function handleDashboardClick(event) {
     list.insertAdjacentHTML('beforeend', resumeCourseFields({}, list.children.length));
     list.lastElementChild?.querySelector('[data-course-title]')?.focus();
     btn.disabled = list.children.length >= 6;
+    editorChanged(list.closest('form'));
     return;
   }
   if (action === 'remove-resume-course') {
@@ -3556,6 +3712,8 @@ async function handleDashboardClick(event) {
     });
     const add = form?.querySelector('#resume-add-course');
     if (add) add.disabled = false;
+    add?.focus();
+    editorChanged(form);
     return;
   }
   if (action === 'add-resume-role') {
@@ -3565,6 +3723,7 @@ async function handleDashboardClick(event) {
     const entry = list.lastElementChild;
     entry?.querySelector('[data-role-position]')?.focus();
     btn.disabled = list.children.length >= 5;
+    editorChanged(list.closest('form'));
     return;
   }
   if (action === 'remove-resume-role') {
@@ -3577,6 +3736,8 @@ async function handleDashboardClick(event) {
     });
     const add = form?.querySelector('#resume-add-role');
     if (add) add.disabled = false;
+    add?.focus();
+    editorChanged(form);
     return;
   }
   if (action === 'save-vacancy-draft') {
