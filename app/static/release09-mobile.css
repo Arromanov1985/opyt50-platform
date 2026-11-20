@@ -666,6 +666,12 @@ body.comfortable-view .job-entry-note,
 body.comfortable-view .job-preparation-link{font-size:18px}
 @media(max-width:700px){
   .job-essential-facts{grid-template-columns:1fr;gap:8px}
+  .candidate-overview-section>.split-header{flex-direction:column;align-items:stretch}
+  .candidate-overview-section>.split-header>div{min-width:0}
+  .candidate-overview-section>.split-header .btn{max-width:100%;white-space:normal;align-self:flex-start}
+  body.comfortable-view .candidate-mini-jobs .job-top{flex-direction:column;align-items:flex-start}
+  body.comfortable-view .candidate-mini-jobs .match-score{min-width:0;max-width:100%;grid-template-columns:8px minmax(0,1fr)}
+  body.comfortable-view .candidate-mini-jobs .match-score small{max-width:none}
   .job-essential-facts>div{display:grid;grid-template-columns:minmax(0,.8fr) minmax(0,1.2fr);align-items:baseline;gap:12px}
   .job-essential-facts dt{margin:0}
   .job-card-v08 .job-actions [data-v02-action="details"]{min-height:46px!important;font-size:14px}

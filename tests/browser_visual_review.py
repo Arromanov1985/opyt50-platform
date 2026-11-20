@@ -105,6 +105,8 @@ def review_public_job_pages(page):
         assert page.locator("#job-dialog").evaluate(
             "el => el.scrollWidth <= el.clientWidth + 3"
         ), "Vacancy modal should not scroll horizontally"
+        capture(page, f"01-vacancy-action-{label}", width, height,
+                "#job-dialog .job-detail-action")
         page.locator("#job-dialog-close").click()
 
     # Both public company URLs are used by existing navigation and must remain

@@ -94,6 +94,9 @@ def prelaunch_guest_navigation(page):
     expect(guide).to_be_visible()
     OUTPUT.mkdir(parents=True, exist_ok=True)
     page.locator("#job-dialog").screenshot(path=str(OUTPUT / "prelaunch-vacancy-modal-large.png"))
+    page.locator("#job-dialog .job-detail-action").screenshot(
+        path=str(OUTPUT / "prelaunch-vacancy-action-large.png")
+    )
     page.locator("#job-dialog [data-v02-action='apply']").click()
     expect(page.locator("#auth-dialog")).to_be_visible()
     expect(page.locator("#auth-title")).to_have_text("Войти в аккаунт")
@@ -132,6 +135,20 @@ def login_resumes_vacancy(page):
     expect(page.locator("#job-dialog")).to_be_visible()
     expect(page.locator("#job-dialog-title")).to_have_text("Кладовщик")
     assert posts == [], "The login must never submit an application automatically"
+    dimensions = page.evaluate("""() => ({
+      document: document.documentElement.scrollWidth,
+      viewport: document.documentElement.clientWidth,
+      headers: [...document.querySelectorAll('.candidate-overview-section>.split-header')]
+        .map(el => ({width: el.getBoundingClientRect().width, scroll: el.scrollWidth,
+          children: [...el.children].map(child => ({tag: child.tagName,
+            left: child.getBoundingClientRect().left,
+            right: child.getBoundingClientRect().right}))}))
+    })""")
+    assert dimensions['document'] <= dimensions['viewport'] + 3, (
+        f'Signed-in candidate overview must fit the narrow large-text viewport: {dimensions}'
+    )
+    OUTPUT.mkdir(parents=True, exist_ok=True)
+    page.screenshot(path=str(OUTPUT / 'candidate-after-login-320-large.png'), full_page=True)
 
     # The same vacancy exists in the background list and inside the dialog.
     # Two synchronous click events must result in exactly one POST, even when
@@ -175,6 +192,15 @@ def login_resumes_vacancy(page):
     public_card = page.locator("#public-jobs .job-card").filter(has_text="Кладовщик")
     expect(public_card.locator(".job-application-receipt")).to_be_visible()
     expect(public_card.locator("[data-v02-action='apply']")).to_have_count(0)
+    # Auth changes must refresh public cards, including removal of account
+    # state when the person leaves the session on a shared device.
+    page.locator("#logout").click()
+    expect(page.locator("#dashboard")).not_to_be_visible()
+    expect(public_card.locator("[data-v02-action='details']")).to_have_text("Условия и отклик")
+    expect(public_card.locator(".job-actions .btn-primary")).to_have_count(1)
+    expect(public_card.locator(".job-application-receipt, .favorite-toggle")).to_have_count(0)
+    expect(public_card.locator("[data-v02-action='apply'], [data-v02-action='see-applications']")).to_have_count(0)
+    assert len(posts) == 1, "Logout must not repeat an application"
 
 
 def registration_resumes_after_profile(page):

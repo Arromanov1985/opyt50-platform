@@ -814,6 +814,7 @@ async function completeAdminPasskeyLogin() {
     state.user = data.user;
     state.tab = 'overview';
     await showDashboard(true);
+    await loadPublicJobs();
     toast('Вход администратора подтверждён passkey.');
   } catch(e) {
     const message = e?.name === 'NotAllowedError'
@@ -1017,6 +1018,7 @@ async function submitAuth(event) {
       state.user = data.user;
       state.tab = 'overview';
       await showDashboard(true);
+      await loadPublicJobs();
       toast('Вход администратора подтверждён.');
     } catch(e) {
       showError(e.message || 'Не удалось подтвердить код.', $('#auth-mfa-code'));
@@ -1088,6 +1090,9 @@ async function submitAuth(event) {
       ? (data.user.role === 'candidate' ? 'profile' : data.user.role === 'employer' ? 'create' : 'overview')
       : 'overview';
     await showDashboard(true);
+    // Public cards are role-dependent too. Refresh before reopening the
+    // chosen vacancy so guest actions never survive a successful login.
+    await loadPublicJobs();
     // Resume only the chosen vacancy after login, never submit an application
     // without a new explicit click. Newly registered candidates finish their
     // short profile first; profile save resumes the same vacancy below.
@@ -4041,7 +4046,7 @@ async function start() {
   });
   $$('[data-register]').forEach(button=>button.addEventListener('click',()=>openAuth('register',button.dataset.register)));
   $('#account-open').addEventListener('click',()=>{ if (mayLeaveEditor()) showDashboard(true); });
-  $('#logout').addEventListener('click',async()=>{ if (!mayLeaveEditor()) return; try { await api('/api/logout',{method:'POST'}); state.user=null; $('#account-content').innerHTML=''; await reloadUser(); window.scrollTo({top:0,behavior:'smooth'}); toast('Вы вышли из аккаунта.'); } catch(e) { toast(e.message,true); }});
+  $('#logout').addEventListener('click',async()=>{ if (!mayLeaveEditor()) return; try { await api('/api/logout',{method:'POST'}); state.user=null; $('#account-content').innerHTML=''; await reloadUser(); await loadPublicJobs(); window.scrollTo({top:0,behavior:'smooth'}); toast('Вы вышли из аккаунта.'); } catch(e) { toast(e.message,true); }});
   $('#jobs-filter').addEventListener('click',loadPublicJobs);
   $('#city-filter').addEventListener('keydown',e=>{if(e.key==='Enter')loadPublicJobs();});
   $('#account-content').addEventListener('click',handleDashboardClick);
