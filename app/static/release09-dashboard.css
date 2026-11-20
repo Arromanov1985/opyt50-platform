@@ -444,6 +444,73 @@ body.comfortable-view .application-timeline span{font-size:.9rem}
 }
 
 
+/* Guided employer workflow: three obvious actions, details on demand. */
+.employer-vacancy-totals{
+ display:flex;align-items:center;flex-wrap:wrap;gap:8px 10px;
+ margin:12px 0;color:#526A60;font-size:14px;line-height:1.55
+}
+.employer-vacancy-totals strong{color:#174B35}
+.employer-vacancy-report{
+ border:1px solid #DEEAE4;border-radius:12px;background:#F9FCFA;
+ margin:12px 0 16px
+}
+.employer-vacancy-report>summary,
+.employer-vacancy-more>summary,
+.employer-application-flow-details>summary{
+ cursor:pointer;min-height:44px;display:flex;align-items:center;
+ padding:11px 14px;font-weight:750;color:#285642;line-height:1.4;
+}
+.employer-vacancy-report-body{padding:0 14px 12px}
+.employer-vacancy-report .stat-grid{margin-bottom:12px}
+.employer-vacancy-countline{
+ display:flex;align-items:center;flex-wrap:wrap;gap:9px 16px;
+ margin:11px 0 13px;font-size:13px;color:#526A60;
+}
+.employer-vacancy-countline strong{color:#173A30}
+.employer-vacancy-more{
+ border-top:1px solid #E5EFE9;margin-top:12px;
+ color:#305C48
+}
+.employer-vacancy-more>summary{padding-left:0}
+.employer-vacancy-more-body{padding:0 0 4px}
+.employer-vacancy-more-body .vacancy-quality{margin:14px 0}
+.employer-vacancy-extra-actions{gap:8px;flex-wrap:wrap}
+#employer-matches{
+ min-width:0;scroll-margin-top:16px;outline-offset:4px
+}
+#employer-matches:focus-visible{outline:3px solid #00A844}
+.employer-matches-head-actions{
+ display:flex;gap:8px;align-items:center;flex-wrap:wrap;
+}
+.employer-matches-head-actions .btn{white-space:normal;min-height:44px}
+.employer-match-vacancy-title{
+ font-weight:750;margin:4px 0 9px;color:#174B35
+}
+.employer-applications-guide{
+ display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;
+ gap:12px;margin:14px 0 10px;padding:15px 17px;
+ background:#F4FAF6;border:1px solid #D8EAE0;border-radius:14px;
+}
+.employer-applications-guide>div{min-width:0;flex:1 1 260px}
+.employer-applications-guide span{display:block;color:#60766B;font-size:11px;font-weight:800;letter-spacing:.06em}
+.employer-applications-guide strong{display:block;margin:4px 0;color:#173A30;font-size:16px}
+.employer-applications-guide p{margin:0;font-size:13px;line-height:1.55;color:#536D60}
+.employer-applications-guide .btn{min-height:44px}
+.employer-application-flow-details{border:1px solid #E2ECE7;border-radius:10px}
+.employer-application-flow-details .application-flow-legend{padding:4px 12px 12px}
+body.comfortable-view .employer-vacancy-totals,
+body.comfortable-view .employer-vacancy-countline,
+body.comfortable-view .employer-vacancy-more>summary,
+body.comfortable-view .employer-vacancy-report>summary,
+body.comfortable-view .employer-applications-guide p{font-size:1rem}
+@media(max-width:620px){
+ .employer-vacancy-extra-actions .btn,
+ .employer-vacancy-secondary .btn{flex:1 1 100%;width:100%;min-height:44px}
+ .employer-matches-head-actions{width:100%;justify-content:space-between}
+ .employer-applications-guide .btn{width:100%}
+ .employer-vacancy-report-body{padding:0 8px 10px}
+}
+
 /* Employer vacancy workflow */
 .employer-vacancy-card{
   position:relative;
