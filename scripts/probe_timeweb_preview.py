@@ -7,6 +7,7 @@ a PR pass/fail gate: an unavailable preview must not hide valid PR test results.
 import hashlib
 import json
 import os
+import re
 import socket
 import ssl
 import sys
@@ -215,17 +216,27 @@ def probe_backend_route(path, expected_method):
 
 
 
+def _journal_article_slug(path):
+    match = re.fullmatch(r"/journal/([a-z0-9]+(?:-[a-z0-9]+)*)", path)
+    return match[1] if match and len(match[1]) <= 90 and match[1] != "paths" else None
+
+
 def probe_public_journal_pages():
     """GET-only parity for published CMS pages, including later editor updates.
 
-    A public manifest provides hashes for *currently published* pages. An older
-    server without the manifest falls back to exact seed catalog comparison.
+    A public manifest provides hashes for *currently published* pages.
+    Matching renderer source digests tie those hashes to the checked-out code,
+    while allowing editorial CMS content to change independently. An older
+    server falls back to seed checks but cannot confirm the current release.
     No unpublished article, cookie or administrator API is ever requested.
     """
     root = str(Path(__file__).resolve().parents[1])
     if root not in sys.path:
         sys.path.insert(0, root)
-    from app.journal import ARTICLES, journal_index, journal_article
+    from app.journal import ARTICLES, journal_index, journal_article, journal_renderer_sha256
+    from app.journal_paths import PATHS, path_detail, paths_index, visible_paths
+
+    route_urls = {"/journal/paths/" + item["slug"] for item in PATHS}
 
     static_expected = {"/journal": hashlib.sha256(journal_index().body).hexdigest()}
     static_expected.update({
@@ -233,8 +244,16 @@ def probe_public_journal_pages():
             hashlib.sha256(journal_article(article["slug"]).body).hexdigest()
         for article in ARTICLES
     })
+    static_expected["/journal/paths"] = hashlib.sha256(paths_index(ARTICLES).body).hexdigest()
+    static_expected.update({
+        "/journal/paths/" + item["slug"]:
+            hashlib.sha256(path_detail(item["slug"], ARTICLES).body).hexdigest()
+        for item in visible_paths(ARTICLES)
+    })
     expected = static_expected
     source = "seed-catalog"
+    manifest_result = "unavailable"
+    renderer = {"result": "unverified", "expected_sha256": journal_renderer_sha256()}
     manifest_request = Request(
         BASE + "/api/public/journal/manifest",
         headers={"User-Agent": "Stazhno-Preview-ReadOnly-Probe/1.0",
@@ -247,26 +266,46 @@ def probe_public_journal_pages():
             if len(raw) > 40_000:
                 raise ValueError("Editorial manifest too large")
             manifest = json.loads(raw)
+        if not isinstance(manifest, dict):
+            raise ValueError("Invalid editorial manifest")
         pages = manifest.get("pages")
         if not isinstance(pages, dict) or not 1 <= len(pages) <= 51:
             raise ValueError("Invalid editorial manifest")
-        published = {
-            path: digest for path,digest in pages.items()
-            if path == "/journal" or (
-                path.startswith("/journal/")
-                and path[9:].replace("-", "").isalnum()
-            )
-        }
-        if "/journal" not in published or len(published) > 40 or not all(
+        if not all(
+            path in {"/journal", "/journal/paths", "/sitemap.xml"}
+            or path in route_urls or _journal_article_slug(path)
+            for path in pages
+        ) or not all(
             isinstance(digest,str) and len(digest)==64
             and all(ch in "0123456789abcdef" for ch in digest)
-            for digest in published.values()
+            for digest in pages.values()
         ):
             raise ValueError("Invalid editorial page digests")
-        expected = published
+        published_slugs = {slug for path in pages if (slug := _journal_article_slug(path))}
+        required_routes = {
+            "/journal/paths/" + item["slug"] for item in PATHS
+            if any(slug in published_slugs for slug, _label in item["steps"])
+        }
+        if not {"/journal", "/journal/paths"} <= pages.keys() or (
+            route_urls.intersection(pages) != required_routes
+        ):
+            raise ValueError("Editorial manifest omitted or added a journey")
+        # The digest identifies the local renderer code, not the editable
+        # article content; old code cannot confirm its own stale route HTML.
+        observed_renderer = manifest.get("renderer_sha256")
+        if isinstance(observed_renderer, str) and re.fullmatch(r"[0-9a-f]{64}", observed_renderer):
+            renderer["observed_sha256"] = observed_renderer
+            renderer["result"] = ("exact-match" if observed_renderer == renderer["expected_sha256"]
+                                  else "mismatch")
+        expected = {"/journal": pages["/journal"]}
+        expected.update({path: digest for path, digest in pages.items()
+                         if path not in {"/journal", "/sitemap.xml"}})
         source = "cms-public-manifest"
+        manifest_result = "accepted"
     except (HTTPError, URLError, OSError, ssl.SSLError, TimeoutError, ValueError, TypeError, KeyError):
-        pass
+        # The fallback checks local current routes too. An incomplete manifest
+        # must never silently reduce verification to articles alone.
+        manifest_result = "unavailable-or-invalid"
 
     results = {}
     for path, fingerprint in expected.items():
@@ -297,8 +336,11 @@ def probe_public_journal_pages():
             item = {"result":"connection-error","type":type(error).__name__}
         results[path] = item
     return {
-        "result":"exact-match" if all(item["result"]=="exact-match" for item in results.values()) else "unverified",
-        "catalog_source":source,"pages":results,
+        "result": "exact-match" if (
+            renderer["result"] == "exact-match" and manifest_result == "accepted"
+            and all(item["result"] == "exact-match" for item in results.values())
+        ) else "unverified",
+        "catalog_source":source,"manifest_result":manifest_result,"renderer":renderer,"pages":results,
     }
 
 

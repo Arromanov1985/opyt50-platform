@@ -1212,7 +1212,9 @@ def run_browser(page):
     expect(page.locator('a[href="/admin/journal"]')).to_be_visible()
     expect(page.locator("#admin-stats")).to_contain_text("Отозванные отклики")
     expect(page.locator("#admin-growth-stats")).to_contain_text("Переходы к вакансиям")
-    expect(page.locator("#admin-growth-articles tbody tr")).to_have_count(4)
+    expect(page.locator("#admin-growth-articles tbody tr")).to_have_count(14)
+    expect(page.locator('#admin-growth-articles tr[data-growth-source="path:delitsya-opytom"]')).to_contain_text("Делиться опытом")
+    expect(page.locator("#admin-product-period")).to_contain_text("Демо-открытия контактов")
 
     # Editorial workflow, on an isolated browser test database only.
     page.goto(URL + "/admin/journal", wait_until="networkidle")

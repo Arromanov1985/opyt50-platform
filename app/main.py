@@ -49,7 +49,7 @@ from .db import database, init_db
 from .matching import lead_price, match_candidate, taxonomy_payload
 from .journal import install_journal_routes
 from .employer_directory import install_employer_directory
-from .growth import VALID_SOURCES, record_event, aggregate_snapshot
+from .growth import record_event, aggregate_snapshot
 from .security import (
     ADMIN_SESSION_IDLE_SECONDS, ADMIN_SESSION_SECONDS, COOKIE_NAME,
     SESSION_SECONDS, SESSION_TOUCH_SECONDS, USER_SESSION_IDLE_SECONDS,
@@ -68,8 +68,9 @@ EMPLOYMENTS = {"Любая", "Полная", "Частичная", "Проект
 
 
 class GrowthEventIn(BaseModel):
-    source: str = Field(min_length=1, max_length=80)
-    action: Literal["view", "jobs_click", "profile_click"]
+    model_config = {"extra": "forbid"}
+    source: str = Field(min_length=1, max_length=90)
+    action: Literal["view", "jobs_click", "profile_click", "community_click"]
 
 
 class DirectInvitationOutcomeIn(BaseModel):
