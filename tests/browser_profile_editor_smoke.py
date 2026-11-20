@@ -109,7 +109,10 @@ def exercise_editor(page, review_dir):
     dirty(page)
     page.once("dialog", lambda dialog: dialog.accept())
     page.locator("[data-dashboard-tab-select]").select_option("overview")
+    expect(page.locator("#profile-form")).to_have_count(0)
+    expect(page.locator(".candidate-overview-grid")).to_be_visible()
     page.locator("[data-dashboard-tab-select]").select_option("profile")
+    expect(page.locator("#profile-form")).to_have_attribute("data-editor-ready", "1")
     expect(page.locator("[data-resume-course]")).to_have_count(1)
     assert writes == [], "Draft navigation and row editing must not save the profile"
 
@@ -248,8 +251,11 @@ def exercise_editor(page, review_dir):
     page.once("dialog", lambda dialog: (dialogs.append(dialog.message), dialog.dismiss()))
     page.locator("[data-dashboard-tab-select]").select_option("overview")
     expect(page.locator("[data-dashboard-tab-select]")).to_have_value("overview")
+    expect(page.locator("#profile-form")).to_have_count(0)
+    expect(page.locator(".candidate-overview-grid")).to_be_visible()
     assert dialogs == [], "Saved rows still trigger a discard-draft warning"
     page.locator("[data-dashboard-tab-select]").select_option("profile")
+    expect(page.locator("#profile-form")).to_have_attribute("data-editor-ready", "1")
 
     # Keep the more demanding expanded editor and preview readable at the
     # narrow widths used by the audience, with the existing large-text option.
