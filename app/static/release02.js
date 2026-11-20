@@ -765,8 +765,11 @@
           ' (' + Number(employerApplicationQuickCounts[stage]) + ') →';
       }
       const complete = document.querySelector('#employer-application-quick-complete');
-      if (complete) complete.hidden = !employerApplicationQuickMode || matched > 0 || Boolean(query) ||
-        Boolean(employerQuickRecommendedStage(state.employerApplicationsStatusFilter || 'all'));
+      const hasOtherStages = Boolean(employerQuickRecommendedStage(state.employerApplicationsStatusFilter || 'all'));
+      const showComplete = employerApplicationQuickMode && !matched && !query && !hasOtherStages;
+      if (complete) complete.hidden = !showComplete;
+      const continuation = document.querySelector('.employer-quick-next-stage');
+      if (continuation) continuation.hidden = !showComplete && (!nextStage || nextStage.hidden);
       const previous = document.querySelector('[data-v02-action="employer-quick-previous"]');
       if (previous) previous.disabled = !employerApplicationQuickMode || employerApplicationQuickIndex === 0 || !matched;
       const next = document.querySelector('[data-v02-action="employer-quick-next"]');
