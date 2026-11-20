@@ -580,10 +580,12 @@
   }
   body.comfortable-view #dashboard-main .candidate-status-chip{font-size:14px}
 }
-/* At 320px keep login reachable: the older rule hid it completely. */
+/* At 320px keep both session actions reachable in the bottom bar. */
 @media(max-width:350px){
   #mobile-guest-actions{grid-template-columns:.9fr .8fr 1.3fr}
   #mobile-guest-actions #login-open{display:flex!important}
+  #mobile-member-actions{grid-template-columns:minmax(0,.9fr) minmax(0,1.3fr) minmax(0,.8fr)}
+  #mobile-member-actions #logout{display:flex!important}
   #dashboard-main .overview-stack>.overview-stat-grid:not(.employer-overview-stats),
   #dashboard-main .candidate-status-row{grid-template-columns:1fr!important}
   #dashboard-main .candidate-status-chip.is-private{grid-column:auto}

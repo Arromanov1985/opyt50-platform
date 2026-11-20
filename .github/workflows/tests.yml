@@ -72,6 +72,7 @@ jobs:
       - name: Browser mobile vacancy application smoke
         run: python tests/browser_mobile_apply_smoke.py
       - name: Browser professional community consent and messaging
+        if: always() && steps.browser_deps.outcome == 'success'
         env:
           STAZHNO_COMMUNITY_REVIEW_DIR: community-review
         run: python tests/browser_community_smoke.py
@@ -84,7 +85,7 @@ jobs:
           if-no-files-found: warn
           retention-days: 7
       - name: Capture PR visual review
-        if: github.event_name == 'pull_request'
+        if: always() && github.event_name == 'pull_request' && steps.browser_deps.outcome == 'success'
         env:
           STAZHNO_VISUAL_REVIEW_DIR: visual-review
         run: python tests/browser_visual_review.py
