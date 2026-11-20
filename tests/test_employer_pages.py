@@ -52,6 +52,12 @@ def test_public_employer_page_preserves_moderation_and_privacy(tmp_path: Path):
         assert "<script>alert" not in page.text
         assert "&lt;script&gt;alert" in page.text
         assert "Проверена СТАЖНО" not in page.text
+        assert "Отметка проверки СТАЖНО пока не получена" in page.text
+        assert 'id="reading-mode-toggle"' in page.text
+        assert 'href="#company-jobs"' in page.text
+        assert page.text.index('id="company-jobs"') < page.text.index('id="company-about"')
+        for label in ("Оплата", "Город", "График", "Занятость"):
+            assert f"<dt>{label}</dt>" in page.text
         assert visitor.get("/static/employer-share.css").status_code == 200
         vacancy = visitor.get(f"/vacancies/{job_id}")
         assert f'href="/companies/{owner_id}"' in vacancy.text
@@ -64,6 +70,10 @@ def test_public_employer_page_preserves_moderation_and_privacy(tmp_path: Path):
         page = visitor.get(f"/companies/{owner_id}")
         assert "Кладовщик" not in page.text
         assert f'href="/vacancies/{job_id}"' not in page.text
+        assert "Открытых вакансий сейчас нет" in page.text
+        assert "Пока нет открытых предложений" in page.text
+        assert 'href="/#jobs"' in page.text and 'href="/employers"' in page.text
+        assert 'href="#company-jobs"' not in page.text  # Empty state offers other available routes.
         with database(app.state.db_path) as db:
             db.execute(
                 "UPDATE vacancy_moderation SET status='approved' WHERE vacancy_id=?",

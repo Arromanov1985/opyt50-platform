@@ -109,6 +109,9 @@ def test_css_asset_fingerprint_must_match_stylesheet_mime(tmp_path, monkeypatch)
 
 
 def test_public_html_revision_check_rejects_stale_entrypoint(tmp_path, monkeypatch):
+    # Public page CSS is verified independently; it is not linked by the
+    # dashboard entrypoint and must not make that HTML check fail.
+    assert not {"journal.css", "vacancy-share.css", "employer-share.css", "employer-directory.css"}.intersection(probe.CLIENT_ASSETS)
     assets = {}
     for name in probe.CLIENT_ASSETS:
         data = (name + "-new-version").encode("utf-8")

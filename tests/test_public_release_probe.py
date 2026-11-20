@@ -73,25 +73,28 @@ def test_release_probe_never_calls_mutating_method(monkeypatch, status, allow, c
 @pytest.mark.parametrize(
     (
         "backend_ok", "journal_ok", "search_ok", "community_page_result",
-        "community_api_result", "community_asset_result", "expected_evidence",
+        "community_api_result", "asset_name", "asset_result", "expected_evidence",
     ),
     [
-        (True, True, True, "exact-match", "present-and-protected", "exact-match", "frontend-and-backend-match"),
-        (False, True, True, "exact-match", "present-and-protected", "exact-match", "backend-version-unverified"),
-        (True, False, True, "exact-match", "present-and-protected", "exact-match", "journal-version-unverified"),
-        (True, True, False, "exact-match", "present-and-protected", "exact-match", "search-metadata-unverified"),
-        (True, True, True, "mismatch", "present-and-protected", "exact-match", "community-version-unverified"),
-        (True, True, True, "route-not-found", "present-and-protected", "exact-match", "community-version-unverified"),
-        (True, True, True, "exact-match", "route-not-found", "exact-match", "community-version-unverified"),
-        (True, True, True, "exact-match", "unexpected-public-access", "exact-match", "community-version-unverified"),
-        (True, True, True, "exact-match", "possibly-preview-auth-gate", "exact-match", "community-version-unverified"),
-        (True, True, True, "exact-match", "present-and-protected", "mismatch", "frontend-version-mismatch"),
-        (True, True, True, "exact-match", "present-and-protected", "http-error", "unverified"),
+        (True, True, True, "exact-match", "present-and-protected", "community.css", "exact-match", "frontend-and-backend-match"),
+        (False, True, True, "exact-match", "present-and-protected", "community.css", "exact-match", "backend-version-unverified"),
+        (True, False, True, "exact-match", "present-and-protected", "community.css", "exact-match", "journal-version-unverified"),
+        (True, True, False, "exact-match", "present-and-protected", "community.css", "exact-match", "search-metadata-unverified"),
+        (True, True, True, "mismatch", "present-and-protected", "community.css", "exact-match", "community-version-unverified"),
+        (True, True, True, "route-not-found", "present-and-protected", "community.css", "exact-match", "community-version-unverified"),
+        (True, True, True, "exact-match", "route-not-found", "community.css", "exact-match", "community-version-unverified"),
+        (True, True, True, "exact-match", "unexpected-public-access", "community.css", "exact-match", "community-version-unverified"),
+        (True, True, True, "exact-match", "possibly-preview-auth-gate", "community.css", "exact-match", "community-version-unverified"),
+        (True, True, True, "exact-match", "present-and-protected", "community.css", "mismatch", "frontend-version-mismatch"),
+        (True, True, True, "exact-match", "present-and-protected", "community.css", "http-error", "unverified"),
+    ] + [
+        (True, True, True, "exact-match", "present-and-protected", asset, "mismatch", "frontend-version-mismatch")
+        for asset in ("journal.css", "vacancy-share.css", "employer-share.css", "employer-directory.css", "release09-mobile.css")
     ],
 )
 def test_release_report_distinguishes_frontend_parity_from_backend_parity(
     monkeypatch, tmp_path, backend_ok, journal_ok, search_ok, community_page_result,
-    community_api_result, community_asset_result, expected_evidence,
+    community_api_result, asset_name, asset_result, expected_evidence,
 ):
     monkeypatch.setattr(probe, "REPORT", tmp_path / "release-report.json")
     monkeypatch.setattr(probe.socket, "getaddrinfo", lambda *_args, **_kwargs: [(0,)])
@@ -99,7 +102,7 @@ def test_release_report_distinguishes_frontend_parity_from_backend_parity(
     monkeypatch.setattr(
         probe, "probe_asset",
         lambda _path, source: {
-            "result": community_asset_result if source.name in probe.COMMUNITY_ASSETS else "exact-match",
+            "result": asset_result if source.name == asset_name else "exact-match",
         },
     )
     monkeypatch.setattr(
@@ -143,6 +146,7 @@ def test_release_report_distinguishes_frontend_parity_from_backend_parity(
     assert saved["community_page"]["result"] == community_page_result
     assert len(saved["community_api"]) == len(probe.COMMUNITY_PRIVATE_ROUTES)
     assert {"community.js", "community.css"} <= saved["deployed_assets"].keys()
+    assert {"journal.css", "vacancy-share.css", "employer-share.css", "employer-directory.css"} <= saved["deployed_assets"].keys()
 
 
 @pytest.mark.parametrize("route", probe.COMMUNITY_PRIVATE_ROUTES.values())

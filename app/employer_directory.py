@@ -5,7 +5,9 @@ payments or applicant records are used to build these pages.
 """
 from __future__ import annotations
 
+import hashlib
 from html import escape
+from pathlib import Path
 
 from fastapi import Depends, FastAPI, HTTPException
 from fastapi.responses import HTMLResponse
@@ -13,11 +15,15 @@ from fastapi.responses import HTMLResponse
 from .vacancy_pages import _pay
 
 ORIGIN = "https://stazhno.ru"
-CSS = "/static/employer-directory.css?v=1"
 
 
 def _e(value) -> str:
     return escape(str(value if value is not None else ""), quote=True)
+
+
+def _asset(name: str) -> str:
+    revision = hashlib.sha256((Path(__file__).parent / "static" / name).read_bytes()).hexdigest()[:12]
+    return f"/static/{name}?v={revision}"
 
 
 def _layout(title: str, description: str, canonical_path: str, content: str) -> HTMLResponse:
@@ -35,7 +41,8 @@ def _layout(title: str, description: str, canonical_path: str, content: str) -> 
 <meta property="og:description" content="{_e(description)}">
 <meta property="og:url" content="{_e(canonical)}">
 <link rel="icon" href="/static/favicon.svg" type="image/svg+xml">
-<link rel="stylesheet" href="{CSS}">
+<link rel="stylesheet" href="{_asset('employer-directory.css')}">
+<script src="{_asset('journal.js')}" defer></script>
 </head><body>
 <a class="skip-link" href="#main">Перейти к содержанию</a>
 <header class="directory-header"><div class="wrap header-row">
@@ -45,7 +52,7 @@ def _layout(title: str, description: str, canonical_path: str, content: str) -> 
 <nav aria-label="Основное меню">
 <a href="/employers">Работодатели</a>
 <a href="/#jobs">Вакансии</a><a href="/journal">Журнал</a>
-</nav></div></header>
+</nav><button id="reading-mode-toggle" class="reading-toggle" type="button" aria-pressed="false" aria-label="Включить крупный текст">Аа <span>Крупный текст</span></button></div></header>
 <main class="wrap" id="main">{content}</main>
 <footer class="wrap directory-footer">
 <span>СТАЖНО — ваш опыт работает на вас</span>
@@ -93,17 +100,21 @@ def employer_directory(query: str, city: str, db) -> HTMLResponse:
     cards = "".join(
         f'<article class="employer-card"><span class="card-kicker">КОМПАНИЯ</span>'
         f'<h2><a href="/employers/{int(row["id"])}">{_e(row["company_name"])}</a></h2>'
-        f'<p class="verification">{("Данные компании подтверждены" if row["verified"] else "Данные компании пока не проверены")}</p>'
+        f'<p class="verification">{("Проверена администрацией СТАЖНО" if row["verified"] else "Нет отметки проверки СТАЖНО")}</p>'
         f'<p class="vacancy-counter"><strong>{int(row["vacancy_count"])}</strong> '
         f'открытых вакансий по текущему поиску</p>'
         f'<a class="card-link" href="/employers/{int(row["id"])}">Вакансии компании →</a></article>'
         for row in rows
     )
-    clear_href = "/employers"
     empty = (
         '<div class="empty-list" role="status"><h2>Компаний по этим условиям не найдено</h2>'
         '<p>Расширьте поиск: проверьте название, город или посмотрите всех работодателей.</p>'
-        f'<a class="button secondary" href="{clear_href}">Показать все компании</a></div>'
+        '<a class="button secondary" href="/employers">Показать все компании</a></div>'
+        if query or city else
+        '<div class="empty-list" role="status"><h2>Пока нет компаний с открытыми вакансиями</h2>'
+        '<p>Здесь появятся работодатели с опубликованными предложениями. '
+        'Пока можно прочитать, как оценить вакансию и подготовиться к знакомству.</p>'
+        '<a class="button secondary" href="/journal/kak-proverit-vakansiyu">Как проверить вакансию</a></div>'
     )
     body = (
         '<nav class="breadcrumbs" aria-label="Навигация"><a href="/">Главная</a>'
@@ -111,7 +122,7 @@ def employer_directory(query: str, city: str, db) -> HTMLResponse:
         '<section class="intro"><span class="kicker">РАБОТОДАТЕЛИ СТАЖНО</span>'
         '<h1>Узнайте больше о компаниях</h1>'
         '<p>Здесь собраны работодатели с открытыми опубликованными вакансиями.'
-        ' Сравнивайте предложения и условия, прежде чем откликаться.</p></section>'
+        ' Откройте страницу компании, сравните оплату, график и условия её предложений.</p></section>'
         '<form class="employer-search" method="get" action="/employers" role="search">'
         '<label>Компания или профессия<input type="search" name="q" maxlength="100"'
         f' value="{_e(query)}" placeholder="Название компании или профессия"></label>'
@@ -123,7 +134,8 @@ def employer_directory(query: str, city: str, db) -> HTMLResponse:
         + (f'<section class="employer-grid" id="employer-cards" aria-label="Компании">{cards}</section>'
            if rows else empty)
         + '<aside class="disclaimer"><strong>Проверяйте условия самостоятельно.</strong>'
-        '<p>Публикация вакансии не означает гарантию добросовестности компании.'
+        '<p>Отметка проверки относится к данным компании на СТАЖНО. '
+        'Она не гарантирует условия работы: оплату, обязанности и оформление нужно уточнить.'
         ' Личные контакты кандидатов остаются защищены правилами знакомства на СТАЖНО.</p></aside>'
     )
     # Directory query pages are noindexed by template, but the main directory
@@ -182,26 +194,44 @@ def employer_profile(employer_id: int, db, email_pattern, phone_pattern) -> HTML
         else '<p class="company-about">Компания пока не добавила публичное описание.</p>'
     )
     jobs = "".join(
-        f'<article class="company-job"><div><h3>{_e(job["title"])}</h3>'
-        f'<p>{_e(job["city"])} · {_e(job["schedule"] or "График уточняется")}'
-        f' · {_e(job["employment"] or "Занятость уточняется")}</p>'
-        f'<strong>{_e(_pay(job["salary_min"],job["salary_max"]))}</strong></div>'
-        f'<a class="button secondary" href="/vacancies/{int(job["id"])}">Условия и отклик</a></article>'
+        f'<article class="company-job"><div class="company-job-content"><h3><a href="/vacancies/{int(job["id"])}">{_e(job["title"])}</a></h3>'
+        '<dl class="company-job-facts">'
+        f'<div><dt>Оплата</dt><dd class="company-job-pay">{_e(_pay(job["salary_min"],job["salary_max"]))}</dd></div>'
+        f'<div><dt>Город</dt><dd>{_e(job["city"] or "Не указан")}</dd></div>'
+        f'<div><dt>График</dt><dd>{_e(job["schedule"] or "Уточняется")}</dd></div>'
+        f'<div><dt>Занятость</dt><dd>{_e(job["employment"] or "Уточняется")}</dd></div>'
+        '</dl></div>'
+        f'<a class="button secondary" href="/vacancies/{int(job["id"])}">Посмотреть условия</a></article>'
         for job in rows
     )
+    locations = list(dict.fromkeys(str(job["city"] or "Город не указан") for job in rows))
+    locations_text = ", ".join(locations[:3])
+    if len(locations) > 3:
+        locations_text += f" и ещё {len(locations) - 3}"
     body = (
         '<nav class="breadcrumbs" aria-label="Навигация"><a href="/">Главная</a>'
         '<span aria-hidden="true">/</span><a href="/employers">Работодатели</a>'
         '<span aria-hidden="true">/</span>Компания</nav>'
         '<section class="intro company-hero"><span class="kicker">ПРОФИЛЬ РАБОТОДАТЕЛЯ</span>'
         f'<h1>{_e(company["company_name"])}</h1>'
-        f'<p class="verification">{("Данные компании подтверждены" if company["verified"] else "Данные компании пока не проверены")}</p>'
-        f'{about_markup}</section>'
-        '<section class="company-vacancies" aria-label="Открытые вакансии компании">'
-        f'<h2>Открытые вакансии <span>{len(rows)}</span></h2>{jobs}</section>'
+        f'<p class="company-summary">Открытых вакансий на странице: <strong>{len(rows)}</strong>.</p>'
+        f'<p class="company-locations"><span>Где есть предложения:</span> {_e(locations_text)}</p>'
+        f'<p class="verification">{("Проверена администрацией СТАЖНО" if company["verified"] else "Нет отметки проверки СТАЖНО")}</p>'
+        '<div class="company-hero-actions"><a class="button light" href="#company-jobs">Смотреть вакансии компании ↓</a>'
+        '<a href="#company-about">О компании и проверке</a></div></section>'
+        '<section class="company-vacancies" id="company-jobs" aria-labelledby="company-jobs-title">'
+        f'<h2 id="company-jobs-title">Открытые вакансии <span>{len(rows)}</span></h2>'
+        '<p class="company-section-note">Основные условия — в карточках. Полное описание и доступные действия — на странице вакансии.</p>'
+        f'{jobs}</section>'
+        '<section class="company-description" id="company-about" aria-labelledby="company-about-title">'
+        f'<h2 id="company-about-title">О компании</h2>{about_markup}'
+        '<details class="company-check-explanation"><summary>Что означает статус проверки</summary>'
+        '<p>Отметка «Проверена администрацией СТАЖНО» относится к проверке данных компании на платформе. '
+        'Отсутствие отметки означает, что такой статус пока не подтверждён. '
+        'Оплату, обязанности и оформление обсудите с работодателем: отметка не гарантирует условия работы.</p></details></section>'
         '<aside class="disclaimer"><strong>Что важно знать о контактах</strong>'
-        '<p>Вы можете прочитать условия каждой вакансии без регистрации. Отклик и знакомство'
-        ' проходят через СТАЖНО, личные контакты соискателя не публикуются автоматически.</p></aside>'
+        '<p>Условия вакансии доступны без регистрации. Доступные действия указаны на её странице. '
+        'Личные контакты соискателя не публикуются автоматически: для знакомства предусмотрено отдельное согласие.</p></aside>'
         '<p class="back-link"><a href="/employers">← Все работодатели</a></p>'
     )
     return _layout(

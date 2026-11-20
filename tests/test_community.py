@@ -140,11 +140,20 @@ def test_publication_requires_separate_consent_and_current_moderator_approval(co
     public = visitor.get("/api/community/people/" + profile["public_id"])
     assert public.status_code == 200 and public.headers["cache-control"] == "no-store"
     assert set(public.json()["person"]) == set(PUBLIC_FIELDS)
+    public_page = visitor.get("/people/" + profile["public_id"])
+    assert public_page.status_code == 200 and public_page.headers["cache-control"] == "no-store"
+    assert '<dt>Город</dt><dd>Подольск</dd>' in public_page.text
+    assert '<dt>Цель знакомства</dt><dd>Наставничество</dd>' in public_page.text
+    assert public_page.text.index('person-skills') < public_page.text.index('id="person-next-step"')
+    assert public_page.text.index('id="person-next-step"') < public_page.text.index('class="panel person-story"')
+    assert 'id="request-connection"' in public_page.text and 'id="report-person"' in public_page.text
+    assert "не подтверждает квалификацию" in public_page.text
     assert visitor.get("/api/community/people?q=НАСТАВНИК&city=ПОДОЛЬСК&goal=mentoring").json()["total"] == 1
     assert visitor.get("/api/community/people?q=бухгалтер").json()["people"] == []
     assert visitor.get("/api/community/people?page=0").status_code == 422
     for private in ("Закрытое имя", "+79991234567", "first@community", "user_id", "consent_at", "version"):
         assert private not in public.text
+        assert private not in public_page.text
     # Re-saving identical content must not accidentally withdraw a published page.
     unchanged = mutate(first, "PUT", "/api/community/profile", {**PROFILE, "expected_version": approved["version"]})
     assert unchanged.json()["profile"] == approved

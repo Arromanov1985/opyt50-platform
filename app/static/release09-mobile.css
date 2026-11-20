@@ -580,10 +580,12 @@
   }
   body.comfortable-view #dashboard-main .candidate-status-chip{font-size:14px}
 }
-/* At 320px keep login reachable: the older rule hid it completely. */
+/* At 320px keep both session actions reachable in the bottom bar. */
 @media(max-width:350px){
   #mobile-guest-actions{grid-template-columns:.9fr .8fr 1.3fr}
   #mobile-guest-actions #login-open{display:flex!important}
+  #mobile-member-actions{grid-template-columns:minmax(0,.9fr) minmax(0,1.3fr) minmax(0,.8fr)}
+  #mobile-member-actions #logout{display:flex!important}
   #dashboard-main .overview-stack>.overview-stat-grid:not(.employer-overview-stats),
   #dashboard-main .candidate-status-row{grid-template-columns:1fr!important}
   #dashboard-main .candidate-status-chip.is-private{grid-column:auto}
@@ -637,4 +639,51 @@
   body.comfortable-view #job-dialog .job-detail-facts{
     grid-template-columns:1fr!important;
   }
+}
+
+/* Public vacancy decisions: labelled conditions and one clear guest action. */
+.job-card-v08{min-width:0;overflow-wrap:anywhere}
+.job-essential-facts{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin:4px 0 0}
+.job-essential-facts>div{min-width:0;border-top:1px solid #E0ECE5;padding-top:8px}
+.job-essential-facts dt{font-size:12px;color:#596F64;margin:0 0 3px}
+.job-essential-facts dd{font-size:14px;line-height:1.4;color:#244A39;font-weight:650;margin:0;overflow-wrap:anywhere}
+.job-card-v08 .job-share-link{display:inline-flex;align-items:center;gap:7px;align-self:flex-start;min-height:44px;font-size:13px;line-height:1.4;color:#37634F;text-underline-offset:3px;overflow-wrap:anywhere}
+.job-share-link:focus-visible,.job-preparation-link:focus-visible{outline:3px solid #0B8F57;outline-offset:3px;border-radius:4px}
+.job-detail-pay>small{display:block;font-size:13px;font-weight:600;letter-spacing:normal;color:#52685E;margin-bottom:4px}
+#job-dialog .job-detail-v08{grid-template-columns:minmax(0,1fr);min-width:0}
+#job-dialog .job-detail-v08>div,#job-dialog .job-detail-description{min-width:0;overflow-wrap:anywhere}
+#job-dialog .job-detail-company>strong{min-width:0;overflow-wrap:anywhere}
+#job-dialog .job-safety-actions{flex-wrap:wrap;justify-content:flex-start;gap:8px}
+#job-dialog .job-safety-actions .btn{min-width:0;max-width:100%;white-space:normal;overflow-wrap:anywhere;text-align:left}
+#job-dialog .job-detail-facts{grid-template-columns:repeat(3,minmax(0,1fr))}
+#job-dialog .job-detail-facts strong{overflow-wrap:anywhere}
+.job-entry-note{flex-basis:100%;margin:0;color:#42604F;font-size:15px;line-height:1.55}
+.job-preparation-link{min-height:44px;display:inline-flex;align-items:center;font-size:14px;line-height:1.5}
+.job-detail-description h3{font-size:18px;margin:0 0 10px}
+.job-detail-description p{margin:0;overflow-wrap:anywhere}
+body.comfortable-view .job-essential-facts dt{font-size:15px}
+body.comfortable-view .job-essential-facts dd{font-size:18px}
+body.comfortable-view .job-card-v08 .job-share-link,
+body.comfortable-view .job-entry-note,
+body.comfortable-view .job-preparation-link{font-size:18px}
+@media(max-width:700px){
+  .job-essential-facts{grid-template-columns:1fr;gap:8px}
+  .candidate-overview-section>.split-header{flex-direction:column;align-items:stretch}
+  .candidate-overview-section>.split-header>div{min-width:0}
+  .candidate-overview-section>.split-header .btn{max-width:100%;white-space:normal;align-self:flex-start}
+  body.comfortable-view .candidate-mini-jobs .job-top{flex-direction:column;align-items:flex-start}
+  body.comfortable-view .candidate-mini-jobs .match-score{min-width:0;max-width:100%;grid-template-columns:8px minmax(0,1fr)}
+  body.comfortable-view .candidate-mini-jobs .match-score small{max-width:none}
+  .job-essential-facts>div{display:grid;grid-template-columns:minmax(0,.8fr) minmax(0,1.2fr);align-items:baseline;gap:12px}
+  .job-essential-facts dt{margin:0}
+  .job-card-v08 .job-actions [data-v02-action="details"]{min-height:46px!important;font-size:14px}
+  .job-card-v08 .job-actions .btn-primary[data-v02-action="details"]{font-size:15px}
+  #job-dialog .job-detail-facts{grid-template-columns:1fr!important}
+  #job-dialog .job-detail-action{flex-wrap:nowrap}
+  #job-dialog .job-entry-note{flex-basis:auto}
+  #job-dialog .job-detail-facts>span{display:grid;grid-template-columns:minmax(0,.8fr) minmax(0,1.2fr);gap:12px;align-items:baseline}
+  body.comfortable-view .job-essential-facts>div,
+  body.comfortable-view #job-dialog .job-detail-facts>span{grid-template-columns:1fr;gap:3px}
+  body.comfortable-view .job-card-v08 .job-actions [data-v02-action="details"],
+  body.comfortable-view #job-dialog .job-detail-action .btn{font-size:18px}
 }
