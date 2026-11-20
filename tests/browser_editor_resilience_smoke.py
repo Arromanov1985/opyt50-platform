@@ -97,6 +97,20 @@ def exercise_forms(page):
 
     assert page.request.post(URL + "/api/logout", headers=HEADERS).status == 200
     login(page, "company@demo.example")
+    # No outstanding applications: the overview must open candidate matching
+    # for a concrete existing vacancy, without an extra navigation step.
+    match_from_overview = page.locator(
+        "#dashboard-main .overview-priority [data-action='open-employer-matches']"
+    )
+    expect(match_from_overview).to_be_visible()
+    match_from_overview.click()
+    expect(page.locator("#employer-matches .candidate-match-card")).to_be_visible()
+    expect(page.locator("#employer-matches")).to_be_focused()
+    assert page.locator("#employer-matches").evaluate(
+        "(panel) => panel.previousElementSibling?.classList.contains('employer-vacancy-card')"
+    )
+    page.locator("#employer-matches [data-action='close-employer-matches']").click()
+    expect(page.locator("#employer-matches")).to_be_hidden()
     page.locator("[data-dashboard-tab-select]").select_option("company")
     about = page.locator("#company-about")
     about.fill("Вымышленная компания. Проверка сохранения при ошибке 503.")
@@ -138,6 +152,9 @@ def exercise_forms(page):
     page.locator("[data-dashboard-tab-select]").select_option("create")
     expect(page.locator("#vacancy-form")).to_be_visible()
     expect(page.locator("#vacancy-publish")).to_be_disabled()
+    # Creating a vacancy never silently inserts fictional salary figures.
+    expect(page.locator("#vacancy-salary-min")).to_have_value("")
+    expect(page.locator("#vacancy-salary-max")).to_have_value("")
     title = "Специалист по складу — проверка сохранения"
     page.locator("#vacancy-title").fill(title)
     page.locator("#vacancy-city").fill("Тестоград")
