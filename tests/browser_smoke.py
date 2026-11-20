@@ -710,7 +710,11 @@ def run_browser(page, playwright):
     assert page.evaluate("""() => {
       const root = document.querySelector('#dashboard-main');
       const controls = document.querySelector('.employer-quick-controls');
-      const buttons = [...controls.querySelectorAll('button')];
+      // The next-stage button is intentionally hidden while cards remain.
+      // Only interactive, rendered controls must meet the 44px touch target.
+      const buttons = [...controls.querySelectorAll('button')].filter(button =>
+        !button.hidden && button.getClientRects().length > 0
+      );
       return root.scrollWidth <= root.clientWidth + 3 &&
         buttons.every(button => button.getBoundingClientRect().height >= 44);
     }"""), "Tablet quick review must fit its container with touch-sized controls"
