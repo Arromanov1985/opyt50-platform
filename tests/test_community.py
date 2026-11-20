@@ -565,3 +565,50 @@ def test_commit_failure_never_reports_success_and_rolls_back_business_writes(com
         else:
             assert db.execute("SELECT COUNT(*) FROM community_profiles WHERE user_id=?", (ids["first"],)).fetchone()[0] == 0
             assert db.execute("SELECT COUNT(*) FROM community_profile_events").fetchone()[0] == 0
+
+
+def test_privacy_request_hides_public_community_profile_and_stops_new_actions(community):
+    """Restriction affects newly merged public community, not just vacancies."""
+    app, clients, ids = community
+    first = publish(clients)
+    second = publish(clients, "second", public_name="Второй коллега")
+    visitor = clients["visitor"]
+    assert visitor.get("/api/community/people/" + first["public_id"]).status_code == 200
+    connection = connect(clients, second["public_id"])
+    path = "/api/community/connections/" + connection["id"]
+    assert mutate(clients["second"], "POST", path + "/respond",
+                  {"decision": "accept"}).status_code == 200
+    assert mutate(clients["first"], "POST", path + "/messages",
+                  {"body": "До запроса", "client_key": str(uuid4())}).status_code == 200
+
+    request = mutate(clients["first"], "POST", "/api/account/privacy-requests",
+                     {"kind": "stop_processing"})
+    assert request.status_code == 201, request.text
+    assert visitor.get("/api/community/people/" + first["public_id"]).status_code == 404
+    assert visitor.get("/people/" + first["public_id"]).status_code == 404
+    people = visitor.get("/api/community/people").json()
+    assert people["total"] == 1 and people["people"][0]["public_id"] == second["public_id"]
+    assert mutate(clients["first"], "PUT", "/api/community/profile",
+                  {**PROFILE, "expected_version": first["version"]}).status_code == 409
+    assert mutate(clients["first"], "POST", "/api/community/profile/submit",
+                  {"expected_version": first["version"], "publish_consent": True}).status_code == 409
+    assert mutate(clients["first"], "POST", "/api/community/connections",
+                  {"public_id": second["public_id"], "purpose": "mentoring"}).status_code == 409
+    assert mutate(clients["first"], "POST", path + "/messages",
+                  {"body": "Новое сообщение", "client_key": str(uuid4())}).status_code == 409
+    assert mutate(clients["second"], "POST", path + "/messages",
+                  {"body": "Ответ после ограничения", "client_key": str(uuid4())}).status_code == 403
+    assert clients["first"].get(path + "/messages").status_code == 200
+    assert clients["first"].get("/api/account/privacy-requests").status_code == 200
+    assert clients["first"].get("/api/account/data-export").status_code == 200
+    assert mutate(clients["first"], "POST", path + "/block").status_code == 200
+    withdrawn = mutate(clients["first"], "DELETE", "/api/community/profile/publication",
+                       {"expected_version": first["version"]})
+    assert withdrawn.status_code == 200, withdrawn.text
+    assert withdrawn.json()["profile"]["status"] == "hidden"
+    with database(app.state.db_path) as db:
+        assert db.execute("SELECT COUNT(*) FROM community_messages").fetchone()[0] == 1
+        assert db.execute("SELECT COUNT(*) FROM community_profiles WHERE user_id=?",
+                          (ids["first"],)).fetchone()[0] == 1
+        assert db.execute("SELECT COUNT(*) FROM privacy_rights_requests WHERE user_id=?",
+                          (ids["first"],)).fetchone()[0] == 1

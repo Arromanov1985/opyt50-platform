@@ -119,7 +119,13 @@ CONTENT_FIELDS = ("public_name", "headline", "city", "skills", "about", "goal")
 PUBLIC_VISIBILITY = """p.status='published' AND p.consent_at IS NOT NULL
     AND p.consent_content_version=p.content_version
     AND p.reviewed_content_version=p.content_version
-    AND u.role='candidate' AND COALESCE(ac.status,'active')='active'"""
+    AND u.role='candidate' AND COALESCE(ac.status,'active')='active'
+    AND NOT EXISTS (
+        SELECT 1 FROM privacy_rights_requests pr
+        WHERE pr.user_id=p.user_id
+          AND pr.kind IN ('deletion','stop_processing')
+          AND pr.status IN ('received','in_review','completed')
+    )"""
 PUBLIC_JOIN = """FROM community_profiles p JOIN users u ON u.id=p.user_id
     LEFT JOIN account_controls ac ON ac.user_id=p.user_id"""
 CONTACT_PATTERN = re.compile(
@@ -285,7 +291,12 @@ def _profile_event(db, row, actor_id: int, event: str) -> None:
 def _active_account(db, user_id: int) -> bool:
     return db.execute(
         """SELECT u.id FROM users u LEFT JOIN account_controls ac ON ac.user_id=u.id
-           WHERE u.id=? AND COALESCE(ac.status,'active')='active'""", (user_id,),
+           WHERE u.id=? AND COALESCE(ac.status,'active')='active'
+             AND NOT EXISTS (
+               SELECT 1 FROM privacy_rights_requests pr
+               WHERE pr.user_id=u.id AND pr.kind IN ('deletion','stop_processing')
+                 AND pr.status IN ('received','in_review','completed')
+             )""", (user_id,),
     ).fetchone() is not None
 
 

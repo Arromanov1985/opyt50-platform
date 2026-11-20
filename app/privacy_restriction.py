@@ -33,6 +33,16 @@ def marketplace_action_restricted(db, user_id: int, method: str, path: str) -> b
     export and privacy requests remain available. Ordinary history and profile
     GET requests remain available; automated matching GET requests do not.
     """
+    if method in ("POST", "PUT", "PATCH", "DELETE") and path.startswith("/api/community/"):
+        # Keep access to history and safe shutdown/reporting actions; prevent
+        # creating or extending a public professional identity or conversation.
+        safety_action = (
+            (method == "DELETE" and path == "/api/community/profile/publication")
+            or (method == "POST" and path == "/api/community/reports")
+            or (method == "POST" and path.startswith("/api/community/connections/")
+                and path.rsplit("/", 1)[-1] in {"cancel", "block"})
+        )
+        return not safety_action and restriction_is_active(db, user_id)
     if method in ("POST", "PUT", "PATCH", "DELETE") and path.startswith(BUSINESS_PREFIXES):
         return restriction_is_active(db, user_id)
     if method == "GET" and (
