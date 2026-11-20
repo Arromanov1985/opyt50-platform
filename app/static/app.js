@@ -2666,11 +2666,22 @@ async function renderAdmin() {
     <section class="panel"><h3>Профессиональное сообщество</h3><p class="muted">Проверяйте новые профили перед публикацией и рассматривайте жалобы участников.</p><a class="btn btn-primary" href="/community/moderation">Модерация профилей и жалоб →</a></section><section class="panel"><h3>Панель управления</h3><p class="muted">Статистика работы MVP, без раскрытия персональных данных.</p><div class="stat-grid" id="admin-stats"><div class="loading">Загрузка...</div></div></section>
     <section class="panel">
       <span class="section-kicker">ПРИВЛЕЧЕНИЕ АУДИТОРИИ</span>
-      <h3>Журнал и регистрации — 30 дней</h3>
+      <h3>Журнал, маршруты и регистрации — 30 дней</h3>
       <p class="muted">Агрегированные события без идентификаторов посетителей. Регистрации отображаются отдельно, без привязки к статьям.</p>
       <div class="stat-grid" id="admin-growth-stats"><div class="loading">Загрузка…</div></div>
-      <div id="admin-growth-articles" class="admin-growth-overflow" aria-live="polite"></div>
+      <div id="admin-growth-articles" class="admin-growth-overflow" tabindex="0" aria-label="Таблица событий, прокрутка по горизонтали" aria-live="polite"></div>
       <p class="muted">Загрузки — не уникальные посетители; переходы не равны регистрациям. Роботы, блокировщики и обновления страницы могут влиять на показатели.</p>
+    </section>
+    <section class="panel" id="admin-product-growth">
+      <span class="section-kicker">ДЕЙСТВИЯ В ПРОДУКТЕ</span>
+      <h3>Профили, отклики и знакомства</h3>
+      <p class="muted">Независимые агрегаты из рабочих записей сервиса, без привязки к чтению статей. Тестовые и демо-записи также входят в показатели.</p>
+      <h4>Текущее состояние профилей</h4>
+      <div class="stat-grid" id="admin-product-current"><div class="loading">Загрузка…</div></div>
+      <p class="muted">Заполненный профиль: указаны профессия, город, навыки, рассказ о себе и зарплата больше нуля; поиск включён, аккаунт доступен. Дата первого заполнения не фиксируется.</p>
+      <h4>Действия за 30 дней, по UTC</h4>
+      <div class="stat-grid" id="admin-product-period"><div class="loading">Загрузка…</div></div>
+      <div id="admin-product-limitations" class="muted"></div>
     </section>
     <section class="panel admin-security-panel admin-security-ops">
       <div class="split-header"><div><span class="section-kicker">КОНТУР БЕЗОПАСНОСТИ</span><h3>Состояние защиты</h3><p class="muted">Сводка ключевых настроек и событий за последние 24 часа. Секреты и токены здесь никогда не отображаются.</p></div><span class="mini-badge" id="admin-security-summary">Проверяем…</span></div>
@@ -2797,9 +2808,10 @@ async function renderAdmin() {
         growthArticlesArea.innerHTML = '';
       } else {
         const growthUnits = [
-          ['Загрузки журнала', growthSummary.journal_requests],
+          ['Загрузки журнала и маршрутов', growthSummary.journal_requests],
           ['Переходы к вакансиям', growthSummary.jobs_clicks],
           ['Переходы к профилю', growthSummary.profile_clicks],
+          ['Переходы в сообщество', growthSummary.community_clicks],
           ['Новые кандидаты', growthSummary.new_candidates],
           ['Новые работодатели', growthSummary.new_employers]
         ];
@@ -2807,31 +2819,54 @@ async function renderAdmin() {
           '<div class="stat-tile"><strong>' + Number(value || 0).toLocaleString('ru-RU') +
           '</strong><span>' + esc(title) + '</span></div>'
         ).join('');
-        const articles = [
-          ['journal', 'Журнал — список статей'],
-          ['kak-pokazat-opyt-v-profile', 'Как показать свой опыт'],
-          ['kak-proverit-vakansiyu', 'Как проверить вакансию'],
-          ['proektnaya-rabota-posle-50', 'Подработка и проекты'],
-          ['path-nayti-rabotu', 'Маршрут: найти работу'],
-          ['path-novye-navyki', 'Маршрут: новые навыки'],
-          ['path-delitsya-opytom', 'Маршрут: делиться опытом']
-        ];
-        const events = Array.isArray(growth.by_article) ? growth.by_article : [];
-        const countFor = (source, action) =>
-          events.filter(item => item.source === source && item.action === action)
-            .reduce((sum, item) => sum + Number(item.total || 0), 0);
+        const sources = Array.isArray(growth.by_source) ? growth.by_source : [];
         growthArticlesArea.innerHTML =
-          '<table class="admin-growth-table"><caption>Действия по материалам за 30 дней</caption>' +
+          '<table class="admin-growth-table"><caption>События по маршрутам и материалам за 30 дней, по UTC</caption>' +
           '<thead><tr><th scope="col">Материал</th><th scope="col">Загрузки</th>' +
           '<th scope="col">К вакансиям</th><th scope="col">К профилю</th><th scope="col">В сообщество</th><th scope="col">Клики / загрузки*</th></tr></thead><tbody>' +
-          articles.map(([source, title]) =>
-            '<tr><th scope="row">' + esc(title) + '</th>' +
+          sources.map(item =>
+            '<tr data-growth-source="' + esc(item.source) + '"><th scope="row">' +
+            (item.kind === 'path' ? 'Маршрут: ' : '') + esc(item.title) +
+            (item.published ? '' : ' (снят с публикации)') + '</th>' +
             ['view','jobs_click','profile_click','community_click'].map(action =>
-              '<td>' + countFor(source, action).toLocaleString('ru-RU') + '</td>'
-            ).join('') + '<td>' + (countFor(source, 'view')
-              ? ((countFor(source, 'jobs_click') + countFor(source, 'profile_click') + countFor(source, 'community_click')) / countFor(source, 'view') * 100).toFixed(1) + '%'
+              '<td>' + Number(item[action] || 0).toLocaleString('ru-RU') + '</td>'
+            ).join('') + '<td>' + (item.clicks_per_view_percent != null
+              ? Number(item.clicks_per_view_percent).toLocaleString('ru-RU', {maximumFractionDigits: 1}) + '%'
               : '—') + '</td></tr>'
           ).join('') + '</tbody></table><p class="muted">* Соотношение событий, не конверсия уникальных людей. Может превышать 100%.</p>';
+      }
+    }
+
+    const product = growth?.product;
+    const productCurrent = $('#admin-product-current');
+    const productPeriod = $('#admin-product-period');
+    const productLimitations = $('#admin-product-limitations');
+    if (productCurrent && productPeriod && productLimitations) {
+      if (!product?.current || !product?.period) {
+        productCurrent.innerHTML = '<p class="muted">Сводка временно недоступна.</p>';
+        productPeriod.innerHTML = '';
+      } else {
+        const current = product.current;
+        const period = product.period;
+        const tiles = units => units.map(([title, value]) =>
+          '<div class="stat-tile"><strong>' + Number(value || 0).toLocaleString('ru-RU') +
+          '</strong><span>' + esc(title) + '</span></div>'
+        ).join('');
+        productCurrent.innerHTML = tiles([
+          ['Доступные аккаунты кандидатов', current.enabled_candidate_accounts],
+          ['Заполненные профили с включённым поиском', current.completed_active_candidate_profiles]
+        ]);
+        productPeriod.innerHTML = tiles([
+          ['Созданные вакансии', period.vacancies_created],
+          ['Новые отклики', period.new_applications],
+          ['Принятые приглашения с согласием', period.consented_introductions],
+          ['Демо-открытия контактов', period.demo_contacts_opened],
+          ['Зафиксированные итоги знакомств', period.introductions_completed],
+          ['Положительные итоги', period.positive_outcomes],
+          ['Без договорённости', period.no_agreement_outcomes]
+        ]);
+        productLimitations.innerHTML = (product.limitations || [])
+          .map(note => '<p>' + esc(note) + '</p>').join('');
       }
     }
 

@@ -156,6 +156,8 @@ def test_plain_text_validation_and_escaped_public_render(tmp_path: Path):
         setup_admin(app, editor)
         invalid = {**draft(), "body_text":"Один абзац без заголовка"*12}
         assert request(editor,"POST","/api/admin/journal",invalid).status_code == 422
+        for reserved in ("journal", "paths"):
+            assert request(editor, "POST", "/api/admin/journal", draft(reserved)).status_code == 422
         html = {**draft("tekst-bez-html"),
                 "body_text": BODY.replace("условиях", "<img src=x onerror=alert(1)> условиях")}
         assert request(editor, "POST", "/api/admin/journal", html).status_code == 201

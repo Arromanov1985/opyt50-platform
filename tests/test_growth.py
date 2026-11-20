@@ -81,6 +81,7 @@ def test_admin_only_aggregate_report_counts_signups_independently(tmp_path):
             "journal_requests": 1,
             "jobs_clicks": 1,
             "profile_clicks": 1,
+            "community_clicks": 0,
             "new_candidates": 1,
             "new_employers": 1,
         }

@@ -8,6 +8,7 @@ from __future__ import annotations
 import json
 import hashlib
 from html import escape
+from pathlib import Path
 
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import HTMLResponse, PlainTextResponse, Response
@@ -156,7 +157,7 @@ def journal_article(slug: str, articles: list[dict] | None = None) -> HTMLRespon
         ' Контакты не публикуются автоматически.</p>'
         '<a class="jr-primary" href="/#candidate-path" data-growth-action="profile_click">Создать профиль →</a>'
         '<a class="jr-secondary" href="/#jobs" data-growth-action="jobs_click">Посмотреть вакансии</a>'
-        '<a class="jr-secondary" href="/community">Найти коллег</a></aside></div>'
+        '<a class="jr-secondary" href="/community" data-growth-action="community_click">Найти коллег</a></aside></div>'
         '<section class="jr-related" aria-label="Другие полезные материалы">'
         '<h2>Читайте также</h2>'
         f'<div class="jr-grid">{related_cards}</div></section>'
@@ -179,19 +180,35 @@ def journal_highlights(request: Request) -> dict:
     ]}
 
 
+def journal_renderer_sha256() -> str:
+    """Identify the two fixed renderers without exposing code or local paths."""
+    digest = hashlib.sha256(b"stazhno-journal-renderer-v1\0")
+    for name in ("journal.py", "journal_paths.py"):
+        payload = Path(__file__).with_name(name).read_bytes()
+        digest.update(name.encode("ascii") + b"\0" + len(payload).to_bytes(8, "big") + payload)
+    return digest.hexdigest()
+
+
 def journal_manifest(request: Request) -> dict:
     """Public digests for exact verification of CMS-published pages.
 
     Never includes unpublished content, identities or visitor information.
-    HTML source is still verified independently by JS/CSS asset fingerprints.
+    A source digest verifies the fixed renderers independently of CMS changes;
+    the public JS/CSS bytes are checked separately by the release probe.
     """
     articles = _catalog(request)
     pages = {"/journal": hashlib.sha256(journal_index(articles).body).hexdigest()}
+    from .journal_paths import path_detail, paths_index, visible_paths
+    pages["/journal/paths"] = hashlib.sha256(paths_index(articles).body).hexdigest()
+    for path in visible_paths(articles):
+        pages["/journal/paths/" + path["slug"]] = hashlib.sha256(
+            path_detail(path["slug"], articles).body
+        ).hexdigest()
     for article in articles:
         path = "/journal/" + article["slug"]
         pages[path] = hashlib.sha256(journal_article(article["slug"], articles).body).hexdigest()
     pages["/sitemap.xml"] = hashlib.sha256(journal_sitemap(articles).body).hexdigest()
-    return {"pages": pages, "count": len(articles)}
+    return {"pages": pages, "count": len(articles), "renderer_sha256": journal_renderer_sha256()}
 
 
 def journal_sitemap(articles: list[dict] | None = None) -> Response:

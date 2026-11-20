@@ -22,6 +22,24 @@ def test_backend_capability_is_get_read_only_and_method_protected(tmp_path, rout
     assert expected in response.headers["allow"].upper().split(",")
 
 
+def test_public_manifest_identifies_current_renderer_and_all_journey_html(tmp_path):
+    import hashlib
+    from app.journal import journal_renderer_sha256
+    from app.journal_paths import PATHS
+
+    app = create_app(str(tmp_path / "journal-release.db"))
+    with TestClient(app) as client:
+        manifest = client.get("/api/public/journal/manifest").json()
+        assert manifest["renderer_sha256"] == journal_renderer_sha256()
+        assert len(manifest["renderer_sha256"]) == 64
+        journey_urls = {"/journal/paths"} | {"/journal/paths/" + path["slug"] for path in PATHS}
+        assert journey_urls <= manifest["pages"].keys()
+        for path in journey_urls:
+            page = client.get(path)
+            assert page.status_code == 200
+            assert manifest["pages"][path] == hashlib.sha256(page.content).hexdigest()
+
+
 @pytest.mark.parametrize(
     ("status", "allow", "content_type", "expected_result"),
     [

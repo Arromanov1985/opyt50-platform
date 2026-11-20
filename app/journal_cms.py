@@ -125,7 +125,7 @@ def parse_sections(value: str) -> list[dict]:
 
 
 def normalize_article(slug: str, data: ArticleInput) -> dict:
-    if not SLUG_PATTERN.fullmatch(slug):
+    if not SLUG_PATTERN.fullmatch(slug) or slug in {"journal", "paths"}:
         raise HTTPException(422, "Некорректный адрес статьи")
     return {
         "slug": slug,

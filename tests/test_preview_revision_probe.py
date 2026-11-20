@@ -142,12 +142,16 @@ def test_public_html_revision_check_rejects_stale_entrypoint(tmp_path, monkeypat
 def test_deployed_journal_check_requires_exact_html_and_get_only(monkeypatch):
     from urllib.parse import urlsplit
     from app.journal import ARTICLES, journal_index, journal_article
+    from app.journal_paths import PATHS, path_detail, paths_index
 
     pages = {"/journal": journal_index().body}
     pages.update({
         "/journal/" + article["slug"]: journal_article(article["slug"]).body
         for article in ARTICLES
     })
+    pages["/journal/paths"] = paths_index(ARTICLES).body
+    pages.update({"/journal/paths/" + path["slug"]: path_detail(path["slug"], ARTICLES).body
+                  for path in PATHS})
     requests = []
 
     class JournalOpener:
@@ -167,15 +171,158 @@ def test_deployed_journal_check_requires_exact_html_and_get_only(monkeypatch):
 
     monkeypatch.setattr(probe, "build_opener", lambda *_args: JournalOpener())
     good = probe.probe_public_journal_pages()
-    assert good["result"] == "exact-match"
-    assert len(good["pages"]) == len(ARTICLES) + 1
+    # Seed parity is still useful diagnostic evidence, but the new renderer
+    # digest is required before this release can be marked published.
+    assert good["result"] == "unverified"
+    assert good["catalog_source"] == "seed-catalog"
+    assert good["renderer"]["result"] == "unverified"
+    assert len(good["pages"]) == len(ARTICLES) + 2 + len(PATHS)
     assert all(item["result"] == "exact-match" for item in good["pages"].values())
-    assert len(requests) == len(ARTICLES) + 2  # public manifest plus article GETs
+    assert len(requests) == len(pages) + 1  # public manifest plus all page GETs
 
     monkeypatch.setattr(probe, "build_opener", lambda *_args: JournalOpener(stale=True))
     stale = probe.probe_public_journal_pages()
     assert stale["result"] == "unverified"
     assert stale["pages"]["/journal"]["result"] == "mismatch"
+
+
+def published_journal_fixture(articles=None):
+    """A deployed CMS catalog with this checkout's actual page renderers."""
+    import hashlib
+    from app.journal import ARTICLES, journal_index, journal_article, journal_renderer_sha256
+    from app.journal_paths import path_detail, paths_index, visible_paths
+
+    if articles is None:
+        articles = ARTICLES
+    bodies = {"/journal": journal_index(articles).body,
+              "/journal/paths": paths_index(articles).body}
+    bodies.update({"/journal/" + article["slug"]: journal_article(article["slug"], articles).body
+                   for article in articles})
+    bodies.update({"/journal/paths/" + path["slug"]: path_detail(path["slug"], articles).body
+                   for path in visible_paths(articles)})
+    manifest = {"pages": {path: hashlib.sha256(body).hexdigest() for path, body in bodies.items()},
+                "renderer_sha256": journal_renderer_sha256()}
+    return bodies, manifest
+
+
+def install_journal_opener(monkeypatch, bodies, manifest):
+    import json
+    from urllib.parse import urlsplit
+
+    requests = []
+
+    class PublishedJournalOpener:
+        def open(self, request, timeout=12):
+            assert request.get_method() == "GET"
+            assert request.get_header("Authorization") is None
+            assert request.get_header("Cookie") is None
+            assert request.full_url.startswith(probe.BASE + "/")
+            path = urlsplit(request.full_url).path
+            requests.append(path)
+            if path == "/api/public/journal/manifest":
+                return FakeResponse(json.dumps(manifest).encode(), "application/json")
+            if path not in bodies:
+                raise error(404)
+            return FakeResponse(bodies[path], "text/html; charset=utf-8")
+
+    monkeypatch.setattr(probe, "build_opener", lambda *_args: PublishedJournalOpener())
+    return requests
+
+
+def test_journal_manifest_probes_every_route_and_accepts_published_cms_edits(monkeypatch):
+    from copy import deepcopy
+    from app.journal import ARTICLES
+    from app.journal_paths import PATHS
+
+    articles = deepcopy(ARTICLES)
+    articles[0]["description"] = "Редакция обновила этот текст после выпуска приложения."
+    bodies, manifest = published_journal_fixture(articles)
+    requests = install_journal_opener(monkeypatch, bodies, manifest)
+    result = probe.probe_public_journal_pages()
+    assert result["result"] == "exact-match"
+    assert result["renderer"]["result"] == "exact-match"
+    assert result["catalog_source"] == "cms-public-manifest"
+    assert set(result["pages"]) == set(bodies)
+    assert set(requests) == set(bodies) | {"/api/public/journal/manifest"}
+    for path in {"/journal/paths"} | {"/journal/paths/" + item["slug"] for item in PATHS}:
+        assert result["pages"][path]["result"] == "exact-match"
+        assert result["pages"][path]["expected_sha256"] == manifest["pages"][path]
+
+
+@pytest.mark.parametrize("missing_in_manifest", [False, True])
+def test_missing_journey_never_confirms_release(monkeypatch, missing_in_manifest):
+    bodies, manifest = published_journal_fixture()
+    missing = "/journal/paths/delitsya-opytom"
+    del bodies[missing]
+    if missing_in_manifest:
+        del manifest["pages"][missing]
+    requests = install_journal_opener(monkeypatch, bodies, manifest)
+    result = probe.probe_public_journal_pages()
+    assert result["result"] == "unverified"
+    assert missing in requests
+    assert result["pages"][missing]["result"] == "route-not-found"
+
+
+@pytest.mark.parametrize("renderer", [None, "0" * 64])
+def test_self_consistent_manifest_from_old_renderer_never_confirms_release(monkeypatch, renderer):
+    import hashlib
+
+    bodies, manifest = published_journal_fixture()
+    stale_route = "/journal/paths/delitsya-opytom"
+    bodies[stale_route] = b"<html>Old route without counted CTA</html>"
+    manifest["pages"][stale_route] = hashlib.sha256(bodies[stale_route]).hexdigest()
+    if renderer is None:
+        manifest.pop("renderer_sha256")
+    else:
+        manifest["renderer_sha256"] = renderer
+    install_journal_opener(monkeypatch, bodies, manifest)
+    result = probe.probe_public_journal_pages()
+    assert result["result"] == "unverified"
+    assert result["renderer"]["result"] == ("mismatch" if renderer else "unverified")
+    assert result["pages"][stale_route]["result"] == "exact-match"
+
+
+def test_stale_route_body_cannot_pass_current_manifest(monkeypatch):
+    bodies, manifest = published_journal_fixture()
+    stale_route = "/journal/paths/novye-navyki"
+    bodies[stale_route] = b"<html>Cached earlier route</html>"
+    install_journal_opener(monkeypatch, bodies, manifest)
+    result = probe.probe_public_journal_pages()
+    assert result["result"] == "unverified"
+    assert result["pages"][stale_route]["result"] == "mismatch"
+
+
+def test_hidden_journey_is_derived_from_current_published_articles(monkeypatch):
+    from app.journal import ARTICLES
+    from app.journal_paths import PATHS
+
+    hidden = PATHS[1]
+    hidden_slugs = {slug for slug, _label in hidden["steps"]}
+    articles = [article for article in ARTICLES if article["slug"] not in hidden_slugs]
+    bodies, manifest = published_journal_fixture(articles)
+    requests = install_journal_opener(monkeypatch, bodies, manifest)
+    result = probe.probe_public_journal_pages()
+    assert result["result"] == "exact-match"
+    assert "/journal/paths/" + hidden["slug"] not in requests
+    assert set(result["pages"]) == set(bodies)
+
+
+@pytest.mark.parametrize("unsafe_path", [
+    "https://example.invalid/journal/article",
+    "/api/admin/users",
+    "/journal/paths/../../api/admin/users",
+    "/journal/paths/not-approved",
+    "/journal/article?redirect=/api/admin/users",
+])
+def test_editorial_manifest_never_expands_probe_to_unapproved_urls(monkeypatch, unsafe_path):
+    bodies, manifest = published_journal_fixture()
+    manifest["pages"][unsafe_path] = "0" * 64
+    requests = install_journal_opener(monkeypatch, bodies, manifest)
+    result = probe.probe_public_journal_pages()
+    assert result["result"] == "unverified"
+    assert result["manifest_result"] == "unavailable-or-invalid"
+    assert set(requests) == set(bodies) | {"/api/public/journal/manifest"}
+    assert unsafe_path not in requests
 
 
 def test_search_metadata_probe_checks_both_resources_and_preview_noindex(monkeypatch):

@@ -19,7 +19,7 @@ def test_published_paths_have_counted_cta_and_aggregate_only(tmp_path: Path):
     app = create_app(str(tmp_path / "journeys.sqlite"))
     with TestClient(app) as client:
         for path in PATHS:
-            source = "path-" + path["slug"]
+            source = "path:" + path["slug"]
             page = client.get("/journal/paths/" + path["slug"])
             assert page.status_code == 200
             assert "data-growth-action=" in page.text
@@ -28,11 +28,11 @@ def test_published_paths_have_counted_cta_and_aggregate_only(tmp_path: Path):
             assert 'data-growth-action="' + action + '"' in page.text
             assert post(client, source, "view").status_code == 204
             assert post(client, source, action).status_code == 204
-        assert post(client, "path-nonexistent", "view").status_code == 422
-        assert post(client, "path-../../users", "view").status_code == 422
+        assert post(client, "path:nonexistent", "view").status_code == 422
+        assert post(client, "path:../../users", "view").status_code == 422
         assert post(client, "journal", "community_click").status_code == 204
         assert client.post("/api/growth/event", json={
-            "source": "path-nayti-rabotu", "action": "view"
+            "source": "path:nayti-rabotu", "action": "view"
         }).status_code == 403
         assert client.get("/api/admin/growth").status_code == 401
         app.dependency_overrides[active_user] = lambda: {"role": "admin"}
@@ -40,7 +40,7 @@ def test_published_paths_have_counted_cta_and_aggregate_only(tmp_path: Path):
         assert result.status_code == 200
         stats = result.json()["by_article"]
         for path in PATHS:
-            source = "path-" + path["slug"]
+            source = "path:" + path["slug"]
             action = "community_click" if path["href"] == "/community" else "jobs_click"
             assert any(item["source"] == source and item["action"] == action and item["total"] == 1
                        for item in stats)
