@@ -3715,3 +3715,135 @@ body.comfortable-view .candidate-profile .profile-preview-hidden small{font-size
   .candidate-profile #candidate-profile-preview{padding:14px}
   .candidate-profile #candidate-profile-preview-content .split-header{flex-direction:column}
 }
+
+/* Compare anonymous professional profiles within one vacancy. */
+.candidate-compare-toolbar{
+  display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;
+  gap:14px;margin:18px 0;padding:16px;
+  border:1px solid #CFE3D7;border-radius:14px;background:#F3FAF6;
+}
+.candidate-compare-toolbar>div{min-width:0}
+.candidate-compare-toolbar>div:first-child{flex:1 1 240px}
+.candidate-compare-toolbar strong{font-size:15px;line-height:1.45;color:#173F30}
+#employer-compare-status{margin:5px 0 0;font-size:13px;line-height:1.5;color:#4F685C;overflow-wrap:anywhere}
+.candidate-compare-toolbar-actions{display:flex;align-items:center;flex-wrap:wrap;gap:8px}
+.candidate-compare-toolbar-actions .btn,
+.candidate-compare-actions .btn,
+.candidate-match-card .candidate-match-invitation-action .btn,
+.candidate-match-card [data-action="compare-toggle-candidate"]{
+  min-width:0;max-width:100%;min-height:44px;white-space:normal;
+  overflow-wrap:anywhere;line-height:1.4;text-align:center;
+}
+.candidate-match-label{
+  display:block;margin:0 0 7px;color:#526F60;
+  font-size:12px;line-height:1.45;font-weight:750;overflow-wrap:anywhere;
+}
+.candidate-match-card.is-compared{border-color:#61AB7D;background:#F8FCF9}
+.candidate-match-card [data-action="compare-toggle-candidate"][aria-pressed="true"]{
+  color:#145C32;background:#DFF3E6;border-color:#78B68D;
+}
+.candidate-match-card [data-action="compare-toggle-candidate"]:disabled{
+  cursor:not-allowed;opacity:.6;
+}
+#employer-candidate-comparison{
+  min-width:0;max-width:100%;margin:20px 0 0;scroll-margin-top:100px;outline-offset:5px;
+}
+#employer-candidate-comparison:focus-visible,
+.candidate-match-card[data-match-candidate-id]:focus-visible{
+  outline:3px solid #08793A;outline-offset:4px;
+}
+.candidate-comparison-heading{margin-bottom:16px;overflow-wrap:anywhere}
+.candidate-comparison-heading h4{margin:0 0 8px;font-size:20px;line-height:1.35;color:#133E2E}
+.candidate-comparison-heading p{margin:0;font-size:14px;line-height:1.55;color:#526A60}
+.candidate-comparison-note{
+  margin:14px 0;padding:12px 14px;border:1px solid #DEE8E2;border-radius:10px;
+  background:#F7FAF8;color:#526A60;font-size:13px;line-height:1.55;overflow-wrap:anywhere;
+}
+.candidate-compare-table{
+  width:100%;max-width:100%;table-layout:fixed;border-collapse:separate;border-spacing:0;
+  border:1px solid #D6E5DC;border-radius:14px;background:#FFF;
+  font-size:13px;line-height:1.55;color:#254637;
+}
+.candidate-compare-table caption{
+  position:absolute;width:1px;height:1px;padding:0;margin:-1px;
+  overflow:hidden;clip-path:inset(50%);white-space:nowrap;border:0;
+}
+.candidate-compare-table th,.candidate-compare-table td{
+  min-width:0;padding:13px 14px;vertical-align:top;text-align:left;
+  overflow-wrap:anywhere;border-bottom:1px solid #E0EAE4;
+}
+.candidate-compare-table thead th{background:#EAF5EE;color:#194B32;font-weight:800}
+.candidate-compare-table thead th:first-child{width:22%;border-top-left-radius:13px}
+.candidate-compare-table thead th:last-child{border-top-right-radius:13px}
+.candidate-compare-table th+th,.candidate-compare-table td{border-left:1px solid #E0EAE4}
+.candidate-compare-table tbody th{color:#244C36;background:#F6FAF7;font-weight:800}
+.candidate-compare-table tbody tr:last-child>th,
+.candidate-compare-table tbody tr:last-child>td{border-bottom:0}
+.candidate-compare-table tbody tr:last-child>th{border-bottom-left-radius:13px}
+.candidate-compare-table tbody tr:last-child>td:last-child{border-bottom-right-radius:13px}
+.candidate-compare-requirement{
+  display:block;margin-top:7px;color:#587061;font-size:12px;font-weight:500;line-height:1.5;
+}
+.candidate-compare-mobile-label{display:none}
+.candidate-compare-value{min-width:0;overflow-wrap:anywhere}
+.candidate-compare-value p{margin:0 0 8px;font-size:inherit;line-height:inherit}
+.candidate-compare-value p:last-child{margin-bottom:0}
+.candidate-compare-value small{font-size:12px;line-height:1.5;color:#587061}
+.candidate-compare-value strong{color:#1E4933}
+.candidate-compare-fact{display:block;margin-top:7px;color:#41644E;font-size:12px;line-height:1.5}
+.candidate-compare-list{margin:0;padding-left:18px;display:grid;gap:8px}
+.candidate-compare-question{color:#755C28}
+.candidate-match-invitation-action{min-width:0;max-width:100%}
+.candidate-compare-actions{display:flex;flex-wrap:wrap;gap:8px;min-width:0}
+.candidate-compare-actions>.candidate-match-invitation-action{width:100%;flex:1 1 100%}
+.candidate-compare-actions .btn{width:100%;flex:1 1 100%}
+.candidate-compare-toolbar [hidden],
+#employer-candidate-comparison[hidden],
+[data-employer-match-list][hidden]{display:none!important}
+body.comfortable-view .candidate-compare-toolbar strong,
+body.comfortable-view #employer-compare-status,
+body.comfortable-view .candidate-match-label,
+body.comfortable-view .candidate-comparison-heading p,
+body.comfortable-view .candidate-comparison-note,
+body.comfortable-view .candidate-compare-table,
+body.comfortable-view .candidate-compare-requirement,
+body.comfortable-view .candidate-compare-value small,
+body.comfortable-view .candidate-compare-value .resume-public-job span,
+body.comfortable-view .candidate-compare-value .resume-public-course span,
+body.comfortable-view .candidate-compare-fact,
+body.comfortable-view .candidate-compare-mobile-label{font-size:1rem}
+body.comfortable-view .candidate-comparison-heading h4{font-size:1.3rem}
+@media(max-width:850px){
+  .candidate-compare-toolbar{align-items:stretch;padding:14px}
+  .candidate-compare-toolbar-actions{width:100%}
+  .candidate-compare-toolbar-actions .btn{flex:1 1 180px}
+  .candidate-compare-table{display:block;border:0;border-radius:0;background:transparent}
+  .candidate-compare-table thead{
+    position:absolute;width:1px;height:1px;padding:0;margin:-1px;
+    overflow:hidden;clip-path:inset(50%);white-space:nowrap;border:0;
+  }
+  .candidate-compare-table tbody{display:block;width:100%}
+  .candidate-compare-table .candidate-compare-row{
+    display:block;width:100%;margin-bottom:14px;border:1px solid #D6E5DC;border-radius:12px;background:#FFF;
+  }
+  .candidate-compare-table tbody th,
+  .candidate-compare-table tbody td{
+    display:block;width:100%;padding:13px 14px;border-left:0;border-radius:0;
+  }
+  .candidate-compare-table tbody th{border-radius:11px 11px 0 0;background:#EAF5EE}
+  .candidate-compare-table tbody tr:last-child>th,
+  .candidate-compare-table tbody tr:last-child>td{border-bottom:1px solid #E0EAE4;border-radius:0}
+  .candidate-compare-table tbody tr:last-child>th{border-radius:11px 11px 0 0}
+  .candidate-compare-table tbody tr>td:last-child{border-bottom:0;border-radius:0 0 11px 11px}
+  .candidate-compare-mobile-label{
+    display:block;margin-bottom:7px;color:#1B5735;font-size:12px;font-weight:800;line-height:1.5;
+  }
+  .candidate-compare-requirement{margin-top:4px}
+}
+@media(max-width:430px){
+  .candidate-compare-toolbar-actions .btn{flex:1 1 100%;width:100%}
+  .candidate-match-card .candidate-match-invitation-action,
+  .candidate-match-card .candidate-match-invitation-action .btn{width:100%}
+  .candidate-match-card [data-action="compare-toggle-candidate"]{width:100%}
+  .candidate-compare-table tbody th,.candidate-compare-table tbody td{padding:12px}
+}

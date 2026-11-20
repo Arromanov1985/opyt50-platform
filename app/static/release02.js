@@ -1234,6 +1234,7 @@
           employerApplicationQuickIndex = 0;
           if (employerApplicationQuickMode &&
               state.employerApplicationsStatusFilter === 'all' &&
+              !String(state.employerApplicationsQuery || '').trim() &&
               employerQuickRecommendedStage()) {
             // Start with an outstanding agreed introduction or decision before
             // reviewing already-completed or waiting applications.
