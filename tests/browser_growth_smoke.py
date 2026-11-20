@@ -90,11 +90,14 @@ def exercise(browser, base):
                 expect(page.locator("body")).to_have_class(re.compile(r".*comfortable-view.*"))
                 no_overflow(page)
             capture(page, "route-" + slug + "-mobile-large")
-            with page.expect_response(lambda response: matches_event(response.request, source, action)) as click:
+            # keepalive survives navigation, but Chromium need not deliver the
+            # response event to Playwright after the old document is detached.
+            # Observe the outgoing request here; the admin report below must
+            # still prove that every CTA was persisted exactly once.
+            with page.expect_request(lambda request: matches_event(request, source, action)) as click:
                 page.locator(f'.jr-bottom a[data-growth-action="{action}"]').click()
-            assert click.value.status == 204
             expect(page).to_have_url(base + destination)
-            click_headers = click.value.request.all_headers()
+            click_headers = click.value.all_headers()
             assert "cookie" not in click_headers and "referer" not in click_headers
 
         # A blocked analytics service must never interfere with ordinary links.

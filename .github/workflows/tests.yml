@@ -57,6 +57,18 @@ jobs:
         run: |
           python -m pip install 'playwright>=1.55,<2'
           python -m playwright install chromium
+      - name: Browser aggregate growth and route navigation
+        env:
+          STAZHNO_GROWTH_REVIEW_DIR: growth-review
+        run: python tests/browser_growth_smoke.py
+      - name: Upload growth visual review
+        if: always() && github.event_name == 'pull_request'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: stazhno-growth-review
+          path: growth-review/
+          if-no-files-found: warn
+          retention-days: 7
       - name: Browser end-to-end smoke
         run: python tests/browser_smoke.py
       - name: Browser safety center smoke
@@ -85,18 +97,6 @@ jobs:
           retention-days: 7
       - name: Browser security smoke
         run: python tests/browser_security_smoke.py
-      - name: Browser aggregate growth and route navigation
-        env:
-          STAZHNO_GROWTH_REVIEW_DIR: growth-review
-        run: python tests/browser_growth_smoke.py
-      - name: Upload growth visual review
-        if: always() && github.event_name == 'pull_request'
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
-        with:
-          name: stazhno-growth-review
-          path: growth-review/
-          if-no-files-found: warn
-          retention-days: 7
       - name: Capture PR visual review
         if: github.event_name == 'pull_request'
         env:
