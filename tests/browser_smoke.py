@@ -227,6 +227,7 @@ def run_browser(page, playwright):
     expect(page.locator(".profile-optional")).not_to_have_attribute("open", "")
     expect(page.locator("#profile-phone")).not_to_be_visible()
     # Release 0.5.31: structured work experience does not require a long CV.
+    page.locator("#resume-history-section > summary").click()
     page.locator("#resume-years").fill("24")
     page.locator("#resume-education").fill("Среднее профессиональное — логистика")
     page.locator("#resume-achievements").fill("Настроил складской учёт")
