@@ -1788,8 +1788,9 @@ function profileMarkup(profile = {}, user = {}) {
                     <p id="experience-preview"></p>
                   </div>
                   <p class="experience-helper-message" id="experience-helper-message" role="status" aria-live="polite"></p>
-                  <p class="field-help">Помощник дополняет только поле выше, не создавая отдельного резюме. После проверки нажмите «Сохранить профиль». Чтобы изменения остались в профиле, нажмите ниже «Сохранить профиль».</p>
-                </details></div>
+                  <p class="field-help">Помощник дополняет только поле выше, не создавая отдельного резюме. После проверки нажмите «Сохранить профиль».</p>
+                </details>
+            </div>
           </details>
         </div>
         <div class="field wide">
@@ -1815,7 +1816,6 @@ function profileMarkup(profile = {}, user = {}) {
               <div class="field"><label for="profile-phone">Телефон (необязательно)</label>
                 <input id="profile-phone" name="phone" type="tel" value="${esc(user.phone)}" maxlength="30" autocomplete="off" placeholder="Например, +7 900 000-00-00">
                 <small class="field-help">Телефон не показывается работодателю автоматически и открывается только в предусмотренном сценарии знакомства.</small></div>
-
             </div>
           </details>
         </div>
