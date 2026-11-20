@@ -739,7 +739,7 @@
         const queueStage = nextQueue || (bucketCounts.consent ? 'consent' : 'closed');
         const [queueTitle,queueDescription] = queueCopy[queueStage];
         const queueNext = nextQueue && selectedStatus !== nextQueue
-          ? `<button type="button" class="btn btn-primary btn-tiny" data-v02-action="employer-application-filter" data-filter="${nextQueue}">Показать нужные отклики →</button>`
+          ? `<button type="button" class="btn btn-primary btn-tiny" data-v02-action="employer-application-priority" data-filter="${nextQueue}">Показать нужные отклики →</button>`
           : '';
         const queueGuide = vacancyScoped.length
           ? `<div class="employer-applications-guide" role="note"><div><span>ВАШ СЛЕДУЮЩИЙ ШАГ</span><strong>${esc(queueTitle)}</strong><p>${esc(queueDescription)}</p></div>${queueNext}</div>`
@@ -1123,7 +1123,7 @@
         else if(type==='open-employer-applications'){
           await openEmployerApplications(btn.dataset.filter, btn.dataset.vacancyId);
         }
-        else if(type==='employer-application-filter'){
+        else if(type==='employer-application-filter' || type==='employer-application-priority'){
           if(!Object.hasOwn(employerApplicationFilterLabels,btn.dataset.filter))return;
           state.employerApplicationsStatusFilter=btn.dataset.filter;
           employerApplicationVisibleLimit=employerApplicationPageSize;
