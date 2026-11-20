@@ -1757,10 +1757,12 @@ def create_app(db_path: str | None = None) -> FastAPI:
             ).fetchone()[0]
             outcomes = db.execute(
                 """SELECT COUNT(*) FROM invitations i
-                   JOIN job_applications a
+                   LEFT JOIN job_applications a
                      ON a.vacancy_id=i.vacancy_id AND a.candidate_id=i.candidate_id
+                   LEFT JOIN invitation_outcomes io ON io.invitation_id=i.id
                    WHERE i.employer_id=? AND i.contact_shared=1
-                     AND a.status NOT IN ('hired','rejected','withdrawn')""",
+                     AND (a.id IS NULL OR a.status NOT IN ('hired','rejected','withdrawn'))
+                     AND io.invitation_id IS NULL""",
                 (owner,),
             ).fetchone()[0]
             return {

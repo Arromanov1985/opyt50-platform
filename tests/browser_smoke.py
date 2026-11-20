@@ -1579,9 +1579,29 @@ def run_browser(page, playwright):
     expect(page.locator(".vacancy-change-item")).to_have_count(2)
     expect(page.locator(".vacancy-changes-list").first).to_contain_text("Зарплата от")
     expect(page.locator(".vacancy-change-next").first).to_contain_text("Следующий шаг")
-    expect(page.locator(".vacancy-change-item").first.locator(
-        "[data-tab='applications']"
-    )).to_be_visible()
+    changed_application_link = page.locator(".vacancy-change-item").first.locator(
+        "[data-v02-action='open-candidate-applications']"
+    )
+    expect(changed_application_link).to_be_visible()
+    expect(changed_application_link).to_have_attribute("data-vacancy-id", str(old_job["id"]))
+    applications_response = page.request.get(URL + "/api/candidate/applications")
+    assert applications_response.status == 200, applications_response.text()
+    changed_application_id = next(
+        item["id"] for item in applications_response.json()["applications"]
+        if item["vacancy_id"] == old_job["id"]
+    )
+    changed_application_link.click()
+    changed_application = page.locator(
+        f".candidate-application-card[data-application-id='{changed_application_id}']"
+    )
+    expect(changed_application).to_be_visible()
+    expect(changed_application).to_be_focused()
+    expect(page.locator(".candidate-application-card:visible").first).to_have_attribute(
+        "data-application-id", str(changed_application_id)
+    )
+    assert page.request.get(URL + "/api/candidate/vacancy-updates").json()["unread_count"] == 2
+    page.locator("[data-dashboard-tab-select]").select_option("changes")
+    expect(page.locator(".vacancy-change-item")).to_have_count(2)
     # Structured descriptions are compared section by section; legacy free
     # text is kept whole rather than lost or silently truncated.
     assert page.evaluate("""() => {

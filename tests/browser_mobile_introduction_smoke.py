@@ -61,8 +61,26 @@ def check_mobile_width(page, label):
         assert metrics["dashboard"] <= metrics["dashboardWidth"] + 3, (label, metrics)
 
 
+def introduction_destination(page, role, invitation_id, stage, focused=False):
+    expect(page.locator("[data-dashboard-tab-select]")).to_have_value("invitations")
+    expect(page.locator(f"[data-{role}-introduction-search]")).to_have_value("")
+    expect(page.locator(f"[data-action='filter-{role}-invitations'][data-filter='{stage}']")).to_have_attribute(
+        "aria-pressed", "true"
+    )
+    card_class = "candidate-introduction-card" if role == "candidate" else "employer-invitation-card"
+    card = page.locator(f"#dashboard-main .{card_class}[data-invitation-id='{invitation_id}']")
+    expect(card).to_be_visible()
+    if focused:
+        expect(card).to_be_focused()
+    return card
+
+
 def exercise_mobile_introduction(page):
-    # Create a real invitation through the employer API. It must not reveal
+    writes = []
+    page.on("request", lambda request: writes.append((request.method, request.url))
+            if "/api/" in request.url and request.method not in {"GET", "HEAD", "OPTIONS"}
+            else None)
+    # Create a real invitation through the employer's matching action. It must not reveal
     # fictional candidate contact details before the later separate consent.
     login(page, "company@demo.example")
     jobs_response = page.request.get(URL + "/api/employer/vacancies")
@@ -79,12 +97,21 @@ def exercise_mobile_introduction(page):
         item["candidate_id"] for item in match_response.json()["matches"]
         if item["profession"] == "Кладовщик"
     )
-    created = page.request.post(
-        URL + "/api/employer/invitations", headers=HEADERS,
-        data={"vacancy_id": vacancy_id, "candidate_id": candidate_id},
-    )
-    assert created.status == 201, created.text()
-    invitation_id = created.json()["id"]
+    selector = page.locator("[data-dashboard-tab-select]")
+    selector.select_option("invitations")
+    page.locator("[data-employer-introduction-search]").fill("прошлый поиск")
+    page.locator("[data-action='filter-employer-invitations'][data-filter='closed']").click()
+    selector.select_option("vacancies")
+    page.locator(f"[data-action='matches-primary'][data-id='{vacancy_id}']").click()
+    with page.expect_response(lambda response: (
+        response.url.endswith("/api/employer/invitations") and response.request.method == "POST"
+    )) as created:
+        page.locator(f"[data-action='invite'][data-job='{vacancy_id}'][data-id='{candidate_id}']").click()
+    assert created.value.status == 201, created.value.text()
+    invitation_id = created.value.json()["id"]
+    introduction_destination(page, "employer", invitation_id, "waiting", focused=True)
+    expect(page.locator("[data-employer-introduction-vacancy-filter]")).to_have_value(str(vacancy_id))
+    assert len([entry for entry in writes if entry == ("POST", URL + "/api/employer/invitations")]) == 1
     no_contacts_exposed(page.request.get(URL + "/api/employer/invitations"))
     logout(page)
 
@@ -159,9 +186,14 @@ def exercise_mobile_introduction(page):
     selector = page.locator("[data-dashboard-tab-select]")
     expect(selector).to_be_visible()
     selector.select_option("invitations")
-    employer_card = page.locator(
-        "#dashboard-main .employer-invitation-card.is-action"
-    )
+    page.locator("[data-employer-introduction-search]").fill("нет такого кандидата")
+    expect(page.locator(".employer-invitation-card:visible")).to_have_count(0)
+    selector.select_option("overview")
+    expect(page.locator(".overview-stat-card[data-filter='action'] strong")).to_have_text("1")
+    before_navigation = len(writes)
+    page.locator(".overview-priority [data-action='open-employer-invitations'][data-filter='action']").click()
+    employer_card = introduction_destination(page, "employer", invitation_id, "action")
+    assert len(writes) == before_navigation, "Opening a consented introduction must not unlock contacts"
     expect(employer_card).to_have_count(1)
     expect(employer_card.locator("[data-action='demo-pay']")).to_be_visible()
     assert CANDIDATE_EMAIL not in page.locator("#dashboard-main").inner_text()
@@ -175,7 +207,16 @@ def exercise_mobile_introduction(page):
     logout(page)
 
     login(page, CANDIDATE_EMAIL)
-    page.locator("[data-dashboard-tab-select]").select_option("invitations")
+    expect(page.locator(".overview-priority h3")).to_have_text("Контакты уже переданы работодателю")
+    expect(page.locator(".overview-stat-card[data-action='open-candidate-invitations'] strong")).to_have_text("1")
+    selector.select_option("invitations")
+    page.locator("[data-candidate-introduction-search]").fill("нет такой компании")
+    expect(page.locator(".candidate-introduction-card:visible")).to_have_count(0)
+    selector.select_option("overview")
+    before_navigation = len(writes)
+    page.locator(".overview-priority [data-action='open-candidate-invitations'][data-filter='introduced']").click()
+    introduction_destination(page, "candidate", invitation_id, "introduced")
+    assert len(writes) == before_navigation, "Opening the status must not repeat candidate consent"
     expect(page.locator("#dashboard-main")).to_contain_text(
         "Знакомство состоялось"
     )
@@ -193,16 +234,38 @@ def exercise_mobile_introduction(page):
     # invitation workflow, without creating a fictitious application.
     logout(page)
     login(page, "company@demo.example")
-    page.locator("[data-dashboard-tab-select]").select_option("invitations")
+    expect(page.locator(".overview-stat-card[data-filter='introduced'] strong")).to_have_text("1")
+    expect(page.locator(".overview-priority [data-action='open-employer-invitations'][data-filter='introduced']")).to_be_visible()
+    selector.select_option("invitations")
+    page.locator("[data-employer-introduction-search]").fill("нет такого кандидата")
+    expect(page.locator(".employer-invitation-card:visible")).to_have_count(0)
+    selector.select_option("overview")
+    before_navigation = len(writes)
+    page.locator(".overview-priority [data-action='open-employer-invitations'][data-filter='introduced']").click()
+    introduction_destination(page, "employer", invitation_id, "introduced")
+    assert len(writes) == before_navigation, "Opening the outcome queue must not record an outcome"
+
+    # A direct introduction has no application row, but still gives the
+    # employer a next action in the vacancy worklist and its attention filter.
+    selector.select_option("vacancies")
+    attention = page.locator("[data-action='filter-employer-jobs'][data-filter='attention']")
+    expect(attention).to_contain_text("Требуют внимания (1)")
+    attention.click()
+    vacancy_card = page.locator(f".employer-vacancy-card[data-employer-vacancy-id='{vacancy_id}']")
+    expect(page.locator(".employer-vacancy-card:visible")).to_have_count(1)
+    expect(vacancy_card).to_be_visible()
+    expect(vacancy_card.locator(".vacancy-pipeline-mini > span").filter(has_text="Ждут итога").locator("strong")).to_have_text("1")
+    before_navigation = len(writes)
+    vacancy_card.locator(".employer-vacancy-primary [data-action='open-employer-invitations'][data-filter='introduced']").click()
+    direct_card = introduction_destination(page, "employer", invitation_id, "introduced")
+    expect(page.locator("[data-employer-introduction-vacancy-filter]")).to_have_value(str(vacancy_id))
+    assert len(writes) == before_navigation, "Vacancy next action must only open the existing introduction"
     completed_before = page.request.get(URL + "/api/employer/invitations")
     assert completed_before.status == 200
     direct_case = next(item for item in completed_before.json()["invitations"]
                        if item["id"] == invitation_id)
     assert direct_case["application_id"] is None
     assert direct_case["direct_outcome"] is None
-    direct_card = page.locator(
-        f"#dashboard-main .employer-invitation-card[data-invitation-id='{invitation_id}']"
-    )
     expect(direct_card.locator("[data-action='direct-introduction-outcome']")).to_have_count(2)
     page.once("dialog", lambda dialog: dialog.accept())
     direct_card.locator("[data-action='direct-introduction-outcome'][data-status='hired']").click()
@@ -210,10 +273,33 @@ def exercise_mobile_introduction(page):
     expect(page.locator("#dashboard-main .employer-invitation-card.is-closed")).to_have_count(1)
     expect(page.locator("#dashboard-main [data-action='direct-introduction-outcome']")).to_have_count(0)
     check_mobile_width(page, "employer direct outcome")
+    selector.select_option("overview")
+    expect(page.locator(".overview-stat-card[data-filter='introduced'] strong")).to_have_text("0")
+    selector.select_option("vacancies")
+    expect(page.locator("[data-action='filter-employer-jobs'][data-filter='attention']")).to_contain_text(
+        "Требуют внимания (0)"
+    )
     logout(page)
 
     login(page, CANDIDATE_EMAIL)
-    page.locator("[data-dashboard-tab-select]").select_option("invitations")
+    outcome_alert = page.locator(".candidate-outcome-alert.is-positive")
+    expect(outcome_alert).to_contain_text("Положительный итог знакомства")
+    expect(outcome_alert).not_to_contain_text("не договорились")
+    selector.select_option("invitations")
+    expect(page.locator(f".candidate-introduction-card[data-invitation-id='{invitation_id}']")).to_be_visible()
+    page.locator("[data-candidate-introduction-search]").fill("нет такой компании")
+    # Wait for the debounced search itself to hide the completed record before
+    # changing stages; an already empty stage cannot prove the query applied.
+    expect(page.locator(".candidate-introduction-card:visible")).to_have_count(0)
+    page.locator("[data-action='filter-candidate-invitations'][data-filter='decision']").click()
+    expect(page.locator(".candidate-introduction-card:visible")).to_have_count(0)
+    selector.select_option("overview")
+    before_navigation = len(writes)
+    outcome_alert.locator(
+        f"[data-action='open-candidate-invitations'][data-invitation-id='{invitation_id}']"
+    ).click()
+    introduction_destination(page, "candidate", invitation_id, "closed", focused=True)
+    assert len(writes) == before_navigation, "Viewing the result must not create or change an application"
     expect(page.locator("#dashboard-main .candidate-introduction-card.is-closed")).to_have_count(1)
     expect(page.locator("#dashboard-main")).to_contain_text("Положительный итог знакомства")
     expect(page.locator("#dashboard-main")).to_contain_text("не подтверждение трудоустройства")
@@ -266,6 +352,15 @@ def main():
                     time.sleep(.25)
             else:
                 raise RuntimeError("Mobile introduction test server unavailable")
+            # account_controls is created by server startup migrations. The
+            # overview test separately retains unverified-email precedence.
+            with sqlite3.connect(db_file) as db:
+                db.execute(
+                    "INSERT INTO account_controls(user_id,email_verified) "
+                    "SELECT id,1 FROM users WHERE email=? "
+                    "ON CONFLICT(user_id) DO UPDATE SET email_verified=1",
+                    (CANDIDATE_EMAIL,),
+                )
             with sync_playwright() as playwright:
                 browser = playwright.chromium.launch(
                     headless=True, args=["--no-sandbox"]

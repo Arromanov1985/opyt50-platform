@@ -3268,9 +3268,14 @@ body.comfortable-view .candidate-application-counter {font-size: 1rem}
   max-width: 100%;
   white-space: normal;
 }
-.candidate-introduction-card:focus {
+.candidate-introduction-card:focus,
+.candidate-application-card:focus {
   outline: 3px solid #A9E4BD;
   outline-offset: 3px;
+}
+.candidate-application-card.is-targeted {
+  border-color: #08793A;
+  scroll-margin-block: 90px;
 }
 @media (max-width: 430px) {
   .candidate-introduction-saved-receipt .btn { width: 100%; }
