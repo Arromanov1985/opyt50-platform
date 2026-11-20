@@ -240,6 +240,7 @@ def test_growth_aggregate_is_atomic_and_private_in_postgresql(runtime_db):
         ]
 
 
+
 def test_existing_growth_check_upgrades_without_losing_postgres_counts(runtime_db):
     from app.release02 import init_release02
 
@@ -281,3 +282,148 @@ def test_existing_growth_check_upgrades_without_losing_postgres_counts(runtime_d
         with postgres_database(runtime_db) as db:
             db.execute("INSERT INTO growth_daily_counts VALUES(?,?,?,?)",
                        ("2026-11-01", "journal", "view", 1))
+
+def test_privacy_requests_are_private_idempotent_and_audited_in_postgres(runtime_db):
+    from app.release02 import init_release02
+    from app.privacy_rights import (
+        submit_request, requests_for_user, admin_request_list, admin_change_status,
+    )
+
+    init_release02("ignored-when-DATABASE_URL-present")
+    init_release02("ignored-when-DATABASE_URL-present")
+    with postgres_database(runtime_db) as db:
+        db.execute(
+            "INSERT INTO users(id,email,password_hash,role,name) VALUES(4,?,?,?,?)",
+            ("rightsadmin@example.invalid", "test-hash", "admin", "Rights Admin"),
+        )
+        saved = submit_request(db, 1, "deletion")
+        same = submit_request(db, 1, "deletion")
+        assert saved["request_key"] == same["request_key"]
+        assert [x["kind"] for x in requests_for_user(db, 1)] == ["deletion"]
+        assert requests_for_user(db, 2) == []
+        assert admin_request_list(db)[0]["email"] == "c@example.invalid"
+        reviewed = admin_change_status(
+            db, saved["request_key"], 4, "in_review",
+            manual_response_confirmed=False, closure_reason=None,
+        )
+        assert reviewed["status"] == "in_review"
+        closed = admin_change_status(
+            db, saved["request_key"], 4, "declined",
+            manual_response_confirmed=True, closure_reason="retention_required",
+        )
+        assert closed["status"] == "declined"
+        assert submit_request(db, 1, "deletion")["request_key"] != saved["request_key"]
+
+    with postgres_database(runtime_db) as db:
+        assert db.execute(
+            "SELECT COUNT(*) FROM privacy_rights_requests WHERE user_id=?", (1,)
+        ).fetchone()[0] == 2
+        assert db.execute(
+            "SELECT COUNT(*) FROM privacy_rights_admin_actions WHERE admin_user_id=?", (4,)
+        ).fetchone()[0] == 2
+
+
+
+def test_personal_data_export_is_bounded_and_private_in_postgresql(runtime_db):
+    from app.data_export import build_personal_data_snapshot
+    from app.release02 import init_release02
+
+    init_release02("ignored-when-DATABASE_URL-present")
+    with postgres_database(runtime_db) as db:
+        db.execute(
+            """INSERT INTO privacy_rights_requests
+               (request_key,user_id,kind,status,submitted_at,updated_at)
+               VALUES(?,?,?,'received',?,?)""",
+            ("pg-self-data-request", 1, "access",
+             "2026-11-19T00:00:00+00:00", "2026-11-19T00:00:00+00:00"),
+        )
+        account = build_personal_data_snapshot(db, 1)
+        employer = build_personal_data_snapshot(db, 2)
+        assert account["account"]["role"] == "candidate"
+        assert account["account"]["email"] == "c@example.invalid"
+        assert len(account["sections"]["privacy_requests"]) == 1
+        assert account["candidate_profile"]["profession"] == "Кладовщик"
+        assert employer["company_profile"]["company_name"] == "Тест"
+        assert "candidate_profile" not in employer
+        assert "my_applications" not in employer["sections"]
+        assert "password_hash" not in account["account"]
+        assert "token_hash" not in str(account)
+        assert "c@example.invalid" not in str(employer)
+
+
+
+def test_postgres_disposal_impact_and_manual_gate_are_non_destructive(runtime_db):
+    from app.release02 import init_release02
+    from app.privacy_rights import admin_change_status
+    from app.privacy_disposal import (
+        CHECKS, impact_preview, review_state, update_review,
+    )
+    from app.privacy_external import SYSTEMS, save_external_review
+
+    init_release02("ignored-when-DATABASE_URL-present")
+    init_release02("ignored-when-DATABASE_URL-present")
+    with postgres_database(runtime_db) as db:
+        db.execute(
+            "INSERT INTO users(id,email,password_hash,role,name) VALUES(4,?,?,?,?)",
+            ("disposaladmin@example.invalid", "test-hash", "admin", "Admin"),
+        )
+        db.execute(
+            """INSERT INTO job_applications(vacancy_id,candidate_id)
+               VALUES(?,?)""", (3,1),
+        )
+        db.execute(
+            """INSERT INTO privacy_rights_requests
+               (request_key,user_id,kind,status,submitted_at,updated_at)
+               VALUES(?,?,'deletion','in_review',?,?)""",
+            ("pg-disposal-request-001",1,
+             "2026-11-19T00:00:00+00:00", "2026-11-19T00:00:00+00:00"),
+        )
+        plan = impact_preview(db, "pg-disposal-request-001")
+        assert plan["counts"]["applications"] == 1
+        assert plan["counts"]["professional_profile"] == 1
+        assert plan["automatic_deletion"] is False
+        assert not review_state(db, "pg-disposal-request-001")["ready_for_manual_closure"]
+        with pytest.raises(ValueError, match="manual checklist"):
+            admin_change_status(
+                db, "pg-disposal-request-001",4,"completed",
+                manual_response_confirmed=True,closure_reason="fulfilled",
+            )
+        checklist = {key:True for key in CHECKS}
+        assert update_review(
+            db, "pg-disposal-request-001",4,checklist,
+        )["ready_for_manual_closure"] is False
+        for system_key, _ in SYSTEMS:
+            save_external_review(db,"pg-disposal-request-001",4,system_key,"reviewed")
+        assert review_state(db,"pg-disposal-request-001")["external_checks_ready"] is True
+        assert review_state(db,"pg-disposal-request-001")["ready_for_manual_closure"] is True
+        db.execute(
+            "INSERT INTO candidate_favorites(candidate_id,vacancy_id) VALUES(?,?)",
+            (1,3),
+        )
+        assert review_state(db, "pg-disposal-request-001")["counts_changed_since_review"]
+        with pytest.raises(ValueError, match="manual checklist"):
+            admin_change_status(
+                db,"pg-disposal-request-001",4,"completed",
+                manual_response_confirmed=True,closure_reason="fulfilled",
+            )
+        assert update_review(
+            db,"pg-disposal-request-001",4,checklist,
+        )["ready_for_manual_closure"] is True
+        assert admin_change_status(
+            db,"pg-disposal-request-001",4,"completed",
+            manual_response_confirmed=True,closure_reason="fulfilled",
+        )["status"] == "completed"
+        assert db.execute("SELECT COUNT(*) FROM users WHERE id=1").fetchone()[0] == 1
+        assert db.execute("SELECT COUNT(*) FROM job_applications").fetchone()[0] == 1
+
+    with postgres_database(runtime_db) as db:
+        assert db.execute(
+            "SELECT COUNT(*) FROM privacy_disposal_review_actions"
+        ).fetchone()[0] == 2
+        assert db.execute(
+            "SELECT status FROM privacy_rights_requests WHERE request_key=?",
+            ("pg-disposal-request-001",),
+        ).fetchone()["status"] == "completed"
+        assert db.execute(
+            "SELECT COUNT(*) FROM privacy_external_review_events"
+        ).fetchone()[0] == len(SYSTEMS)

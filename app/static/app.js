@@ -859,7 +859,14 @@ async function loadPublicJobs() {
     $('#public-jobs').innerHTML = jobs.length ? jobs.map(job => jobMarkup(job)).join('') : '<div class="empty-state">Пока нет открытых вакансий по этому запросу. Создайте профиль, чтобы получать будущие предложения.</div>';
   } catch(e) { $('#public-jobs').innerHTML = '<div class="empty-state">Не удалось получить вакансии.</div>'; toast(e.message, true); }
 }
+function publicSignupClosed() {
+  return document.querySelector('meta[name="prelaunch-signup-closed"]')?.content === 'yes';
+}
 function openAuth(mode = 'register', role = 'candidate') {
+  if (mode === 'register' && publicSignupClosed()) {
+    toast('Регистрация временно закрыта до утверждения юридических документов.', true);
+    return;
+  }
   state.mode = mode;
   state.role = role;
   resetMfaState();
@@ -931,6 +938,12 @@ function updateAuth() {
   $('#auth-company-row').classList.toggle('hidden', !(reg && employer));
   $('#password-hint').classList.toggle('hidden', !reg);
   $('#auth-route').classList.toggle('hidden', !reg);
+  const legallyApproved = document.querySelector('meta[name="legal-profile-ready"]')?.content === 'yes';
+  $('#auth-terms-row')?.classList.toggle('hidden', !(reg && legallyApproved));
+  if (!reg) {
+    const checkbox = $('#auth-terms-accepted');
+    if (checkbox) checkbox.checked = false;
+  }
   $('#auth-name').required = reg;
   $('#auth-company').required = reg && employer;
   $('#auth-password').type = 'password';
@@ -952,7 +965,11 @@ function updateAuth() {
   }
   const message = $('#auth-message'); if (message) message.textContent = '';
   document.querySelectorAll('.role-btn').forEach(b => { const active = b.dataset.role === state.role; b.classList.toggle('active', active); b.setAttribute('aria-pressed', String(active)); });
-  $('#auth-switch').innerHTML = reg ? 'Уже есть аккаунт? <button type="button" data-switch="login">Войти</button>' : 'Ещё нет аккаунта? <button type="button" data-switch="register">Зарегистрироваться</button>';
+  $('#auth-switch').innerHTML = reg
+    ? 'Уже есть аккаунт? <button type="button" data-switch="login">Войти</button>'
+    : publicSignupClosed()
+      ? 'Новая регистрация временно закрыта до юридического утверждения.'
+      : 'Ещё нет аккаунта? <button type="button" data-switch="register">Зарегистрироваться</button>';
 }
 async function submitAuth(event) {
   event.preventDefault();
@@ -1024,6 +1041,11 @@ async function submitAuth(event) {
       showError('Для регистрации нужен пароль не короче 15 символов.', password);
       return;
     }
+    const approved = document.querySelector('meta[name="legal-profile-ready"]')?.content === 'yes';
+    if (approved && !$('#auth-terms-accepted')?.checked) {
+      showError('Примите актуальное Пользовательское соглашение для создания аккаунта.', $('#auth-terms-accepted'));
+      return;
+    }
   } else if (!password.value) {
     showError('Введите пароль.', password);
     return;
@@ -1032,6 +1054,10 @@ async function submitAuth(event) {
   if (state.mode === 'register') {
     body.role = state.role; body.name = $('#auth-name').value.trim();
     if (body.role === 'employer') body.company_name = $('#auth-company').value.trim();
+    if (document.querySelector('meta[name="legal-profile-ready"]')?.content === 'yes') {
+      body.terms_accepted = Boolean($('#auth-terms-accepted')?.checked);
+      body.terms_version = document.querySelector('meta[name="legal-terms-version"]')?.content || '';
+    }
   }
   const btn = $('#auth-submit'); btn.disabled = true;
   if (message) message.textContent = '';
@@ -1248,8 +1274,55 @@ function accountSecuritySessionMarkup(item) {
     ${item.current ? '<span class="status success">Текущая</span>' : `<button type="button" class="btn btn-outline btn-small" data-action="revoke-session" data-session-id="${esc(item.id)}">Завершить</button>`}
   </div>`;
 }
+const rightsKindLabels = Object.freeze({
+  access: 'Получить сведения об обработке',
+  correction: 'Исправить неточные данные',
+  deletion: 'Запросить удаление данных',
+  stop_processing: 'Запросить прекращение обработки'
+});
+const rightsStatusLabels = Object.freeze({
+  received: 'Получено',
+  in_review: 'Рассматривается',
+  completed: 'Решение принято',
+  declined: 'Отказ после рассмотрения'
+});
+function rightsDate(value) { return esc(String(value || '').slice(0, 10)); }
+function accountPrivacyRightsMarkup(requests, available) {
+  const rows = Array.isArray(requests) ? requests.slice(0, 50) : [];
+  const options = Object.entries(rightsKindLabels).map(([value,label]) =>
+    '<option value="' + esc(value) + '">' + esc(label) + '</option>'
+  ).join('');
+  const history = !available ? '<p class="muted">Не удалось загрузить историю запросов.</p>' :
+    rows.length ? rows.map(item =>
+      '<div class="privacy-rights-record"><span><strong>' +
+      esc(rightsKindLabels[item.kind] || 'Обращение') +
+      '</strong><small>От ' + rightsDate(item.submitted_at) +
+      ' · № ' + esc(String(item.request_key || '').slice(0, 8)) +
+      '</small></span><span class="status">' +
+      esc(rightsStatusLabels[item.status] || 'Обрабатывается') +
+      '</span></div>'
+    ).join('') : '<p class="muted">Обращений пока нет.</p>';
+  return '<section class="panel account-privacy-rights">' +
+    '<span class="section-kicker">МОИ ПЕРСОНАЛЬНЫЕ ДАННЫЕ</span>' +
+    '<h3>Обращение к оператору</h3>' +
+    '<p class="muted">Можно запросить сведения об обработке, исправление, удаление или прекращение обработки данных. Заявка сохраняется в кабинете. Оператор рассматривает её вручную с учётом закона — отправка запроса не удаляет аккаунт автоматически.</p>' +
+    '<p class="muted">Если не можете войти, используйте контакт из <a href="/privacy" target="_blank" rel="noopener">Политики персональных данных</a>. Пока там тестовые реквизиты, раздел предназначен только для проверки интерфейса.</p>' +
+    '<p><a href="/api/account/data-export" class="btn btn-outline" download>Скачать основные данные аккаунта (JSON)</a></p>' +
+    '<p class="muted">Выгрузка доступна только после входа. Она содержит основные данные вашего аккаунта и историю работы, но не является полным юридическим ответом. Для полного запроса выберите «Получить сведения об обработке». Скачанный файл хранится на вашем устройстве: берегите его от посторонних.</p>' +
+    '<form id="privacy-rights-request-form" class="account-security-form">' +
+      '<div class="field"><label for="privacy-rights-kind">Какое действие требуется?</label>' +
+      '<select id="privacy-rights-kind" name="kind" required><option value="">Выберите вид обращения</option>' +
+      options + '</select></div>' +
+      '<p class="auth-message" id="privacy-rights-message" role="status" aria-live="polite"></p>' +
+      '<button type="submit" class="btn btn-outline">Отправить запрос оператору</button>' +
+    '</form><h4>История обращений</h4>' +
+    '<div id="privacy-rights-history" aria-live="polite">' + history + '</div></section>';
+}
 async function renderAccountSecurity(target) {
-  const data = await api('/api/account/security');
+  const [data, privacyRequests] = await Promise.all([
+    api('/api/account/security'),
+    api('/api/account/privacy-requests').catch(() => null)
+  ]);
   const events = Array.isArray(data.events) ? data.events : [];
   const sessions = Array.isArray(data.sessions) ? data.sessions : [];
   target.innerHTML = `<div class="account-security-stack">
@@ -1282,6 +1355,7 @@ async function renderAccountSecurity(target) {
         <button type="submit" class="btn btn-primary">Сменить пароль и завершить старые сессии →</button>
       </form>
     </section>
+    ${accountPrivacyRightsMarkup(privacyRequests?.requests, Boolean(privacyRequests))}
     <section class="panel account-security-events">
       <span class="section-kicker">ЖУРНАЛ</span>
       <h3>Последние события безопасности</h3>
@@ -2660,6 +2734,116 @@ function adminSecurityCheckMarkup(item) {
 function adminSecurityEventStat(label, value) {
   return `<div class="admin-security-event-stat"><strong>${Number(value || 0).toLocaleString('ru-RU')}</strong><span>${esc(label)}</span></div>`;
 }
+function adminPrivacyRightsMarkup(requests, available) {
+  if (!available) return '<p class="muted">Очередь обращений временно недоступна.</p>';
+  const rows = Array.isArray(requests) ? requests.slice(0,50) : [];
+  if (!rows.length) return '<p class="muted">Обращений пока нет.</p>';
+  return rows.map(item => {
+    const key = esc(item.request_key || '');
+    const status = String(item.status || '');
+    const header = '<div class="privacy-rights-record privacy-rights-admin"><div>' +
+      '<strong>' + esc(rightsKindLabels[item.kind] || 'Обращение') + '</strong>' +
+      '<small>№ ' + key.slice(0,8) + ' · ' + rightsDate(item.submitted_at) +
+      ' · ' + esc(item.email || '') + '</small>' +
+      '<span class="status">' + esc(rightsStatusLabels[status] || status) + '</span></div>';
+    if (status === 'received') {
+      return header + '<button type="button" class="btn btn-outline btn-small" ' +
+        'data-action="privacy-rights-review" data-rights-key="' + key +
+        '">Взять в работу</button></div>';
+    }
+    if (status === 'in_review') {
+      const disposal = item.kind === 'deletion' || item.kind === 'stop_processing';
+      const preflight = disposal ?
+        '<button type="button" class="btn btn-outline btn-small" ' +
+        'data-action="privacy-disposal-preview" data-rights-key="' + key +
+        '">Оценить последствия</button>' +
+        '<div class="privacy-disposal-preview" id="privacy-disposal-panel-' + key + '"></div>' : '';
+      return header + '<div class="privacy-rights-admin-actions">' + preflight +
+        '<label>Результат ручной обработки<select data-rights-closure-reason="' + key + '">' +
+        '<option value="fulfilled">Запрос выполнен</option>' +
+        '<option value="retention_required">Ограничение по закону</option>' +
+        '<option value="identity_unverified">Требуется подтверждение личности</option>' +
+        '<option value="other">Иное обоснованное решение</option>' +
+        '</select></label>' +
+        '<button type="button" class="btn btn-outline btn-small" ' +
+        'data-action="privacy-rights-close" data-rights-key="' + key +
+        '">Закрыть после ответа пользователю</button></div></div>';
+    }
+    return header + '</div>';
+  }).join('');
+}
+const disposalCountLabels = Object.freeze({
+  active_sessions:'Активные сеансы',auth_tokens:'Сервисные токены',saved_devices:'Устройства',
+  legal_acceptances:'Подтверждения договоров',rights_requests:'Обращения',
+  security_events:'События безопасности',service_emails:'Сервисные письма',
+  delivery_links:'Связи почтовых заданий',
+  professional_profile:'Профессиональный профиль',resume:'Резюме',
+  qualifications:'Квалификации',applications:'Отклики',
+  application_events:'История откликов',favorite_vacancies:'Избранное',
+  invitations:'Приглашения',contacts_already_shared:'Ранее открытые контакты',
+  vacancy_update_receipts:'Уведомления об изменении вакансий',
+  reports_submitted:'Поданные жалобы',company_profile:'Карточка компании',
+  public_company_profile:'Открытый профиль компании',
+  published_vacancies:'Вакансии',open_vacancies:'Активные вакансии',
+  vacancy_drafts:'Черновики',candidate_applications_affected:'Отклики других кандидатов',
+  vacancy_updates:'Изменения вакансий',reports_about_employer:'Жалобы на компанию'
+});
+function disposalPreviewMarkup(impact, review, external) {
+  const counts = Object.entries(impact.counts || {});
+  const checks = review?.checks || {};
+  const labels = review?.labels || {};
+  const entries = Object.entries(labels);
+  const externalChecks = Array.isArray(external?.checks) ? external.checks : [];
+  const externalRows = externalChecks.map(item => {
+    const key = esc(item.system_key || '');
+    const selected = String(item.status || 'not_reviewed');
+    const options = [['not_reviewed','Не проверено'],['reviewed','Проверено вручную'],
+      ['followup_required','Требуются действия'],['not_applicable','Не применяется']];
+    return '<div class="privacy-external-row"><span>' + esc(item.label || key) +
+      '</span><select data-external-system="' + key + '">' +
+      options.map(([value,label]) => '<option value="' + value + '"' +
+        (selected === value ? ' selected' : '') + (value === 'not_reviewed' ? ' disabled' : '') +
+        '>' + label + '</option>').join('') + '</select>' +
+      '<button type="button" class="btn btn-outline btn-small" ' +
+      'data-action="privacy-external-save" data-rights-key="' + esc(impact.request_key || '') +
+      '" data-system-key="' + key + '">Сохранить</button></div>';
+  }).join('');
+  return '<div class="privacy-disposal-report">' +
+    '<h4>Предварительная оценка — только чтение</h4>' +
+    '<p class="muted">Запрос на ' +
+    (impact.kind === 'deletion' ? 'удаление' : 'прекращение обработки') +
+    ': количество связанных записей, а не данные людей.</p>' +
+    '<div class="privacy-disposal-counts">' +
+    counts.filter(([,n]) => Number(n) > 0).map(([key,value]) =>
+      '<div><span>' + esc(disposalCountLabels[key] || key) +
+      '</span><strong>' + Number(value) + '</strong></div>'
+    ).join('') + '</div>' +
+    '<p class="muted">Неизменяемый отчёт: данные могли измениться после просмотра. Фактическое удаление и уведомление получателей не выполняются.</p>' +
+    '<ul class="privacy-disposal-risks">' +
+    (impact.risk_flags || []).map(r => '<li>' + esc(r) + '</li>').join('') +
+    '</ul><h4>Внешние системы и резервные копии</h4>' +
+    '<p class="muted">Каждый пункт отмечается только после реальной проверки у соответствующего провайдера. Система не имеет прямого доступа к Timeweb, SMTP или получателям; статусы являются заявлениями оператора.</p>' +
+    '<div class="privacy-external-checks">' + externalRows + '</div>' +
+    '<h4>Проверки оператора</h4>' +
+    '<p class="muted">Отметки — ручные заверения администратора; система не проверяет их истинность. Последний пункт отмечают ТОЛЬКО после действительного исполнения вне этого интерфейса.</p>' +
+    '<div class="privacy-disposal-checks">' +
+    entries.map(([key,label]) =>
+      '<label><input type="checkbox" data-disposal-check="' + esc(key) +
+      '"' + (checks[key] ? ' checked' : '') +
+      '> <span>' + esc(label) + '</span></label>'
+    ).join('') + '</div>' +
+    '<button type="button" class="btn btn-outline btn-small" data-action="privacy-disposal-save" ' +
+      'data-rights-key="' + esc(impact.request_key || '') +
+      '">Сохранить проверки</button>' +
+    '<p class="muted">' + (review?.counts_changed_since_review ?
+      'После подтверждения изменились связанные записи. Повторно проверьте последствия и сохраните чек-лист.' :
+      review?.ready_for_manual_closure ?
+      'Все этапы отмечены администратором. Перед закрытием проверьте фактический результат и ответ пользователю.' :
+      (review?.external_checks_ready === false && entries.every(([key]) => checks[key]) ?
+        'Проверки оператора отмечены, но внешние системы ещё не подтверждены. Завершение запрещено.' :
+        'Закрытие со статусом «выполнено» запрещено до заполнения всех этапов.')) +
+    '</p></div>';
+}
 async function renderAdmin() {
   $('#account-content').innerHTML = `<div class="admin-dashboard-stack">
     <section class="panel"><span class="section-kicker">РЕДАКЦИЯ</span><h3>Журнал и публикации</h3><p class="muted">Управляйте статьями: черновики, предпросмотр, публикация и отзыв материала. Все действия фиксируются.</p><a class="btn btn-primary" href="/admin/journal">Открыть редактор Журнала →</a></section>
@@ -2682,6 +2866,19 @@ async function renderAdmin() {
       <h4>Действия за 30 дней, по UTC</h4>
       <div class="stat-grid" id="admin-product-period"><div class="loading">Загрузка…</div></div>
       <div id="admin-product-limitations" class="muted"></div>
+    </section>
+    <section class="panel admin-retention-policy">
+      <span class="section-kicker">ЮРИДИЧЕСКАЯ ГОТОВНОСТЬ</span>
+      <h3>Сроки хранения персональных данных</h3>
+      <p class="muted">Реестр категорий данных требует согласования с юристом. Программа не назначает универсальный срок и не удаляет записи автоматически.</p>
+      <div id="admin-retention-status" aria-live="polite"><p class="loading">Проверяем реестр…</p></div>
+    </section>
+    <section class="panel admin-privacy-rights">
+      <span class="section-kicker">ПРАВА ПОЛЬЗОВАТЕЛЕЙ</span>
+      <h3>Обращения по персональным данным</h3>
+      <p class="muted">Здесь фиксируются запросы пользователей, а не их автоматическое исполнение. Оператор проверяет личность и основания, выполняет необходимые действия и отдельно отвечает заявителю. Закрытие заявки доступно только после подтверждения ручного ответа.</p>
+      <div id="admin-privacy-rights" aria-live="polite"><p class="loading">Загрузка обращений…</p></div>
+      <p class="muted">В очереди показываются первые 50 обращений. Если указан тестовый email, реальный ответ через него невозможен.</p>
     </section>
     <section class="panel admin-security-panel admin-security-ops">
       <div class="split-header"><div><span class="section-kicker">КОНТУР БЕЗОПАСНОСТИ</span><h3>Состояние защиты</h3><p class="muted">Сводка ключевых настроек и событий за последние 24 часа. Секреты и токены здесь никогда не отображаются.</p></div><span class="mini-badge" id="admin-security-summary">Проверяем…</span></div>
@@ -2716,13 +2913,31 @@ async function renderAdmin() {
     </section>
   </div>`;
   try {
-    const [stats, security, securityOverview, mailDiagnostics, growth] = await Promise.all([
+    const [stats, security, securityOverview, mailDiagnostics, growth, privacyRights, retention] = await Promise.all([
       api('/api/admin/stats'),
       api('/api/account/security'),
       api('/api/admin/security-overview'),
       api('/api/admin/mail-diagnostics').catch(() => null),
-      api('/api/admin/growth?days=30').catch(() => null)
+      api('/api/admin/growth?days=30').catch(() => null),
+      api('/api/admin/privacy-requests?limit=50').catch(() => null),
+      api('/api/admin/privacy-retention-readiness').catch(() => null)
     ]);
+    const retentionTarget = $('#admin-retention-status');
+    if (retentionTarget) {
+      const total = Number(retention?.total || 0);
+      const approved = Number(retention?.approved_count || 0);
+      retentionTarget.innerHTML = !retention ? '<p class="muted">Реестр временно недоступен.</p>' :
+        '<p><strong>' + approved + ' из ' + total + ' категорий согласовано</strong>' +
+        (retention.approved ? '' : ' — выпуск заблокирован') + '</p>' +
+        '<p class="muted">Автоматическое удаление: отключено. Категории без утверждения:</p>' +
+        '<ul class="admin-retention-list">' +
+        (retention.categories || []).filter(c => c.approval_status !== 'APPROVED')
+          .map(c => '<li>' + esc(c.purpose || c.code) + '</li>').join('') +
+        '</ul>';
+    }
+    const privacyRightsTarget = $('#admin-privacy-rights');
+    if (privacyRightsTarget) privacyRightsTarget.innerHTML =
+      adminPrivacyRightsMarkup(privacyRights?.requests, Boolean(privacyRights));
     const diagnosticLabels = {
       new_application: 'Новые отклики работодателю',
       invitation: 'Приглашения соискателю',
@@ -2903,6 +3118,31 @@ function formValue(form, name) { return form.elements.namedItem(name).value.trim
 function parseNumber(form, name) { return Number(formValue(form,name)); }
 async function handleDashboardSubmit(event) {
   const form = event.target;
+  if (form.id === 'privacy-rights-request-form') {
+    event.preventDefault();
+    const kind = String(form.elements.namedItem('kind')?.value || '');
+    const message = $('#privacy-rights-message');
+    if (!Object.hasOwn(rightsKindLabels, kind)) {
+      if (message) message.textContent = 'Выберите вид обращения.';
+      return;
+    }
+    const submit = form.querySelector('button[type="submit"]');
+    if (submit) submit.disabled = true;
+    if (message) message.textContent = 'Сохраняем обращение…';
+    try {
+      await api('/api/account/privacy-requests', {
+        method: 'POST', body: JSON.stringify({kind})
+      });
+      await renderAccountSecurity($('#dashboard-main'));
+      toast('Обращение сохранено в кабинете. Оператор рассмотрит его отдельно.');
+    } catch (error) {
+      if (message) message.textContent = error.message || 'Не удалось сохранить обращение.';
+      toast(error.message || 'Не удалось сохранить обращение.', true);
+    } finally {
+      if (submit?.isConnected) submit.disabled = false;
+    }
+    return;
+  }
   if (form.id === 'security-password-form') {
     event.preventDefault();
     const message = $('#security-password-message');
@@ -3378,6 +3618,121 @@ async function handleDashboardClick(event) {
       toast('Passkey удалён.');
       return;
     }
+    if (action === 'privacy-disposal-preview') {
+      const requestKey = String(btn.dataset.rightsKey || '');
+      if (!/^[A-Za-z0-9_-]{16,64}$/.test(requestKey)) return;
+      const panel = document.getElementById('privacy-disposal-panel-' + requestKey);
+      if (!panel) return;
+      btn.disabled = true;
+      panel.textContent = 'Считаем связанные записи…';
+      try {
+        const [impact, checklist, external] = await Promise.all([
+          api('/api/admin/privacy-requests/' + encodeURIComponent(requestKey) + '/impact'),
+          api('/api/admin/privacy-requests/' + encodeURIComponent(requestKey) + '/disposition-review'),
+          api('/api/admin/privacy-requests/' + encodeURIComponent(requestKey) + '/external-review')
+        ]);
+        panel.innerHTML = disposalPreviewMarkup(impact.preview, checklist.review, external.review);
+      } finally {
+        btn.disabled = false;
+      }
+      return;
+    }
+    if (action === 'privacy-external-save') {
+      const requestKey = String(btn.dataset.rightsKey || '');
+      const systemKey = String(btn.dataset.systemKey || '');
+      if (!/^[A-Za-z0-9_-]{16,64}$/.test(requestKey) ||
+          !/^[a-z_]{4,40}$/.test(systemKey)) return;
+      const panel = document.getElementById('privacy-disposal-panel-' + requestKey);
+      if (!panel) return;
+      const selector = Array.from(panel.querySelectorAll('select[data-external-system]'))
+        .find(node => node.dataset.externalSystem === systemKey);
+      const status = String(selector?.value || '');
+      if (!['reviewed','not_applicable','followup_required'].includes(status)) {
+        toast('Выберите результат проверки.', true); return;
+      }
+      if (status !== 'followup_required' && !window.confirm(
+        'Вы подтверждаете, что проверили эту внешнюю систему самостоятельно и ' +
+        'отметка соответствует действительности? Система не соединяется с провайдером.'
+      )) return;
+      btn.disabled = true;
+      try {
+        const url = '/api/admin/privacy-requests/' + encodeURIComponent(requestKey);
+        await api(url + '/external-review/' + encodeURIComponent(systemKey), {
+          method: 'POST', body: JSON.stringify({status})
+        });
+        const [impact, checklist, external] = await Promise.all([
+          api(url + '/impact'),
+          api(url + '/disposition-review'),
+          api(url + '/external-review')
+        ]);
+        panel.innerHTML = disposalPreviewMarkup(impact.preview, checklist.review, external.review);
+        toast('Статус внешней проверки записан. Данные у провайдера не изменялись.');
+      } finally {
+        if (btn.isConnected) btn.disabled = false;
+      }
+      return;
+    }
+    if (action === 'privacy-disposal-save') {
+      const requestKey = String(btn.dataset.rightsKey || '');
+      if (!/^[A-Za-z0-9_-]{16,64}$/.test(requestKey)) return;
+      const panel = document.getElementById('privacy-disposal-panel-' + requestKey);
+      if (!panel) return;
+      const inputs = Array.from(panel.querySelectorAll('input[data-disposal-check]'));
+      if (inputs.length !== 7) throw new Error('Чек-лист загружен не полностью.');
+      const payload = Object.fromEntries(inputs.map(input => [input.dataset.disposalCheck, input.checked]));
+      if (payload.manual_action_verified && !window.confirm(
+        'Вы подтверждаете, что разрешённые действия действительно выполнены вручную ' +
+        'с проверкой связанных записей, почты и резервных копий? Эта кнопка ничего не удаляет.'
+      )) return;
+      btn.disabled = true;
+      try {
+        const saved = await api('/api/admin/privacy-requests/' + encodeURIComponent(requestKey) + '/disposition-review', {
+          method:'POST', body:JSON.stringify(payload)
+        });
+        const [report, external] = await Promise.all([
+          api('/api/admin/privacy-requests/' + encodeURIComponent(requestKey) + '/impact'),
+          api('/api/admin/privacy-requests/' + encodeURIComponent(requestKey) + '/external-review')
+        ]);
+        panel.innerHTML = disposalPreviewMarkup(report.preview, saved.review, external.review);
+        toast('Ручные проверки сохранены в журнале. Данные не удалены.');
+      } finally {
+        if (btn.isConnected) btn.disabled = false;
+      }
+      return;
+    }
+    if (action === 'privacy-rights-review' || action === 'privacy-rights-close') {
+      const requestKey = String(btn.dataset.rightsKey || '');
+      if (!/^[A-Za-z0-9_-]{16,64}$/.test(requestKey)) return;
+      const isReview = action === 'privacy-rights-review';
+      let payload = {status:'in_review'};
+      if (!isReview) {
+        const selector = document.querySelector('[data-rights-closure-reason="' + requestKey + '"]');
+        const reason = String(selector?.value || '');
+        const allowedReasons = ['fulfilled','retention_required','identity_unverified','other'];
+        if (!allowedReasons.includes(reason)) throw new Error('Укажите основание решения.');
+        const approved = window.confirm(
+          'Подтверждаете, что оператор вручную проверил основания, предпринял необходимые действия ' +
+          'и отдельно сообщил пользователю результат? Изменение статуса НЕ удаляет персональные данные автоматически.'
+        );
+        if (!approved) return;
+        payload = {
+          status: reason === 'fulfilled' ? 'completed' : 'declined',
+          manual_response_confirmed: true,
+          closure_reason: reason
+        };
+      }
+      btn.disabled = true;
+      try {
+        await api('/api/admin/privacy-requests/' + encodeURIComponent(requestKey) + '/status', {
+          method: 'POST', body: JSON.stringify(payload)
+        });
+        await renderAdmin();
+        toast(isReview ? 'Обращение взято в работу.' : 'Решение зарегистрировано. Запись не означает автоматического удаления данных.');
+      } finally {
+        if (btn.isConnected) btn.disabled = false;
+      }
+      return;
+    }
     if (action === 'revoke-other-sessions') {
       const result = await api('/api/account/sessions/revoke-others',{method:'POST'});
       await renderAccountSecurity($('#dashboard-main'));
@@ -3641,6 +3996,16 @@ async function handleDashboardClick(event) {
 async function start() {
   $('#login-open').addEventListener('click',()=>openAuth('login'));
   $('#register-open').addEventListener('click',()=>openAuth('register'));
+  if (publicSignupClosed()) {
+    const registerButton = $('#register-open');
+    registerButton.disabled = true;
+    registerButton.textContent = 'Регистрация пока закрыта';
+    $('[data-register]').forEach(button => {
+      button.disabled = true;
+      button.setAttribute('aria-disabled', 'true');
+      button.title = 'Регистрация закрыта до юридического утверждения';
+    });
+  }
   window.addEventListener('resize', syncResponsiveMemberActions);
   syncResponsiveMemberActions();
   $('#modal-close').addEventListener('click',()=>{

@@ -294,6 +294,104 @@ CANDIDATE_QUALIFICATIONS_DDL = (
         updated_at TEXT NOT NULL DEFAULT (datetime('now'))
     )""",
 )
+# An authenticated data-subject inbox: no arbitrary free-text or browser metadata.
+# Privacy requests do not perform automatic deletion or data exports.
+PRIVACY_RIGHTS_DDL = (
+    """CREATE TABLE IF NOT EXISTS privacy_rights_requests (
+        request_key TEXT PRIMARY KEY,
+        user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        kind TEXT NOT NULL CHECK(kind IN ('access','correction','deletion','stop_processing')),
+        status TEXT NOT NULL DEFAULT 'received'
+           CHECK(status IN ('received','in_review','completed','declined')),
+        submitted_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        closed_at TEXT,
+        closure_reason TEXT
+           CHECK(closure_reason IS NULL OR closure_reason IN
+               ('fulfilled','retention_required','identity_unverified','other'))
+    )""",
+    """CREATE UNIQUE INDEX IF NOT EXISTS idx_privacy_rights_active
+       ON privacy_rights_requests(user_id,kind)
+       WHERE status IN ('received','in_review')""",
+    """CREATE TABLE IF NOT EXISTS privacy_rights_admin_actions (
+        event_key TEXT PRIMARY KEY,
+        request_key TEXT NOT NULL REFERENCES privacy_rights_requests(request_key)
+            ON DELETE CASCADE,
+        admin_user_id INTEGER NOT NULL REFERENCES users(id),
+        from_status TEXT NOT NULL,
+        to_status TEXT NOT NULL,
+        changed_at TEXT NOT NULL
+    )""",
+)
+
+# Read-only disposal impact is calculated on demand. This table stores human
+# checklist attestations, never a destructive instruction or personal free text.
+PRIVACY_DISPOSAL_DDL = (
+    """CREATE TABLE IF NOT EXISTS privacy_disposal_reviews (
+        request_key TEXT PRIMARY KEY REFERENCES privacy_rights_requests(request_key)
+            ON DELETE CASCADE,
+        identity_reviewed INTEGER NOT NULL DEFAULT 0 CHECK(identity_reviewed IN (0,1)),
+        lawful_basis_reviewed INTEGER NOT NULL DEFAULT 0 CHECK(lawful_basis_reviewed IN (0,1)),
+        retention_reviewed INTEGER NOT NULL DEFAULT 0 CHECK(retention_reviewed IN (0,1)),
+        linked_data_reviewed INTEGER NOT NULL DEFAULT 0 CHECK(linked_data_reviewed IN (0,1)),
+        recipients_reviewed INTEGER NOT NULL DEFAULT 0 CHECK(recipients_reviewed IN (0,1)),
+        backups_and_processors_reviewed INTEGER NOT NULL DEFAULT 0
+            CHECK(backups_and_processors_reviewed IN (0,1)),
+        manual_action_verified INTEGER NOT NULL DEFAULT 0 CHECK(manual_action_verified IN (0,1)),
+        reviewed_at TEXT NOT NULL,
+        reviewed_by INTEGER NOT NULL REFERENCES users(id),
+        impact_digest TEXT NOT NULL
+    )""",
+    """CREATE TABLE IF NOT EXISTS privacy_disposal_review_actions (
+        event_key TEXT PRIMARY KEY,
+        request_key TEXT NOT NULL REFERENCES privacy_rights_requests(request_key)
+            ON DELETE CASCADE,
+        reviewed_by INTEGER NOT NULL REFERENCES users(id),
+        reviewed_at TEXT NOT NULL,
+        checks_bits TEXT NOT NULL,
+        impact_digest TEXT NOT NULL
+    )""",
+)
+
+# External-provider checks are declarations by a human operator only.
+# No IP, external tokens, object paths, free text or user email stored.
+PRIVACY_EXTERNAL_DDL = (
+    """CREATE TABLE IF NOT EXISTS privacy_external_reviews (
+        request_key TEXT NOT NULL REFERENCES privacy_rights_requests(request_key)
+            ON DELETE CASCADE,
+        system_key TEXT NOT NULL CHECK(system_key IN
+            ('database_backups','hosting_logs','smtp_provider',
+             'workflow_mail_queue','third_party_recipients')),
+        status TEXT NOT NULL CHECK(status IN
+            ('reviewed','not_applicable','followup_required')),
+        reviewed_at TEXT NOT NULL,
+        reviewed_by INTEGER NOT NULL REFERENCES users(id),
+        PRIMARY KEY(request_key,system_key)
+    )""",
+    """CREATE TABLE IF NOT EXISTS privacy_external_review_events (
+        event_key TEXT PRIMARY KEY,
+        request_key TEXT NOT NULL REFERENCES privacy_rights_requests(request_key)
+            ON DELETE CASCADE,
+        system_key TEXT NOT NULL,
+        status TEXT NOT NULL,
+        reviewed_at TEXT NOT NULL,
+        reviewed_by INTEGER NOT NULL REFERENCES users(id)
+    )""",
+)
+
+# Proof of explicit acceptance of an approved contractual document.
+# No IP address, user-agent, browser fingerprint or free-text contact stored.
+LEGAL_ACCEPTANCES_DDL = (
+    """CREATE TABLE IF NOT EXISTS legal_acceptance_records (
+        user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        terms_version TEXT NOT NULL,
+        privacy_version TEXT NOT NULL,
+        accepted_at TEXT NOT NULL,
+        evidence_method TEXT NOT NULL CHECK(evidence_method='explicit-checkbox'),
+        PRIMARY KEY(user_id,terms_version)
+    )""",
+)
+
 # Aggregates contain no visitor identifiers. An additive table is provisioned
 # at startup for both existing PostgreSQL and SQLite deployments.
 GROWTH_ANALYTICS_DDL = (
@@ -309,7 +407,7 @@ GROWTH_ANALYTICS_DDL = (
 MIGRATION += "\n" + "\n".join(
     statement + ";" for statement in
     RELEASE09_RUNTIME_DDL + DIRECT_INTRO_OUTCOME_DDL +
-    CANDIDATE_RESUME_DDL + CANDIDATE_QUALIFICATIONS_DDL + GROWTH_ANALYTICS_DDL + COMMUNITY_DDL
+    CANDIDATE_RESUME_DDL + CANDIDATE_QUALIFICATIONS_DDL + GROWTH_ANALYTICS_DDL + COMMUNITY_DDL + LEGAL_ACCEPTANCES_DDL + PRIVACY_RIGHTS_DDL + PRIVACY_DISPOSAL_DDL + PRIVACY_EXTERNAL_DDL
 )
 
 
@@ -425,7 +523,7 @@ def init_release02(path: str) -> None:
         # PostgreSQL runtime intentionally skips SQLite executescript().
         # These 0.9 tables use cross-compatible additive DDL so existing production
         # databases can gain them safely with CREATE TABLE/INDEX IF NOT EXISTS.
-        for statement in RELEASE09_RUNTIME_DDL + DRAFT_RUNTIME_DDL + DRAFT_CREATION_RUNTIME_DDL + DIRECT_INTRO_OUTCOME_DDL + CANDIDATE_RESUME_DDL + CANDIDATE_QUALIFICATIONS_DDL + GROWTH_ANALYTICS_DDL + COMMUNITY_DDL:
+        for statement in RELEASE09_RUNTIME_DDL + DRAFT_RUNTIME_DDL + DRAFT_CREATION_RUNTIME_DDL + DIRECT_INTRO_OUTCOME_DDL + CANDIDATE_RESUME_DDL + CANDIDATE_QUALIFICATIONS_DDL + GROWTH_ANALYTICS_DDL + COMMUNITY_DDL + LEGAL_ACCEPTANCES_DDL + PRIVACY_RIGHTS_DDL + PRIVACY_DISPOSAL_DDL + PRIVACY_EXTERNAL_DDL:
             if os.getenv("DATABASE_URL", "").strip() and statement.startswith("CREATE TABLE IF NOT EXISTS vacancy_drafts"):
                 statement = statement.replace("INTEGER PRIMARY KEY AUTOINCREMENT", "INTEGER GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY")
             db.execute(statement)
@@ -451,14 +549,21 @@ def enqueue_notice(
             "INSERT INTO email_outbox(to_email,event,subject,body) VALUES(?,?,?,?)",
             (user["email"], event, subject, persisted),
         )
-        from .mail_queue import enqueue_workflow_job
-        if not enqueue_workflow_job(
-            db, inserted.lastrowid, event, redacted=stored_body is not None,
-            recipient_user_id=user_id,
-        ):
-            # Security and short-lived token emails keep their immediate
-            # delivery semantics. Their redacted stored copy MUST NOT be
-            # retried or used as a replacement for the original token.
+        from .mail_queue import WORKFLOW_EVENTS, enqueue_workflow_job, workflow_notice_blocked
+        if event in WORKFLOW_EVENTS:
+            # Do not persist new optional messages for people requesting
+            # deletion or cessation. The existing outbox insert above is
+            # removed without modifying the surrounding business operation.
+            if workflow_notice_blocked(db, user_id):
+                db.execute("DELETE FROM email_outbox WHERE id=?", (inserted.lastrowid,))
+                return
+            enqueue_workflow_job(
+                db, inserted.lastrowid, event, redacted=stored_body is not None,
+                recipient_user_id=user_id,
+            )
+        else:
+            # Short-lived security-token emails keep immediate semantics.
+            # Their redacted copy MUST NOT be replayed automatically.
             send_email(user["email"], subject, message)
         # Workflow notifications are queued atomically with the business
         # action, and sent by the background worker only after DB commit.
@@ -872,6 +977,7 @@ def interaction_timeline(
 
 def install_routes(app) -> None:
     # Imported here to avoid a circular module initialization.
+    from .privacy_restriction import restriction_is_active
     from .main import (
         CONTACT_EMAIL_PATTERN, CONTACT_PHONE_PATTERN,
         active_user, add_session, allowed, candidate_view, professional_resume,
@@ -945,7 +1051,8 @@ def install_routes(app) -> None:
                WHERE e.user_id=? AND u.role='employer'""",
             (employer_id,),
         ).fetchone()
-        if company is None or company["account_status"] != "active":
+        if (company is None or company["account_status"] != "active"
+                or restriction_is_active(db, employer_id)):
             raise HTTPException(404, "Компания не найдена")
         jobs = db.execute(
             """SELECT v.id,v.employer_id,v.title,v.city,v.salary_min,v.salary_max,
@@ -1078,7 +1185,7 @@ def install_routes(app) -> None:
                             WHERE v.id=? AND v.status='open'
                               AND COALESCE(c.status,'active')='active'
                               AND COALESCE(vm.status,'approved')='approved'""", (job_id,)).fetchone()
-        if row is None:
+        if row is None or restriction_is_active(db, row["employer_id"]):
             raise HTTPException(404, "Вакансия не найдена или закрыта")
         return {"job": dict(row)}
 
@@ -1156,7 +1263,8 @@ def install_routes(app) -> None:
             (data.vacancy_id,),
         ).fetchone()
         if (job is None or job["status"] != "open" or
-                job["moderation_status"] != "approved" or job["employer_status"] != "active"):
+                job["moderation_status"] != "approved" or job["employer_status"] != "active"
+                or restriction_is_active(db, job["employer_id"])):
             raise HTTPException(404, "Вакансия закрыта, скрыта или не найдена")
         previous = db.execute(
             "SELECT id,status FROM job_applications WHERE vacancy_id=? AND candidate_id=?",
@@ -1299,7 +1407,9 @@ def install_routes(app) -> None:
             raise HTTPException(409, "Вакансия ожидает проверки. Новые знакомства временно недоступны")
         if item["status"] in {"withdrawn", "rejected", "hired"}:
             raise HTTPException(409, "Обработка этого отклика завершена")
-        # Never generate a contact-sharing flow for a disabled candidate.
+        # Never generate a contact-sharing flow for a restricted candidate.
+        if restriction_is_active(db, item["candidate_id"]):
+            raise HTTPException(409, "Запрос на знакомство временно ограничен по обращению кандидата")
         control = db.execute(
             "SELECT status FROM account_controls WHERE user_id=?", (item["candidate_id"],)
         ).fetchone()
@@ -1379,6 +1489,8 @@ def install_routes(app) -> None:
                              WHERE a.id=? AND v.employer_id=?""", (application_id, user["id"])).fetchone()
         if item is None:
             raise HTTPException(404, "Отклик не найден")
+        if restriction_is_active(db, item["candidate_id"]):
+            raise HTTPException(409, "Изменение отклика ограничено по обращению кандидата")
         if item["status"] in {"withdrawn", "hired", "rejected"}:
             if item["status"] == body.status:
                 return {"ok": True, "status": body.status}

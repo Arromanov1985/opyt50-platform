@@ -115,7 +115,7 @@ def test_queue_does_not_send_to_unavailable_recipient_or_stale_event(
         assert count_recipients(app) == 1
 
 
-def test_legacy_queue_without_recipient_mapping_keeps_compatibility(
+def test_legacy_queue_without_recipient_mapping_is_quarantined(
     tmp_path: Path, monkeypatch,
 ):
     out = setup_mail(monkeypatch)
@@ -126,11 +126,59 @@ def test_legacy_queue_without_recipient_mapping_keeps_compatibility(
                 "INSERT INTO email_outbox(to_email,event,subject,body) VALUES(?,?,?,?)",
                 ("old@demo.example", "invitation", "Old", "Still pending"),
             )
-            from app.mail_queue import enqueue_workflow_job
-            enqueue_workflow_job(db, inserted.lastrowid, "invitation", redacted=False)
+            # Simulate a pre-upgrade job without any user mapping.
+            db.execute(
+                """INSERT INTO email_delivery_jobs
+                   (outbox_id,state,attempts,next_attempt_at,created_at)
+                   VALUES(?,'pending',0,?,?)""",
+                (inserted.lastrowid,
+                 (datetime.now(timezone.utc) - timedelta(minutes=1)).isoformat(timespec="seconds"),
+                 (datetime.now(timezone.utc) - timedelta(minutes=1)).isoformat(timespec="seconds")),
+            )
         assert count_recipients(app) == 0
-        assert process_due_workflow_mail(app.state.db_path)["accepted"] == 1
-        assert len(out) == 1
+        assert process_due_workflow_mail(app.state.db_path)["exhausted"] == 1
+        assert queue_row(app)["last_error_code"] == "unmapped_recipient"
+        assert not out
+
+
+def test_new_unmapped_workflow_job_is_rejected(tmp_path: Path, monkeypatch):
+    setup_mail(monkeypatch)
+    app = create_app(str(tmp_path / "new-unmapped.db"))
+    with TestClient(app):
+        with database(app.state.db_path) as db:
+            inserted = db.execute(
+                "INSERT INTO email_outbox(to_email,event,subject,body) VALUES(?,?,?,?)",
+                ("unknown@demo.example", "invitation", "Test", "Test"),
+            )
+            from app.mail_queue import enqueue_workflow_job
+            assert not enqueue_workflow_job(
+                db, inserted.lastrowid, "invitation", redacted=False
+            )
+            assert db.execute("SELECT COUNT(*) FROM email_delivery_jobs").fetchone()[0] == 0
+
+
+def test_privacy_request_prevents_new_workflow_outbox_and_job(tmp_path: Path, monkeypatch):
+    out = setup_mail(monkeypatch)
+    app = create_app(str(tmp_path / "privacy-enqueue.db"))
+    with TestClient(app):
+        with database(app.state.db_path) as db:
+            user_id = db.execute(
+                """INSERT INTO users(email,role,name,password_hash)
+                   VALUES('privacy@demo.example','candidate','Test','fake-hash')"""
+            ).lastrowid
+            db.execute(
+                """INSERT INTO privacy_rights_requests
+                   (request_key,user_id,kind,status,submitted_at,updated_at)
+                   VALUES(?,?,'stop_processing','received',?,?)""",
+                ("privacy-stop-before-enqueue", user_id,
+                 datetime.now(timezone.utc).isoformat(),
+                 datetime.now(timezone.utc).isoformat()),
+            )
+            enqueue_notice(db, user_id, "invitation", "Test", "Do not send")
+            assert db.execute("SELECT COUNT(*) FROM email_delivery_jobs").fetchone()[0] == 0
+            assert db.execute("SELECT COUNT(*) FROM email_outbox").fetchone()[0] == 0
+        assert process_due_workflow_mail(app.state.db_path)["processed"] == 0
+        assert not out
 
 
 def test_queue_uses_additive_schema_across_restarts(tmp_path: Path, monkeypatch):
@@ -181,3 +229,75 @@ def test_administrator_sees_suppressed_counts_not_addresses(tmp_path: Path, monk
         assert queue["accepted"] == 0
         assert "recipient@demo.example" not in report.text
         assert "Событие" not in report.text
+
+
+
+@pytest.mark.parametrize("kind,status,should_block", [
+    ("deletion", "received", True),
+    ("deletion", "in_review", True),
+    ("deletion", "completed", True),
+    ("stop_processing", "received", True),
+    ("stop_processing", "in_review", True),
+    ("stop_processing", "completed", True),
+    ("deletion", "declined", False),
+    ("access", "received", False),
+])
+def test_workflow_mail_respects_data_subject_privacy_requests(
+    tmp_path: Path, monkeypatch, kind, status, should_block,
+):
+    sent = setup_mail(monkeypatch)
+    app = create_app(str(tmp_path / f"privacy-{kind}-{status}.db"))
+    with TestClient(app):
+        user_id, _ = create_real_job(app)
+        with database(app.state.db_path) as db:
+            db.execute(
+                """INSERT INTO privacy_rights_requests
+                   (request_key,user_id,kind,status,submitted_at,updated_at)
+                   VALUES(?,?,?,?,?,?)""",
+                (f"{kind}-{status}-request", user_id, kind, status,
+                 "2026-11-19T00:00:00+00:00", "2026-11-19T00:00:00+00:00"),
+            )
+        result = process_due_workflow_mail(app.state.db_path)
+        if should_block:
+            assert result["exhausted"] == 1
+            assert result["accepted"] == 0
+            assert not sent
+            assert queue_row(app)["last_error_code"] == "privacy_request"
+            assert process_due_workflow_mail(app.state.db_path)["processed"] == 0
+        else:
+            assert result["accepted"] == 1
+            assert len(sent) == 1
+
+
+def test_privacy_suppressed_workflow_count_is_non_identifying_in_admin_report(tmp_path, monkeypatch):
+    from app.security import make_password_hash
+
+    sent = setup_mail(monkeypatch)
+    monkeypatch.setenv("OPYT50_ADMIN_MFA_MODE", "off")
+    app = create_app(str(tmp_path / "suppressed.db"))
+    with TestClient(app) as client:
+        user_id, _ = create_real_job(app)
+        with database(app.state.db_path) as db:
+            db.execute(
+                """INSERT INTO privacy_rights_requests
+                   (request_key,user_id,kind,status,submitted_at,updated_at)
+                   VALUES(?,?,'deletion','received',?,?)""",
+                ("suppress-me-privacy-test", user_id,
+                 "2026-11-19T00:00:00+00:00", "2026-11-19T00:00:00+00:00"),
+            )
+            db.execute(
+                "INSERT INTO users(email,role,name,password_hash) VALUES(?,?,?,?)",
+                ("privacy-mail-admin@example.invalid","admin","Admin",
+                 make_password_hash("StrongPass2026!")),
+            )
+        assert process_due_workflow_mail(app.state.db_path)["exhausted"] == 1
+        assert not sent
+        assert client.post("/api/login",
+            headers={"X-Requested-With":"OPYT50"},
+            json={"email":"privacy-mail-admin@example.invalid",
+                  "password":"StrongPass2026!"}).status_code == 200
+        report = client.get("/api/admin/mail-diagnostics")
+        assert report.status_code == 200
+        assert report.json()["retry_queue"]["suppressed"] == 1
+        assert report.json()["retry_queue"]["exhausted"] == 0
+        assert "recipient@demo.example" not in report.text

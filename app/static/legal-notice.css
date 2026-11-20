@@ -1,0 +1,52 @@
+/* IP legal review preview near registration and in footer */
+.legal-operator-preview{font-size:13px;line-height:1.6;margin-top:14px;color:#536d5b}
+.legal-operator-preview strong{color:#264a39}.legal-operator-preview a{color:#1c7254}
+.auth-legal-notice{margin:15px 0;padding:15px 17px;border:1px solid #d9e6dc;border-radius:14px;background:#f7faf7;font-size:13px;line-height:1.55;color:#3b604b}
+.auth-legal-notice strong{display:block;color:#28523c;margin-bottom:5px}.auth-legal-notice p{margin:0 0 8px}
+.auth-legal-notice a{font-weight:700;color:#176c4d;text-decoration:underline}
+.auth-legal-notice .draft-disclaimer{color:#8a642e;font-size:12px}
+@media(max-width:650px){.auth-legal-notice{padding:12px}}
+
+/* Contract checkbox is shown only after legal signoff, never for test-only data. */
+#auth-terms-row{margin:12px 0 17px;padding:13px 15px;background:#f7faf7;border:1px solid #d4e3d8;border-radius:12px;line-height:1.55}
+#auth-terms-row label{display:flex;align-items:start;gap:10px;font-size:14px;font-weight:600}
+#auth-terms-row input{flex:0 0 18px;width:18px;height:18px;margin:3px 0 0}
+#auth-terms-row small{display:block;font-size:12px;margin-top:9px;color:#547361}
+
+/* Data-subject requests: clearly separated from security events and signups. */
+.account-privacy-rights .account-security-form{max-width:640px;margin:18px 0}
+.account-privacy-rights select,.privacy-rights-admin select{display:block;width:100%;min-height:42px;margin-top:8px;padding:9px 12px;border:1px solid #c8d9cf;border-radius:10px;background:#fff;color:#213f30;font:inherit}
+.privacy-rights-record{display:flex;align-items:start;justify-content:space-between;flex-wrap:wrap;gap:12px;padding:14px 0;border-bottom:1px solid #dfebe2}
+.privacy-rights-record strong{display:block;color:#244d36}
+.privacy-rights-record small{display:block;margin-top:5px;color:#5d7466;font-size:12px;overflow-wrap:anywhere}
+.privacy-rights-record .status{font-size:12px;white-space:nowrap;padding:5px 9px;border-radius:20px;background:#eff6f0}
+.privacy-rights-admin>div:first-child{flex:1 1 230px;min-width:0}
+.privacy-rights-admin-actions{display:flex;align-items:end;gap:12px;flex-wrap:wrap}
+.privacy-rights-admin-actions label{display:block;font-size:12px;max-width:330px;min-width:220px}
+.privacy-rights-admin-actions .btn{min-height:42px}
+@media(max-width:600px){.privacy-rights-admin-actions{width:100%}.privacy-rights-admin-actions label{max-width:none;width:100%}.privacy-rights-admin-actions .btn{width:100%}}
+
+/* Administrative dry-run only: never an erasure button. */
+.privacy-disposal-preview{flex:1 1 100%;min-width:0}
+.privacy-disposal-report{border:1px solid #cfdfd2;border-radius:14px;background:#f8fbf9;padding:16px;margin:12px 0;max-width:760px}
+.privacy-disposal-report h4{margin:6px 0 12px}
+.privacy-disposal-counts{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:8px;margin:14px 0}
+.privacy-disposal-counts>div{border:1px solid #dde9df;border-radius:9px;padding:9px 12px;background:#fff;display:flex;justify-content:space-between;align-items:center;gap:10px}
+.privacy-disposal-counts span{font-size:12px;color:#4a6655;line-height:1.35}
+.privacy-disposal-counts strong{color:#184d31;font-size:17px;font-variant-numeric:tabular-nums}
+.privacy-disposal-risks{padding-left:22px;font-size:13px;line-height:1.6}
+.privacy-disposal-checks{display:grid;gap:8px;margin-bottom:14px}
+.privacy-disposal-checks label{display:flex;align-items:flex-start;gap:11px;padding:8px 10px;background:#fff;border:1px solid #e0eae2;border-radius:8px;font-size:13px;line-height:1.5;cursor:pointer}
+.privacy-disposal-checks input{flex:none;margin-top:2px;width:18px;height:18px;accent-color:#2e805a}
+.privacy-disposal-checks input:focus-visible{outline:2px solid #ce9739;outline-offset:3px}
+@media(max-width:650px){.privacy-disposal-report{padding:12px}.privacy-disposal-counts{grid-template-columns:1fr}}
+
+/* Review-only readiness summaries and external processing destinations. */
+.admin-retention-list{columns:2;column-gap:24px;max-height:300px;overflow:auto;padding-left:22px;line-height:1.5;font-size:13px;color:#4d6a58}
+.admin-retention-list li{break-inside:avoid;padding:2px 0}
+.privacy-external-checks{display:grid;gap:8px;margin:12px 0 20px}
+.privacy-external-row{display:grid;grid-template-columns:minmax(170px,1fr) minmax(170px,220px) auto;align-items:center;gap:12px;padding:11px;background:#fff;border:1px solid #dfebe2;border-radius:10px}
+.privacy-external-row span{font-size:13px;line-height:1.5}
+.privacy-external-row select{width:100%;min-height:39px;border:1px solid #c9dbc9;border-radius:8px;background:#fff;padding:6px 8px;font:inherit;font-size:12px}
+.privacy-external-row select:focus-visible{outline:2px solid #bc913b;outline-offset:2px}
+@media(max-width:720px){.admin-retention-list{columns:1}.privacy-external-row{grid-template-columns:1fr;gap:8px}.privacy-external-row button{width:100%}}

@@ -134,5 +134,5 @@ def test_employer_directory_preview_noindex_and_canonical(tmp_path: Path):
         assert 'name="q"' in directory.text
         assert 'name="city"' in directory.text
     with TestClient(app, base_url="https://stazhno.ru") as public:
-        assert public.get("/employers").headers.get("x-robots-tag") is None
+        assert public.get("/employers").headers.get("x-robots-tag") == "noindex, nofollow"
         assert "https://stazhno.ru/employers" in public.get("/sitemap.xml").text

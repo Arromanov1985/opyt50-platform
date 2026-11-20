@@ -33,7 +33,7 @@ def login(page, email):
     expect(page.locator("#dashboard")).to_be_visible(timeout=15000)
 
 
-def run_browser(page):
+def run_browser(page, playwright):
     console_errors = []
     page.on("pageerror", lambda error: console_errors.append(str(error)))
     page.goto(URL, wait_until="networkidle")
@@ -209,6 +209,16 @@ def run_browser(page):
     expect(page.locator(".dashboard-tabs [data-tab='applications']")).to_contain_text("Отклики")
     expect(page.locator(".dashboard-tabs [data-tab='invitations']")).to_contain_text("Знакомства")
     expect(page.locator(".dashboard-tabs [data-tab='security']")).to_be_visible()
+    page.locator(".dashboard-tabs [data-tab='security']").click()
+    expect(page.locator("#privacy-rights-request-form")).to_be_visible()
+    expect(page.locator("#privacy-rights-history")).to_contain_text("Обращений пока нет.")
+    page.locator("#privacy-rights-kind").select_option("access")
+    page.locator("#privacy-rights-request-form button[type='submit']").click()
+    expect(page.locator("#privacy-rights-history")).to_contain_text("Получить сведения об обработке")
+    with page.expect_download() as exported_file:
+        page.locator("#dashboard-main a[href='/api/account/data-export']").click()
+    assert exported_file.value.suggested_filename.startswith("stazhno-my-data-")
+    assert exported_file.value.suggested_filename.endswith(".json")
     page.locator(".dashboard-tabs [data-tab='profile']").click()
     expect(page.locator("#profile-form")).to_be_visible()
     expect(page.locator(".profile-health")).to_be_visible()
@@ -1207,6 +1217,26 @@ def run_browser(page):
     expect(page.locator("#dashboard-main")).to_contain_text("История откликов")
     page.locator("#logout").click()
 
+    # An isolated synthetic account exercises deletion-request administration
+    # without freezing the demo candidate used by the remaining browser flows.
+    rights_only = playwright.request.new_context(base_url=URL)
+    try:
+        signup = rights_only.post("/api/register",
+            headers={"X-Requested-With": "OPYT50"},
+            data={
+                "email": "rights-only@example.invalid",
+                "name": "Тестовый заявитель",
+                "password": "StrongSyntheticRights2026!",
+                "role": "candidate",
+            })
+        assert signup.status == 201, signup.text()
+        request = rights_only.post("/api/account/privacy-requests",
+            headers={"X-Requested-With": "OPYT50"},
+            data={"kind": "deletion"})
+        assert request.status == 201, request.text()
+    finally:
+        rights_only.dispose()
+
     login(page, "admin@demo.example")
     expect(page.locator("#admin-stats")).to_contain_text("Активные отклики")
     expect(page.locator('a[href="/admin/journal"]')).to_be_visible()
@@ -1215,6 +1245,28 @@ def run_browser(page):
     expect(page.locator("#admin-growth-articles tbody tr")).to_have_count(14)
     expect(page.locator('#admin-growth-articles tr[data-growth-source="path:delitsya-opytom"]')).to_contain_text("Делиться опытом")
     expect(page.locator("#admin-product-period")).to_contain_text("Демо-открытия контактов")
+    expect(page.locator("#admin-privacy-rights")).to_contain_text("Получить сведения об обработке")
+    expect(page.locator("#admin-privacy-rights")).to_contain_text("kladovshik@demo.example")
+    expect(page.locator("#admin-retention-status")).to_contain_text("0 из 16 категорий")
+    expect(page.locator("#admin-retention-status")).to_contain_text("выпуск заблокирован")
+    deletion_row = page.locator(".privacy-rights-admin").filter(has_text="Запросить удаление данных")
+    deletion_row.locator("[data-action='privacy-rights-review']").click()
+    deletion_row = page.locator(".privacy-rights-admin").filter(has_text="Запросить удаление данных")
+    deletion_row.locator("[data-action='privacy-disposal-preview']").click()
+    expect(deletion_row.locator(".privacy-disposal-report")).to_be_visible()
+    expect(deletion_row.locator(".privacy-disposal-checks label")).to_have_count(7)
+    expect(deletion_row.locator(".privacy-external-row")).to_have_count(5)
+    expect(deletion_row.locator(".privacy-disposal-report")).to_contain_text("только чтение")
+    first_external = deletion_row.locator(".privacy-external-row").first
+    first_external.locator("select").select_option("followup_required")
+    first_external.locator("[data-action='privacy-external-save']").click()
+    expect(first_external.locator("select")).to_have_value("followup_required")
+    deletion_row.locator('input[data-disposal-check="identity_reviewed"]').check()
+    deletion_row.locator('input[data-disposal-check="lawful_basis_reviewed"]').check()
+    deletion_row.locator("[data-action='privacy-disposal-save']").click()
+    expect(deletion_row.locator(".privacy-disposal-report")).to_contain_text(
+        "Закрытие со статусом «выполнено» запрещено"
+    )
 
     # Editorial workflow, on an isolated browser test database only.
     page.goto(URL + "/admin/journal", wait_until="networkidle")
@@ -1602,6 +1654,26 @@ def run_browser(page):
     assert len(ids) == len(set(ids)) == 21
     page.unroute("**/api/candidate/vacancy-updates?*", paginated_changes)
 
+    # Privacy request is intentionally LAST: new marketplace actions must be
+    # rejected after it. Earlier tests exercise an ordinary active account.
+    page.locator("[data-dashboard-tab-select]").select_option("security")
+    expect(page.locator("#privacy-rights-request-form")).to_be_visible()
+    page.locator("#privacy-rights-kind").select_option("deletion")
+    with page.expect_response(lambda response: (
+        response.url.endswith("/api/account/privacy-requests")
+        and response.request.method == "POST"
+    )) as privacy_reply:
+        page.locator("#privacy-rights-request-form button[type='submit']").click()
+    assert privacy_reply.value.status == 201, privacy_reply.value.text()
+    expect(page.locator("#privacy-rights-history")).to_contain_text("Запросить удаление данных")
+    assert page.request.get(URL + "/api/account/data-export").status == 200
+    assert page.request.get(URL + "/api/candidate/jobs").status == 409
+    assert page.request.post(
+        URL + "/api/candidate/applications",
+        headers={"X-Requested-With": "OPYT50"},
+        data={"vacancy_id": 1},
+    ).status == 409
+
     if console_errors:
         raise AssertionError("Uncaught browser errors: " + " | ".join(console_errors))
 
@@ -1633,7 +1705,7 @@ def main():
                     context = browser.new_context(viewport={"width": 1366, "height": 900}, locale="ru-RU")
                     page = context.new_page()
                     try:
-                        run_browser(page)
+                        run_browser(page, p)
                     except Exception:
                         page.screenshot(path=str(Path(tmp) / "failure.png"), full_page=True)
                         server_log.flush()

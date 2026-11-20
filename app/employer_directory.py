@@ -51,7 +51,7 @@ def _layout(title: str, description: str, canonical_path: str, content: str) -> 
 <span>СТАЖНО — ваш опыт работает на вас</span>
 <a href="/journal/kak-proverit-vakansiyu">Как проверить работодателя</a>
 </footer></body></html>"""
-    return HTMLResponse(markup, headers={"Cache-Control": "public, max-age=30"})
+    return HTMLResponse(markup, headers={"Cache-Control": "no-store"})
 
 
 def _company_rows(db, query: str, city: str):
@@ -65,6 +65,12 @@ def _company_rows(db, query: str, city: str):
              LEFT JOIN account_controls c ON c.user_id=e.user_id
              LEFT JOIN vacancy_moderation vm ON vm.vacancy_id=v.id
              WHERE COALESCE(c.status,'active')='active'
+               AND NOT EXISTS (
+                 SELECT 1 FROM privacy_rights_requests pr
+                 WHERE pr.user_id=e.user_id
+                   AND pr.kind IN ('deletion','stop_processing')
+                   AND pr.status IN ('received','in_review','completed')
+               )
                AND COALESCE(vm.status,'approved')='approved'"""
     args = []
     if query:
@@ -140,6 +146,12 @@ def employer_profile(employer_id: int, db, email_pattern, phone_pattern) -> HTML
            LEFT JOIN employer_public_profiles p ON p.employer_id=e.user_id
            LEFT JOIN account_controls c ON c.user_id=e.user_id
            WHERE e.user_id=? AND COALESCE(c.status,'active')='active'
+             AND NOT EXISTS (
+               SELECT 1 FROM privacy_rights_requests pr
+               WHERE pr.user_id=e.user_id
+                 AND pr.kind IN ('deletion','stop_processing')
+                 AND pr.status IN ('received','in_review','completed')
+             )
              AND EXISTS (
                SELECT 1 FROM vacancies v
                LEFT JOIN vacancy_moderation vm ON vm.vacancy_id=v.id

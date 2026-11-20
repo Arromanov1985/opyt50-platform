@@ -114,6 +114,8 @@ jobs:
         if: always() && (github.event_name == 'pull_request' || github.ref == 'refs/heads/main')
         run: python scripts/probe_timeweb_preview.py
       - name: Capture actual public Timeweb homepage (no auth)
+        # Browser setup is skipped when an earlier test fails. Do not execute
+        # screenshot tooling without the required Playwright installation.
         if: always() && github.event_name == 'pull_request' && steps.browser_deps.outcome == 'success'
         run: python tests/browser_timeweb_public_review.py
       - name: Upload actual public Timeweb screenshots

@@ -40,14 +40,24 @@ from typing import Any, Literal
 from urllib.parse import urlsplit
 
 from fastapi import Depends, FastAPI, HTTPException, Query, Request, Response
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from starlette.middleware.trustedhost import TrustedHostMiddleware
-from pydantic import BaseModel, Field, field_validator, model_validator
+from pydantic import BaseModel, Field, StrictBool, field_validator, model_validator
 
 from .db import database, init_db
 from .matching import lead_price, match_candidate, taxonomy_payload
 from .journal import install_journal_routes
+from .legal_pages import install_legal_draft_routes
+from .legal_config import render_template as render_legal_template, legal_approved, legal_profile
+from .privacy_rights import (
+    requests_for_user, submit_request, admin_request_list, admin_change_status,
+)
+from .privacy_disposal import impact_preview, review_state, update_review
+from .privacy_restriction import marketplace_action_restricted, restriction_is_active
+from .privacy_external import external_review_status, save_external_review
+from .retention_register import retention_readiness
+from .data_export import build_personal_data_snapshot
 from .employer_directory import install_employer_directory
 from .growth import record_event, aggregate_snapshot
 from .security import (
@@ -73,6 +83,32 @@ class GrowthEventIn(BaseModel):
     action: Literal["view", "jobs_click", "profile_click", "community_click"]
 
 
+class PrivacyRightsRequestIn(BaseModel):
+    kind: Literal["access", "correction", "deletion", "stop_processing"]
+
+
+class PrivacyRightsStatusIn(BaseModel):
+    status: Literal["in_review", "completed", "declined"]
+    manual_response_confirmed: bool = False
+    closure_reason: Literal[
+        "fulfilled", "retention_required", "identity_unverified", "other"
+    ] | None = None
+
+
+class PrivacyDisposalReviewIn(BaseModel):
+    identity_reviewed: StrictBool
+    lawful_basis_reviewed: StrictBool
+    retention_reviewed: StrictBool
+    linked_data_reviewed: StrictBool
+    recipients_reviewed: StrictBool
+    backups_and_processors_reviewed: StrictBool
+    manual_action_verified: StrictBool
+
+
+class PrivacyExternalReviewIn(BaseModel):
+    status: Literal["reviewed", "not_applicable", "followup_required"]
+
+
 class DirectInvitationOutcomeIn(BaseModel):
     status: Literal["hired", "rejected"]
 
@@ -88,6 +124,8 @@ class Registration(BaseModel):
     password: str = Field(min_length=15, max_length=128)
     phone: str = Field(default="", max_length=30)
     company_name: str = Field(default="", max_length=120)
+    terms_accepted: bool = False
+    terms_version: str = Field(default="", max_length=90)
 
     @field_validator("email")
     @classmethod
@@ -637,6 +675,15 @@ def active_user(request: Request, db: sqlite3.Connection = Depends(get_connectio
     # Internal-only identifier for server-side session controls. user_response()
     # deliberately serializes an explicit safe subset and never exposes this.
     user["_session_token_hash"] = digest
+    if row["role"] in {"candidate", "employer"} and marketplace_action_restricted(
+        db, row["id"], request.method, request.url.path,
+    ):
+        raise HTTPException(
+            409,
+            "Операции подбора и новые действия временно ограничены по вашему "
+            "обращению о персональных данных. В разделе «Безопасность» "
+            "доступны ваши обращения и выгрузка собственных данных.",
+        )
     return user
 
 def allowed(user: dict, role: str) -> None:
@@ -925,8 +972,9 @@ def create_app(db_path: str | None = None) -> FastAPI:
         if production_runtime():
             csp += "; upgrade-insecure-requests"
         response.headers["Content-Security-Policy"] = csp
-        # Never index the temporary Timeweb preview or other noncanonical hosts.
-        if request.url.hostname not in {"stazhno.ru", "www.stazhno.ru"}:
+        # Until the real operator and policies are approved, keep *all* pages
+        # out of search indexes, including canonical domains and new article URLs.
+        if not legal_approved() or request.url.hostname not in {"stazhno.ru", "www.stazhno.ru"}:
             response.headers["X-Robots-Tag"] = "noindex, nofollow"
         if request.url.path.startswith("/api/"):
             response.headers["Cache-Control"] = "no-store"
@@ -935,8 +983,29 @@ def create_app(db_path: str | None = None) -> FastAPI:
 
     @app.get("/", include_in_schema=False)
     def index():
-        response = FileResponse(BASE / "static" / "index.html")
+        page = (BASE / "static" / "index.html").read_text(encoding="utf-8")
+        page = render_legal_template(page)
+        prelaunch = production_runtime() and not legal_approved()
+        if prelaunch:
+            # Site is a read-only technical preview until real legal approval.
+            # Render this on the server as well: it must be visible without JS.
+            page = page.replace(
+                "</head>",
+                '<meta name="prelaunch-signup-closed" content="yes">\n</head>', 1,
+            )
+            page = page.replace(
+                "<main>",
+                '<div class="product-strip" role="status" id="prelaunch-public-notice">'
+                '<div class="container product-strip-inner"><span><strong>САЙТ В ПОДГОТОВКЕ.</strong> '
+                'Материалы доступны для ознакомления. Регистрация закрыта до утверждения '
+                'юридических документов. Не вводите персональные данные.</span></div></div>'
+                '<main>',
+                1,
+            )
+        response = HTMLResponse(page)
         response.headers["Cache-Control"] = "no-store, max-age=0"
+        if prelaunch:
+            response.headers["X-Robots-Tag"] = "noindex, nofollow"
         return response
 
     @app.post("/api/growth/event", status_code=204, include_in_schema=False)
@@ -984,6 +1053,19 @@ def create_app(db_path: str | None = None) -> FastAPI:
 
     @app.post("/api/register", status_code=201)
     def register(data: Registration, request: Request, response: Response, db: sqlite3.Connection = Depends(get_connection)):
+        # The sample IP identity is never sufficient for a public signup.
+        # Unit tests may exercise the isolated in-memory/temporary DB with fake people.
+        # CI may exercise a disposable database with fictional users, but
+        # a real OPYT50_ENV=production must never accept test bypass metadata.
+        explicit_production = os.getenv("OPYT50_ENV", "").strip().casefold() in {"prod", "production"}
+        isolated_test = bool(os.getenv("PYTEST_CURRENT_TEST")) and not explicit_production
+        live_runtime = production_runtime() and not isolated_test
+        if live_runtime and not legal_approved():
+            raise HTTPException(503, "Публичная регистрация закрыта до юридического утверждения документов")
+        if legal_approved():
+            current_terms = legal_profile()["terms_version"]
+            if data.terms_accepted is not True or data.terms_version != current_terms:
+                raise HTTPException(422, "Для регистрации подтвердите актуальное пользовательское соглашение")
         try:
             cursor = db.execute(
                 "INSERT INTO users(email,password_hash,role,name,phone) VALUES(?,?,?,?,?)",
@@ -996,6 +1078,15 @@ def create_app(db_path: str | None = None) -> FastAPI:
                 db.execute(
                     "INSERT INTO employer_profiles(user_id,company_name) VALUES(?,?)",
                     (user_id, data.company_name.strip()),
+                )
+            if legal_approved():
+                db.execute(
+                    """INSERT INTO legal_acceptance_records(user_id,terms_version,privacy_version,accepted_at,evidence_method)
+                       VALUES(?,?,?,?,?)""",
+                    (
+                        user_id, data.terms_version, legal_profile()["privacy_version"],
+                        datetime.now(timezone.utc).isoformat(), "explicit-checkbox",
+                    ),
                 )
             add_session(db, response, user_id, request)
             from .release02 import enqueue_notice
@@ -1572,6 +1663,54 @@ def create_app(db_path: str | None = None) -> FastAPI:
     def me(user: dict = Depends(active_user), db: sqlite3.Connection = Depends(get_connection)):
         return {"user": user_response(user, db)}
 
+    @app.get("/api/account/data-export")
+    def own_account_data_export(
+        user: dict = Depends(active_user),
+        db: sqlite3.Connection = Depends(get_connection),
+    ):
+        """Private subset of account-owned data, not a complete legal disclosure.
+
+        A valid authenticated session is required. The response is never saved
+        on the server, never cached, and never includes third-party contacts,
+        secrets, session tokens or internal administrator records.
+        """
+        snapshot = build_personal_data_snapshot(db, user["id"])
+        filename = "stazhno-my-data-" + datetime.now(timezone.utc).strftime("%Y-%m-%d") + ".json"
+        return JSONResponse(
+            snapshot,
+            headers={
+                "Cache-Control": "private, no-store, max-age=0",
+                "Pragma": "no-cache",
+                "Content-Disposition": f'attachment; filename="{filename}"',
+                "X-Content-Type-Options": "nosniff",
+                "X-Robots-Tag": "noindex, nofollow",
+            },
+        )
+
+    @app.get("/api/account/privacy-requests")
+    def own_privacy_requests(
+        user: dict = Depends(active_user),
+        db: sqlite3.Connection = Depends(get_connection),
+    ):
+        return {
+            "requests": requests_for_user(db, user["id"]),
+            "automatic_fulfillment": False,
+            "note": "Регистрация обращения не означает немедленного удаления или раскрытия данных.",
+        }
+
+    @app.post("/api/account/privacy-requests", status_code=201)
+    def create_privacy_request(
+        payload: PrivacyRightsRequestIn,
+        user: dict = Depends(active_user),
+        db: sqlite3.Connection = Depends(get_connection),
+    ):
+        item = submit_request(db, user["id"], payload.kind)
+        # FastAPI generator cleanup can happen after the HTTP response is sent.
+        # Commit before replying so a follow-up GET sees the new request.
+        db.commit()
+        return {"request": item, "automatic_fulfillment": False}
+
+
     @app.get("/api/account/action-summary")
     def account_action_summary(
         user: dict = Depends(active_user),
@@ -1857,7 +1996,13 @@ def create_app(db_path: str | None = None) -> FastAPI:
                  LEFT JOIN vacancy_moderation vm ON vm.vacancy_id=v.id
                  WHERE v.status='open'
                    AND COALESCE(ac.status,'active')='active'
-                   AND COALESCE(vm.status,'approved')='approved'"""
+                   AND COALESCE(vm.status,'approved')='approved'
+                  AND NOT EXISTS (
+                      SELECT 1 FROM privacy_rights_requests pr
+                      WHERE pr.user_id=v.employer_id
+                        AND pr.kind IN ('deletion','stop_processing')
+                        AND pr.status IN ('received','in_review','completed')
+                  )"""
         params: list = []
         if q.strip():
             # instr on Unicode-casefolded text ensures correct Cyrillic search.
@@ -1914,6 +2059,12 @@ def create_app(db_path: str | None = None) -> FastAPI:
                WHERE v.status='open'
                  AND COALESCE(ac.status,'active')='active'
                  AND COALESCE(vm.status,'approved')='approved'
+                  AND NOT EXISTS (
+                      SELECT 1 FROM privacy_rights_requests pr
+                      WHERE pr.user_id=v.employer_id
+                        AND pr.kind IN ('deletion','stop_processing')
+                        AND pr.status IN ('received','in_review','completed')
+                  )
                LIMIT 500""",
             (user["id"],user["id"]),
         ).fetchall()
@@ -1949,6 +2100,12 @@ def create_app(db_path: str | None = None) -> FastAPI:
                WHERE v.status='open'
                  AND COALESCE(ac.status,'active')='active'
                  AND COALESCE(vm.status,'approved')='approved'
+                  AND NOT EXISTS (
+                      SELECT 1 FROM privacy_rights_requests pr
+                      WHERE pr.user_id=v.employer_id
+                        AND pr.kind IN ('deletion','stop_processing')
+                        AND pr.status IN ('received','in_review','completed')
+                  )
                ORDER BY v.id DESC LIMIT 500"""
         ).fetchall()
         alternatives = []
@@ -2281,7 +2438,13 @@ def create_app(db_path: str | None = None) -> FastAPI:
                FROM candidate_profiles c
                JOIN users u ON u.id=c.user_id
                LEFT JOIN invitations i ON i.candidate_id=u.id AND i.vacancy_id=?
-               WHERE c.is_active=1 AND u.role='candidate'""",
+               WHERE c.is_active=1 AND u.role='candidate'
+                  AND NOT EXISTS (
+                      SELECT 1 FROM privacy_rights_requests pr
+                      WHERE pr.user_id=u.id
+                        AND pr.kind IN ('deletion','stop_processing')
+                        AND pr.status IN ('received','in_review','completed')
+                  )""",
             (job_id,),
         ).fetchall()
         matches = []
@@ -2315,7 +2478,9 @@ def create_app(db_path: str | None = None) -> FastAPI:
             """SELECT c.* FROM candidate_profiles c JOIN users u ON u.id=c.user_id
                WHERE c.user_id=? AND u.role='candidate'""", (data.candidate_id,)
         ).fetchone()
-        if candidate is None or match_candidate(dict(vacancy), dict(candidate)) is None:
+        if candidate is None or restriction_is_active(db, data.candidate_id):
+            raise HTTPException(422, "Кандидат не доступен для приглашения")
+        if match_candidate(dict(vacancy), dict(candidate)) is None:
             raise HTTPException(422, "Кандидат не соответствует условиям вакансии")
         try:
             cursor = db.execute(
@@ -2370,12 +2535,14 @@ def create_app(db_path: str | None = None) -> FastAPI:
         if data.decision == "accepted" and not data.share_consent:
             raise HTTPException(422, "Нужно подтвердить согласие на передачу контакта этой компании")
         invitation = db.execute(
-            "SELECT id,status FROM invitations WHERE id=? AND candidate_id=?", (invitation_id, user["id"])
+            "SELECT id,status,employer_id FROM invitations WHERE id=? AND candidate_id=?", (invitation_id, user["id"])
         ).fetchone()
         if not invitation:
             raise HTTPException(404, "Приглашение не найдено")
         if invitation["status"] != "sent":
             raise HTTPException(409, "На это приглашение уже ответили")
+        if data.decision == "accepted" and restriction_is_active(db, invitation["employer_id"]):
+            raise HTTPException(409, "Знакомство временно ограничено по обращению работодателя")
         db.execute(
             """UPDATE invitations SET status=?,share_consent=?,responded_at=datetime('now')
                WHERE id=? AND candidate_id=?""",
@@ -2422,7 +2589,10 @@ def create_app(db_path: str | None = None) -> FastAPI:
             )}
             item["introduction_stage"] = introduction_stage(row["status"], row["contact_shared"])
             item["timeline"] = interaction_timeline(db, row["application_id"], row["id"])
-            if row["contact_shared"] and row["share_consent"]:
+            if (
+                row["contact_shared"] and row["share_consent"]
+                and not restriction_is_active(db, row["candidate_id"])
+            ):
                 item["contact"] = {
                     "name": row["candidate_name"],
                     "email": row["candidate_email"],
@@ -2490,6 +2660,8 @@ def create_app(db_path: str | None = None) -> FastAPI:
             raise HTTPException(404, "Приглашение не найдено")
         if row["status"] != "accepted" or not row["share_consent"]:
             raise HTTPException(409, "Кандидат ещё не согласился на знакомство")
+        if restriction_is_active(db, row["candidate_id"]):
+            raise HTTPException(409, "Открытие контакта ограничено по обращению кандидата")
         db.execute(
             "INSERT OR IGNORE INTO demo_transactions(invitation_id,amount_rub) VALUES(?,?)",
             (invitation_id, row["price_rub"]),
@@ -2514,6 +2686,151 @@ def create_app(db_path: str | None = None) -> FastAPI:
     ):
         allowed(user, "admin")
         return aggregate_snapshot(db, days)
+
+    @app.get("/api/admin/privacy-requests")
+    def admin_privacy_requests(
+        status: str | None = Query(default=None, max_length=16),
+        limit: int = Query(default=100, ge=1, le=100),
+        user: dict = Depends(active_user),
+        db: sqlite3.Connection = Depends(get_connection),
+    ):
+        allowed(user, "admin")
+        try:
+            items = admin_request_list(db, status=status, limit=limit)
+        except ValueError:
+            raise HTTPException(422, "Недопустимый статус обращения") from None
+        return {
+            "requests": items,
+            "note": "Решение и ответ пользователю выполняются оператором вручную; "
+                    "статус не свидетельствует об автоматическом удалении данных.",
+        }
+
+    @app.get("/api/admin/privacy-requests/{request_key}/impact")
+    def admin_privacy_disposal_impact(
+        request_key: str,
+        user: dict = Depends(active_user),
+        db: sqlite3.Connection = Depends(get_connection),
+    ):
+        """Read-only aggregate impact review; no changes to any account."""
+        allowed(user, "admin")
+        if not re.fullmatch(r"[A-Za-z0-9_-]{16,64}", request_key):
+            raise HTTPException(422, "Некорректный номер обращения")
+        try:
+            preview = impact_preview(db, request_key)
+        except ValueError as exc:
+            raise HTTPException(409, str(exc)) from None
+        if preview is None:
+            raise HTTPException(404, "Обращение не найдено")
+        return {"preview": preview, "dry_run": True}
+
+    @app.get("/api/admin/privacy-requests/{request_key}/disposition-review")
+    def admin_privacy_disposal_review(
+        request_key: str,
+        user: dict = Depends(active_user),
+        db: sqlite3.Connection = Depends(get_connection),
+    ):
+        allowed(user, "admin")
+        if not re.fullmatch(r"[A-Za-z0-9_-]{16,64}", request_key):
+            raise HTTPException(422, "Некорректный номер обращения")
+        try:
+            review = review_state(db, request_key)
+        except ValueError as exc:
+            raise HTTPException(409, str(exc)) from None
+        if review is None:
+            raise HTTPException(404, "Обращение не найдено")
+        return {"review": review}
+
+    @app.post("/api/admin/privacy-requests/{request_key}/disposition-review")
+    def admin_privacy_disposal_save_review(
+        request_key: str,
+        payload: PrivacyDisposalReviewIn,
+        user: dict = Depends(active_user),
+        db: sqlite3.Connection = Depends(get_connection),
+    ):
+        """Persist only explicit human attestations, never an erase command."""
+        allowed(user, "admin")
+        if not re.fullmatch(r"[A-Za-z0-9_-]{16,64}", request_key):
+            raise HTTPException(422, "Некорректный номер обращения")
+        try:
+            review = update_review(
+                db, request_key, user["id"], payload.model_dump(),
+            )
+        except ValueError as exc:
+            raise HTTPException(409, str(exc)) from None
+        if review is None:
+            raise HTTPException(404, "Обращение не найдено")
+        db.commit()
+        return {"review": review, "actual_deletion_performed": False}
+
+    @app.get("/api/admin/privacy-retention-readiness")
+    def admin_privacy_retention_readiness(
+        user: dict = Depends(active_user),
+    ):
+        allowed(user, "admin")
+        # Machine-readable TODO matrix, not a legal opinion or automatic purge.
+        return retention_readiness()
+
+    @app.get("/api/admin/privacy-requests/{request_key}/external-review")
+    def admin_privacy_external_status(
+        request_key: str,
+        user: dict = Depends(active_user),
+        db: sqlite3.Connection = Depends(get_connection),
+    ):
+        allowed(user, "admin")
+        if not re.fullmatch(r"[A-Za-z0-9_-]{16,64}", request_key):
+            raise HTTPException(422, "Некорректный номер обращения")
+        try:
+            result = external_review_status(db, request_key)
+        except ValueError as exc:
+            raise HTTPException(409, str(exc)) from None
+        if result is None:
+            raise HTTPException(404, "Обращение не найдено")
+        return {"review": result}
+
+    @app.post("/api/admin/privacy-requests/{request_key}/external-review/{system_key}")
+    def admin_privacy_external_save(
+        request_key: str,
+        system_key: str,
+        payload: PrivacyExternalReviewIn,
+        user: dict = Depends(active_user),
+        db: sqlite3.Connection = Depends(get_connection),
+    ):
+        allowed(user, "admin")
+        if not re.fullmatch(r"[A-Za-z0-9_-]{16,64}", request_key):
+            raise HTTPException(422, "Некорректный номер обращения")
+        try:
+            result = save_external_review(
+                db, request_key, user["id"], system_key, payload.status
+            )
+        except ValueError as exc:
+            raise HTTPException(409, str(exc)) from None
+        if result is None:
+            raise HTTPException(404, "Обращение не найдено")
+        db.commit()
+        return {"review": result, "external_action_performed": False}
+
+    @app.post("/api/admin/privacy-requests/{request_key}/status")
+    def admin_privacy_request_status(
+        request_key: str,
+        payload: PrivacyRightsStatusIn,
+        user: dict = Depends(active_user),
+        db: sqlite3.Connection = Depends(get_connection),
+    ):
+        allowed(user, "admin")
+        if not re.fullmatch(r"[A-Za-z0-9_-]{16,64}", request_key):
+            raise HTTPException(422, "Некорректный номер обращения")
+        try:
+            result = admin_change_status(
+                db, request_key, user["id"], payload.status,
+                manual_response_confirmed=payload.manual_response_confirmed,
+                closure_reason=payload.closure_reason,
+            )
+        except ValueError as exc:
+            raise HTTPException(409, str(exc)) from None
+        if result is None:
+            raise HTTPException(404, "Обращение не найдено")
+        db.commit()
+        return {"request": result, "automatic_fulfillment": False}
 
     @app.get("/api/admin/stats")
     def stats(user: dict = Depends(active_user), db: sqlite3.Connection = Depends(get_connection)):
@@ -2570,10 +2887,10 @@ def create_app(db_path: str | None = None) -> FastAPI:
                  SUM(CASE WHEN state='leased' THEN 1 ELSE 0 END) AS sending,
                  SUM(CASE WHEN state='accepted' THEN 1 ELSE 0 END) AS accepted,
                  SUM(CASE WHEN state='exhausted' AND last_error_code NOT IN
-                   ('stale_notice','invalid_created_at','recipient_unavailable')
+                   ('stale_notice','invalid_created_at','recipient_unavailable','privacy_request','unmapped_recipient')
                    THEN 1 ELSE 0 END) AS exhausted,
                  SUM(CASE WHEN state='exhausted' AND last_error_code IN
-                   ('stale_notice','invalid_created_at','recipient_unavailable')
+                   ('stale_notice','invalid_created_at','recipient_unavailable','privacy_request','unmapped_recipient')
                    THEN 1 ELSE 0 END) AS suppressed,
                  MIN(CASE WHEN state IN ('pending','leased')
                    THEN created_at END) AS oldest_waiting_at,
@@ -2739,6 +3056,7 @@ def create_app(db_path: str | None = None) -> FastAPI:
     from .community_pages import install_community_pages
     install_community_routes(app)
     install_community_pages(app)
+    install_legal_draft_routes(app)
     return app
 
 
