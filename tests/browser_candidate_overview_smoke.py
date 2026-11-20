@@ -134,6 +134,16 @@ def exercise_profile_readiness(page):
     expect(page.locator("#profile-active")).not_to_be_checked()
     assert page.request.get(URL + "/api/me").json()["user"]["profile"]["is_active"] == 0
 
+    # Turning search back on with only profession/city must prioritize jobs,
+    # not pressure the candidate to write optional experience a second time.
+    profile["is_active"] = True
+    response = page.request.put(URL + "/api/candidate/profile", headers=HEADERS, data=profile)
+    assert response.status == 200, response.text()
+    page.goto(URL, wait_until="networkidle")
+    expect(page.locator(".overview-health > strong")).to_have_text("100%")
+    first_task = page.locator(".overview-action-center .overview-action-item").first
+    expect(first_task).to_contain_text("ваканси")
+
 
 def login(page, email, password="DemoPass2026!"):
     response = page.request.post(
