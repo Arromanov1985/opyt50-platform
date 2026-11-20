@@ -710,7 +710,11 @@ def run_browser(page, playwright):
     assert page.evaluate("""() => {
       const root = document.querySelector('#dashboard-main');
       const controls = document.querySelector('.employer-quick-controls');
-      const buttons = [...controls.querySelectorAll('button')];
+      // The next-stage button is intentionally hidden while cards remain.
+      // Only interactive, rendered controls must meet the 44px touch target.
+      const buttons = [...controls.querySelectorAll('button')].filter(button =>
+        !button.hidden && button.getClientRects().length > 0
+      );
       return root.scrollWidth <= root.clientWidth + 3 &&
         buttons.every(button => button.getBoundingClientRect().height >= 44);
     }"""), "Tablet quick review must fit its container with touch-sized controls"
@@ -753,6 +757,69 @@ def run_browser(page, playwright):
     expect(page.locator("#employer-application-quick-controls")).to_be_hidden()
     expect(quick_cards).to_have_count(20)
     page.unroute("**/api/employer/applications", fake_many_applications)
+    # Guided continuation: start with the highest-priority action, and when
+    # the last new application is refused, offer the next outstanding stage.
+    guided_applications = []
+    for new_id, status_value, invitation_value, contact_shared in (
+        (61001, "applied", None, False),
+        (61002, "interview", "accepted", False),
+        (61003, "interview", "accepted", True),
+        (61004, "interview", "sent", False),
+    ):
+        item = dict(sample_application)
+        item.update(id=new_id, status=status_value, invitation_status=invitation_value,
+                    invitation_id=new_id if invitation_value else None,
+                    contact_shared=contact_shared, timeline=[])
+        guided_applications.append(item)
+
+    def fake_guided_applications(route):
+        route.fulfill(status=200, content_type="application/json",
+                      body=json.dumps({"applications": guided_applications}, ensure_ascii=False))
+
+    def fake_guided_refusal(route):
+        assert route.request.method == "PATCH"
+        assert route.request.post_data_json["status"] == "rejected"
+        guided_applications[0]["status"] = "rejected"
+        route.fulfill(status=200, content_type="application/json",
+                      body='{"status":"rejected"}')
+
+    page.route("**/api/employer/applications", fake_guided_applications)
+    page.route("**/api/employer/applications/61001/status", fake_guided_refusal)
+    page.locator("[data-v02-action='employer-application-filter'][data-filter='all']").click()
+    page.locator("[data-v02-action='employer-quick-toggle']").click()
+    expect(page.locator(".employer-application-stage-filter [data-filter='introduced']")).to_have_attribute("aria-pressed", "true")
+    visible_guided = page.locator("#employer-application-results .application-review-card:visible")
+    expect(visible_guided).to_have_count(1)
+    expect(visible_guided.first).to_have_attribute("data-application-id", "61003")
+    # Switching to new applications is explicit; no contacts become visible.
+    page.locator(".employer-application-stage-filter [data-filter='attention']").click()
+    expect(visible_guided.first).to_have_attribute("data-application-id", "61001")
+    expect(page.locator("[data-v02-action='employer-quick-stage']")).to_be_hidden()
+    page.once("dialog", lambda dialog: dialog.accept())
+    visible_guided.first.locator("[data-v02-action='application-status'][data-status='rejected']").click()
+    expect(visible_guided).to_have_count(0)
+    expect(page.locator("#employer-application-quick-position")).to_contain_text("На этом этапе откликов больше нет")
+    next_guided = page.locator("[data-v02-action='employer-quick-stage']")
+    expect(next_guided).to_contain_text("Завершить знакомства (1)")
+    expect(next_guided).to_be_focused()
+    page.set_viewport_size({"width": 390, "height": 844})
+    assert page.evaluate("""() => {
+      const root = document.querySelector('#dashboard-main');
+      const button = document.querySelector('[data-v02-action="employer-quick-stage"]');
+      return root.scrollWidth <= root.clientWidth + 3 &&
+        button.getBoundingClientRect().height >= 44;
+    }"""), "Next-stage action must be readable and touch-sized on a narrow screen"
+    next_guided.click()
+    expect(visible_guided.first).to_have_attribute("data-application-id", "61003")
+    expect(visible_guided.first).to_be_focused()
+    expect(page.locator(".employer-application-stage-filter [data-filter='introduced']")).to_have_attribute("aria-pressed", "true")
+    # This stage only navigates to consented introductions; it does not open
+    # contacts by itself or write anything beyond the explicitly confirmed refusal.
+    expect(visible_guided.first).to_contain_text("Знакомство состоялось")
+    page.set_viewport_size({"width": 1280, "height": 800})
+    page.locator("[data-v02-action='employer-quick-toggle']").click()
+    page.unroute("**/api/employer/applications/61001/status", fake_guided_refusal)
+    page.unroute("**/api/employer/applications", fake_guided_applications)
     # Restore the pre-existing search and a neutral stage before the legacy
     # filter assertions; the pagination scenario intentionally changed both.
     page.locator("[data-v02-action='employer-application-filter'][data-filter='all']").click()

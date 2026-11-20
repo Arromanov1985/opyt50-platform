@@ -3211,10 +3211,24 @@ body.comfortable-view .employer-application-search label{font-size:1rem}
 .employer-quick-navigation{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
 .employer-quick-navigation .btn{min-height:46px;white-space:normal}
 .employer-quick-navigation .btn:disabled{opacity:.48;cursor:not-allowed}
+.employer-quick-next-stage{
+  display:flex;align-items:center;flex-wrap:wrap;gap:8px 12px;
+  width:100%;padding:10px 0 0;border-top:1px solid #DDECE3;
+}
+.employer-quick-next-stage[hidden],
+.employer-quick-next-stage [hidden]{display:none!important}
+.employer-quick-next-stage .btn{min-height:48px;white-space:normal}
+.employer-quick-next-stage p{
+  margin:0;font-size:14px;line-height:1.6;color:#315849;
+}
+.employer-quick-next-stage .btn:focus-visible{
+  outline:3px solid #16A34A;outline-offset:3px;
+}
 #employer-application-results .application-review-card:focus-visible{
   outline:3px solid #00A844;outline-offset:3px;
 }
 @media(max-width:850px){
+ .employer-quick-next-stage .btn{width:100%}
  .employer-quick-toolbar{align-items:stretch}
  .employer-quick-controls{flex-basis:100%}
  .employer-quick-toolbar>.btn{flex:1 1 100%}
