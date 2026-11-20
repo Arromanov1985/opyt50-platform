@@ -69,20 +69,8 @@ jobs:
           path: growth-review/
           if-no-files-found: warn
           retention-days: 7
-      - name: Browser end-to-end smoke
-        run: python tests/browser_smoke.py
-      - name: Browser safety center smoke
-        run: python tests/browser_safety_smoke.py
-      - name: Browser candidate overview smoke
-        run: python tests/browser_candidate_overview_smoke.py
       - name: Browser mobile vacancy application smoke
         run: python tests/browser_mobile_apply_smoke.py
-      - name: Browser mobile invitation consent smoke
-        run: python tests/browser_mobile_introduction_smoke.py
-      - name: Browser editor draft and offline-save smoke
-        run: python tests/browser_editor_resilience_smoke.py
-      - name: Browser taxonomy autocomplete smoke
-        run: python tests/browser_taxonomy_smoke.py
       - name: Browser professional community consent and messaging
         env:
           STAZHNO_COMMUNITY_REVIEW_DIR: community-review
@@ -95,8 +83,6 @@ jobs:
           path: community-review/
           if-no-files-found: warn
           retention-days: 7
-      - name: Browser security smoke
-        run: python tests/browser_security_smoke.py
       - name: Capture PR visual review
         if: github.event_name == 'pull_request'
         env:
@@ -110,6 +96,20 @@ jobs:
           path: visual-review/
           if-no-files-found: warn
           retention-days: 7
+      - name: Browser end-to-end smoke
+        run: python tests/browser_smoke.py
+      - name: Browser safety center smoke
+        run: python tests/browser_safety_smoke.py
+      - name: Browser candidate overview smoke
+        run: python tests/browser_candidate_overview_smoke.py
+      - name: Browser mobile invitation consent smoke
+        run: python tests/browser_mobile_introduction_smoke.py
+      - name: Browser editor draft and offline-save smoke
+        run: python tests/browser_editor_resilience_smoke.py
+      - name: Browser taxonomy autocomplete smoke
+        run: python tests/browser_taxonomy_smoke.py
+      - name: Browser security smoke
+        run: python tests/browser_security_smoke.py
       - name: Probe Timeweb preview reachability (GET only)
         if: always() && (github.event_name == 'pull_request' || github.ref == 'refs/heads/main')
         run: python scripts/probe_timeweb_preview.py

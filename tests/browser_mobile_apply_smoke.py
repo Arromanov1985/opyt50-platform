@@ -52,11 +52,34 @@ def open_kladovshik(page):
       return action && description &&
         action.getBoundingClientRect().top < description.getBoundingClientRect().top;
     }"""), "The vacancy apply CTA must be before the long job description"
-    assert page.evaluate("""() => {
+    dimensions = page.evaluate("""() => {
       const dialog = document.querySelector('#job-dialog');
-      return document.documentElement.scrollWidth <= document.documentElement.clientWidth + 3
-        && dialog.scrollWidth <= dialog.clientWidth + 3;
-    }"""), "Vacancy facts and actions must fit the narrow viewport with large text"
+      return {document: document.documentElement.scrollWidth,
+        viewport: document.documentElement.clientWidth,
+        dialogScroll: dialog.scrollWidth, dialogClient: dialog.clientWidth};
+    }""")
+    if (dimensions['document'] > dimensions['viewport'] + 3
+            or dimensions['dialogScroll'] > dimensions['dialogClient'] + 3):
+        dimensions['offenders'] = page.evaluate("""() => {
+          const dialog = document.querySelector('#job-dialog');
+          const bounds = dialog.getBoundingClientRect();
+          const describe = el => {
+            const rect = el.getBoundingClientRect(), style = getComputedStyle(el);
+            return {selector: el.tagName.toLowerCase() + (el.id ? '#' + el.id : '')
+                + [...el.classList].map(name => '.' + name).join(''),
+              left: rect.left, right: rect.right, width: rect.width,
+              client: el.clientWidth, scroll: el.scrollWidth,
+              display: style.display, minWidth: style.minWidth,
+              fontSize: style.fontSize, whiteSpace: style.whiteSpace,
+              columns: style.gridTemplateColumns, flexWrap: style.flexWrap};
+          };
+          return [...dialog.querySelectorAll('*')].filter(el => {
+            const rect = el.getBoundingClientRect();
+            return rect.width && rect.height && (rect.right > bounds.right + 3
+              || rect.left < bounds.left - 3 || el.scrollWidth > el.clientWidth + 3);
+          }).slice(0, 12).map(el => ({...describe(el), parent: describe(el.parentElement)}));
+        }""")
+        raise AssertionError(f'Vacancy facts and actions overflow with large text: {dimensions}')
 
 
 def prelaunch_guest_navigation(page):
