@@ -2019,16 +2019,20 @@ async function renderCandidate() {
         description: `Сейчас в процессе: ${activeApplications}.`,
         action: '<button class="btn btn-outline btn-tiny" data-v02-action="open-candidate-applications">К откликам</button>'
       });
-      if (readiness.ready && !health.hasProfessionalDetails) candidateTasks.push({
-        title: 'Указать навыки или опыт (необязательно)',
-        description: 'Поиск уже доступен. Можно добавить несколько навыков или одно место работы — не нужно писать второе резюме.',
-        action: '<button class="btn btn-outline btn-tiny" data-tab="profile">Дополнить профиль</button>'
-      });
-      if (!candidateTasks.length) candidateTasks.push({
-        title: jobs.length ? 'Выбрать подходящую вакансию' : 'Посмотреть доступные вакансии',
-        description: jobs.length ? `Рекомендаций по профилю: ${jobs.length}.` : 'Можно расширить поиск и посмотреть все открытые предложения.',
-        action: jobs.length ? '<button class="btn btn-outline btn-tiny" data-tab="offers">Рекомендации</button>' : '<a class="btn btn-outline btn-tiny" href="#jobs">Открыть поиск</a>'
-      });
+      // An optional biography must never replace the primary action: find work.
+      // Only suggest enrichment when there is no pending decision or other task.
+      if (!candidateTasks.length) {
+        candidateTasks.push({
+          title: jobs.length ? 'Выбрать подходящую вакансию' : 'Посмотреть доступные вакансии',
+          description: jobs.length ? `Рекомендаций по профилю: ${jobs.length}.` : 'Можно расширить поиск и посмотреть все открытые предложения.',
+          action: jobs.length ? '<button class="btn btn-outline btn-tiny" data-tab="offers">Рекомендации</button>' : '<a class="btn btn-outline btn-tiny" href="#jobs">Открыть поиск</a>'
+        });
+        if (readiness.ready && !health.hasProfessionalDetails) candidateTasks.push({
+          title: 'Указать навыки или опыт (необязательно)',
+          description: 'Поиск уже доступен. Можно добавить несколько навыков или одно место работы — не нужно писать второе резюме.',
+          action: '<button class="btn btn-outline btn-tiny" data-tab="profile">Дополнить профиль</button>'
+        });
+      }
       target.innerHTML = `<div class="overview-stack">
         <section class="panel dashboard-overview-hero">
           <span class="section-kicker">ВАШ СЛЕДУЮЩИЙ ШАГ</span>
