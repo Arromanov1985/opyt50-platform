@@ -235,9 +235,10 @@ def journal_sitemap(articles: list[dict] | None = None) -> Response:
 
 
 def journal_robots(request: Request) -> PlainTextResponse:
-    """Preview and unknown hosts are not search-indexable."""
+    """Keep the entire unapproved prelaunch site out of search indexes."""
+    from .legal_config import legal_approved
     canonical_hosts = {"stazhno.ru", "www.stazhno.ru"}
-    if request.url.hostname in canonical_hosts:
+    if request.url.hostname in canonical_hosts and legal_approved():
         policy = (
             "User-agent: *\n"
             "Disallow: /api/\n"

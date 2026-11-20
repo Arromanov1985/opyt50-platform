@@ -110,7 +110,7 @@ def test_public_sitemap_lists_only_public_editorial_pages(tmp_path):
         assert all("/dashboard" not in url for url in urls)
 
 
-def test_preview_not_indexed_and_canonical_domain_indexable(tmp_path):
+def test_preview_and_unapproved_canonical_domain_are_not_indexable(tmp_path):
     app = create_app(str(tmp_path / "seo.sqlite"))
     with TestClient(app, base_url="https://preview.twc1.net") as preview:
         robots = preview.get("/robots.txt")
@@ -122,7 +122,6 @@ def test_preview_not_indexed_and_canonical_domain_indexable(tmp_path):
     with TestClient(app, base_url="https://stazhno.ru") as public:
         robots = public.get("/robots.txt")
         assert robots.status_code == 200
-        assert "Disallow: /api/" in robots.text
-        assert "https://stazhno.ru/sitemap.xml" in robots.text
-        assert "Disallow: /\n" not in robots.text
-        assert public.get("/journal").headers.get("x-robots-tag") is None
+        assert "Disallow: /\n" in robots.text
+        assert "Sitemap:" not in robots.text
+        assert public.get("/journal").headers.get("x-robots-tag") == "noindex, nofollow"
