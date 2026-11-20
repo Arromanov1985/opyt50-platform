@@ -103,7 +103,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const existing = input.value.trim();
     if (experienceAlreadyDescribed(existing, text)) {
       button.disabled = true;
-      say('Похожее описание уже есть в профиле. Проверьте поле «Немного о вашем опыте», чтобы не повторять сведения.', false);
+      say('Похожее описание уже есть в профиле. Проверьте поле описания опыта, чтобы не повторять сведения.', false);
       return;
     }
     const combined = existing ? existing + '\n\n' + text : text;
@@ -121,9 +121,8 @@ document.addEventListener('DOMContentLoaded', () => {
   document.addEventListener('click', event => {
     const openGuide = event.target.closest('#experience-start');
     if (openGuide) {
-      // Two collapsed sections must be opened together, otherwise candidates
-      // cannot discover the assistant from the main profile fields.
-      const details = document.querySelector('.profile-optional');
+      // The guide and its destination live in the same work-experience section.
+      const details = document.getElementById('resume-history-section');
       const guide = document.getElementById('experience-helper');
       if (!details || !guide) return;
       details.open = true;

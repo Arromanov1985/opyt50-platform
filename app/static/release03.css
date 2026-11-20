@@ -121,6 +121,20 @@ body.comfortable-view .experience-entry-inner p{font-size:17px}
 }
 
 
+/* Compact contextual assistant: no third experience card or duplicated introduction. */
+.resume-history-section .experience-help-action{
+ display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;
+ gap:12px;margin:12px 0 4px;color:#47637d;font-size:15px;line-height:1.5
+}
+.resume-history-section .experience-help-action .btn{min-height:46px;white-space:normal}
+.resume-history-section #profile-about{width:100%;max-width:100%;min-height:100px}
+.resume-training-section #resume-education{width:100%;max-width:100%}
+body.comfortable-view .resume-history-section .experience-help-action{font-size:18px}
+@media(max-width:570px){
+ .resume-history-section .experience-help-action{align-items:stretch;flex-direction:column}
+ .resume-history-section .experience-help-action .btn{width:100%}
+}
+
 /* Employer vacancy composer: clear sections and mandatory review before publish. */
 .vacancy-compose>.muted{max-width:850px}
 .vacancy-demo-warning{margin:14px 0 22px;padding:12px 15px;border:1px solid #efddb9;background:#fffaf0;color:#7b5828;border-radius:11px;font-size:14px;line-height:1.65}

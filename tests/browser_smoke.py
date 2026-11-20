@@ -229,7 +229,6 @@ def run_browser(page, playwright):
     # Release 0.5.31: structured work experience does not require a long CV.
     page.locator("#resume-history-section > summary").click()
     page.locator("#resume-years").fill("24")
-    page.locator("#resume-education").fill("Среднее профессиональное — логистика")
     page.locator("#resume-achievements").fill("Настроил складской учёт")
     page.locator("#resume-add-role").click()
     first_role = page.locator("#resume-work-list [data-resume-role]").first
@@ -245,6 +244,7 @@ def run_browser(page, playwright):
     # Release 0.5.32: optional training and certificates, including removal.
     expect(page.locator("#resume-training-section")).not_to_have_attribute("open", "")
     page.locator("#resume-training-section summary").click()
+    page.locator("#resume-education").fill("Среднее профессиональное — логистика")
     page.locator("#resume-specializations").fill("Складская логистика, 1С")
     page.locator("#resume-add-course").click()
     first_course = page.locator("#resume-course-list [data-resume-course]").first
@@ -258,14 +258,17 @@ def run_browser(page, playwright):
     page.locator("#resume-course-list [data-resume-course]").last.locator(
         "[data-action='remove-resume-course']").click()
     expect(page.locator("#resume-course-list [data-resume-course]")).to_have_count(1)
-    # The guide is reachable directly from the main profile fields:
-    # one click opens both optional sections and focuses the first question.
+    # The guide is inside work experience and does not open unrelated fields.
+    expect(page.locator(".experience-entry")).to_have_count(0)
+    expect(page.locator("#resume-history-section #experience-start")).to_have_count(1)
     page.locator("#experience-start").click()
-    expect(page.locator(".profile-optional")).to_have_attribute("open", "")
+    expect(page.locator("#resume-history-section")).to_have_attribute("open", "")
+    expect(page.locator(".profile-optional")).not_to_have_attribute("open", "")
     expect(page.locator("#experience-helper")).to_have_attribute("open", "")
     expect(page.locator("#experience-start")).to_have_attribute("aria-expanded", "true")
     expect(page.locator("#experience-work")).to_be_focused()
-    expect(page.locator("#profile-phone")).to_be_visible()
+    expect(page.locator("#profile-about")).to_be_visible()
+    expect(page.locator("#profile-phone")).not_to_be_visible()
     expect(page.locator("#experience-build")).to_be_visible()
     page.locator("#experience-build").click()
     expect(page.locator("#experience-helper-message")).to_contain_text("хотя бы один ответ")
@@ -382,6 +385,9 @@ def run_browser(page, playwright):
     expect(dialog).to_have_count(0)
     assert not page.locator("body").evaluate("el=>el.classList.contains('resume-printing')")
     expect(page.locator(".profile-optional")).not_to_have_attribute("open", "")
+    # The contextual helper is only visible when the experience accordion is expanded.
+    expect(page.locator("#resume-history-section")).not_to_have_attribute("open", "")
+    page.locator("#resume-history-section > summary").click()
     expect(page.locator("#experience-start")).to_contain_text("Помочь описать опыт")
     # Open the editor again; the description must still be available.
     page.locator("#experience-start").click()

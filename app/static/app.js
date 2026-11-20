@@ -1750,53 +1750,23 @@ function profileMarkup(profile = {}, user = {}) {
           <select id="profile-schedule" name="schedule">${optList(schedules,profile.schedule)}</select></div>
         <div class="field wide">
           <details class="resume-history-section" id="resume-history-section">
-            <summary>Опыт работы, образование и достижения <small data-profile-history-count>Записей о работе: ${Array.isArray(profile.work_history) ? profile.work_history.length : 0}</small></summary>
+            <summary>Опыт работы и достижения <small data-profile-history-count>Записей о работе: ${Array.isArray(profile.work_history) ? profile.work_history.length : 0}</small></summary>
             <p class="field-help">Расскажите о своём опыте. Эти сведения можно показать работодателю без раскрытия контактов. Указывать названия компаний необязательно.</p>
             <div class="form-grid">
               <div class="field"><label for="resume-years">Общий стаж, лет</label>
                 <input id="resume-years" name="experience_years" type="number" inputmode="numeric" min="0" max="70" value="${Number(profile.experience_years || 0) || ''}" placeholder="Например, 20"></div>
-              <div class="field"><label for="resume-education">Образование, квалификация</label>
-                <input id="resume-education" name="education" maxlength="240" value="${esc(profile.education || '')}" placeholder="Например, среднее специальное, бухгалтерский учёт"></div>
               <div class="field wide"><label for="resume-achievements">Чем гордитесь в работе?</label>
                 <textarea id="resume-achievements" name="achievements" maxlength="500" rows="3" placeholder="Например, наладил учёт склада, обучил сотрудников">${esc(profile.achievements || '')}</textarea></div>
             </div>
             <div class="resume-work-list" id="resume-work-list">${(Array.isArray(profile.work_history) ? profile.work_history : []).map(resumeRoleFields).join('')}</div>
             <button type="button" class="btn btn-outline" data-action="add-resume-role" id="resume-add-role">Добавить место работы</button>
             <p class="field-help">До 5 мест работы. Можно указать только должность, период и основные задачи. Не добавляйте телефон, email или ссылки.</p>
-          </details>
-        </div>
-        <div class="field wide">
-          <details class="resume-training-section" id="resume-training-section">
-            <summary>Специализации, курсы и сертификаты (по желанию) <small data-profile-course-count>Записей об обучении: ${Array.isArray(profile.courses) ? profile.courses.length : 0}</small></summary>
-            <p class="field-help">Можно добавить профессиональные направления и обучение. Подтверждающие документы загружать не нужно; они не проверяются платформой.</p>
-            <div class="field"><label for="resume-specializations">В каких направлениях специализируетесь?</label>
-              <textarea id="resume-specializations" name="specializations" maxlength="240" rows="2" placeholder="Например: кадровый учёт, зарплата, отчётность">${esc(profile.specializations || '')}</textarea></div>
-            <div class="resume-course-list" id="resume-course-list">${(Array.isArray(profile.courses) ? profile.courses : []).map(resumeCourseFields).join('')}</div>
-            <button type="button" class="btn btn-outline" data-action="add-resume-course" id="resume-add-course">Добавить курс или сертификат</button>
-            <p class="field-help">Можно добавить до шести записей. Достаточно названия курса; организация и год необязательны. Не указывайте контакты и ссылки.</p>
-          </details>
-        </div>
-        <div class="field wide experience-entry">
-          <div class="experience-entry-inner">
-            <div>
-              <strong>Хотите рассказать о своём опыте?</strong>
-              <p>${profile.about ? 'В вашем профиле уже есть описание. Его можно дополнить.' : 'Поможем подобрать слова по трём простым вопросам. Большое резюме не нужно.'}</p>
-            </div>
-            <button type="button" class="btn btn-outline" id="experience-start" aria-controls="experience-helper" aria-expanded="false">Помочь описать опыт →</button>
-          </div>
-        </div>
-        <div class="field wide">
-          <details class="profile-optional">
-            <summary>Дополнительные сведения (по желанию)</summary>
-            <p class="muted">Эти поля можно заполнить позже. Они не обязательны для начала поиска.</p>
-            <div class="form-grid">
-              <div class="field"><label for="profile-employment">Тип занятости</label>
-                <select id="profile-employment" name="employment">${optList(employment,profile.employment)}</select></div>
-              <div class="field"><label for="profile-phone">Телефон (необязательно)</label>
-                <input id="profile-phone" name="phone" type="tel" value="${esc(user.phone)}" maxlength="30" autocomplete="off" placeholder="Например, +7 900 000-00-00">
-                <small class="field-help">Телефон не показывается работодателю автоматически и открывается только в предусмотренном сценарии знакомства.</small></div>
-              <div class="field wide"><label for="profile-about">Немного о вашем опыте</label>
-                <textarea id="profile-about" name="about" maxlength="700" placeholder="Расскажите о своей работе и достижениях. Не указывайте здесь контакты.">${esc(profile.about)}</textarea>
+            <div class="field wide"><label for="profile-about">Коротко о себе как о специалисте (по желанию)</label>
+                <textarea id="profile-about" name="about" maxlength="700" placeholder="Например: умею организовать работу склада и обучать новых сотрудников. Не указывайте контакты.">${esc(profile.about)}</textarea>
+                <div class="experience-help-action">
+                  <span>Трудно подобрать слова? Ответьте на три коротких вопроса.</span>
+                  <button type="button" class="btn btn-outline" id="experience-start" aria-controls="experience-helper" aria-expanded="false">Помочь описать опыт</button>
+                </div>
                 <details class="experience-helper" id="experience-helper">
                   <summary>Не знаете, что написать? Поможем описать ваш опыт</summary>
                   <p class="experience-helper-intro">Ответьте на три простых вопроса. Мы составим текст только из ваших слов. Проверьте его и при желании добавьте в профиль.</p>
@@ -1818,8 +1788,34 @@ function profileMarkup(profile = {}, user = {}) {
                     <p id="experience-preview"></p>
                   </div>
                   <p class="experience-helper-message" id="experience-helper-message" role="status" aria-live="polite"></p>
-                  <p class="field-help">При добавлении помощник сохранит существующее описание и дополнит его. Чтобы изменения остались в профиле, нажмите ниже «Сохранить профиль».</p>
-                </details></div>
+                  <p class="field-help">Помощник дополняет только поле выше, не создавая отдельного резюме. После проверки нажмите «Сохранить профиль».</p>
+                </details>
+            </div>
+          </details>
+        </div>
+        <div class="field wide">
+          <details class="resume-training-section" id="resume-training-section">
+            <summary>Образование и квалификация (по желанию) <small data-profile-course-count>Записей об обучении: ${Array.isArray(profile.courses) ? profile.courses.length : 0}</small></summary>
+            <p class="field-help">Укажите образование, специализации и пройденные курсы, если хотите. Документы загружать не нужно; платформа их не проверяет.</p>
+              <div class="field"><label for="resume-education">Образование, квалификация</label>
+                <input id="resume-education" name="education" maxlength="240" value="${esc(profile.education || '')}" placeholder="Например, среднее специальное, бухгалтерский учёт"></div>
+            <div class="field"><label for="resume-specializations">В каких направлениях специализируетесь?</label>
+              <textarea id="resume-specializations" name="specializations" maxlength="240" rows="2" placeholder="Например: кадровый учёт, зарплата, отчётность">${esc(profile.specializations || '')}</textarea></div>
+            <div class="resume-course-list" id="resume-course-list">${(Array.isArray(profile.courses) ? profile.courses : []).map(resumeCourseFields).join('')}</div>
+            <button type="button" class="btn btn-outline" data-action="add-resume-course" id="resume-add-course">Добавить курс или сертификат</button>
+            <p class="field-help">Можно добавить до шести записей. Достаточно названия курса; организация и год необязательны. Не указывайте контакты и ссылки.</p>
+          </details>
+        </div>
+        <div class="field wide">
+          <details class="profile-optional">
+            <summary>Дополнительные сведения (по желанию)</summary>
+            <p class="muted">Эти поля можно заполнить позже. Они не обязательны для начала поиска.</p>
+            <div class="form-grid">
+              <div class="field"><label for="profile-employment">Тип занятости</label>
+                <select id="profile-employment" name="employment">${optList(employment,profile.employment)}</select></div>
+              <div class="field"><label for="profile-phone">Телефон (необязательно)</label>
+                <input id="profile-phone" name="phone" type="tel" value="${esc(user.phone)}" maxlength="30" autocomplete="off" placeholder="Например, +7 900 000-00-00">
+                <small class="field-help">Телефон не показывается работодателю автоматически и открывается только в предусмотренном сценарии знакомства.</small></div>
             </div>
           </details>
         </div>
