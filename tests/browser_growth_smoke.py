@@ -1,6 +1,7 @@
 """Aggregate route reporting and accessible navigation on fictional local data."""
 from __future__ import annotations
 
+import json
 import os
 import re
 import socket
@@ -55,7 +56,62 @@ def send(page, base, source, action):
     assert response.status == 204, response.text()
 
 
-def exercise(browser, base):
+def serve_with_receipts(port, receipts_path):
+    """Test-only wire evidence: store header presence, never cookie values."""
+    sys.path.insert(0, str(ROOT))
+    from app.main import app
+    import uvicorn
+
+    async def observed_app(scope, receive, send_response):
+        if scope["type"] != "http" or scope.get("path") != "/api/growth/event":
+            return await app(scope, receive, send_response)
+        body = bytearray()
+        header_names = {name for name, _ in scope.get("headers", [])}
+
+        async def receive_body():
+            message = await receive()
+            if message["type"] == "http.request":
+                body.extend(message.get("body", b""))
+            return message
+
+        async def record_response(message):
+            if message["type"] == "http.response.start":
+                payload = json.loads(body)
+                receipt = {
+                    "source": payload.get("source"), "action": payload.get("action"),
+                    "status": message["status"],
+                    "has_cookie": b"cookie" in header_names,
+                    "has_referer": b"referer" in header_names,
+                }
+                with receipts_path.open("a", encoding="utf-8") as stream:
+                    stream.write(json.dumps(receipt) + "\n")
+            await send_response(message)
+
+        await app(scope, receive_body, record_response)
+
+    uvicorn.run(observed_app, host="127.0.0.1", port=port)
+
+
+def wait_for_browser_receipts(path):
+    # All six requests must reach the server before analytics is deliberately
+    # blocked. This also avoids racing the last document's keepalive request.
+    deadline = time.monotonic() + 5
+    receipts = []
+    while time.monotonic() < deadline:
+        if path.exists():
+            receipts = [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines()]
+        if len(receipts) >= 6:
+            break
+        time.sleep(.05)
+    assert len(receipts) == 6, receipts
+    expected = sorted(("path:" + slug, action) for slug, click, _ in PATHS
+                      for action in ("view", click))
+    assert sorted((item["source"], item["action"]) for item in receipts) == expected, receipts
+    assert all(item["status"] == 204 for item in receipts), receipts
+    assert all(not item["has_cookie"] and not item["has_referer"] for item in receipts), receipts
+
+
+def exercise(browser, base, receipts_path):
     context = browser.new_context(viewport={"width": 1280, "height": 900}, locale="ru-RU")
     admin_context = browser.new_context(viewport={"width": 1280, "height": 900}, locale="ru-RU")
     page = context.new_page()
@@ -97,8 +153,11 @@ def exercise(browser, base):
             with page.expect_request(lambda request: matches_event(request, source, action)) as click:
                 page.locator(f'.jr-bottom a[data-growth-action="{action}"]').click()
             expect(page).to_have_url(base + destination)
-            click_headers = click.value.all_headers()
-            assert "cookie" not in click_headers and "referer" not in click_headers
+            assert click.value.post_data_json == {"source": source, "action": action}
+
+        # Server-received headers remain authoritative when navigation detaches
+        # the document that emitted a keepalive request.
+        wait_for_browser_receipts(receipts_path)
 
         # A blocked analytics service must never interfere with ordinary links.
         def block_analytics(route):
@@ -192,9 +251,10 @@ def main():
         subprocess.run([sys.executable, "scripts/seed_demo.py", "--db", env["OPYT50_DB_PATH"]],
                        cwd=ROOT, env=env, check=True, capture_output=True)
         log_path = Path(temporary) / "uvicorn.log"
+        receipts_path = Path(temporary) / "growth-receipts.jsonl"
         with log_path.open("w", encoding="utf-8") as log:
             server = subprocess.Popen(
-                [sys.executable, "-m", "uvicorn", "app.main:app", "--host", "127.0.0.1", "--port", str(port)],
+                [sys.executable, str(Path(__file__).resolve()), "--serve", str(port), str(receipts_path)],
                 cwd=ROOT, env=env, stdout=log, stderr=subprocess.STDOUT,
             )
             try:
@@ -213,7 +273,7 @@ def main():
                         options["executable_path"] = os.environ["PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH"]
                     browser = playwright.chromium.launch(**options)
                     try:
-                        exercise(browser, base)
+                        exercise(browser, base, receipts_path)
                     finally:
                         browser.close()
             except Exception:
@@ -231,4 +291,7 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    if len(sys.argv) == 4 and sys.argv[1] == "--serve":
+        serve_with_receipts(int(sys.argv[2]), Path(sys.argv[3]))
+    else:
+        main()
