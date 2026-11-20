@@ -158,3 +158,24 @@ def test_real_production_cannot_disable_legal_gate_with_pytest_marker(monkeypatc
             },
         )
         assert response.status_code == 503, response.text
+
+
+def test_prelaunch_public_home_is_readonly_and_nonindexable(monkeypatch, tmp_path):
+    """The public host must not offer a live signup under synthetic operator details."""
+    app = create_app(str(tmp_path / "public-prelaunch.db"))
+    with TestClient(app) as client:
+        local = client.get("/")
+        assert local.status_code == 200
+        assert 'name="prelaunch-signup-closed"' not in local.text
+        monkeypatch.setenv("OPYT50_PUBLIC_URL", "https://stazhno.ru")
+        public = client.get("/")
+        assert public.status_code == 200
+        assert 'name="prelaunch-signup-closed" content="yes"' in public.text
+        assert 'id="prelaunch-public-notice"' in public.text
+        assert "Регистрация закрыта" in public.text
+        assert public.headers["x-robots-tag"] == "noindex, nofollow"
+        assert "no-store" in public.headers["cache-control"]
+        client_script = (Path(__file__).parents[1] / "app/static/app.js").read_text(encoding="utf-8")
+        assert "publicSignupClosed()" in client_script
+        assert "registerButton.disabled = true" in client_script
+        assert "button.disabled = true" in client_script

@@ -983,8 +983,28 @@ def create_app(db_path: str | None = None) -> FastAPI:
     @app.get("/", include_in_schema=False)
     def index():
         page = (BASE / "static" / "index.html").read_text(encoding="utf-8")
-        response = HTMLResponse(render_legal_template(page))
+        page = render_legal_template(page)
+        prelaunch = production_runtime() and not legal_approved()
+        if prelaunch:
+            # Site is a read-only technical preview until real legal approval.
+            # Render this on the server as well: it must be visible without JS.
+            page = page.replace(
+                "</head>",
+                '<meta name="prelaunch-signup-closed" content="yes">\n</head>', 1,
+            )
+            page = page.replace(
+                "<main>",
+                '<div class="product-strip" role="status" id="prelaunch-public-notice">'
+                '<div class="container product-strip-inner"><span><strong>САЙТ В ПОДГОТОВКЕ.</strong> '
+                'Материалы доступны для ознакомления. Регистрация закрыта до утверждения '
+                'юридических документов. Не вводите персональные данные.</span></div></div>'
+                '<main>',
+                1,
+            )
+        response = HTMLResponse(page)
         response.headers["Cache-Control"] = "no-store, max-age=0"
+        if prelaunch:
+            response.headers["X-Robots-Tag"] = "noindex, nofollow"
         return response
 
     @app.post("/api/growth/event", status_code=204, include_in_schema=False)

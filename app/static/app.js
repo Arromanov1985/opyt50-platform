@@ -859,7 +859,14 @@ async function loadPublicJobs() {
     $('#public-jobs').innerHTML = jobs.length ? jobs.map(job => jobMarkup(job)).join('') : '<div class="empty-state">Пока нет открытых вакансий по этому запросу. Создайте профиль, чтобы получать будущие предложения.</div>';
   } catch(e) { $('#public-jobs').innerHTML = '<div class="empty-state">Не удалось получить вакансии.</div>'; toast(e.message, true); }
 }
+function publicSignupClosed() {
+  return document.querySelector('meta[name="prelaunch-signup-closed"]')?.content === 'yes';
+}
 function openAuth(mode = 'register', role = 'candidate') {
+  if (mode === 'register' && publicSignupClosed()) {
+    toast('Регистрация временно закрыта до утверждения юридических документов.', true);
+    return;
+  }
   state.mode = mode;
   state.role = role;
   resetMfaState();
@@ -958,7 +965,11 @@ function updateAuth() {
   }
   const message = $('#auth-message'); if (message) message.textContent = '';
   document.querySelectorAll('.role-btn').forEach(b => { const active = b.dataset.role === state.role; b.classList.toggle('active', active); b.setAttribute('aria-pressed', String(active)); });
-  $('#auth-switch').innerHTML = reg ? 'Уже есть аккаунт? <button type="button" data-switch="login">Войти</button>' : 'Ещё нет аккаунта? <button type="button" data-switch="register">Зарегистрироваться</button>';
+  $('#auth-switch').innerHTML = reg
+    ? 'Уже есть аккаунт? <button type="button" data-switch="login">Войти</button>'
+    : publicSignupClosed()
+      ? 'Новая регистрация временно закрыта до юридического утверждения.'
+      : 'Ещё нет аккаунта? <button type="button" data-switch="register">Зарегистрироваться</button>';
 }
 async function submitAuth(event) {
   event.preventDefault();
@@ -3985,6 +3996,16 @@ async function handleDashboardClick(event) {
 async function start() {
   $('#login-open').addEventListener('click',()=>openAuth('login'));
   $('#register-open').addEventListener('click',()=>openAuth('register'));
+  if (publicSignupClosed()) {
+    const registerButton = $('#register-open');
+    registerButton.disabled = true;
+    registerButton.textContent = 'Регистрация пока закрыта';
+    $('[data-register]').forEach(button => {
+      button.disabled = true;
+      button.setAttribute('aria-disabled', 'true');
+      button.title = 'Регистрация закрыта до юридического утверждения';
+    });
+  }
   window.addEventListener('resize', syncResponsiveMemberActions);
   syncResponsiveMemberActions();
   $('#modal-close').addEventListener('click',()=>{
