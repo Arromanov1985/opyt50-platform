@@ -689,7 +689,7 @@ def run_browser(page, playwright):
     page.locator("[data-v02-action='employer-application-filter'][data-filter='all']").click()
     page.locator("#employer-application-search").fill("Кладовщик")
     expect(page.locator("#employer-application-results .application-review-card:visible")).to_have_count(1)
-    expect(page.locator("#dashboard-main [data-v02-action='employer-application-filter']")).to_have_count(6)
+    expect(page.locator("#dashboard-main .employer-application-stage-filter [data-v02-action='employer-application-filter']")).to_have_count(6)
     attention_filter = page.locator("#dashboard-main [data-v02-action='employer-application-filter'][data-filter='attention']")
     expect(attention_filter).to_contain_text("Требуют внимания")
     expect(attention_filter).to_have_attribute("aria-pressed", "false")
