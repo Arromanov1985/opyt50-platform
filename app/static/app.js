@@ -1326,22 +1326,43 @@ function tabsMarkup(items, heading, subtitle) {
   </aside>`;
 }
 function candidateProfileHealth(profile = {}) {
-  const checks = [
-    Boolean((profile.profession || '').trim()),
-    Boolean((profile.city || '').trim()),
-    Number(profile.salary_min || 0) > 0,
-    Boolean((profile.skills || '').trim()),
-    Boolean((profile.about || '').trim())
-  ];
-  const completed = checks.filter(Boolean).length;
-  const percent = completed * 20;
-  const next = !checks[0] ? 'Укажите профессию'
-    : !checks[1] ? 'Укажите город'
-    : !checks[2] ? 'Добавьте зарплатные ожидания'
-    : !checks[3] ? 'Добавьте несколько навыков'
-    : !checks[4] ? 'Коротко опишите опыт'
-    : 'Основные сведения заполнены';
-  return {percent, next};
+  // Only profession and city are required. Optional biography, salary and
+  // qualifications must never make a searchable profile look incomplete.
+  const hasProfession = Boolean(String(profile.profession || '').trim());
+  const hasCity = Boolean(String(profile.city || '').trim());
+  const percent = (Number(hasProfession) + Number(hasCity)) * 50;
+  const next = !hasProfession ? 'Укажите профессию, чтобы начать подбор.'
+    : !hasCity ? 'Укажите город, чтобы начать подбор.'
+    : 'Профессия и город сохранены. Можно искать вакансии.';
+  const hasProfessionalDetails = Boolean(
+    String(profile.skills || '').trim() ||
+    String(profile.specializations || '').trim() ||
+    String(profile.about || '').trim() ||
+    String(profile.achievements || '').trim() ||
+    Number(profile.experience_years || 0) > 0 ||
+    (Array.isArray(profile.work_history) && profile.work_history.some(role =>
+      String(role?.position || role?.period || role?.duties || '').trim()))
+  );
+  return {percent, next, hasProfessionalDetails};
+}
+function candidateWorkSectionSummary(profile = {}) {
+  const roles = Array.isArray(profile.work_history) ? profile.work_history.filter(role =>
+    String(role?.position || role?.period || role?.duties || '').trim()) : [];
+  if (roles.length) return `Мест работы: ${roles.length}`;
+  if (Number(profile.experience_years || 0) > 0 ||
+      String(profile.achievements || '').trim() || String(profile.about || '').trim()) {
+    return 'Опыт описан';
+  }
+  return 'Можно заполнить позже';
+}
+function candidateTrainingSectionSummary(profile = {}) {
+  const courses = Array.isArray(profile.courses) ? profile.courses.filter(course =>
+    String(course?.title || course?.provider || course?.year || '').trim() || course?.has_certificate) : [];
+  if (courses.length) return `Курсов и сертификатов: ${courses.length}`;
+  if (String(profile.education || '').trim() || String(profile.specializations || '').trim()) {
+    return 'Сведения добавлены';
+  }
+  return 'Можно заполнить позже';
 }
 function candidateSearchReadiness(profile = {}) {
   const missingFields = ['profession','city'].filter(field => !String(profile[field] || '').trim());
@@ -1679,9 +1700,9 @@ function updateCandidateProfilePreview(form) {
     intent.classList.toggle('is-dirty', changed);
   }
   const historyCount = form.querySelector('[data-profile-history-count]');
-  if (historyCount) historyCount.textContent = `Записей о работе: ${form.querySelectorAll('[data-resume-role]').length}`;
+  if (historyCount) historyCount.textContent = candidateWorkSectionSummary(draft);
   const courseCount = form.querySelector('[data-profile-course-count]');
-  if (courseCount) courseCount.textContent = `Записей об обучении: ${form.querySelectorAll('[data-resume-course]').length}`;
+  if (courseCount) courseCount.textContent = candidateTrainingSectionSummary(draft);
 }
 function updateCandidateProfileSavedState(profile) {
   const panel = document.querySelector('#dashboard-main .candidate-profile');
@@ -1724,8 +1745,8 @@ function profileMarkup(profile = {}, user = {}) {
     <div class="candidate-profile-heading"><div><span class="section-kicker">ВАШ ПРОФЕССИОНАЛЬНЫЙ ОПЫТ</span>
     <h3>Расскажите, какую работу вы ищете</h3></div><button type="button" class="btn btn-outline" data-action="open-candidate-profile-preview" aria-controls="candidate-profile-preview">Посмотреть профиль</button></div>
     <p class="muted">Для начала поиска достаточно профессии и города. Остальные сведения помогают точнее подобрать вакансии; большое резюме не требуется.</p>
-    <div class="profile-health" role="status" aria-label="Заполненность анкеты">
-      <div class="profile-health-copy"><span>Заполненность сохранённой анкеты</span><strong data-profile-saved-percent>${health.percent}%</strong></div>
+    <div class="profile-health" role="status" aria-label="Основные сведения для подбора">
+      <div class="profile-health-copy"><span>Основа профиля: профессия и город</span><strong data-profile-saved-percent>${health.percent}%</strong></div>
       <div class="profile-health-track"><span data-profile-saved-progress style="width:${health.percent}%"></span></div>
       <small data-profile-saved-next>${esc(health.next)}</small>
     </div>
@@ -1750,7 +1771,7 @@ function profileMarkup(profile = {}, user = {}) {
           <select id="profile-schedule" name="schedule">${optList(schedules,profile.schedule)}</select></div>
         <div class="field wide">
           <details class="resume-history-section" id="resume-history-section">
-            <summary>Опыт работы и достижения <small data-profile-history-count>Записей о работе: ${Array.isArray(profile.work_history) ? profile.work_history.length : 0}</small></summary>
+            <summary>Опыт работы и достижения <small data-profile-history-count>${esc(candidateWorkSectionSummary(profile))}</small></summary>
             <p class="field-help">Расскажите о своём опыте. Эти сведения можно показать работодателю без раскрытия контактов. Указывать названия компаний необязательно.</p>
             <div class="form-grid">
               <div class="field"><label for="resume-years">Общий стаж, лет</label>
@@ -1795,7 +1816,7 @@ function profileMarkup(profile = {}, user = {}) {
         </div>
         <div class="field wide">
           <details class="resume-training-section" id="resume-training-section">
-            <summary>Образование и квалификация (по желанию) <small data-profile-course-count>Записей об обучении: ${Array.isArray(profile.courses) ? profile.courses.length : 0}</small></summary>
+            <summary>Образование и квалификация (по желанию) <small data-profile-course-count>${esc(candidateTrainingSectionSummary(profile))}</small></summary>
             <p class="field-help">Укажите образование, специализации и пройденные курсы, если хотите. Документы загружать не нужно; платформа их не проверяет.</p>
               <div class="field"><label for="resume-education">Образование, квалификация</label>
                 <input id="resume-education" name="education" maxlength="240" value="${esc(profile.education || '')}" placeholder="Например, среднее специальное, бухгалтерский учёт"></div>
@@ -1998,10 +2019,10 @@ async function renderCandidate() {
         description: `Сейчас в процессе: ${activeApplications}.`,
         action: '<button class="btn btn-outline btn-tiny" data-v02-action="open-candidate-applications">К откликам</button>'
       });
-      if (readiness.ready && health.percent < 80) candidateTasks.push({
-        title: 'Дополнить профиль по желанию',
-        description: `${health.next}. Поиск уже доступен.`,
-        action: '<button class="btn btn-outline btn-tiny" data-tab="profile">Мой профиль</button>'
+      if (readiness.ready && !health.hasProfessionalDetails) candidateTasks.push({
+        title: 'Указать навыки или опыт (необязательно)',
+        description: 'Поиск уже доступен. Можно добавить несколько навыков или одно место работы — не нужно писать второе резюме.',
+        action: '<button class="btn btn-outline btn-tiny" data-tab="profile">Дополнить профиль</button>'
       });
       if (!candidateTasks.length) candidateTasks.push({
         title: jobs.length ? 'Выбрать подходящую вакансию' : 'Посмотреть доступные вакансии',
@@ -2012,7 +2033,7 @@ async function renderCandidate() {
         <section class="panel dashboard-overview-hero">
           <span class="section-kicker">ВАШ СЛЕДУЮЩИЙ ШАГ</span>
           <div class="overview-priority"><div><h3>${esc(nextTitle)}</h3><p class="muted">${esc(nextText)}</p></div>${nextAction}</div>
-          <div class="overview-health"><span>Заполненность анкеты</span><div class="profile-health-track"><span style="width:${health.percent}%"></span></div><strong>${health.percent}%</strong></div>
+          <div class="overview-health"><span>Основные сведения</span><div class="profile-health-track"><span style="width:${health.percent}%"></span></div><strong>${health.percent}%</strong></div>
           <div class="candidate-status-row">
             ${candidateStatusChip(emailVerified,'Email подтверждён','Подтвердите email')}
             ${candidateStatusChip(readiness.ready,'Профиль участвует в подборе',readiness.title)}
