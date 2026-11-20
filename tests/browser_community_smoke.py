@@ -190,11 +190,25 @@ def run_browser(browser, base, database):
         assert_private_values_absent(public_api.text())
         visitor.goto(base + "/people/" + person_id, wait_until="networkidle")
         assert visitor.evaluate("window.communityXss || 0") == 0
+        expect(visitor.locator(".person-facts dt")).to_have_text(["Город", "Цель знакомства"])
+        expect(visitor.locator(".person-skills")).to_contain_text("Организация работы")
+        assert_private_values_absent(visitor.locator("body").inner_text())
         capture(visitor, "community-person-desktop.png")
+        visitor.locator("#reading-mode-toggle").click()
+        for width in (390, 320):
+            visitor.set_viewport_size({"width": width, "height": 844})
+            expect(visitor.locator("#reading-mode-toggle")).to_have_attribute("aria-pressed", "true")
+            assert visitor.evaluate("""() => {
+              const facts = document.querySelector('.person-facts').getBoundingClientRect();
+              const skills = document.querySelector('.person-skills').getBoundingClientRect();
+              const next = document.querySelector('#person-next-step').getBoundingClientRect();
+              const story = document.querySelector('.person-story').getBoundingClientRect();
+              return facts.bottom <= next.top + 2 && skills.bottom <= next.top + 2
+                && next.bottom <= story.top + 2;
+            }"""), "Mobile profile should explain facts and interests before the request, then show the detailed story"
+            capture(visitor, f"community-person-{width}-large.png")
+        visitor.locator("#reading-mode-toggle").click()
         visitor.set_viewport_size({"width": 390, "height": 844})
-        visitor.locator("#reading-mode-toggle").click()
-        capture(visitor, "community-person-mobile-large.png")
-        visitor.locator("#reading-mode-toggle").click()
 
         boris_profile = api_profile(boris, base, admin, "Борис Проекты", "Координатор проектов")
         outsider_profile = api_profile(outsider, base, admin, "Виктор Мастер", "Мастер производственного обучения")

@@ -1,5 +1,7 @@
 """Real-browser smoke for the mobile vacancy -> apply route (fictional users only)."""
 import os
+import re
+import sqlite3
 import subprocess
 import sys
 import tempfile
@@ -12,6 +14,7 @@ from playwright.sync_api import expect, sync_playwright
 
 ROOT = Path(__file__).resolve().parents[1]
 URL = "http://127.0.0.1:8770"
+OUTPUT = Path(os.environ.get("STAZHNO_VISUAL_REVIEW_DIR", "visual-review"))
 
 
 def no_auto_submit(page):
@@ -24,20 +27,74 @@ def no_auto_submit(page):
 
 def open_kladovshik(page):
     page.goto(URL, wait_until="networkidle")
+    if page.locator("#reading-mode-toggle").get_attribute("aria-pressed") != "true":
+        page.locator("#reading-mode-toggle").click()
     card = page.locator("#public-jobs .job-card").filter(has_text="Кладовщик")
     expect(card).to_be_visible()
-    expect(card.locator("[data-v02-action='apply']")).to_be_visible()
+    expect(card.locator("[data-v02-action='apply']")).to_have_count(0)
+    expect(card.locator("[data-v02-action='details']")).to_contain_text("Условия и отклик")
+    expect(card.locator(".job-essential-facts dt")).to_have_text(["Город", "График", "Занятость"])
+    expect(card.locator(".job-share-link")).to_be_visible()
+    # Seeded edge cases must be understandable without inventing a zero salary.
+    pay_negotiated = page.locator("#public-jobs .job-card").filter(has_text="Бухгалтер").locator(".job-salary")
+    expect(pay_negotiated).to_have_text("По договорённости")
+    pay_upper = page.locator("#public-jobs .job-card").filter(has_text="Инженер по эксплуатации").locator(".job-salary")
+    expect(pay_upper).to_have_text(re.compile(r"до\s+110\s*000\s*₽"))
     card.locator("[data-v02-action='details']").click()
     expect(page.locator("#job-dialog")).to_be_visible()
     expect(page.locator("#job-dialog-title")).to_have_text("Кладовщик")
     expect(page.locator("#job-dialog .job-detail-privacy")).to_contain_text("отдельное согласие")
     expect(page.locator("#job-dialog [data-v02-action='apply']")).to_be_visible()
+    expect(page.locator("#job-dialog [data-v02-action='apply']")).to_contain_text("Войти и откликнуться")
     assert page.evaluate("""() => {
       const action = document.querySelector('#job-dialog .job-detail-action');
       const description = document.querySelector('#job-dialog .job-detail-description');
       return action && description &&
         action.getBoundingClientRect().top < description.getBoundingClientRect().top;
     }"""), "The vacancy apply CTA must be before the long job description"
+    assert page.evaluate("""() => {
+      const dialog = document.querySelector('#job-dialog');
+      return document.documentElement.scrollWidth <= document.documentElement.clientWidth + 3
+        && dialog.scrollWidth <= dialog.clientWidth + 3;
+    }"""), "Vacancy facts and actions must fit the narrow viewport with large text"
+
+
+def prelaunch_guest_navigation(page):
+    posts = []
+    page.on("request", lambda request: posts.append(request.url) if (
+        request.method == "POST" and request.url.rsplit("/", 1)[-1] in {"applications", "register"}
+    ) else None)
+    open_kladovshik(page)
+    expect(page.locator('meta[name="prelaunch-signup-closed"]')).to_have_attribute("content", "yes")
+    expect(page.locator("#job-dialog .job-entry-note")).to_contain_text("Регистрация пока закрыта")
+    guide = page.locator('#job-dialog .job-preparation-link[href="/journal/paths/nayti-rabotu"]')
+    expect(guide).to_be_visible()
+    OUTPUT.mkdir(parents=True, exist_ok=True)
+    page.locator("#job-dialog").screenshot(path=str(OUTPUT / "prelaunch-vacancy-modal-large.png"))
+    page.locator("#job-dialog [data-v02-action='apply']").click()
+    expect(page.locator("#auth-dialog")).to_be_visible()
+    expect(page.locator("#auth-title")).to_have_text("Войти в аккаунт")
+    expect(page.locator("#auth-switch [data-switch='register']")).to_have_count(0)
+    expect(page.locator("#auth-switch")).to_contain_text("регистрация временно закрыта")
+    page.locator("#modal-close").click()
+    # Sharing still leads to the same vacancy and never submits an application.
+    card = page.locator("#public-jobs .job-card").filter(has_text="Кладовщик")
+    vacancy_id = int(card.get_attribute("data-job-id"))
+    page.goto(URL + f"/vacancies/{vacancy_id}", wait_until="networkidle")
+    expect(page.locator("h1")).to_have_text("Кладовщик")
+    expect(page.locator(".share-entry-note")).to_contain_text("Регистрация пока закрыта")
+    expect(page.locator("#reading-mode-toggle")).to_have_attribute("aria-pressed", "true")
+    for width in (320, 390):
+        page.set_viewport_size({"width": width, "height": 844})
+        assert page.evaluate("""() => document.documentElement.scrollWidth
+          <= document.documentElement.clientWidth + 3"""), "Public vacancy overflows with large text"
+    page.screenshot(path=str(OUTPUT / "prelaunch-vacancy-page-large.png"), full_page=True)
+    start = page.locator(f'a[href="/?vacancy={vacancy_id}#jobs"]')
+    expect(start).to_have_count(1)
+    start.click()
+    expect(page.locator("#job-dialog-title")).to_have_text("Кладовщик")
+    expect(page.locator("#job-dialog .job-entry-note")).to_contain_text("Регистрация пока закрыта")
+    assert not posts, "Prelaunch reading and login entry must never register or apply"
 
 
 def login_resumes_vacancy(page):
@@ -146,17 +203,8 @@ def registration_resumes_after_profile(page):
       <= document.documentElement.clientWidth + 3"""), "Mobile resume introduces overflow"
 
 
-def main():
-    with tempfile.TemporaryDirectory(prefix="stazhno-mobile-apply-") as temp:
-        env = dict(
-            os.environ, OPYT50_DB_PATH=str(Path(temp) / "demo.db"),
-            OPYT50_PREVIEW_SEED_DEMO="0", OPYT50_COOKIE_SECURE="0",
-        )
-        subprocess.run(
-            [sys.executable, "scripts/seed_demo.py", "--db", env["OPYT50_DB_PATH"]],
-            cwd=ROOT, env=env, capture_output=True, check=True,
-        )
-        log_file = (Path(temp) / "uvicorn.log").open("w", encoding="utf-8")
+def run_fixture(browser, env, log_path, cases):
+    with log_path.open("w", encoding="utf-8") as log_file:
         server = subprocess.Popen(
             [sys.executable, "-m", "uvicorn", "app.main:app",
              "--host", "127.0.0.1", "--port", "8770"],
@@ -172,33 +220,66 @@ def main():
                     time.sleep(.25)
             else:
                 raise RuntimeError("Mobile apply smoke server did not start")
-            with sync_playwright() as playwright:
-                browser = playwright.chromium.launch(
-                    headless=True, args=["--no-sandbox"]
+            for run, width in cases:
+                context = browser.new_context(
+                    viewport={"width": width, "height": 844}, locale="ru-RU"
                 )
                 try:
-                    for run in (login_resumes_vacancy, registration_resumes_after_profile):
-                        context = browser.new_context(
-                            viewport={"width": 390, "height": 844}, locale="ru-RU"
-                        )
-                        try:
-                            page = context.new_page()
-                            errors = []
-                            page.on("pageerror", lambda error: errors.append(str(error)))
-                            run(page)
-                            assert not errors, errors
-                            print(f"{run.__name__}: PASSED")
-                        finally:
-                            context.close()
+                    page = context.new_page()
+                    errors = []
+                    page.on("pageerror", lambda error: errors.append(str(error)))
+                    run(page)
+                    assert not errors, errors
+                    print(f"{run.__name__}: PASSED")
+                except Exception:
+                    OUTPUT.mkdir(parents=True, exist_ok=True)
+                    page.screenshot(path=str(OUTPUT / (run.__name__ + "-failure.png")), full_page=True)
+                    log_file.flush()
+                    print(log_path.read_text(encoding="utf-8")[-8000:], file=sys.stderr)
+                    raise
                 finally:
-                    browser.close()
+                    context.close()
         finally:
             server.terminate()
             try:
                 server.wait(timeout=5)
             except subprocess.TimeoutExpired:
                 server.kill()
-            log_file.close()
+                server.wait(timeout=5)
+
+
+def main():
+    with tempfile.TemporaryDirectory(prefix="stazhno-mobile-apply-") as temp:
+        env = dict(
+            os.environ, OPYT50_DB_PATH=str(Path(temp) / "demo.db"),
+            OPYT50_ENV="development", OPYT50_PUBLIC_URL="", OPYT50_ALLOWED_HOSTS="",
+            OPYT50_PREVIEW_PASSWORD="", OPYT50_ADMIN_MFA_MODE="off",
+            OPYT50_PREVIEW_SEED_DEMO="0", OPYT50_COOKIE_SECURE="0",
+            OPYT50_MAIL_WORKER_ENABLED="0", OPYT50_SMTP_HOST="", OPYT50_MAIL_FROM="",
+        )
+        env.pop("DATABASE_URL", None)
+        subprocess.run(
+            [sys.executable, "scripts/seed_demo.py", "--db", env["OPYT50_DB_PATH"]],
+            cwd=ROOT, env=env, capture_output=True, check=True,
+        )
+        with sqlite3.connect(env["OPYT50_DB_PATH"]) as db:
+            db.execute("UPDATE vacancies SET salary_min=0,salary_max=0 WHERE title='Бухгалтер'")
+            db.execute("UPDATE vacancies SET salary_min=0,salary_max=110000 WHERE title='Инженер по эксплуатации'")
+        with sync_playwright() as playwright:
+            browser = playwright.chromium.launch(headless=True, args=["--no-sandbox"])
+            try:
+                run_fixture(browser, env, Path(temp) / "normal.log", (
+                    (login_resumes_vacancy, 320), (registration_resumes_after_profile, 390),
+                ))
+                # The HTTPS setting activates the actual prelaunch render gate.
+                # The server and all browsing remain on loopback with fictional
+                # records; this phase performs no registration or login POSTs.
+                prelaunch = dict(env, OPYT50_PUBLIC_URL="https://preview.example.invalid")
+                run_fixture(browser, prelaunch, Path(temp) / "prelaunch.log", (
+                    (prelaunch_guest_navigation, 320),
+                ))
+            finally:
+                browser.close()
 
 
 if __name__ == "__main__":

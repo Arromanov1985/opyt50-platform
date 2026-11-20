@@ -15,6 +15,7 @@ STATIC = Path(__file__).resolve().parents[1] / "app" / "static"
     ("release02.js", "src"),
     ("vacancy-wizard.js", "src"),
     ("release09-dashboard.css", "href"),
+    ("release09-mobile.css", "href"),
 ])
 def test_dashboard_asset_revision_matches_git_blob(asset, attribute):
     payload = (STATIC / asset).read_bytes()

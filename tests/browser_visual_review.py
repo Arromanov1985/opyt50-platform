@@ -73,6 +73,61 @@ def capture(page, name, width, height, selector=None):
     print(f"Captured {name}: {width}x{height}")
 
 
+def reading_mode(page, enabled):
+    button = page.locator("#reading-mode-toggle")
+    expect(button).to_be_visible()
+    if button.get_attribute("aria-pressed") != str(enabled).lower():
+        button.click()
+    expect(button).to_have_attribute("aria-pressed", str(enabled).lower())
+
+
+def review_public_job_pages(page):
+    """Inspect the same factual offer in its card, modal and shareable pages."""
+    card = page.locator("#public-jobs .job-card").filter(has_text="Кладовщик")
+    vacancy_id = int(card.get_attribute("data-job-id"))
+    public_job = page.request.get(URL + f"/api/jobs/{vacancy_id}")
+    assert public_job.status == 200, public_job.text()
+    employer_id = int(public_job.json()["job"]["employer_id"])
+    variants = (("desktop", 1366, 900, False),
+                ("mobile-large", 390, 844, True), ("narrow-large", 320, 844, True))
+    for label, width, height, large in variants:
+        page.set_viewport_size({"width": width, "height": height})
+        reading_mode(page, large)
+        expect(card.locator(".job-essential-facts dt")).to_have_text(["Город", "График", "Занятость"])
+        expect(card.locator("[data-v02-action='apply']")).to_have_count(0)
+        expect(card.locator(".job-actions .btn-primary")).to_have_count(1)
+        capture(page, f"01-vacancy-card-{label}", width, height,
+                f'#public-jobs [data-job-id="{vacancy_id}"]')
+        card.locator("[data-v02-action='details']").click()
+        expect(page.locator("#job-dialog")).to_be_visible()
+        expect(page.locator("#job-dialog .job-detail-action")).to_be_visible()
+        capture(page, f"01-vacancy-detail-{label}", width, height, "#job-dialog")
+        assert page.locator("#job-dialog").evaluate(
+            "el => el.scrollWidth <= el.clientWidth + 3"
+        ), "Vacancy modal should not scroll horizontally"
+        page.locator("#job-dialog-close").click()
+
+    # Both public company URLs are used by existing navigation and must remain
+    # readable. Contacts and profile controls remain outside these public views.
+    pages = (
+        ("vacancy-share", f"/vacancies/{vacancy_id}", ".vacancy-sheet"),
+        ("company-share", f"/companies/{employer_id}", "#company-jobs"),
+        ("employer-directory", "/employers", "#employer-cards"),
+        ("employer-profile", f"/employers/{employer_id}", "#company-jobs"),
+    )
+    for name, path, content in pages:
+        page.goto(URL + path, wait_until="networkidle")
+        expect(page.locator(content)).to_be_visible()
+        text = page.locator("body").inner_text()
+        assert "company@demo.example" not in text and "Мария Тестовая" not in text
+        for label, width, height, large in variants:
+            page.set_viewport_size({"width": width, "height": height})
+            reading_mode(page, large)
+            capture(page, f"01-{name}-{label}", width, height)
+    # Later private-dashboard screenshots preserve their existing normal mode.
+    reading_mode(page, False)
+
+
 def main():
     OUTPUT.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory(prefix="stazhno-visual-") as temp:
@@ -121,15 +176,7 @@ def main():
                     ):
                         capture(page, f"01-public-{label}", width, height)
 
-                    # Capture the actual mobile vacancy CTA above the details,
-                    # not merely the public listing card.
-                    page.set_viewport_size({"width": 390, "height": 844})
-                    card = page.locator("#public-jobs .job-card").filter(has_text="Кладовщик")
-                    card.locator("[data-v02-action='details']").click()
-                    expect(page.locator("#job-dialog")).to_be_visible()
-                    expect(page.locator("#job-dialog .job-detail-action")).to_be_visible()
-                    capture(page, "01-vacancy-detail-mobile", 390, 844, "#job-dialog")
-                    page.locator("#job-dialog-close").click()
+                    review_public_job_pages(page)
 
                     make_invitation(page)
                     login(page, "kladovshik@demo.example")

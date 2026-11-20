@@ -45,6 +45,9 @@ def test_directory_only_contains_active_employers_with_approved_open_jobs(tmp_pa
         assert empty.status_code == 200
         assert 'id="employer-cards"' not in empty.text
         assert "Найдено компаний: 0" in empty.text
+        assert "Пока нет компаний с открытыми вакансиями" in empty.text
+        assert 'href="/journal/kak-proverit-vakansiyu"' in empty.text
+        assert 'id="reading-mode-toggle"' in empty.text
         assert viewer.get(f"/employers/{employer1}").status_code == 404
         assert viewer.post("/employers").status_code == 405
 
@@ -72,6 +75,12 @@ def test_directory_only_contains_active_employers_with_approved_open_jobs(tmp_pa
         assert "Инвентаризация" not in index.text  # No applicant or job descriptions
         assert "director1@example.invalid" not in profile.text
         assert "SyntheticEmployerPass2026" not in profile.text
+        assert 'id="reading-mode-toggle"' in profile.text
+        assert 'href="#company-jobs"' in profile.text
+        assert profile.text.index('id="company-jobs"') < profile.text.index('id="company-about"')
+        assert "Нет отметки проверки СТАЖНО" in profile.text
+        for label in ("Оплата", "Город", "График", "Занятость"):
+            assert f"<dt>{label}</dt>" in profile.text
 
         # An isolated public search narrows to a city and company name.
         assert "Тестовая Логистика" in viewer.get(

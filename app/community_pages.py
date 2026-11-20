@@ -35,17 +35,19 @@ def _public_content(person: dict) -> str:
 <section class="person-layout">
   <article class="panel public-person" data-person-id="{_e(person['public_id'])}">
     <span class="eyebrow">ПРОФЕССИОНАЛЬНЫЙ ПРОФИЛЬ</span>
-    <div class="person-avatar" aria-hidden="true">{_e(person['public_name'][:1])}</div>
-    <h1>{_e(person['public_name'])}</h1><p class="person-headline">{_e(person['headline'])}</p>
-    <div class="person-meta"><span>{_e(person.get('city') or 'Город не указан')}</span><span class="tag">{_e(GOALS.get(person.get('goal'), 'Обмен опытом'))}</span></div>
-    <section class="person-section"><h2>Чем могу быть полезен</h2><p class="multiline">{_e(person.get('about'))}</p></section>
-    <section class="person-section"><h2>Навыки и направления</h2><p class="multiline">{_e(person.get('skills') or 'Участник пока не добавил навыки.')}</p></section>
+    <div class="person-identity"><div class="person-avatar" aria-hidden="true">{_e(person['public_name'][:1])}</div><div><h1>{_e(person['public_name'])}</h1><p class="person-role-label">Профессиональное направление</p><p class="person-headline">{_e(person['headline'])}</p></div></div>
+    <dl class="person-facts"><div><dt>Город</dt><dd>{_e(person.get('city') or 'Не указан')}</dd></div><div><dt>Цель знакомства</dt><dd>{_e(GOALS.get(person.get('goal'), 'Не указана'))}</dd></div></dl>
+    <section class="person-section person-skills"><h2>Навыки и темы</h2><p class="multiline">{_e(person.get('skills') or 'Участник пока не добавил навыки.')}</p></section>
+    <p class="person-summary-note">Направление, цель и опыт указаны самим участником.</p>
   </article>
-  <aside class="person-sidebar">
-    <div class="panel"><span class="eyebrow">ЗНАКОМСТВО ЧЕРЕЗ СТАЖНО</span><h2>Начните с общего интереса</h2><p>Предложите обсудить проект, работу или обменяться опытом. Переписка откроется, когда участник примет запрос.</p>
+  <aside class="panel person-action" id="person-next-step" aria-labelledby="person-next-step-title">
+    <span class="eyebrow">СЛЕДУЮЩИЙ ШАГ</span><h2 id="person-next-step-title">Начните с общего интереса</h2><p>Предложите обсудить проект, работу или обменяться опытом. В запросе коротко расскажите о задаче и о том, чем можете быть полезны.</p>
     <button class="button primary full" id="request-connection" type="button">Предложить знакомство</button><p id="person-action-hint" class="help" role="status"></p>
-    <p class="help">Имя и контакты из аккаунта не передаются. Здесь показаны только сведения, выбранные самим участником.</p></div>
-    <div class="panel safety-note"><h2>Будьте внимательны</h2><p>Модерация проверяет содержание профиля, но не подтверждает квалификацию и не гарантирует результат знакомства.</p><button class="text-button" id="report-person" type="button">Сообщить о проблеме</button></div>
+    <p class="help">Для запроса нужно войти в аккаунт. Переписка откроется только после принятия запроса участником.</p>
+    <p class="help person-contact-note">Имя и контакты из аккаунта не передаются. Здесь показаны только сведения, выбранные самим участником.</p>
+  </aside>
+  <section class="panel person-story" aria-labelledby="person-story-title"><h2 id="person-story-title">Чем могу быть полезен</h2><p class="multiline">{_e(person.get('about') or 'Участник пока не добавил описание опыта.')}</p></section>
+  <aside class="panel safety-note person-safety"><h2>Как оценить профиль</h2><p>Модерация проверяет содержание профиля, но не подтверждает квалификацию и не гарантирует результат знакомства.</p><p>Обсудите конкретную задачу и ожидания до начала совместной работы.</p><button class="text-button" id="report-person" type="button">Сообщить о проблеме</button>
   </aside>
 </section>"""
 

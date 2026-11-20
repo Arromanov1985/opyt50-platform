@@ -5,7 +5,15 @@ const $$ = (selector, root = document) => [...root.querySelectorAll(selector)];
 const state = { user: null, mode: 'register', role: 'candidate', tab: 'overview', activeVacancy: null, editVacancy: null, activeDraft: null, employerVacancyFilter: 'all', employerVacancySearch: '', employerApplicationsVacancyFilter: 'all', employerApplicationsStatusFilter: 'all', employerApplicationsQuery: '', employerInvitationsFilter: 'all', employerInvitationsVacancyFilter: 'all', employerInvitationsQuery: '', employerInvitationsData: null, candidateInvitationsFilter: 'all', candidateInvitationsQuery: '', candidateInvitationsData: null, pendingApplicationVacancyId: null, mfaChallenge: null, mfaMethod: null, mfaCodeLength: 8, mfaPublicKey: null, mfaTotpFallback: false, actionSummary: null };
 const esc = value => String(value ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const money = value => Number(value || 0).toLocaleString('ru-RU') + ' ₽';
-const formatPay = job => job.salary_min === job.salary_max ? money(job.salary_min) : `${money(job.salary_min)} — ${money(job.salary_max)}`;
+const formatPay = job => {
+  const low = Math.max(0, Number(job.salary_min) || 0);
+  const high = Math.max(0, Number(job.salary_max) || 0);
+  if (low > 0 && low === high) return money(low);
+  if (low > 0 && high > low) return `${money(low)} — ${money(high)}`;
+  if (low > 0) return `от ${money(low)}`;
+  if (high > 0) return `до ${money(high)}`;
+  return 'По договорённости';
+};
 const statusTitle = {sent:'Ожидает ответа',accepted:'Согласие получено',declined:'Не заинтересован'};
 const statusBadge = {sent:'orange',accepted:'',declined:'gray'};
 const activityLabels = {

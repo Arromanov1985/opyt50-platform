@@ -20,10 +20,13 @@ DEFAULT_BASE = "https://arromanov1985-opyt50-platform-fdd8.twc1.net"
 BASE = os.getenv("STAZHNO_PREVIEW_URL", DEFAULT_BASE).rstrip("/")
 REPORT = Path(os.getenv("STAZHNO_PREVIEW_REPORT", "preview-reachability.json"))
 STATIC = Path(__file__).resolve().parents[1] / "app" / "static"
-CLIENT_ASSETS = ("app.js", "release02.js", "vacancy-wizard.js", "release09-dashboard.css")
+CLIENT_ASSETS = ("app.js", "release02.js", "vacancy-wizard.js", "release09-dashboard.css", "release09-mobile.css")
 ADDITIONAL_ASSETS = ("journal.js", "growth-admin.css", "journal-admin.js", "journal-admin.css", "journal-home.js", "editorial-home.css")
+# These styles belong to separate public pages, not the dashboard entrypoint.
+# Verify their bytes without requiring references in static/index.html.
+PUBLIC_PAGE_STYLES = ("journal.css", "vacancy-share.css", "employer-share.css", "employer-directory.css")
 COMMUNITY_ASSETS = ("community.js", "community.css")
-CHECKED_ASSETS = CLIENT_ASSETS + ADDITIONAL_ASSETS + COMMUNITY_ASSETS
+CHECKED_ASSETS = CLIENT_ASSETS + ADDITIONAL_ASSETS + PUBLIC_PAGE_STYLES + COMMUNITY_ASSETS
 COMMUNITY_PRIVATE_ROUTES = {
     "profile": "/api/community/profile",
     "connections": "/api/community/connections",

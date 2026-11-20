@@ -179,18 +179,17 @@
       let roleActions = '';
       if (open && state.user?.role === 'candidate') {
         roleActions = `${jobApplicationAction(id, job)}<button class="btn btn-outline btn-tiny favorite-toggle" data-v02-action="${saved ? 'favorite-remove-inline' : 'favorite'}" data-id="${id}" aria-label="${saved ? 'Убрать вакансию из избранного' : 'Сохранить вакансию'}" aria-pressed="${saved ? 'true' : 'false'}">${saved ? '♥' : '♡'}</button>`;
-      } else if (open && !state.user) {
-        roleActions = `<button type="button" class="btn btn-primary btn-tiny" data-v02-action="apply" data-id="${id}">Откликнуться</button>`;
       }
+      const detailsPrimary = open && !state.user;
       return `<article class="job-card job-card-v08" data-job-id="${id}"><div class="job-top"><div class="job-company-wrap"><a class="job-company" href="/companies/${Number(job.employer_id)}" aria-label="О компании ${esc(job.company_name || 'Работодатель')}">${esc(job.company_name || 'Работодатель')}</a>${employerTrustBadges(job)}</div>${scoreBadge}</div>
         <h3>${esc(job.title)}</h3><div class="job-salary">${formatPay(job)}</div>
-        <div class="job-meta"><span>⌖ ${esc(job.city)}</span><span>${esc(job.schedule)}</span><span>${esc(job.employment)}</span></div>
+        <dl class="job-essential-facts"><div><dt>Город</dt><dd>${esc(job.city || 'Не указан')}</dd></div><div><dt>График</dt><dd>${esc(job.schedule || 'Уточняется')}</dd></div><div><dt>Занятость</dt><dd>${esc(job.employment || 'Уточняется')}</dd></div></dl>
         ${preview ? `<p class="job-preview">${esc(preview)}${String(job.description || '').replace(/\s+/g,' ').trim().length > 180 ? '…' : ''}</p>` : ''}
         ${skills.length ? `<div class="job-skill-tags">${skills.map(skill=>`<span>${esc(skill)}</span>`).join('')}</div>` : ''}
         ${personalized && reasons.length ? `<div class="match-reasons-preview">${reasons.slice(0,2).map(reason=>`<span>✓ ${esc(reason)}</span>`).join('')}</div>` : ''}
         ${personalized && cautions.length ? `<div class="match-caution-preview">${cautions.slice(0,1).map(text=>`<span>! ${esc(text)}</span>`).join('')}</div>` : ''}
         ${personalized ? `<details class="match-explanation"><summary>Как рассчитано совпадение?</summary>${matchBreakdownMarkup(job)}</details>` : ''}
-        <div class="job-actions ${open && state.user?.role==='candidate' ? 'has-favorite' : ''}">${roleActions}<button class="btn btn-outline btn-tiny" data-v02-action="details" data-id="${id}">Условия и описание</button><a class="btn btn-outline btn-tiny" href="/vacancies/${id}" aria-label="Открыть отдельную страницу вакансии ${esc(job.title)}">Ссылка на вакансию</a></div>${state.user?.role === 'candidate' ? jobApplicationReceipt(id, job) : ''}</article>`;
+        <div class="job-actions ${open && state.user?.role==='candidate' ? 'has-favorite' : ''}">${roleActions}<button type="button" class="btn ${detailsPrimary ? 'btn-primary' : 'btn-outline'} btn-tiny" data-v02-action="details" data-id="${id}">${detailsPrimary ? 'Условия и отклик' : 'Условия и описание'}</button></div><a class="job-share-link" href="/vacancies/${id}" aria-label="Открыть отдельную страницу вакансии ${esc(job.title)}">Открыть отдельной страницей <span aria-hidden="true">↗</span></a>${state.user?.role === 'candidate' ? jobApplicationReceipt(id, job) : ''}</article>`;
     };
 
     loadPublicJobs = async function() {
@@ -815,7 +814,26 @@
           const {job}=await api(`/api/jobs/${id}`);
           $('#job-dialog-title').textContent=job.title;
           const skills=String(job.skills||'').split(',').map(x=>x.trim()).filter(Boolean);
-          $('#job-dialog-content').innerHTML=`<div class="job-detail-v08"><div class="job-detail-company"><span class="section-kicker">ВАКАНСИЯ</span><strong>${esc(job.company_name)}</strong><button class="link-button" type="button" data-v02-action="company" data-id="${Number(job.employer_id)}">О компании</button><span>⌖ ${esc(job.city)}</span>${employerTrustBadges(job,true)}</div><div class="job-detail-pay">${formatPay(job)}</div><div class="job-detail-facts"><span><small>График</small><strong>${esc(job.schedule)}</strong></span><span><small>Занятость</small><strong>${esc(job.employment)}</strong></span></div>${skills.length?`<div class="job-skill-tags">${skills.slice(0,8).map(skill=>`<span>${esc(skill)}</span>`).join('')}</div>`:''}<div class="job-detail-privacy">Ваши контакты не передаются работодателю автоматически. Сначала отправляется отклик, а знакомство проходит только через отдельное согласие.</div><div class="job-detail-action">${state.user?.role==='candidate' ? jobApplicationAction(Number(job.id), job) + jobApplicationReceipt(Number(job.id), job) : !state.user ? `<button class="btn btn-primary" data-v02-action="apply" data-id="${Number(job.id)}">Откликнуться на вакансию →</button>` : `<span class="job-role-note">Вы вошли как ${state.user.role==='employer'?'работодатель':'администратор'}. Отклики доступны только соискателям.</span>`}</div><div class="job-detail-description">${esc(job.description||'Подробности у работодателя').replace(/\n/g,'<br>')}</div><div class="job-employer-trust-note"><strong>О работодателе</strong><p>${job.employer_verified?'Компания прошла проверку администратором СТАЖНО по заполненным реквизитам и подтверждённому email.':job.employer_email_verified&&job.employer_inn_provided?'Email подтверждён, реквизиты указаны. Статус проверки компании ещё не присвоен.':job.employer_email_verified?'Email работодателя подтверждён. Реквизиты компании пока не указаны или не проверены.':'Статус проверки компании пока не подтверждён.'}</p></div><div class="job-safety-actions"><a class="btn btn-outline btn-tiny" href="/vacancies/${Number(job.id)}">Отдельная страница вакансии</a><button class="btn btn-text btn-tiny" type="button" data-v02-action="report" data-id="${Number(job.id)}">Пожаловаться на вакансию или компанию</button></div></div>`;
+          const guestAction = `<p class="job-entry-note">${publicSignupClosed()
+            ? 'Регистрация пока закрыта. Отклик доступен соискателям с существующим аккаунтом.'
+            : 'Для отклика нужен профиль соискателя. После входа вы вернётесь к этой вакансии.'}</p>
+            <button type="button" class="btn btn-primary" data-v02-action="apply" data-id="${Number(job.id)}">Войти и откликнуться</button>
+            ${publicSignupClosed() ? '<a class="job-preparation-link" href="/journal/paths/nayti-rabotu">Подготовиться к поиску работы</a>' : ''}`;
+          const action = state.user?.role === 'candidate'
+            ? jobApplicationAction(Number(job.id), job) + jobApplicationReceipt(Number(job.id), job)
+            : !state.user ? guestAction
+            : `<span class="job-role-note">Вы вошли как ${state.user.role === 'employer' ? 'работодатель' : 'администратор'}. Отклики доступны только соискателям.</span>`;
+          $('#job-dialog-content').innerHTML=`<div class="job-detail-v08">
+            <div class="job-detail-company"><span class="section-kicker">ВАКАНСИЯ</span><strong>${esc(job.company_name)}</strong><button class="link-button" type="button" data-v02-action="company" data-id="${Number(job.employer_id)}">О компании</button>${employerTrustBadges(job,true)}</div>
+            <div class="job-detail-pay"><small>Оплата</small>${formatPay(job)}</div>
+            <div class="job-detail-facts"><span><small>Город</small><strong>${esc(job.city || 'Не указан')}</strong></span><span><small>График</small><strong>${esc(job.schedule || 'Уточняется')}</strong></span><span><small>Занятость</small><strong>${esc(job.employment || 'Уточняется')}</strong></span></div>
+            ${skills.length ? `<div class="job-skill-tags">${skills.slice(0,8).map(skill=>`<span>${esc(skill)}</span>`).join('')}</div>` : ''}
+            <div class="job-detail-privacy">Ваши контакты не передаются работодателю автоматически. Сначала отправляется отклик, а знакомство проходит только через отдельное согласие.</div>
+            <div class="job-detail-action">${action}</div>
+            <section class="job-detail-description"><h3>Обязанности и условия</h3><p>${esc(job.description || 'Подробности у работодателя').replace(/\n/g,'<br>')}</p></section>
+            <div class="job-employer-trust-note"><strong>О работодателе</strong><p>${job.employer_verified ? 'Компания прошла проверку администратором СТАЖНО по заполненным реквизитам и подтверждённому email.' : job.employer_email_verified && job.employer_inn_provided ? 'Email подтверждён, реквизиты указаны. Статус проверки компании ещё не присвоен.' : job.employer_email_verified ? 'Email работодателя подтверждён. Реквизиты компании пока не указаны или не проверены.' : 'Статус проверки компании пока не подтверждён.'}</p></div>
+            <div class="job-safety-actions"><a class="btn btn-outline btn-tiny" href="/vacancies/${Number(job.id)}">Отдельная страница вакансии</a><button class="btn btn-text btn-tiny" type="button" data-v02-action="report" data-id="${Number(job.id)}">Пожаловаться на вакансию или компанию</button></div>
+          </div>`;
           $('#job-dialog').showModal();
     }
     // A guest who selected "Откликнуться" returns to this vacancy only
