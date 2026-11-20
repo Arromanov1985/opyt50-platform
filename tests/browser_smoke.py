@@ -556,6 +556,10 @@ def run_browser(page, playwright):
     # Release 0.6: vacancy overview and direct navigation to its applications.
     expect(page.locator("#dashboard-main")).to_contain_text("Запросы на знакомство")
     expect(page.locator("#dashboard-main")).to_contain_text("Открытые контакты")
+    # Detailed metrics remain available, but do not overwhelm the worklist.
+    report = page.locator("#dashboard-main .employer-vacancy-report")
+    expect(report).not_to_have_attribute("open", "")
+    expect(page.locator("#dashboard-main .employer-vacancy-totals")).to_contain_text("требуют внимания")
     # The two KPI grids must be siblings, not incorrectly nested inside each other.
     expect(page.locator("#dashboard-main .stat-grid")).to_have_count(2)
     expect(page.locator("#dashboard-main .stat-grid[aria-label='Статистика вакансий'] > .stat-tile")).to_have_count(3)
@@ -606,6 +610,8 @@ def run_browser(page, playwright):
     expect(page.locator("#employer-applications-vacancy")).not_to_have_value("all")
     expect(page.locator("#dashboard-main")).to_contain_text("Кладовщик")
     expect(page.locator("#dashboard-main .application-review-card").first.locator(".application-profile-strip span")).to_have_count(1)
+    expect(page.locator("#dashboard-main .employer-applications-guide")).to_contain_text("Есть отклики для рассмотрения")
+    expect(page.locator("#dashboard-main .employer-application-flow-details")).not_to_have_attribute("open", "")
     # Release 0.5.18: local search reads only the current employer's
     # already loaded profiles. Typing does not query the API or reveal contacts.
     application_search = page.locator("#employer-application-search")
@@ -683,7 +689,7 @@ def run_browser(page, playwright):
     page.locator("[data-v02-action='employer-application-filter'][data-filter='all']").click()
     page.locator("#employer-application-search").fill("Кладовщик")
     expect(page.locator("#employer-application-results .application-review-card:visible")).to_have_count(1)
-    expect(page.locator("#dashboard-main [data-v02-action='employer-application-filter']")).to_have_count(6)
+    expect(page.locator("#dashboard-main .employer-application-stage-filter [data-v02-action='employer-application-filter']")).to_have_count(6)
     attention_filter = page.locator("#dashboard-main [data-v02-action='employer-application-filter'][data-filter='attention']")
     expect(attention_filter).to_contain_text("Требуют внимания")
     expect(attention_filter).to_have_attribute("aria-pressed", "false")
@@ -971,6 +977,18 @@ def run_browser(page, playwright):
     expect(intro_cards.first).to_be_focused()
     page.locator(".dashboard-tabs [data-tab='vacancies']").click()
     page.locator("#dashboard-main .item-card").filter(has_text="Кладовщик").locator("[data-action='matches']").click()
+    expect(page.locator("#employer-matches .candidate-match-card")).to_be_visible()
+    expect(page.locator("#employer-matches")).to_be_focused()
+    expect(page.locator("#employer-matches")).to_contain_text("Кладовщик")
+    assert page.locator("#employer-matches").evaluate(
+        "(panel) => panel.previousElementSibling?.classList.contains('employer-vacancy-card')"
+    ), "Matching must open immediately after its vacancy card"
+    # Returning to the vacancy never changes applications or consent.
+    page.locator("#employer-matches [data-action='close-employer-matches']").click()
+    expect(page.locator("#employer-matches")).to_be_hidden()
+    page.locator("#dashboard-main .employer-vacancy-card").filter(
+        has_text="Кладовщик"
+    ).locator("[data-action='matches']").click()
     expect(page.locator("#employer-matches .candidate-match-card")).to_be_visible()
     expect(page.locator("#employer-matches")).to_contain_text("Согласие получено")
     expect(page.locator("#employer-matches")).to_contain_text("%")
@@ -1531,6 +1549,9 @@ def run_browser(page, playwright):
     vacancy_card = page.locator(
         f".employer-vacancy-card[data-employer-vacancy-id='{old_job['id']}']"
     )
+    details = vacancy_card.locator(".employer-vacancy-more")
+    expect(details).not_to_have_attribute("open", "")
+    details.locator("summary").click()
     history_button = vacancy_card.locator("[data-action='vacancy-history']")
     expect(history_button).to_have_attribute("aria-expanded", "false")
     history_button.click()

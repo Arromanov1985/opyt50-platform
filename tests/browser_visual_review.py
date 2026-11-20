@@ -88,7 +88,13 @@ def review_large_dashboard(page, prefix):
         # The dashboard and its priority action need to fit independently of
         # the page; a clipped inner panel can otherwise hide overflowing text.
         for selector in ("#dashboard-main", ".overview-priority", ".overview-action-center"):
-            metrics = page.locator(selector).evaluate(
+            target = page.locator(selector)
+            # The employer's worklist is deliberately absent when the primary
+            # action already covers the only next step. Do not require a
+            # duplicated panel just to capture a visual regression screenshot.
+            if selector == ".overview-action-center" and target.count() == 0:
+                continue
+            metrics = target.evaluate(
                 "el => ({content: el.scrollWidth, available: el.clientWidth})"
             )
             assert metrics["content"] <= metrics["available"] + 3, (prefix, width, selector, metrics)

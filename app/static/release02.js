@@ -728,6 +728,22 @@
         const shown = selectedStatus === 'all'
           ? vacancyScoped
           : vacancyScoped.filter(item => employerApplicationBucket(item) === selectedStatus);
+        const nextQueue = ['introduced','ready','attention'].find(stage => bucketCounts[stage] > 0);
+        const queueCopy = {
+          introduced: ['Нужно завершить знакомство', 'Контакты открыты с согласия кандидата. Зафиксируйте результат общения.'],
+          ready: ['Кандидат дал согласие', 'Перейдите к согласованному знакомству — контакты доступны по его разрешению.'],
+          attention: ['Есть отклики для рассмотрения', 'Сравните опыт специалистов, затем примите решение о следующем шаге.'],
+          consent: ['Ждём решения кандидата', 'Запрос на знакомство уже отправлен. Повторно отправлять его не нужно.'],
+          closed: ['Новых действий нет', 'Все текущие отклики завершены. Можно вернуться к подбору по вакансиям.']
+        };
+        const queueStage = nextQueue || (bucketCounts.consent ? 'consent' : 'closed');
+        const [queueTitle,queueDescription] = queueCopy[queueStage];
+        const queueNext = nextQueue && selectedStatus !== nextQueue
+          ? `<button type="button" class="btn btn-primary btn-tiny" data-v02-action="employer-application-priority" data-filter="${nextQueue}">Показать нужные отклики →</button>`
+          : '';
+        const queueGuide = vacancyScoped.length
+          ? `<div class="employer-applications-guide" role="note"><div><span>ВАШ СЛЕДУЮЩИЙ ШАГ</span><strong>${esc(queueTitle)}</strong><p>${esc(queueDescription)}</p></div>${queueNext}</div>`
+          : '';
         const options = jobs.map(j => `<option value="${Number(j.id)}" ${String(j.id) === selectedVacancy ? 'selected' : ''}>${esc(j.title)}</option>`).join('');
         const selector = `<div class="field"><label for="employer-applications-vacancy">Вакансия</label><select id="employer-applications-vacancy"><option value="all">Все вакансии</option>${options}</select></div>`;
         const filterButtons = [
@@ -742,7 +758,8 @@
           ? `<div class="empty-state empty-state-action"><span class="empty-state-icon" aria-hidden="true">⌕</span><strong>В этом этапе откликов нет</strong><p>Попробуйте другой этап или сбросьте фильтры, чтобы увидеть всю воронку.</p><button class="btn btn-outline" data-v02-action="reset-application-filters">Сбросить фильтры</button></div>`
           : '<div class="empty-state empty-state-action"><span class="empty-state-icon" aria-hidden="true">＋</span><strong>Откликов пока нет</strong><p>Можно не ждать: запустите подбор и пригласите подходящих специалистов сами.</p><button class="btn btn-primary" data-tab="vacancies">Перейти к вакансиям →</button></div>';
         $('#dashboard-main').innerHTML=`<div class="panel employer-applications-panel">
-          <div class="split-header"><div><span class="section-kicker">ОТКЛИКИ</span><h3>Отклики соискателей</h3><p class="muted">Сначала оценивайте опыт и навыки. Имя, телефон и email остаются скрытыми до отдельного согласия кандидата.</p></div><div class="application-flow-legend" aria-label="Этапы обработки отклика"><span>1. Отклик</span><b>→</b><span>2. Рассмотрение</span><b>→</b><span>3. Согласие</span><b>→</b><span>4. Знакомство</span><b>→</b><span>5. Итог</span></div></div>
+          <div class="split-header"><div><span class="section-kicker">ОТКЛИКИ</span><h3>Отклики соискателей</h3><p class="muted">Сначала оценивайте опыт и навыки. Имя, телефон и email остаются скрытыми до отдельного согласия кандидата.</p></div><details class="employer-application-flow-details"><summary>Как проходит знакомство</summary><div class="application-flow-legend" aria-label="Этапы обработки отклика"><span>1. Отклик</span><b>→</b><span>2. Рассмотрение</span><b>→</b><span>3. Согласие</span><b>→</b><span>4. Знакомство</span><b>→</b><span>5. Итог</span></div></details></div>
+          ${queueGuide}
           <div class="employer-application-toolbar"><div class="employer-application-vacancy-filter">${selector}</div><div class="employer-application-stage-filter" role="group" aria-label="Фильтр откликов по этапу">${filterButtons}</div></div>
           <div class="employer-application-search"><label for="employer-application-search">Поиск по профессии, вакансии, городу и навыкам</label><div class="employer-application-search-row"><input type="search" id="employer-application-search" data-employer-application-search autocomplete="off" placeholder="Например, бухгалтер или Excel" value="${esc(state.employerApplicationsQuery||'')}"><button class="btn btn-outline btn-tiny" type="button" data-v02-action="clear-employer-application-search">Очистить поиск</button></div></div>
           <div class="employer-application-result-line"><span role="status" aria-live="polite">Показываем <strong id="employer-application-visible-count">${shown.length}</strong> из <strong id="employer-application-matched-count">${shown.length}</strong> по текущему этапу (всего по вакансии: ${vacancyScoped.length})${selectedStatus==='all'&&vacancyScoped.length>1?' · сначала этапы, где нужен ваш следующий шаг':''}</span>${selectedVacancy!=='all'||selectedStatus!=='all'?'<button type="button" class="link-button" data-v02-action="reset-application-filters">Сбросить фильтры</button>':''}</div>
@@ -1106,7 +1123,7 @@
         else if(type==='open-employer-applications'){
           await openEmployerApplications(btn.dataset.filter, btn.dataset.vacancyId);
         }
-        else if(type==='employer-application-filter'){
+        else if(type==='employer-application-filter' || type==='employer-application-priority'){
           if(!Object.hasOwn(employerApplicationFilterLabels,btn.dataset.filter))return;
           state.employerApplicationsStatusFilter=btn.dataset.filter;
           employerApplicationVisibleLimit=employerApplicationPageSize;

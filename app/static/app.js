@@ -2329,7 +2329,7 @@ async function renderEmployer() {
       } else if (openJobs.length) {
         nextTitle = 'Запустите подбор по открытой вакансии';
         nextText = 'Посмотрите подходящие обезличенные профили и пригласите тех, кто подходит.';
-        nextAction = '<button class="btn btn-primary" data-tab="vacancies">К вакансиям →</button>';
+        nextAction = `<button type="button" class="btn btn-primary" data-action="open-employer-matches" data-id="${Number(openJobs[0].id)}">Посмотреть кандидатов →</button>`;
       } else if (recentDraft) {
         nextTitle = 'Продолжите черновик вакансии';
         nextText = `Последняя незавершённая вакансия: ${String(recentDraft.fields?.title || '').trim() || 'без названия'}. Она пока не видна соискателям.`;
@@ -2357,12 +2357,12 @@ async function renderEmployer() {
       });
       // A dedicated draft reminder or the hero already has the resume button.
       // Do not render a second identical action (ambiguous for keyboard/QA).
-      if (openJobs.length) employerTasks.push({
+      if (openJobs.length && nextTitle !== 'Запустите подбор по открытой вакансии') employerTasks.push({
         title: 'Посмотреть подходящих специалистов',
         description: `Открытых вакансий: ${openJobs.length}. Можно начать подбор без раскрытия контактов.`,
-        action: '<button class="btn btn-outline btn-tiny" data-tab="vacancies">Мои вакансии</button>'
+        action: `<button type="button" class="btn btn-outline btn-tiny" data-action="open-employer-matches" data-id="${Number(openJobs[0].id)}">Начать подбор</button>`
       });
-      if (!employerTasks.length && !recentDraft) employerTasks.push({
+      if (!employerTasks.length && !recentDraft && !openJobs.length) employerTasks.push({
         title: 'Опубликовать первую вакансию',
         description: 'Начните с обязанностей, города и условий работы.',
         action: '<button class="btn btn-outline btn-tiny" data-tab="create">Создать</button>'
@@ -2460,8 +2460,9 @@ function vacancyFormMarkup(job = null, draft = null) {
           <div class="field wide"><label for="vacancy-title">Должность *</label><input id="vacancy-title" name="title" value="${esc(job?.title || '')}" placeholder="Например, инженер по эксплуатации" minlength="3" maxlength="120" required></div>
           <div class="field"><label for="vacancy-city">Город или формат работы *</label><input id="vacancy-city" name="city" value="${esc(job?.city || '')}" placeholder="Например, Москва или Удалённо" minlength="2" maxlength="100" required></div>
           <div class="field"><label for="vacancy-skills">Ключевые навыки (через запятую)</label><input id="vacancy-skills" name="skills" value="${esc(job?.skills || '')}" placeholder="Например, 1С, Excel" maxlength="300"></div>
-          <div class="field"><label for="vacancy-salary-min">Зарплата от, ₽ *</label><input id="vacancy-salary-min" name="salary_min" type="number" inputmode="numeric" min="0" max="10000000" value="${draft ? esc(draftValues.salary_min ?? '') : (isEdit ? Number(job.salary_min) : 50000)}" required></div>
-          <div class="field"><label for="vacancy-salary-max">Зарплата до, ₽ *</label><input id="vacancy-salary-max" name="salary_max" type="number" inputmode="numeric" min="0" max="10000000" value="${draft ? esc(draftValues.salary_max ?? '') : (isEdit ? Number(job.salary_max) : 100000)}" required></div>
+          <div class="field"><label for="vacancy-salary-min">Зарплата от, ₽ *</label><input id="vacancy-salary-min" name="salary_min" type="number" inputmode="numeric" min="0" max="10000000" value="${draft ? esc(draftValues.salary_min ?? '') : (isEdit ? Number(job.salary_min) : '')}" placeholder="Например, 60000" required></div>
+          <div class="field"><label for="vacancy-salary-max">Зарплата до, ₽ *</label><input id="vacancy-salary-max" name="salary_max" type="number" inputmode="numeric" min="0" max="10000000" value="${draft ? esc(draftValues.salary_max ?? '') : (isEdit ? Number(job.salary_max) : '')}" placeholder="Например, 90000" required></div>
+          <p class="field-help vacancy-salary-hint wide">Введите фактическую зарплату. Суммы не подставляются автоматически; если оплата фиксированная, можно указать одинаковое значение «от» и «до».</p>
           <div class="field"><label for="vacancy-schedule">График</label><select id="vacancy-schedule" name="schedule">${optList(schedules,job?.schedule || 'Любой')}</select></div>
           <div class="field"><label for="vacancy-employment">Занятость</label><select id="vacancy-employment" name="employment">${optList(employment,job?.employment || 'Любая')}</select></div>
         </div>
@@ -2532,6 +2533,16 @@ function applyEmployerVacancySearch() {
   if (summary) summary.textContent = 'Показываем ' + count + ' из ' + cards.length + ' вакансий.';
   const empty = $('#employer-vacancy-empty');
   if (empty) empty.hidden = count !== 0;
+  // A search may hide the vacancy owning the currently expanded match panel.
+  const panel = $('#employer-matches');
+  if (panel && !panel.classList.contains('hidden')) {
+    const owner = panel.previousElementSibling;
+    if (!owner?.matches('.employer-vacancy-card') || owner.hidden) {
+      panel.classList.add('hidden');
+      panel.innerHTML = '';
+      state.activeVacancy = null;
+    }
+  }
 }
 async function loadEmployerVacancies() {
   const [jobsResult, applicationsResult, invitationsResult, draftsResult] = await Promise.all([
@@ -2606,7 +2617,7 @@ async function loadEmployerVacancies() {
         <div class="dashboard-list">${drafts.map(employerDraftCard).join('')}</div>
       </section>`
     : '';
-  view.innerHTML = draftsMarkup + `<div class="panel">${nextAction}<div class="split-header"><div><h3>Мои вакансии</h3><p class="muted">После размещения получите список обезличенных профилей.</p></div><button class="btn btn-primary btn-tiny" data-action="new-job">+ Добавить</button></div><div class="stat-grid" aria-label="Статистика вакансий"><div class="stat-tile"><strong>${jobs.length}</strong><span>Всего вакансий</span></div><div class="stat-tile"><strong>${openCount}</strong><span>Открыты</span></div><div class="stat-tile"><strong>${closedCount}</strong><span>Закрыты</span></div></div><div class="stat-grid" aria-label="Воронка подбора"><div class="stat-tile"><strong>${applications.length}</strong><span>Отклики</span></div><div class="stat-tile"><strong>${invitationCount}</strong><span>Запросы на знакомство</span></div><div class="stat-tile"><strong>${introducedCount}</strong><span>Открытые контакты</span></div></div><div class="item-actions" role="group" aria-label="Фильтр вакансий"><button type="button" class="btn btn-tiny ${filter === 'all' ? 'btn-dark' : 'btn-outline'}" data-action="filter-employer-jobs" data-filter="all" aria-pressed="${filter === 'all'}">Все (${jobs.length})</button><button type="button" class="btn btn-tiny ${filter === 'open' ? 'btn-dark' : 'btn-outline'}" data-action="filter-employer-jobs" data-filter="open" aria-pressed="${filter === 'open'}">Открытые (${openCount})</button><button type="button" class="btn btn-tiny ${filter === 'closed' ? 'btn-dark' : 'btn-outline'}" data-action="filter-employer-jobs" data-filter="closed" aria-pressed="${filter === 'closed'}">Закрытые (${closedCount})</button><button type="button" class="btn btn-tiny ${filter === 'attention' ? 'btn-dark' : 'btn-outline'}" data-action="filter-employer-jobs" data-filter="attention" aria-pressed="${filter === 'attention'}">Требуют внимания (${attentionCount})</button></div><div class="employer-vacancy-find">
+  view.innerHTML = draftsMarkup + `<div class="panel">${nextAction}<div class="split-header"><div><h3>Мои вакансии</h3><p class="muted">После размещения получите список обезличенных профилей.</p></div><button class="btn btn-primary btn-tiny" data-action="new-job">+ Добавить</button></div><div class="employer-vacancy-totals"><strong>${openCount} открытых</strong><span>·</span><span>${attentionCount} требуют внимания</span><span>·</span><span>${jobs.length} всего</span></div><details class="employer-vacancy-report"><summary>Подробная статистика вакансий и откликов</summary><div class="employer-vacancy-report-body"><div class="stat-grid" aria-label="Статистика вакансий"><div class="stat-tile"><strong>${jobs.length}</strong><span>Всего вакансий</span></div><div class="stat-tile"><strong>${openCount}</strong><span>Открыты</span></div><div class="stat-tile"><strong>${closedCount}</strong><span>Закрыты</span></div></div><div class="stat-grid" aria-label="Воронка подбора"><div class="stat-tile"><strong>${applications.length}</strong><span>Отклики</span></div><div class="stat-tile"><strong>${invitationCount}</strong><span>Запросы на знакомство</span></div><div class="stat-tile"><strong>${introducedCount}</strong><span>Открытые контакты</span></div></div></div></details><div class="item-actions" role="group" aria-label="Фильтр вакансий"><button type="button" class="btn btn-tiny ${filter === 'all' ? 'btn-dark' : 'btn-outline'}" data-action="filter-employer-jobs" data-filter="all" aria-pressed="${filter === 'all'}">Все (${jobs.length})</button><button type="button" class="btn btn-tiny ${filter === 'open' ? 'btn-dark' : 'btn-outline'}" data-action="filter-employer-jobs" data-filter="open" aria-pressed="${filter === 'open'}">Открытые (${openCount})</button><button type="button" class="btn btn-tiny ${filter === 'closed' ? 'btn-dark' : 'btn-outline'}" data-action="filter-employer-jobs" data-filter="closed" aria-pressed="${filter === 'closed'}">Закрытые (${closedCount})</button><button type="button" class="btn btn-tiny ${filter === 'attention' ? 'btn-dark' : 'btn-outline'}" data-action="filter-employer-jobs" data-filter="attention" aria-pressed="${filter === 'attention'}">Требуют внимания (${attentionCount})</button></div><div class="employer-vacancy-find">
     <label for="employer-vacancy-search">Поиск по названию и городу</label>
     <div class="employer-vacancy-find-row">
       <input id="employer-vacancy-search" type="search" data-employer-vacancy-search
@@ -2620,7 +2631,9 @@ async function loadEmployerVacancies() {
     jobEmployerMarkup(job, applicationsByJob.get(Number(job.id)))).join('')}</div>
   <div class="empty-state" id="employer-vacancy-empty" hidden>Вакансий по выбранным условиям не найдено. Измените поиск или фильтр.</div></div><div id="employer-matches" class="hidden"></div>`;
   applyEmployerVacancySearch();
-  if (state.activeVacancy && jobs.some(j=>j.id===state.activeVacancy)) await loadMatches(state.activeVacancy);
+  if (state.activeVacancy && visibleJobs.some(job => Number(job.id) === Number(state.activeVacancy))) {
+    await loadMatches(state.activeVacancy);
+  }
 }
 function vacancyQuality(job = {}) {
   const description = String(job.description || '').trim();
@@ -2646,13 +2659,34 @@ function jobEmployerMarkup(x, stats = {total: 0, interested: 0, attention: 0, re
   const nextLabel = needsOutcome ? 'Нужно зафиксировать итог' : hasReadyIntroduction ? 'Есть согласие кандидата' : needsAttention ? 'Есть отклики для разбора' : stats.waiting > 0 ? 'Ждём решения кандидата' : (x.status === 'open' ? 'Ищем кандидатов' : 'Вакансия закрыта');
   const quality = vacancyQuality(x);
   const qualityClass = quality.percent >= 88 ? 'high' : quality.percent >= 63 ? 'medium' : 'low';
-  return `<article class="item-card employer-vacancy-card ${(needsAttention || hasReadyIntroduction || needsOutcome) ? 'needs-attention' : ''}" data-employer-vacancy-id="${Number(x.id)}" data-vacancy-search="${esc(x.title + ' ' + x.city)}">
+  const jobId = Number(x.id);
+  const primaryAction = needsOutcome
+    ? `<button type="button" class="btn btn-primary" data-action="open-employer-invitations" data-filter="introduced" data-vacancy-id="${jobId}">Зафиксировать итог →</button>`
+    : hasReadyIntroduction
+    ? `<button type="button" class="btn btn-primary" data-action="open-employer-invitations" data-filter="action" data-vacancy-id="${jobId}">Продолжить знакомство →</button>`
+    : needsAttention
+    ? `<button type="button" class="btn btn-primary" data-action="vacancy-applications-primary" data-id="${jobId}">Разобрать отклики →</button>`
+    : x.status === 'open'
+    ? `<button type="button" class="btn btn-dark" data-action="matches-primary" data-id="${jobId}">Подобрать кандидатов →</button>`
+    : `<button type="button" class="btn btn-outline" data-action="job-status" data-id="${jobId}" data-status="open">Открыть для подбора →</button>`;
+  return `<article class="item-card employer-vacancy-card ${(needsAttention || hasReadyIntroduction || needsOutcome) ? 'needs-attention' : ''}" data-employer-vacancy-id="${jobId}" data-vacancy-search="${esc(x.title + ' ' + x.city)}">
     <header><div><span class="card-eyebrow">${esc(nextLabel)}</span><h4>${esc(x.title)}</h4><p>${esc(x.city)} · ${formatPay(x)} · ${esc(x.schedule)}</p><div class="vacancy-moderation-state ${esc(x.moderation_status||'approved')}"><strong>${x.moderation_status==='pending'?'На проверке':x.moderation_status==='rejected'?'Отклонена модератором':'Опубликована'}</strong>${x.moderation_reason?`<small>${esc(x.moderation_reason)}</small>`:''}</div></div><span class="mini-badge ${x.status === 'open' ? '' : 'gray'}">${x.status === 'open' ? 'Открыта' : 'Закрыта'}</span></header>
-    <div class="vacancy-pipeline-mini"><span><strong>${stats.total}</strong><small>Отклики</small></span><span><strong>${stats.outcome}</strong><small>Ждут итога</small></span><span><strong>${stats.hired}</strong><small>Выбраны</small></span><span><strong>${stats.rejected}</strong><small>Не договорились</small></span></div>
-    <div class="vacancy-quality ${qualityClass}"><div class="vacancy-quality-head"><span>Качество объявления</span><strong>${quality.percent}%</strong></div><div class="vacancy-quality-track"><span style="width:${quality.percent}%"></span></div>${quality.suggestions.length?`<p>${esc(quality.suggestions.slice(0,2).join(' · '))}</p>`:'<p>Основные условия заполнены хорошо.</p>'}</div>
-    <div class="employer-vacancy-primary">${needsOutcome ? `<button type="button" class="btn btn-primary" data-action="open-employer-invitations" data-filter="introduced" data-vacancy-id="${x.id}">Зафиксировать итог →</button>` : hasReadyIntroduction ? `<button type="button" class="btn btn-primary" data-action="open-employer-invitations" data-filter="action" data-vacancy-id="${x.id}">Продолжить знакомство →</button>` : needsAttention ? `<button type="button" class="btn btn-primary" data-action="vacancy-applications-primary" data-id="${x.id}">Разобрать отклики →</button>` : `<button class="btn btn-dark" data-action="matches-primary" data-id="${x.id}" ${x.status === 'closed' ? 'disabled':''}>Подобрать кандидатов →</button>`}</div>
-    <div class="item-actions employer-vacancy-secondary"><button type="button" class="btn btn-outline btn-tiny" data-action="vacancy-applications" data-id="${x.id}">Отклики</button><button class="btn btn-outline btn-tiny" data-action="matches" data-id="${x.id}" ${x.status === 'closed' ? 'disabled':''}>Подбор</button><button class="btn btn-outline btn-tiny" data-action="edit-job" data-id="${x.id}">Редактировать</button>${x.status==='open' && (x.moderation_status||'approved')==='approved' ? `<a class="btn btn-outline btn-tiny" href="/vacancies/${Number(x.id)}">Ссылка на вакансию</a>` : ''}<button type="button" class="btn btn-outline btn-tiny" data-action="vacancy-history" data-id="${Number(x.id)}" aria-expanded="false" aria-controls="employer-vacancy-history-${Number(x.id)}">История условий</button><button class="btn btn-outline btn-tiny" data-action="job-status" data-id="${x.id}" data-status="${x.status === 'open' ? 'closed' : 'open'}">${x.status === 'open' ? 'Закрыть' : 'Открыть'}</button></div>
-    <section class="employer-vacancy-history" id="employer-vacancy-history-${Number(x.id)}" aria-label="История изменений условий вакансии" hidden></section>
+    <div class="employer-vacancy-countline"><span>Откликов: <strong>${stats.total}</strong></span>${stats.attention ? `<span>Нужен ответ: <strong>${stats.attention}</strong></span>` : ''}${stats.ready ? `<span>Согласия: <strong>${stats.ready}</strong></span>` : ''}${stats.outcome ? `<span>Ждут итога: <strong>${stats.outcome}</strong></span>` : ''}</div>
+    <div class="employer-vacancy-primary">${primaryAction}</div>
+    <div class="item-actions employer-vacancy-secondary">
+      <button type="button" class="btn btn-outline btn-tiny" data-action="vacancy-applications" data-id="${jobId}">Посмотреть отклики</button>
+      <button type="button" class="btn btn-outline btn-tiny" data-action="matches" data-id="${jobId}" ${x.status === 'closed' ? 'disabled':''}>Подбор кандидатов</button>
+      <button type="button" class="btn btn-outline btn-tiny" data-action="edit-job" data-id="${jobId}">Редактировать</button>
+    </div>
+    <details class="employer-vacancy-more">
+      <summary>Дополнительно: показатели и управление</summary>
+      <div class="employer-vacancy-more-body">
+        <div class="vacancy-pipeline-mini"><span><strong>${stats.total}</strong><small>Отклики</small></span><span><strong>${stats.outcome}</strong><small>Ждут итога</small></span><span><strong>${stats.hired}</strong><small>Выбраны</small></span><span><strong>${stats.rejected}</strong><small>Не договорились</small></span></div>
+        <div class="vacancy-quality ${qualityClass}"><div class="vacancy-quality-head"><span>Качество объявления</span><strong>${quality.percent}%</strong></div><div class="vacancy-quality-track"><span style="width:${quality.percent}%"></span></div>${quality.suggestions.length?`<p>${esc(quality.suggestions.slice(0,2).join(' · '))}</p>`:'<p>Основные условия заполнены хорошо.</p>'}</div>
+        <div class="item-actions employer-vacancy-extra-actions">${x.status==='open' && (x.moderation_status||'approved')==='approved' ? `<a class="btn btn-outline btn-tiny" href="/vacancies/${jobId}">Ссылка на вакансию</a>` : ''}<button type="button" class="btn btn-outline btn-tiny" data-action="vacancy-history" data-id="${jobId}" aria-expanded="false" aria-controls="employer-vacancy-history-${jobId}">История условий</button><button type="button" class="btn btn-outline btn-tiny" data-action="job-status" data-id="${jobId}" data-status="${x.status === 'open' ? 'closed' : 'open'}">${x.status === 'open' ? 'Закрыть вакансию' : 'Открыть вакансию'}</button></div>
+        <section class="employer-vacancy-history" id="employer-vacancy-history-${jobId}" aria-label="История изменений условий вакансии" hidden></section>
+      </div>
+    </details>
   </article>`;
 }
 function employerMatchBreakdownMarkup(item) {
@@ -2745,12 +2779,22 @@ async function loadMoreEmployerVacancyHistory(btn,jobId) {
 }
 async function loadMatches(jobId) {
   const target = $('#employer-matches');
+  if (!target) return;
+  const card = document.querySelector(`#employer-vacancy-results .employer-vacancy-card[data-employer-vacancy-id="${Number(jobId)}"]`);
+  const vacancyTitle = card?.querySelector('h4')?.textContent?.trim() || 'выбранная вакансия';
+  // Open the candidates directly below their vacancy, not at the end of the
+  // complete vacancies list; keep the surrounding vacancy visible for context.
+  if (card) card.after(target);
+  target.setAttribute('role', 'region');
+  target.setAttribute('aria-label', 'Подходящие кандидаты по вакансии');
+  target.tabIndex = -1;
   target.classList.remove('hidden');
   target.innerHTML = '<div class="panel"><div class="loading">Подбираем кандидатов...</div></div>';
   state.activeVacancy = jobId;
   try {
     const {matches} = await api(`/api/employer/vacancies/${jobId}/matches`);
-    target.innerHTML = `<div class="panel matches-panel"><div class="split-header"><div><span class="section-kicker">ПОДБОР</span><h3>Подходящие кандидаты</h3><p class="muted">Сравнивайте профессию, навыки и условия. Процент прозрачно разложен по факторам; личные данные остаются скрытыми до согласия кандидата.</p></div><span class="mini-badge">${matches.length} совпадений</span></div><div class="matches-guide"><span><b>1</b>Оцените факторы</span><span><b>2</b>Отправьте приглашение</span><span><b>3</b>Дождитесь согласия</span></div><div class="dashboard-list">${matches.length ? matches.map(m => {
+    if (state.activeVacancy !== jobId || !target.isConnected) return;
+    target.innerHTML = `<div class="panel matches-panel"><div class="split-header"><div><span class="section-kicker">ПОДБОР ПО ВАКАНСИИ</span><h3>Подходящие кандидаты</h3><p class="employer-match-vacancy-title">${esc(vacancyTitle)}</p><p class="muted">Сравните профессию, навыки и условия. Контакты остаются скрытыми до отдельного согласия кандидата.</p></div><div class="employer-matches-head-actions"><span class="mini-badge">${matches.length} совпадений</span><button type="button" class="btn btn-outline btn-tiny" data-action="close-employer-matches">К списку вакансий</button></div></div><div class="matches-guide"><span><b>1</b>Оцените факторы</span><span><b>2</b>Отправьте приглашение</span><span><b>3</b>Дождитесь согласия</span></div><div class="dashboard-list">${matches.length ? matches.map(m => {
       const score = Number(m.score||0);
       const scoreClass = score >= 90 ? 'excellent' : score >= 80 ? 'high' : score >= 70 ? 'medium' : 'basic';
       const reasons = Array.isArray(m.strengths) ? m.strengths : (Array.isArray(m.reasons) ? m.reasons : []);
@@ -2776,7 +2820,14 @@ async function loadMatches(jobId) {
         <div class="item-actions">${action}</div>
       </article>`;
     }).join('') : '<div class="empty-state"><strong>Точных совпадений пока нет.</strong><p>Попробуйте расширить график, город или зарплатный диапазон вакансии.</p></div>'}</div></div>`;
-  } catch(e) { target.innerHTML = `<div class="panel">${esc(e.message)}</div>`; toast(e.message,true); }
+    target.focus({preventScroll:true});
+    target.scrollIntoView({behavior:'smooth',block:'start'});
+  } catch(e) {
+    if (state.activeVacancy !== jobId || !target.isConnected) return;
+    target.innerHTML = `<div class="panel"><p>${esc(e.message)}</p><button type="button" class="btn btn-outline" data-action="close-employer-matches">К списку вакансий</button></div>`;
+    target.focus({preventScroll:true});
+    toast(e.message,true);
+  }
 }
 const employerInvitationFilterLabels = {
   all:'Все',
@@ -3545,7 +3596,7 @@ async function handleDashboardSubmit(event) {
       state.tab = 'vacancies';
       await showDashboard();
       await loadPublicJobs();
-      toast(editing ? 'Изменения сохранены в прежней вакансии, отклики остались на месте.' : 'Вакансия опубликована. Теперь она доступна в поиске.');
+      toast(editing ? 'Изменения сохранены в прежней вакансии, отклики остались на месте.' : 'Вакансия опубликована. Следующий шаг — подобрать кандидатов в её карточке.');
     } catch(e) {
       if (persisted) {
         toast('Вакансия сохранена, но не удалось обновить список. Проверьте раздел «Мои вакансии».', true);
@@ -4150,6 +4201,25 @@ async function handleDashboardClick(event) {
       state.tab = 'invitations';
       state.activeVacancy = null;
       await showDashboard();
+      return;
+    }
+    if (action === 'open-employer-matches') {
+      if (!mayLeaveEditor() || !Number.isSafeInteger(id) || id <= 0) return;
+      state.employerVacancyFilter = 'all';
+      state.employerVacancySearch = '';
+      state.tab = 'vacancies';
+      state.activeVacancy = id;
+      await showDashboard();
+      return;
+    }
+    if (action === 'close-employer-matches') {
+      const sourceId = state.activeVacancy;
+      state.activeVacancy = null;
+      const target = $('#employer-matches');
+      if (target) { target.classList.add('hidden'); target.innerHTML = ''; }
+      const card = document.querySelector(`#employer-vacancy-results .employer-vacancy-card[data-employer-vacancy-id="${Number(sourceId)}"]`);
+      const focusTarget = card?.querySelector('[data-action="matches-primary"]') || card?.querySelector('h4');
+      if (focusTarget) { if (!focusTarget.matches('button,a')) focusTarget.tabIndex = -1; focusTarget.focus({preventScroll:true}); card.scrollIntoView({block:'nearest'}); }
       return;
     }
     if (action === 'new-job') { if (!mayLeaveEditor()) return; state.editVacancy=null; state.activeDraft=null; state.tab='create'; await showDashboard(); }
