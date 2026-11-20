@@ -385,6 +385,9 @@ def run_browser(page, playwright):
     expect(dialog).to_have_count(0)
     assert not page.locator("body").evaluate("el=>el.classList.contains('resume-printing')")
     expect(page.locator(".profile-optional")).not_to_have_attribute("open", "")
+    # The contextual helper is only visible when the experience accordion is expanded.
+    expect(page.locator("#resume-history-section")).not_to_have_attribute("open", "")
+    page.locator("#resume-history-section > summary").click()
     expect(page.locator("#experience-start")).to_contain_text("Помочь описать опыт")
     # Open the editor again; the description must still be available.
     page.locator("#experience-start").click()
