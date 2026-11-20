@@ -175,6 +175,10 @@ def test_prelaunch_public_home_is_readonly_and_nonindexable(monkeypatch, tmp_pat
         assert "Регистрация закрыта" in public.text
         assert public.headers["x-robots-tag"] == "noindex, nofollow"
         assert "no-store" in public.headers["cache-control"]
+        with TestClient(app, base_url="https://stazhno.ru") as canonical_client:
+            article = canonical_client.get("/journal")
+            assert article.status_code == 200
+            assert article.headers["x-robots-tag"] == "noindex, nofollow"
         client_script = (Path(__file__).parents[1] / "app/static/app.js").read_text(encoding="utf-8")
         assert "publicSignupClosed()" in client_script
         assert "registerButton.disabled = true" in client_script
