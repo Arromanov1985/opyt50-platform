@@ -683,6 +683,75 @@ def run_browser(page, playwright):
     expect(page.locator("#employer-application-pagination")).to_be_hidden()
     application_search.fill("")
     expect(page.locator("#employer-application-results .application-review-card:visible")).to_have_count(20)
+    # Fast employer review: navigate a 45-card fictional queue without
+    # extra API requests or displaying other candidates on a small tablet.
+    page.locator("[data-v02-action='employer-quick-toggle']").click()
+    expect(page.locator("[data-v02-action='employer-quick-toggle']")).to_have_attribute("aria-pressed", "true")
+    expect(page.locator(".employer-application-stage-filter [data-filter='attention']")).to_have_attribute("aria-pressed", "true")
+    expect(page.locator("#employer-application-quick-controls")).to_be_visible()
+    expect(page.locator("#employer-application-quick-position")).to_have_text("Отклик 1 из 45")
+    quick_cards = page.locator("#employer-application-results .application-review-card:visible")
+    expect(quick_cards).to_have_count(1)
+    expect(quick_cards.first).to_have_attribute("data-application-id", "50044")
+    expect(quick_cards.first).to_be_focused()
+    quick_reads = []
+    page.on("request", lambda request: quick_reads.append(request)
+            if request.method == "GET" and request.url.endswith("/api/employer/applications")
+            else None)
+    page.locator("[data-v02-action='employer-quick-next']").click()
+    expect(quick_cards.first).to_have_attribute("data-application-id", "50043")
+    expect(quick_cards.first).to_be_focused()
+    expect(page.locator("#employer-application-quick-position")).to_have_text("Отклик 2 из 45")
+    page.locator("[data-v02-action='employer-quick-previous']").click()
+    expect(quick_cards.first).to_have_attribute("data-application-id", "50044")
+    assert not quick_reads, "Next/previous quick review must not request additional applications"
+
+    page.set_viewport_size({"width": 820, "height": 1024})
+    assert page.evaluate("""() => {
+      const root = document.querySelector('#dashboard-main');
+      const controls = document.querySelector('.employer-quick-controls');
+      const buttons = [...controls.querySelectorAll('button')];
+      return root.scrollWidth <= root.clientWidth + 3 &&
+        buttons.every(button => button.getBoundingClientRect().height >= 44);
+    }"""), "Tablet quick review must fit its container with touch-sized controls"
+    page.set_viewport_size({"width": 1280, "height": 800})
+    # All mutations below are intercepted for a fictional application.
+    # The local test database and the real candidate remain untouched.
+    quick_writes = []
+    def fake_quick_review_status(route):
+        assert route.request.method == "PATCH"
+        quick_writes.append(("status", route.request.method))
+        generated_applications[-1]["status"] = "reviewing"
+        route.fulfill(status=200, content_type="application/json",
+                      body='{"ok":true,"status":"reviewing"}')
+    def fake_quick_review_interest(route):
+        assert route.request.method == "POST"
+        quick_writes.append(("interest", route.request.method))
+        generated_applications[-1].update(
+            status="interview", invitation_id=999001, invitation_status="sent"
+        )
+        route.fulfill(status=200, content_type="application/json",
+                      body='{"created":true,"id":999001}')
+    page.route("**/api/employer/applications/50044/status", fake_quick_review_status)
+    page.route("**/api/employer/applications/50044/interest", fake_quick_review_interest)
+    quick_cards.first.locator("[data-v02-action='application-status'][data-status='reviewing']").click()
+    expect(quick_cards.first).to_have_attribute("data-application-id", "50044")
+    expect(quick_cards.first).to_be_focused()
+    expect(quick_cards.first.locator("[data-v02-action='application-status'][data-status='reviewing']")).to_have_count(0)
+    expect(page.locator("#employer-application-quick-position")).to_have_text("Отклик 1 из 45")
+    quick_cards.first.locator("[data-v02-action='express-interest']").evaluate(
+        "(button) => {button.click(); button.click();}"
+    )
+    expect(quick_cards.first).to_have_attribute("data-application-id", "50043")
+    expect(quick_cards.first).to_be_focused()
+    expect(page.locator("#employer-application-quick-position")).to_have_text("Отклик 1 из 44")
+    assert quick_writes == [("status", "PATCH"), ("interest", "POST")], quick_writes
+    assert page.request.get(URL + "/api/employer/applications").json()["applications"][0]["id"] == 50000
+    page.unroute("**/api/employer/applications/50044/status", fake_quick_review_status)
+    page.unroute("**/api/employer/applications/50044/interest", fake_quick_review_interest)
+    page.locator("[data-v02-action='employer-quick-toggle']").click()
+    expect(page.locator("#employer-application-quick-controls")).to_be_hidden()
+    expect(quick_cards).to_have_count(20)
     page.unroute("**/api/employer/applications", fake_many_applications)
     # Restore the pre-existing search and a neutral stage before the legacy
     # filter assertions; the pagination scenario intentionally changed both.
