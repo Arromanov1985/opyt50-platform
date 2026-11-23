@@ -202,6 +202,22 @@ def run_comparison(page):
     assert "Ваш минимум" not in comparison.inner_text()
     assert "вашем профиле" not in comparison.inner_text()
 
+    # The focus switch hides only identical professional criteria. Scores,
+    # clarification questions and safe next steps must remain visible.
+    differences = comparison.locator('[data-action="compare-differences"]')
+    expect(differences).to_have_attribute("aria-pressed", "false")
+    differences.click()
+    expect(differences).to_have_attribute("aria-pressed", "true")
+    expect(comparison.locator('[data-compare-field="schedule"]')).to_be_hidden()
+    expect(comparison.locator('[data-compare-field="employment"]')).to_be_hidden()
+    for field in ("score", "profession", "salary", "experience", "questions", "next"):
+        expect(comparison.locator(f'[data-compare-field="{field}"]')).to_be_visible()
+    expect(cell("next", CANDIDATES[1]).locator('[data-action="invite"]')).to_be_visible()
+    assert not writes, "Filtering the comparison must not write to the API"
+    differences.click()
+    expect(differences).to_have_attribute("aria-pressed", "false")
+    expect(comparison.locator('[data-compare-field="schedule"]')).to_be_visible()
+
     # Returning retains the selected pair; the fourth profile cannot silently
     # replace someone when the three-person limit is reached.
     panel.locator("[data-action='compare-back']").click()

@@ -2717,7 +2717,7 @@ let employerMatchRequestSequence = 0;
 let employerVacancyLoadSequence = 0;
 const employerCandidateComparison = {
   ownerId: null, vacancyId: null, vacancy: null, matches: [],
-  selected: new Set(), visible: false, returnFocusId: null
+  selected: new Set(), visible: false, differencesOnly: false, returnFocusId: null
 };
 function positiveRecordId(value) {
   const id = Number(value);
@@ -2731,6 +2731,7 @@ function resetEmployerCandidateComparison() {
   employerCandidateComparison.matches = [];
   employerCandidateComparison.selected.clear();
   employerCandidateComparison.visible = false;
+  employerCandidateComparison.differencesOnly = false;
   employerCandidateComparison.returnFocusId = null;
 }
 function syncEmployerMatchAccount() {
@@ -2845,6 +2846,16 @@ function employerCandidateComparisonMarkup() {
     return factor?.text ? `<small class="candidate-compare-fact">${esc(employerMatchText(factor.text))}</small>` : '';
   };
   const value = (item,key) => `<p>${esc(item[key] || 'Не указано')}</p>${factorText(item,key === 'city' ? 'location' : key)}`;
+  const comparable = {
+    profession:item=>[item.profession,item.specializations].join(' | '),
+    skills:item=>item.skills,
+    salary:item=>String(item.salary_min || 0),
+    location:item=>item.city,
+    schedule:item=>item.schedule,
+    employment:item=>item.employment,
+    experience:item=>JSON.stringify([item.experience_years,item.education,item.achievements,item.work_history,item.courses])
+  };
+  const isDifferent = key => Boolean(comparable[key]) && new Set(selected.map(item => String(comparable[key](item) || '').trim().toLocaleLowerCase('ru-RU'))).size > 1;
   const rows = [
     {key:'score',title:'Совпадение по анкете',requirement:'Профессия, навыки и условия вакансии; опыт не оценивается этим процентом.',
       markup:item=>`<p><strong>${item.score}%</strong></p>`},
@@ -2865,11 +2876,14 @@ function employerCandidateComparisonMarkup() {
     {key:'next',title:'Следующий шаг',requirement:'Выберите действие по каждой анкете',
       markup:item=>`<div class="candidate-compare-actions"><button type="button" class="btn btn-outline btn-tiny" data-action="compare-open-profile" data-id="${item.candidate_id}">Открыть резюме</button>${employerMatchInvitationSlot(item,comparison.vacancyId)}</div>`}
   ];
-  return `<div class="candidate-comparison-heading"><h4>Сравнение выбранных анкет</h4><p>${esc(vacancy.title || 'Выбранная вакансия')}</p></div>
+  const differences = rows.filter(row=>isDifferent(row.key)).length;
+  return `<div class="candidate-comparison-heading"><h4>Сравнение выбранных анкет</h4><p>${esc(vacancy.title || 'Выбранная вакансия')}</p>
+      <button type="button" class="btn btn-outline candidate-compare-differences-toggle" data-action="compare-differences" aria-pressed="${comparison.differencesOnly}" aria-controls="candidate-compare-table">${comparison.differencesOnly ? 'Показать все критерии' : `Показать только различия (${differences})`}</button>
+      <p class="candidate-compare-differences-hint" role="status">${comparison.differencesOnly ? `Показаны ${differences} различающихся критериев, а также оценка, вопросы и действия.` : 'Вы можете скрыть одинаковые сведения, чтобы быстрее увидеть отличия. Оценка, вопросы и действия останутся видны.'}</p></div>
     <p class="candidate-comparison-note">Процент отражает совпадение профессии, навыков и условий. Опыт и достижения показаны со слов кандидата и не входят в расчёт. Возраст не используется. Решение о знакомстве принимаете вы.</p>
-    <table class="candidate-compare-table"><caption>Анкеты и условия вакансии «${esc(vacancy.title || 'Выбранная вакансия')}»</caption>
+    <table class="candidate-compare-table" id="candidate-compare-table"><caption>Анкеты и условия вакансии «${esc(vacancy.title || 'Выбранная вакансия')}»</caption>
       <thead><tr><th scope="col" id="candidate-compare-criterion">Критерий и условия вакансии</th>${selected.map(item=>`<th scope="col" id="candidate-compare-column-${item.candidate_id}">Анкета №${item.candidate_id}<small class="candidate-compare-fact">Совпадение условий: ${item.score}%</small></th>`).join('')}</tr></thead>
-      <tbody>${rows.map(row=>`<tr class="candidate-compare-row" data-compare-field="${row.key}"><th scope="row" id="candidate-compare-row-${row.key}">${row.title}<small class="candidate-compare-requirement">${esc(row.requirement)}</small></th>${selected.map(item=>`<td data-compare-candidate-id="${item.candidate_id}" headers="candidate-compare-row-${row.key} candidate-compare-column-${item.candidate_id}"><span class="candidate-compare-mobile-label" aria-hidden="true">Анкета №${item.candidate_id}</span><div class="candidate-compare-value">${row.markup(item)}</div></td>`).join('')}</tr>`).join('')}</tbody>
+      <tbody>${rows.map(row=>`<tr class="candidate-compare-row" data-compare-field="${row.key}" data-compare-different="${isDifferent(row.key)}" ${comparison.differencesOnly && comparable[row.key] && !isDifferent(row.key) ? 'hidden' : ''}><th scope="row" id="candidate-compare-row-${row.key}">${row.title}<small class="candidate-compare-requirement">${esc(row.requirement)}</small></th>${selected.map(item=>`<td data-compare-candidate-id="${item.candidate_id}" headers="candidate-compare-row-${row.key} candidate-compare-column-${item.candidate_id}"><span class="candidate-compare-mobile-label" aria-hidden="true">Анкета №${item.candidate_id}</span><div class="candidate-compare-value">${row.markup(item)}</div></td>`).join('')}</tr>`).join('')}</tbody>
     </table>`;
 }
 function updateEmployerCandidateComparison() {
@@ -2927,6 +2941,11 @@ function handleEmployerComparisonAction(action, id) {
     else if (comparison.selected.size < 3) comparison.selected.add(id);
     comparison.returnFocusId = id;
     updateEmployerCandidateComparison();
+  } else if (action === 'compare-differences') {
+    if (!comparison.visible || comparison.selected.size < 2) return;
+    comparison.differencesOnly = !comparison.differencesOnly;
+    updateEmployerCandidateComparison();
+    $('#employer-candidate-comparison [data-action="compare-differences"]')?.focus({preventScroll:true});
   } else if (action === 'compare-show') {
     if (comparison.selected.size < 2) return;
     comparison.visible = true;
@@ -4074,7 +4093,7 @@ async function handleDashboardClick(event) {
   const btn = event.target.closest('[data-action]'); if (!btn) return;
   const action = btn.dataset.action, id = Number(btn.dataset.id);
   if (btn.disabled) return;
-  if (['compare-toggle-candidate','compare-show','compare-clear','compare-back','compare-open-profile'].includes(action)) {
+  if (['compare-toggle-candidate','compare-show','compare-differences','compare-clear','compare-back','compare-open-profile'].includes(action)) {
     handleEmployerComparisonAction(action,id);
     return;
   }
