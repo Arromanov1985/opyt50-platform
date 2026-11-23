@@ -560,7 +560,7 @@ def run_browser(page, playwright):
     original_overview_app = page.request.get(URL + "/api/employer/applications").json()["applications"][0]
     sample_vacancy_id = int(original_overview_app["vacancy_id"])
     fictional_queue_apps = []
-    for idx in range(15):
+    for idx in range(25):
         entry = dict(original_overview_app)
         entry.update(id=70000 + idx, profession=f"Тестовый специалист {idx:02d}",
                      title="Учебная вакансия", status="applied",
@@ -601,17 +601,20 @@ def run_browser(page, playwright):
     page.on("request", monitor_workqueue)
     page.locator(".dashboard-tabs [data-tab='overview']").click()
     work_queue = page.locator("#employer-workqueue")
-    expect(work_queue).to_contain_text("Требуют действия: 17")
+    expect(work_queue).to_contain_text("Требуют действия: 27")
     queue_items = work_queue.locator("[data-employer-workqueue-item]")
-    expect(queue_items).to_have_count(17)
+    expect(queue_items).to_have_count(27)
     expect(work_queue.locator("[data-employer-workqueue-item]:visible")).to_have_count(10)
     expect(queue_items.nth(0)).to_have_attribute("data-workqueue-id", "97002")
     expect(queue_items.nth(1)).to_have_attribute("data-workqueue-id", "97001")
     assert "PRIVATE_QUEUE_NAME" not in work_queue.inner_html()
     assert "private-queue@example.invalid" not in work_queue.inner_html()
     work_queue.locator("[data-action='employer-workqueue-more']").click()
-    expect(work_queue.locator("[data-employer-workqueue-item]:visible")).to_have_count(17)
-    expect(work_queue.locator("#employer-workqueue-visible")).to_have_text("17")
+    expect(work_queue.locator("[data-employer-workqueue-item]:visible")).to_have_count(20)
+    expect(work_queue.locator("#employer-workqueue-visible")).to_have_text("20")
+    work_queue.locator("[data-action='employer-workqueue-more']").click()
+    expect(work_queue.locator("[data-employer-workqueue-item]:visible")).to_have_count(27)
+    expect(work_queue.locator("#employer-workqueue-visible")).to_have_text("27")
     expect(work_queue.locator("[data-action='employer-workqueue-more']")).to_be_hidden()
     page.set_viewport_size({"width": 390, "height": 844})
     assert page.evaluate("""() => {
