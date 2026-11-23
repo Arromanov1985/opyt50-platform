@@ -2876,10 +2876,19 @@ function employerCandidateComparisonMarkup() {
     {key:'next',title:'Следующий шаг',requirement:'Выберите действие по каждой анкете',
       markup:item=>`<div class="candidate-compare-actions"><button type="button" class="btn btn-outline btn-tiny" data-action="compare-open-profile" data-id="${item.candidate_id}">Открыть резюме</button>${employerMatchInvitationSlot(item,comparison.vacancyId)}</div>`}
   ];
-  const differences = rows.filter(row=>isDifferent(row.key)).length;
+  const differingRows = rows.filter(row=>isDifferent(row.key));
+  const differences = differingRows.length;
+  const comparisonSummary = differingRows.length
+    ? `Различаются: ${differingRows.map(row=>row.title.toLocaleLowerCase('ru-RU')).join(', ')}.`
+    : 'По указанным профессиональным критериям различий не обнаружено.';
+  const questionsSummary = selected.map(item=>{
+    const count = employerCandidateQuestions(item).length;
+    return `Анкета №${item.candidate_id}: ${count ? `вопросов для уточнения — ${count}` : 'дополнительных вопросов не выявлено'}`;
+  }).join('; ');
   return `<div class="candidate-comparison-heading"><h4>Сравнение выбранных анкет</h4><p>${esc(vacancy.title || 'Выбранная вакансия')}</p>
       <button type="button" class="btn btn-outline candidate-compare-differences-toggle" data-action="compare-differences" aria-pressed="${comparison.differencesOnly}" aria-controls="candidate-compare-table">${comparison.differencesOnly ? 'Показать все критерии' : `Показать только различия (${differences})`}</button>
       <p class="candidate-compare-differences-hint" role="status">${comparison.differencesOnly ? `Показаны ${differences} различающихся критериев, а также оценка, вопросы и действия.` : 'Вы можете скрыть одинаковые сведения, чтобы быстрее увидеть отличия. Оценка, вопросы и действия останутся видны.'}</p></div>
+    <div class="candidate-comparison-note" aria-label="Краткое резюме сравнения"><strong>Кратко о различиях</strong><p>${esc(comparisonSummary)}</p><p>${esc(questionsSummary)}. Сверьте условия вакансии и обсудите вопросы перед приглашением.</p></div>
     <p class="candidate-comparison-note">Процент отражает совпадение профессии, навыков и условий. Опыт и достижения показаны со слов кандидата и не входят в расчёт. Возраст не используется. Решение о знакомстве принимаете вы.</p>
     <table class="candidate-compare-table" id="candidate-compare-table"><caption>Анкеты и условия вакансии «${esc(vacancy.title || 'Выбранная вакансия')}»</caption>
       <thead><tr><th scope="col" id="candidate-compare-criterion">Критерий и условия вакансии</th>${selected.map(item=>`<th scope="col" id="candidate-compare-column-${item.candidate_id}">Анкета №${item.candidate_id}<small class="candidate-compare-fact">Совпадение условий: ${item.score}%</small></th>`).join('')}</tr></thead>
