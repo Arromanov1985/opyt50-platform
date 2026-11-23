@@ -4093,7 +4093,7 @@ async function handleDashboardClick(event) {
   const btn = event.target.closest('[data-action]'); if (!btn) return;
   const action = btn.dataset.action, id = Number(btn.dataset.id);
   if (btn.disabled) return;
-  if (['compare-toggle-candidate','compare-show','compare-clear','compare-back','compare-open-profile'].includes(action)) {
+  if (['compare-toggle-candidate','compare-show','compare-differences','compare-clear','compare-back','compare-open-profile'].includes(action)) {
     handleEmployerComparisonAction(action,id);
     return;
   }
