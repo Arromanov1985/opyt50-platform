@@ -2282,6 +2282,84 @@ function employerCompanyMarkup(result) {
   </div>`;
 }
 
+function employerWorkQueueEntries(applications, invitations) {
+  const tasks = [], seen = new Set();
+  const validId = value => {
+    const number = Number(value);
+    return Number.isSafeInteger(number) && number > 0 ? number : 0;
+  };
+  for (const item of invitations || []) {
+    const id = validId(item.id);
+    const outcomeNeeded = Boolean(item.contact) && employerInvitationNeedsOutcome(item);
+    if (!id || (!outcomeNeeded && employerInvitationBucket(item) !== 'action') || seen.has('invitation:' + id)) continue;
+    seen.add('invitation:' + id);
+    tasks.push({
+      kind: 'invitation', id, vacancyId: validId(item.vacancy_id),
+      profession: String(item.candidate_profession || 'Профессия не указана'),
+      vacancy: String(item.vacancy_title || 'Вакансия не указана'),
+      priority: outcomeNeeded ? 0 : 1,
+      stage: outcomeNeeded ? 'Ждёт итога' : 'Есть согласие',
+      detail: outcomeNeeded
+        ? 'Контакт открыт с согласия кандидата. После разговора зафиксируйте итог.'
+        : 'Согласие получено. Откройте знакомство для продолжения.',
+      actionLabel: outcomeNeeded ? 'Зафиксировать итог' : 'Продолжить знакомство',
+      filter: outcomeNeeded ? 'introduced' : 'action',
+      activity: invitationLastActivity(item)
+    });
+  }
+  for (const item of applications || []) {
+    const id = validId(item.id);
+    if (!id || validId(item.invitation_id) || item.invitation_status ||
+        !['applied', 'reviewing', 'interview'].includes(item.status) || seen.has('application:' + id)) continue;
+    seen.add('application:' + id);
+    const createdAt = Date.parse(String(item.created_at || ''));
+    tasks.push({
+      kind: 'application', id, vacancyId: validId(item.vacancy_id),
+      profession: String(item.profession || 'Профессия не указана'),
+      vacancy: String(item.title || 'Вакансия не указана'),
+      priority: item.status === 'applied' ? 2 : 3,
+      stage: item.status === 'applied' ? 'Новый отклик' : 'На рассмотрении',
+      detail: item.status === 'applied'
+        ? 'Изучите профессиональный профиль и выберите следующий шаг.'
+        : 'Продолжите рассмотрение или запросите согласие на знакомство.',
+      actionLabel: 'Рассмотреть отклик',
+      filter: 'attention',
+      activity: Number.isFinite(createdAt) ? createdAt : id
+    });
+  }
+  return tasks.sort((a, b) => a.priority - b.priority || b.activity - a.activity || b.id - a.id);
+}
+function employerWorkQueueMarkup(tasks) {
+  const total = tasks.length;
+  const visible = Math.min(total, 10);
+  const count = priority => tasks.filter(task => task.priority === priority).length;
+  const cards = tasks.map((task, index) => {
+    const target = task.kind === 'invitation'
+      ? `data-action="open-employer-invitations" data-invitation-id="${task.id}" data-vacancy-id="${task.vacancyId || ''}" data-filter="${task.filter}"`
+      : `data-v02-action="open-employer-applications" data-application-id="${task.id}" data-vacancy-id="${task.vacancyId || ''}" data-filter="attention"`;
+    return `<article class="employer-workqueue-item" data-employer-workqueue-item data-workqueue-kind="${task.kind}" data-workqueue-id="${task.id}" ${index >= 10 ? 'hidden' : ''}>
+        <div class="employer-workqueue-content"><span class="employer-workqueue-stage">${esc(task.stage)}</span>
+          <h4>${esc(task.profession)} <small>№${task.id}</small></h4>
+          <p class="employer-workqueue-vacancy">Вакансия: ${esc(task.vacancy)}</p>
+          <p class="muted">${esc(task.detail)}</p>
+        </div>
+        <button type="button" class="btn btn-primary btn-tiny" ${target}>${esc(task.actionLabel)} →</button>
+      </article>`;
+  }).join('');
+  return `<section class="panel employer-workqueue" id="employer-workqueue" aria-label="Единая рабочая очередь работодателя">
+    <div class="split-header"><div><span class="section-kicker">РАБОЧАЯ ОЧЕРЕДЬ</span><h3>Требуют действия: ${total}</h3>
+      <p class="muted">Отклики и знакомства в одном списке. Сначала завершите начатые знакомства, затем обработайте согласия и новые отклики. Каждый переход открывает нужную запись.</p></div></div>
+    <div class="employer-workqueue-summary" aria-label="Состав очереди">
+      <span><strong>${count(0)}</strong> Ждут итога</span><span><strong>${count(1)}</strong> Есть согласие</span>
+      <span><strong>${count(2) + count(3)}</strong> Отклики на разбор</span>
+    </div>
+    ${total ? `<div class="employer-workqueue-list">${cards}</div>
+      <div class="employer-workqueue-footer"><span role="status" aria-live="polite">Показано <strong id="employer-workqueue-visible">${visible}</strong> из ${total}</span>
+      ${total > visible ? `<button type="button" class="btn btn-outline" data-action="employer-workqueue-more">Показать ещё ${Math.min(10, total - visible)} задач</button>` : ''}</div>`
+      : '<div class="empty-state"><strong>Срочных действий сейчас нет</strong><p>Новые отклики и согласия появятся в этой очереди. Можно продолжить подбор по вакансиям.</p><button type="button" class="btn btn-outline" data-tab="vacancies">К вакансиям →</button></div>'}
+  </section>`;
+}
+
 async function renderEmployer() {
   const nav = [{id:'overview',label:'Обзор'},{id:'company',label:'Компания'},{id:'vacancies',label:'Мои вакансии'},{id:'create',label:'Новая вакансия'},{id:'applications',label:'Отклики'},{id:'invitations',label:'Знакомства и контакты'},{id:'security',label:'Безопасность'}];
   if (state.tab === 'edit') nav.splice(2, 0, {id:'edit',label:'Редактирование'});
@@ -2340,42 +2418,13 @@ async function renderEmployer() {
         nextAction = `<button class="btn btn-primary" data-action="resume-vacancy-draft" data-id="${Number(recentDraft.id)}">Продолжить заполнение →</button>`;
       }
       const showDraftReminder = drafts.length && nextTitle !== 'Продолжите черновик вакансии';
-      const employerTasks = [];
-      if (activeOpenedContacts.length) employerTasks.push({
-        title: 'Зафиксировать результат знакомства',
-        description: `Контактов без итогового решения: ${activeOpenedContacts.length}.`,
-        action: '<button class="btn btn-outline btn-tiny" data-action="open-employer-invitations" data-filter="introduced">К результатам</button>',
-        urgent: true
-      });
-      if (acceptedInvitations.length) employerTasks.push({
-        title: 'Продолжить согласованные знакомства',
-        description: `Кандидатов с согласием: ${acceptedInvitations.length}. Контакты открываются в кабинете.`,
-        action: '<button class="btn btn-outline btn-tiny" data-action="open-employer-invitations" data-filter="action">Продолжить</button>',
-        urgent: true
-      });
-      if (actionableApplications.length) employerTasks.push({
-        title: 'Рассмотреть отклики',
-        description: `Требуют внимания: ${actionableApplications.length}.`,
-        action: '<button class="btn btn-outline btn-tiny" data-v02-action="open-employer-applications" data-filter="attention">К откликам</button>',
-        urgent: true
-      });
-      // A dedicated draft reminder or the hero already has the resume button.
-      // Do not render a second identical action (ambiguous for keyboard/QA).
-      if (openJobs.length && nextTitle !== 'Запустите подбор по открытой вакансии') employerTasks.push({
-        title: 'Посмотреть подходящих специалистов',
-        description: `Открытых вакансий: ${openJobs.length}. Можно начать подбор без раскрытия контактов.`,
-        action: `<button type="button" class="btn btn-outline btn-tiny" data-action="open-employer-matches" data-id="${Number(openJobs[0].id)}">Начать подбор</button>`
-      });
-      if (!employerTasks.length && !recentDraft && !openJobs.length) employerTasks.push({
-        title: 'Опубликовать первую вакансию',
-        description: 'Начните с обязанностей, города и условий работы.',
-        action: '<button class="btn btn-outline btn-tiny" data-tab="create">Создать</button>'
-      });
+      const workQueue = employerWorkQueueEntries(applications, invitations);
       target.innerHTML = `<div class="overview-stack">
         <section class="panel dashboard-overview-hero employer-overview-hero">
           <span class="section-kicker">ПРИОРИТЕТ СЕЙЧАС</span>
           <div class="overview-priority"><div><h3>${esc(nextTitle)}</h3><p class="muted">${esc(nextText)}</p></div>${nextAction}</div>
         </section>
+        ${employerWorkQueueMarkup(workQueue)}
         ${showDraftReminder ? `<section class="panel employer-draft-reminder">
           <div><span class="section-kicker">НЕЗАВЕРШЁННАЯ ВАКАНСИЯ</span><h3>Черновики: ${drafts.length}</h3>
           <p class="muted">${esc(String(recentDraft.fields?.title || '').trim() || 'Без названия')} · Последнее сохранение: ${esc(draftSavedAt(recentDraft.updated_at))}</p>
@@ -2392,7 +2441,6 @@ async function renderEmployer() {
           <button type="button" class="overview-stat-card" data-action="open-employer-invitations" data-filter="action"><strong>${acceptedInvitations.length}</strong><span>Есть согласие</span><small>Можно открыть контакт</small></button>
           <button type="button" class="overview-stat-card" data-action="open-employer-invitations" data-filter="introduced"><strong>${activeOpenedContacts.length}</strong><span>Ждут итога</span><small>Контакт уже открыт</small></button>
         </section>
-        ${overviewTaskListMarkup('В работе у компании', employerTasks)}
         <section class="panel overview-funnel employer-outcome-funnel">
           <div class="split-header"><div><span class="section-kicker">ВОРОНКА</span><h3>От вакансии до результата</h3></div><button class="btn btn-outline btn-tiny" data-tab="vacancies">Управлять вакансиями</button></div>
           <div class="overview-funnel-steps">
@@ -4204,6 +4252,26 @@ async function handleDashboardClick(event) {
     if (form) {
       try { await showPublishedVacancyConflict(form); }
       catch(error) { setEditorStatus(form,'Не удалось обновить сравнение: ' + error.message,true); }
+    }
+    return;
+  }
+  if (action === 'employer-workqueue-more') {
+    if (state.user?.role !== 'employer' || state.tab !== 'overview') return;
+    const queue = btn.closest('#employer-workqueue');
+    if (!queue) return;
+    const remaining = Array.from(queue.querySelectorAll('[data-employer-workqueue-item][hidden]'));
+    const next = remaining.slice(0, 10);
+    for (const card of next) card.hidden = false;
+    const count = queue.querySelector('#employer-workqueue-visible');
+    const visibleCount = queue.querySelectorAll('[data-employer-workqueue-item]:not([hidden])').length;
+    if (count) count.textContent = String(visibleCount);
+    const left = remaining.length - next.length;
+    if (left) btn.textContent = 'Показать ещё ' + Math.min(10, left) + ' задач';
+    else btn.remove();
+    if (next.length) {
+      next[0].tabIndex = -1;
+      next[0].focus({preventScroll:true});
+      next[0].scrollIntoView({block:'nearest'});
     }
     return;
   }

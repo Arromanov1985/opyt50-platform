@@ -684,10 +684,12 @@
       card.scrollIntoView({block:'nearest'});
     }
 
-    async function openEmployerApplications(filter, vacancyId) {
+    async function openEmployerApplications(filter, vacancyId, applicationId) {
       if (state.user?.role !== 'employer' || !mayLeaveEditor()) return;
       const ownerId = state.user.id;
       const targetVacancy = navigationId(vacancyId);
+      const targetApplication = navigationId(applicationId);
+      state.employerApplicationsTargetId = targetApplication;
       state.employerApplicationsVacancyFilter = targetVacancy ? String(targetVacancy) : 'all';
       state.employerApplicationsStatusFilter = Object.hasOwn(employerApplicationFilterLabels, filter)
         ? filter : 'all';
@@ -697,8 +699,18 @@
       state.activeVacancy = null;
       await showDashboard();
       if (state.user?.id === ownerId && state.tab === 'applications') {
-        focusApplicationDestination('#dashboard-main h3');
+        const card = targetApplication
+          ? document.querySelector('#employer-application-results .application-review-card[data-application-id="' + targetApplication + '"]')
+          : null;
+        if (card && !card.hidden) {
+          card.tabIndex = -1;
+          card.focus({preventScroll:true});
+          card.scrollIntoView({block:'nearest'});
+        } else {
+          focusApplicationDestination('#dashboard-main h3');
+        }
       }
+      state.employerApplicationsTargetId = null;
     }
 
     function applyEmployerApplicationsSearch() {
@@ -809,6 +821,12 @@
         const shown = selectedStatus === 'all'
           ? vacancyScoped
           : vacancyScoped.filter(item => employerApplicationBucket(item) === selectedStatus);
+        // An overview work item can be past the first 20 applications.
+        // Move only that existing record to the front; never change its status.
+        const pinnedId = navigationId(state.employerApplicationsTargetId);
+        const pinnedIndex = pinnedId
+          ? shown.findIndex(item => Number(item.id) === pinnedId) : -1;
+        if (pinnedIndex > 0) shown.unshift(shown.splice(pinnedIndex, 1)[0]);
         employerApplicationQuickCounts = {...bucketCounts};
         const nextQueue = ['introduced','ready','attention'].find(stage => bucketCounts[stage] > 0);
         const queueCopy = {
@@ -1225,7 +1243,7 @@
           await openCandidateApplications(btn.dataset.applicationId, btn.dataset.vacancyId);
         }
         else if(type==='open-employer-applications'){
-          await openEmployerApplications(btn.dataset.filter, btn.dataset.vacancyId);
+          await openEmployerApplications(btn.dataset.filter, btn.dataset.vacancyId, btn.dataset.applicationId);
         }
         else if(type==='employer-quick-toggle'){
           if (state.user?.role !== 'employer' || state.tab !== 'applications') return;
