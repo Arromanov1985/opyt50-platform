@@ -4267,7 +4267,7 @@ async function handleDashboardClick(event) {
     if (count) count.textContent = String(visibleCount);
     const left = remaining.length - next.length;
     if (left) btn.textContent = 'Показать ещё ' + Math.min(10, left) + ' задач';
-    else btn.hidden = true;
+    else btn.remove();
     if (next.length) {
       next[0].tabIndex = -1;
       next[0].focus({preventScroll:true});
