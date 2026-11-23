@@ -3177,6 +3177,7 @@ async function loadMatches(jobId) {
 }
 const employerInvitationFilterLabels = {
   all:'Все',
+  needs_action:'Требуют действия',
   action:'Есть согласие',
   waiting:'Ждём решения',
   introduced:'Ждут итога',
@@ -3193,6 +3194,10 @@ function employerInvitationNeedsOutcome(x) {
   // A withdrawn application can precede a new direct invitation. Its consent
   // remains actionable, while outcome reminders follow the server exclusion.
   return employerInvitationBucket(x) === 'introduced' && x.application_status !== 'withdrawn';
+}
+function employerInvitationNeedsAction(x) {
+  return employerInvitationBucket(x) === 'action' ||
+    (Boolean(x.contact) && employerInvitationNeedsOutcome(x));
 }
 function employerInvitationStageLabel(x) {
   const bucket = employerInvitationBucket(x);
@@ -3271,6 +3276,7 @@ async function loadEmployerInvitations(force=false) {
     : vacancyScoped;
   const counts = {action:0,waiting:0,introduced:0,closed:0};
   searchScoped.forEach(item => { counts[employerInvitationBucket(item)] += 1; });
+  const attentionCount = searchScoped.filter(employerInvitationNeedsAction).length;
   const completedResults = {
     hired: searchScoped.filter(item => invitationFinalOutcome(item) === 'hired').length,
     rejected: searchScoped.filter(item => invitationFinalOutcome(item) === 'rejected').length,
@@ -3283,7 +3289,9 @@ async function loadEmployerInvitations(force=false) {
     if (bucketDiff) return bucketDiff;
     return invitationLastActivity(b) - invitationLastActivity(a);
   });
-  const shown = selected === 'all' ? ordered : ordered.filter(item => employerInvitationBucket(item) === selected);
+  const shown = selected === 'all' ? ordered
+    : selected === 'needs_action' ? ordered.filter(employerInvitationNeedsAction)
+    : ordered.filter(item => employerInvitationBucket(item) === selected);
   // A link from a particular application must open that exact introduction.
   // Put it first within the selected stage without exposing any new data.
   const targetInvitationId = Number(state.employerInvitationsTargetId || 0);
@@ -3293,6 +3301,7 @@ async function loadEmployerInvitations(force=false) {
   const visible = shown.slice(0, employerInvitationVisibleLimit);
   const filterButtons = [
     ['all',searchScoped.length],
+    ['needs_action',attentionCount],
     ['action',counts.action],
     ['waiting',counts.waiting],
     ['introduced',counts.introduced],
@@ -3307,6 +3316,7 @@ async function loadEmployerInvitations(force=false) {
   $('#dashboard-main').innerHTML = `<div class="panel invitation-center">
     <div class="split-header"><div><span class="section-kicker">ЗНАКОМСТВА</span><h3>Знакомства и контакты</h3><p class="muted">Здесь продолжается работа после отклика: сначала показываем знакомства, где нужен ваш следующий шаг. Контакты открываются только после согласия кандидата.</p></div>${vacancySelector}</div>
     <div class="employer-invitation-stage-filter" role="group" aria-label="Фильтр знакомств по этапу">${filterButtons}</div>
+    <p class="muted">«Требуют действия»: кандидат согласился и можно открыть контакт либо после знакомства осталось зафиксировать итог. Ожидающие решения кандидата сюда не входят.</p>
     <div class="employer-invitation-result-line"><span role="status" aria-live="polite">Показываем <strong>${visible.length}</strong> из <strong>${shown.length}</strong> по выбранному этапу (всего по поиску: ${searchScoped.length})${selected==='all'&&searchScoped.length>1?' · сначала знакомства, где нужно ваше действие':''}</span>${selected!=='all'||selectedVacancy!=='all'||query?'<button type="button" class="link-button" data-action="reset-employer-invitation-filters">Сбросить фильтры</button>':''}</div>
     ${counts.closed ? `<div class="completed-introduction-summary" aria-label="Итоги завершённых знакомств"><span><strong>${completedResults.hired}</strong> Выбраны</span><span><strong>${completedResults.rejected}</strong> Не договорились</span>${completedResults.other ? `<span><strong>${completedResults.other}</strong> Другие завершённые</span>` : ''}</div>` : ''}
     ${counts.action ? '<div class="demo-note"><strong>Тестовый режим</strong><span>Открытие контакта имитирует оплату и не списывает деньги.</span></div>' : ''}
