@@ -202,6 +202,16 @@ def run_comparison(page):
     assert "Ваш минимум" not in comparison.inner_text()
     assert "вашем профиле" not in comparison.inner_text()
 
+    # The neutral summary identifies factual differences and clarification counts,
+    # without ranking candidates or showing contact information.
+    summary = comparison.locator('[aria-label="Краткое резюме сравнения"]')
+    expect(summary).to_be_visible()
+    expect(summary).to_contain_text("Различаются:")
+    expect(summary).to_contain_text("профессия и специализация")
+    expect(summary).to_contain_text("зарплатные ожидания")
+    expect(summary).to_contain_text(f"Анкета №{CANDIDATES[0]}: вопросов для уточнения")
+    assert "PRIVATE_NAME_81000" not in summary.inner_text()
+
     # The focus switch hides only identical professional criteria. Scores,
     # clarification questions and safe next steps must remain visible.
     differences = comparison.locator('[data-action="compare-differences"]')
