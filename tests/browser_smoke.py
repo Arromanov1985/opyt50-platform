@@ -540,9 +540,102 @@ def run_browser(page, playwright):
     expect(page.locator("#dashboard-main")).to_contain_text("ПРИОРИТЕТ СЕЙЧАС")
     expect(page.locator("#dashboard-main .overview-stat-card")).to_have_count(4)
     expect(page.locator("#dashboard-main .overview-funnel")).to_be_visible()
-    expect(page.locator("#dashboard-main .overview-action-center")).to_be_visible()
-    expect(page.locator("#dashboard-main .overview-action-center")).to_contain_text("В работе у компании")
-    expect(page.locator("#dashboard-main .overview-action-center .overview-action-item").first).to_be_visible()
+    work_queue = page.locator("#employer-workqueue")
+    expect(work_queue).to_be_visible()
+    expect(work_queue).to_contain_text("Требуют действия: 1")
+    expect(work_queue.locator("[data-employer-workqueue-item]:visible")).to_have_count(1)
+    expect(page.locator("#dashboard-main .overview-action-center")).to_have_count(0)
+    # Every overview action opens the exact item, not just a generic tab.
+    first_action = work_queue.locator("[data-workqueue-kind='application'] button").first
+    original_application_id = first_action.get_attribute("data-application-id")
+    assert original_application_id
+    first_action.click()
+    expect(page.locator("#employer-application-results .application-review-card[data-application-id='" +
+                        original_application_id + "']")).to_be_focused()
+    expect(page.locator("#dashboard-main [data-v02-action='employer-application-filter'][data-filter='attention']")).to_have_attribute("aria-pressed", "true")
+    page.locator(".dashboard-tabs [data-tab='overview']").click()
+
+    # Fictional records exercise unified priority, 10-item pagination,
+    # deep links past page 1, and privacy without any database writes.
+    original_overview_app = page.request.get(URL + "/api/employer/applications").json()["applications"][0]
+    sample_vacancy_id = int(original_overview_app["vacancy_id"])
+    fictional_queue_apps = []
+    for idx in range(15):
+        entry = dict(original_overview_app)
+        entry.update(id=70000 + idx, profession=f"Тестовый специалист {idx:02d}",
+                     title="Учебная вакансия", status="applied",
+                     invitation_id=None, invitation_status=None, contact_shared=False,
+                     created_at="2026-11-21T09:00:00", timeline=[])
+        fictional_queue_apps.append(entry)
+
+    def fictional_queue_invite(invite_id, contact=None):
+        return dict(id=invite_id, vacancy_id=sample_vacancy_id,
+                    vacancy_title="Учебная вакансия", candidate_profession="Кладовщик",
+                    status="accepted", application_id=None, application_status=None,
+                    contact_shared=bool(contact), contact=contact, direct_outcome=None,
+                    price_rub=1000, created_at="2026-11-22T10:00:00", timeline=[])
+
+    fictional_queue_invites = [
+        fictional_queue_invite(97001),
+        fictional_queue_invite(97002, {"name": "PRIVATE_QUEUE_NAME",
+                                      "email": "private-queue@example.invalid",
+                                      "phone": "+7 999 000 00 01"}),
+    ]
+
+    def fake_workqueue_applications(route):
+        assert route.request.method == "GET"
+        route.fulfill(status=200, content_type="application/json",
+                      body=json.dumps({"applications": fictional_queue_apps}, ensure_ascii=False))
+
+    def fake_workqueue_invitations(route):
+        assert route.request.method == "GET"
+        route.fulfill(status=200, content_type="application/json",
+                      body=json.dumps({"invitations": fictional_queue_invites}, ensure_ascii=False))
+
+    page.route("**/api/employer/applications", fake_workqueue_applications)
+    page.route("**/api/employer/invitations", fake_workqueue_invitations)
+    queue_writes = []
+    def monitor_workqueue(request):
+        if "/api/" in request.url and request.method not in {"GET", "HEAD", "OPTIONS"}:
+            queue_writes.append((request.method, request.url))
+    page.on("request", monitor_workqueue)
+    page.locator(".dashboard-tabs [data-tab='overview']").click()
+    work_queue = page.locator("#employer-workqueue")
+    expect(work_queue).to_contain_text("Требуют действия: 17")
+    queue_items = work_queue.locator("[data-employer-workqueue-item]")
+    expect(queue_items).to_have_count(17)
+    expect(work_queue.locator("[data-employer-workqueue-item]:visible")).to_have_count(10)
+    expect(queue_items.nth(0)).to_have_attribute("data-workqueue-id", "97002")
+    expect(queue_items.nth(1)).to_have_attribute("data-workqueue-id", "97001")
+    assert "PRIVATE_QUEUE_NAME" not in work_queue.inner_html()
+    assert "private-queue@example.invalid" not in work_queue.inner_html()
+    work_queue.locator("[data-action='employer-workqueue-more']").click()
+    expect(work_queue.locator("[data-employer-workqueue-item]:visible")).to_have_count(17)
+    expect(work_queue.locator("#employer-workqueue-visible")).to_have_text("17")
+    expect(work_queue.locator("[data-action='employer-workqueue-more']")).to_be_hidden()
+    page.set_viewport_size({"width": 390, "height": 844})
+    assert page.evaluate("""() => {
+      const queue = document.querySelector('#employer-workqueue');
+      const buttons = [...queue.querySelectorAll('button')].filter(button =>
+        button.getClientRects().length > 0);
+      return queue.scrollWidth <= queue.clientWidth + 3 &&
+        buttons.every(button => button.getBoundingClientRect().height >= 44);
+    }"""), "Employer queue must fit a mobile viewport and have touch targets"
+    page.set_viewport_size({"width": 1280, "height": 800})
+    # Last fictional application is beyond the first 20 in the target screen.
+    work_queue.locator("[data-workqueue-kind='application'][data-workqueue-id='70000'] button").click()
+    expect(page.locator("#employer-application-results .application-review-card[data-application-id='70000']")).to_be_focused()
+    expect(page.locator("#employer-applications-vacancy")).to_have_value(str(sample_vacancy_id))
+    expect(page.locator("#dashboard-main [data-v02-action='employer-application-filter'][data-filter='attention']")).to_have_attribute("aria-pressed", "true")
+    page.locator(".dashboard-tabs [data-tab='overview']").click()
+    page.locator("#employer-workqueue [data-workqueue-kind='invitation'][data-workqueue-id='97001'] button").click()
+    expect(page.locator("#employer-invitation-results .employer-invitation-card[data-invitation-id='97001']")).to_be_focused()
+    expect(page.locator("#dashboard-main [data-action='filter-employer-invitations'][data-filter='action']")).to_have_attribute("aria-pressed", "true")
+    assert not queue_writes, "Overview navigation must never create or mutate invitations or applications"
+    page.remove_listener("request", monitor_workqueue)
+    page.unroute("**/api/employer/applications", fake_workqueue_applications)
+    page.unroute("**/api/employer/invitations", fake_workqueue_invitations)
+    page.locator(".dashboard-tabs [data-tab='overview']").click()
     expect(page.locator("#dashboard-main .overview-funnel")).to_contain_text("Согласия")
     expect(page.locator("#dashboard-main .overview-funnel")).to_contain_text("Контакты")
     expect(page.locator("#dashboard-main .overview-funnel")).to_contain_text("Положительные итоги")
