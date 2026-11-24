@@ -777,7 +777,7 @@
       const total = document.querySelector('#employer-application-matched-count');
       if (total) total.textContent = String(matched);
       const empty = document.querySelector('#employer-application-search-empty');
-      if (empty) empty.hidden = matched !== 0 || cards.length === 0 || !query;
+      if (empty) empty.hidden = employerApplicationQuickMode || matched !== 0 || cards.length === 0 || !query;
       const pager = document.querySelector('#employer-application-pagination');
       if (pager) {
         pager.hidden = employerApplicationQuickMode || visible >= matched;
@@ -805,7 +805,10 @@
       }
       const position = document.querySelector('#employer-application-quick-position');
       if (position) position.textContent = !matched
-        ? (query ? 'По запросу откликов нет. Очистите поиск, чтобы продолжить.' : 'На этом этапе откликов больше нет.')
+        ? (employerApplicationQuickMode && employerApplicationQuickSkipped.size
+            ? 'Других откликов по выбранным условиям нет. Можно вернуться к пропущенным.'
+            : query ? 'По запросу откликов нет. Очистите поиск, чтобы продолжить.'
+            : 'На этом этапе откликов больше нет.')
         : 'Отклик ' + (employerApplicationQuickIndex + 1) + ' из ' + matched;
       const nextStage = document.querySelector('[data-v02-action="employer-quick-stage"]');
       if (nextStage) {
