@@ -227,9 +227,10 @@ def journal_article(
         '<p class="jr-back"><a href="/journal/paths">Маршруты чтения</a> · '
         '<a href="/journal">← Все статьи журнала</a></p>'
     )
+    cache_control = "no-store" if jobs is not None else "public, max-age=300"
     return HTMLResponse(_layout(article["title"], article["description"],
                                "/journal/" + slug, article_body),
-                        headers={"Cache-Control": "public, max-age=300"})
+                        headers={"Cache-Control": cache_control})
 
 
 
@@ -246,7 +247,7 @@ def journal_highlights(request: Request) -> dict:
 def journal_renderer_sha256() -> str:
     """Identify the two fixed renderers without exposing code or local paths."""
     digest = hashlib.sha256(b"stazhno-journal-renderer-v1\0")
-    for name in ("journal.py", "journal_paths.py", "public_discovery.py"):
+    for name in ("journal.py", "journal_paths.py", "public_discovery.py", "vacancy_pages.py"):
         payload = Path(__file__).with_name(name).read_bytes()
         digest.update(name.encode("ascii") + b"\0" + len(payload).to_bytes(8, "big") + payload)
     return digest.hexdigest()
