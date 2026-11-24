@@ -85,6 +85,13 @@ def test_shareable_vacancy_page_shows_public_information_only(tmp_path: Path):
         assert "Полезно перед откликом" in after_editor_hide.text
 
         with database(app.state.db_path) as db:
+            db.execute("UPDATE journal_entries SET status='hidden'")
+        no_editorial = client.get(f"/vacancies/{job_id}")
+        assert "Полезно перед откликом" not in no_editorial.text
+        assert 'class="reading-card"' not in no_editorial.text
+        assert 'href="/journal/kak-proverit-vakansiyu"' not in no_editorial.text
+
+        with database(app.state.db_path) as db:
             # Publishing the job already creates its moderation row.
             db.execute(
                 "UPDATE vacancy_moderation SET status='rejected' WHERE vacancy_id=?",
