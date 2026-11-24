@@ -662,6 +662,8 @@
     // Completed decisions stay visible in normal lists, but are skipped
     // for the remainder of the current one-by-one review pass.
     const employerApplicationQuickHandledIds = new Set();
+    // Skip is session-only: map ID -> stage for local progress counters.
+    const employerApplicationQuickSkipped = new Map();
     const employerQuickStageOrder = ['introduced','ready','attention','consent'];
     const employerQuickStageCalls = {
       introduced:'Завершить знакомства',
@@ -679,6 +681,7 @@
       const card = document.querySelector('#employer-application-results .application-review-card:not([hidden])');
       if (!card) {
         (document.querySelector('[data-v02-action="employer-quick-stage"]:not([hidden])')
+          || document.querySelector('[data-v02-action="employer-quick-revisit"]:not([hidden])')
           || document.querySelector('[data-v02-action="employer-quick-toggle"]'))?.focus({preventScroll:true});
         return;
       }
@@ -693,6 +696,7 @@
         .filter(card => {
           const id = Number(card.dataset.applicationId);
           return id > 0 && !employerApplicationQuickHandledIds.has(id) &&
+            !employerApplicationQuickSkipped.has(id) &&
             (!query || String(card.dataset.applicationSearch || '').toLocaleLowerCase('ru-RU').includes(query));
         });
       const index = cards.findIndex(card => Number(card.dataset.applicationId) === currentId);
@@ -715,6 +719,7 @@
       if (startQuickReview) {
         employerApplicationQuickMode = true;
         employerApplicationQuickHandledIds.clear();
+        employerApplicationQuickSkipped.clear();
         employerApplicationQuickSelectedId = targetApplication || null;
         employerApplicationQuickIndex = 0;
         employerApplicationQuickFocusOnRender = true;
@@ -744,7 +749,8 @@
       const cards = Array.from(list.querySelectorAll('.application-review-card'));
       const matches = cards.filter(card =>
         (!query || String(card.dataset.applicationSearch || '').toLocaleLowerCase('ru-RU').includes(query)) &&
-        (!employerApplicationQuickMode || !employerApplicationQuickHandledIds.has(Number(card.dataset.applicationId)))
+        (!employerApplicationQuickMode || (!employerApplicationQuickHandledIds.has(Number(card.dataset.applicationId)) &&
+          !employerApplicationQuickSkipped.has(Number(card.dataset.applicationId))))
       );
       const matched = matches.length;
       let visible = 0;
@@ -772,7 +778,7 @@
       const total = document.querySelector('#employer-application-matched-count');
       if (total) total.textContent = String(matched);
       const empty = document.querySelector('#employer-application-search-empty');
-      if (empty) empty.hidden = matched !== 0 || cards.length === 0 || !query;
+      if (empty) empty.hidden = employerApplicationQuickMode || matched !== 0 || cards.length === 0 || !query;
       const pager = document.querySelector('#employer-application-pagination');
       if (pager) {
         pager.hidden = employerApplicationQuickMode || visible >= matched;
@@ -789,9 +795,21 @@
       if (controls) controls.hidden = !employerApplicationQuickMode;
       const handledCount = document.querySelector('#employer-application-quick-handled');
       if (handledCount) handledCount.textContent = 'Обработано за проход: ' + employerApplicationQuickHandledIds.size;
+      const skippedCount = document.querySelector('#employer-application-quick-skipped');
+      if (skippedCount) skippedCount.textContent = 'Пропущено: ' + employerApplicationQuickSkipped.size;
+      const skipButton = document.querySelector('[data-v02-action="employer-quick-skip"]');
+      if (skipButton) skipButton.disabled = !employerApplicationQuickMode || !matched;
+      const revisitButton = document.querySelector('[data-v02-action="employer-quick-revisit"]');
+      if (revisitButton) {
+        revisitButton.hidden = !employerApplicationQuickMode || !employerApplicationQuickSkipped.size;
+        revisitButton.textContent = 'Вернуться к пропущенным (' + employerApplicationQuickSkipped.size + ')';
+      }
       const position = document.querySelector('#employer-application-quick-position');
       if (position) position.textContent = !matched
-        ? (query ? 'По запросу откликов нет. Очистите поиск, чтобы продолжить.' : 'На этом этапе откликов больше нет.')
+        ? (employerApplicationQuickMode && employerApplicationQuickSkipped.size
+            ? 'Других откликов по выбранным условиям нет. Можно вернуться к пропущенным.'
+            : query ? 'По запросу откликов нет. Очистите поиск, чтобы продолжить.'
+            : 'На этом этапе откликов больше нет.')
         : 'Отклик ' + (employerApplicationQuickIndex + 1) + ' из ' + matched;
       const nextStage = document.querySelector('[data-v02-action="employer-quick-stage"]');
       if (nextStage) {
@@ -805,7 +823,7 @@
       }
       const complete = document.querySelector('#employer-application-quick-complete');
       const hasOtherStages = Boolean(employerQuickRecommendedStage(state.employerApplicationsStatusFilter || 'all'));
-      const showComplete = employerApplicationQuickMode && !matched && !query && !hasOtherStages;
+      const showComplete = employerApplicationQuickMode && !matched && !query && !hasOtherStages && !employerApplicationQuickSkipped.size;
       if (complete) complete.hidden = !showComplete;
       const continuation = document.querySelector('.employer-quick-next-stage');
       if (continuation) continuation.hidden = !showComplete && (!nextStage || nextStage.hidden);
@@ -822,6 +840,7 @@
         employerApplicationQuickSelectedId = null;
         employerApplicationQuickIndex = 0;
         employerApplicationQuickHandledIds.clear();
+        employerApplicationQuickSkipped.clear();
         employerApplicationQuickFocusOnRender = false;
         await oldEmployer();
         return;
@@ -856,7 +875,8 @@
           ? shown.findIndex(item => Number(item.id) === pinnedId) : -1;
         if (pinnedIndex > 0) shown.unshift(shown.splice(pinnedIndex, 1)[0]);
         employerApplicationQuickCounts = employerApplicationQuickMode
-          ? vacancyScoped.filter(item => !employerApplicationQuickHandledIds.has(Number(item.id)))
+          ? vacancyScoped.filter(item => !employerApplicationQuickHandledIds.has(Number(item.id)) &&
+              !employerApplicationQuickSkipped.has(Number(item.id)))
               .reduce((counts,item) => {
                 const bucket = employerApplicationBucket(item);
                 counts[bucket] = (counts[bucket] || 0) + 1;
@@ -903,17 +923,20 @@
             <div class="employer-quick-controls" id="employer-application-quick-controls" hidden>
               <span id="employer-application-quick-position" role="status" aria-live="polite"></span>
               <span class="employer-quick-handled muted" id="employer-application-quick-handled"></span>
+              <span class="employer-quick-skipped muted" id="employer-application-quick-skipped"></span>
               <div class="employer-quick-navigation">
                 <button type="button" class="btn btn-outline" data-v02-action="employer-quick-previous">← Предыдущий</button>
                 <button type="button" class="btn btn-dark" data-v02-action="employer-quick-next">Следующий →</button>
+                <button type="button" class="btn btn-outline" data-v02-action="employer-quick-skip" title="Пропуск не меняет статус отклика">Пропустить пока →</button>
               </div>
+              <div class="employer-quick-revisit"><button type="button" class="btn btn-outline" data-v02-action="employer-quick-revisit" hidden>Вернуться к пропущенным</button><span class="muted">Пропуск действует только в текущем проходе и не меняет статус отклика.</span></div>
               <div class="employer-quick-next-stage" aria-label="Продолжить обработку">
                 <button type="button" class="btn btn-primary" data-v02-action="employer-quick-stage" hidden></button>
                 <p id="employer-application-quick-complete" hidden>Все активные этапы разобраны. Новые отклики появятся здесь, когда кандидаты откликнутся или ответят на запрос.</p>
               </div>
             </div>
           </div>
-          <div class="dashboard-list" id="employer-application-results">${shown.length?shown.map(a=>`<article class="item-card application-review-card" data-application-id="${Number(a.id)}" data-application-search="${esc([a.profession,a.title,a.city,a.skills].join(' '))}"><header><div><h4>${esc(a.profession)}</h4><p>${esc(a.title)} · ${esc(a.city)} · ${esc(candidateSalaryText(a.expected_salary))}</p></div><span class="mini-badge">${esc(employerApplicationStageLabel(a))}</span></header>${interactionStageMarkup(a,'application')}<div class="application-profile-strip is-compact"><span><small>Навыки</small><strong>${esc(a.skills||'Не указаны')}</strong></span></div><details class="candidate-resume-details"><summary>Профессиональное резюме</summary>${professionalResumeMarkup(a)}</details>${activityTimelineMarkup(a)}${employerIntroBadge(a)}${['applied','reviewing','interview'].includes(a.status) && !a.invitation_id?`<div class="application-next-action"><span>Следующее действие</span><strong>${a.status==='applied'?'Проверьте профиль и переведите в рассмотрение':'Решите, хотите ли начать знакомство'}</strong></div><div class="item-actions">${a.status==='applied'?`<button class="btn btn-outline btn-tiny" data-v02-action="application-status" data-id="${Number(a.id)}" data-status="reviewing">Взять в рассмотрение</button>`:''}<button class="btn btn-primary btn-tiny" data-v02-action="express-interest" data-id="${Number(a.id)}">Запросить согласие на знакомство →</button><button class="btn btn-outline btn-tiny" data-v02-action="application-status" data-id="${Number(a.id)}" data-status="rejected">Отказать</button></div>`:''}</article>`).join(''):emptyFiltered}</div>
+          <div class="dashboard-list" id="employer-application-results">${shown.length?shown.map(a=>`<article class="item-card application-review-card" data-application-id="${Number(a.id)}" data-application-bucket="${esc(employerApplicationBucket(a))}" data-application-search="${esc([a.profession,a.title,a.city,a.skills].join(' '))}"><header><div><h4>${esc(a.profession)}</h4><p>${esc(a.title)} · ${esc(a.city)} · ${esc(candidateSalaryText(a.expected_salary))}</p></div><span class="mini-badge">${esc(employerApplicationStageLabel(a))}</span></header>${interactionStageMarkup(a,'application')}<div class="application-profile-strip is-compact"><span><small>Навыки</small><strong>${esc(a.skills||'Не указаны')}</strong></span></div><details class="candidate-resume-details"><summary>Профессиональное резюме</summary>${professionalResumeMarkup(a)}</details>${activityTimelineMarkup(a)}${employerIntroBadge(a)}${['applied','reviewing','interview'].includes(a.status) && !a.invitation_id?`<div class="application-next-action"><span>Следующее действие</span><strong>${a.status==='applied'?'Проверьте профиль и переведите в рассмотрение':'Решите, хотите ли начать знакомство'}</strong></div><div class="item-actions">${a.status==='applied'?`<button class="btn btn-outline btn-tiny" data-v02-action="application-status" data-id="${Number(a.id)}" data-status="reviewing">Взять в рассмотрение</button>`:''}<button class="btn btn-primary btn-tiny" data-v02-action="express-interest" data-id="${Number(a.id)}">Запросить согласие на знакомство →</button><button class="btn btn-outline btn-tiny" data-v02-action="application-status" data-id="${Number(a.id)}" data-status="rejected">Отказать</button></div>`:''}</article>`).join(''):emptyFiltered}</div>
           <div id="employer-application-pagination" class="employer-application-pagination" hidden><button type="button" class="btn btn-outline" data-v02-action="more-employer-applications">Показать следующие <span data-employer-application-remaining>20</span> откликов</button></div>
           <div class="empty-state" id="employer-application-search-empty" hidden><strong>По вашему запросу откликов нет</strong><p>Попробуйте другую профессию, навык или город.</p><button type="button" class="btn btn-outline" data-v02-action="clear-employer-application-search">Очистить поиск</button></div>
         </div>`;
@@ -1051,6 +1074,8 @@
       employerApplicationVisibleLimit = employerApplicationPageSize;
       employerApplicationQuickSelectedId = null;
       employerApplicationQuickIndex = 0;
+      employerApplicationQuickHandledIds.clear();
+      employerApplicationQuickSkipped.clear();
       if (state.user?.role === 'employer' && state.tab === 'applications') {
         renderEmployer().then(() => {
           document.querySelector('#employer-applications-vacancy')?.focus({preventScroll:true});
@@ -1290,6 +1315,7 @@
           employerApplicationQuickSelectedId = null;
           employerApplicationQuickIndex = 0;
           employerApplicationQuickHandledIds.clear();
+          employerApplicationQuickSkipped.clear();
           if (employerApplicationQuickMode &&
               state.employerApplicationsStatusFilter === 'all' &&
               !String(state.employerApplicationsQuery || '').trim() &&
@@ -1312,6 +1338,38 @@
               !Number(employerApplicationQuickCounts[requested] || 0) ||
               String(state.employerApplicationsQuery || '').trim()) return;
           state.employerApplicationsStatusFilter = requested;
+          employerApplicationQuickSelectedId = null;
+          employerApplicationQuickIndex = 0;
+          employerApplicationQuickFocusOnRender = true;
+          await renderEmployer();
+        }
+        else if(type==='employer-quick-skip'){
+          if (state.user?.role !== 'employer' || state.tab !== 'applications' || !employerApplicationQuickMode) return;
+          const card = document.querySelector('#employer-application-results .application-review-card:not([hidden])');
+          const currentId = Number(card?.dataset.applicationId);
+          const bucket = String(card?.dataset.applicationBucket || '');
+          if (!Number.isSafeInteger(currentId) || currentId <= 0 ||
+              !Object.hasOwn(employerApplicationQuickCounts,bucket) ||
+              employerApplicationQuickHandledIds.has(currentId) ||
+              employerApplicationQuickSkipped.has(currentId)) return;
+          const nextId = employerQuickNextAfterAction(currentId);
+          employerApplicationQuickSkipped.set(currentId,bucket);
+          employerApplicationQuickCounts[bucket] = Math.max(0,employerApplicationQuickCounts[bucket] - 1);
+          employerApplicationQuickSelectedId = nextId;
+          employerApplicationQuickIndex = 0;
+          applyEmployerApplicationsSearch();
+          focusEmployerQuickCard();
+        }
+        else if(type==='employer-quick-revisit'){
+          if (state.user?.role !== 'employer' || state.tab !== 'applications' ||
+              !employerApplicationQuickMode || !employerApplicationQuickSkipped.size) return;
+          const skippedBuckets = new Set(employerApplicationQuickSkipped.values());
+          const currentStage = state.employerApplicationsStatusFilter || 'all';
+          if (currentStage !== 'all' && !skippedBuckets.has(currentStage)) {
+            state.employerApplicationsStatusFilter =
+              [...employerQuickStageOrder,'closed'].find(stage => skippedBuckets.has(stage)) || 'all';
+          }
+          employerApplicationQuickSkipped.clear();
           employerApplicationQuickSelectedId = null;
           employerApplicationQuickIndex = 0;
           employerApplicationQuickFocusOnRender = true;
@@ -1454,7 +1512,12 @@
           pendingApplicationRequests.delete(id);
           setApplicationPending(id, false);
         }
-        if (btn.isConnected) btn.disabled=false;
+        if (btn.isConnected) {
+          if (type === 'employer-quick-skip') {
+            btn.disabled = !employerApplicationQuickMode ||
+              !document.querySelector('#employer-application-results .application-review-card:not([hidden])');
+          } else btn.disabled = false;
+        }
       }
     });
     $('#job-dialog-close').addEventListener('click',()=>$('#job-dialog').close());

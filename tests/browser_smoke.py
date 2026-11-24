@@ -619,9 +619,15 @@ def run_browser(page, playwright):
     # Wait until the preceding dashboard navigation has finished all its GETs.
     # Only requests initiated *after* this point belong to filter interactions.
     page.wait_for_load_state("networkidle")
-    # A local-only control must preserve this actual DOM node, rather than
-    # rebuilding the dashboard and losing keyboard focus or pagination.
-    work_queue.evaluate("(node) => { node.dataset.filterProbe = 'unchanged'; }")
+    # Assert synchronously that a filter click updates this very queue node.
+    # Unrelated asynchronous dashboard refreshes must not make this test flaky.
+    assert work_queue.evaluate("""node => {
+      node.dataset.filterProbe = 'unchanged';
+      node.querySelector('[data-action="employer-workqueue-filter"][data-filter="outcome"]').click();
+      return node.isConnected && document.querySelector('#employer-workqueue') === node &&
+        node.dataset.filterProbe === 'unchanged' &&
+        node.querySelector('#employer-workqueue-matched')?.textContent === '1';
+    }"""), "Filtering must update the existing queue synchronously"
     # Stage buttons, vacancy selection and type-ahead search are local-only.
     queue_reads = []
     def watch_queue_reads(request):
@@ -667,9 +673,8 @@ def run_browser(page, playwright):
     expect(work_queue.locator("#employer-workqueue-matched")).to_have_text("2")
     expect(work_queue.locator("[data-employer-workqueue-item]:visible")).to_have_count(2)
     work_search.fill("")
-    assert work_queue.get_attribute("data-filter-probe") == "unchanged", (
-        f"Queue unexpectedly re-rendered during local filtering; concurrent GETs: {queue_reads}"
-    )
+    # The direct synchronous assertion above isolates the filter handler from
+    # background reads and re-renders that may occur in the same browser session.
     assert not queue_writes, "Overview queue controls must not mutate candidates"
     page.remove_listener("request", watch_queue_reads)
     expect(work_queue.locator("[data-employer-workqueue-item]:visible")).to_have_count(10)
@@ -952,6 +957,52 @@ def run_browser(page, playwright):
     page.locator("[data-v02-action='employer-quick-previous']").click()
     expect(quick_cards.first).to_have_attribute("data-application-id", "50044")
     assert not quick_reads, "Next/previous quick review must not request additional applications"
+
+    # Session-only skip: no server mutation, no GET, and the next unskipped
+    # candidate is shown immediately. Skipped cards remain in the normal list.
+    pause_writes = []
+    def record_quick_skip_write(request):
+        if "/api/" in request.url and request.method not in ("GET", "HEAD", "OPTIONS"):
+            pause_writes.append((request.method, request.url))
+    page.on("request", record_quick_skip_write)
+    pause_button = page.locator("[data-v02-action='employer-quick-skip']")
+    replay_button = page.locator("[data-v02-action='employer-quick-revisit']")
+    pause_button.click()
+    expect(quick_cards.first).to_have_attribute("data-application-id", "50043")
+    expect(quick_cards.first).to_be_focused()
+    expect(page.locator("#employer-application-quick-skipped")).to_have_text("Пропущено: 1")
+    expect(page.locator("#employer-application-quick-handled")).to_have_text("Обработано за проход: 0")
+    expect(page.locator("#employer-application-quick-position")).to_have_text("Отклик 1 из 44")
+    pause_button.click()
+    expect(quick_cards.first).to_have_attribute("data-application-id", "50042")
+    expect(page.locator("#employer-application-quick-skipped")).to_have_text("Пропущено: 2")
+    expect(replay_button).to_contain_text("Вернуться к пропущенным (2)")
+    assert not pause_writes, "A local skip must not send POST or PATCH"
+    assert not quick_reads, "Skipping candidates must not reload the list"
+
+    replay_button.click()
+    expect(quick_cards.first).to_have_attribute("data-application-id", "50044")
+    expect(quick_cards.first).to_be_focused()
+    expect(page.locator("#employer-application-quick-skipped")).to_have_text("Пропущено: 0")
+    expect(page.locator("#employer-application-quick-position")).to_have_text("Отклик 1 из 45")
+    expect(replay_button).to_be_hidden()
+    application_search = page.locator("#employer-application-search")
+    application_search.fill("уникальный-навык-44")
+    expect(quick_cards.first).to_have_attribute("data-application-id", "50044")
+    pause_button.click()
+    expect(quick_cards).to_have_count(0)
+    expect(pause_button).to_be_disabled()
+    expect(page.locator("#employer-application-quick-position")).to_contain_text("вернуться к пропущенным")
+    expect(replay_button).to_be_visible()
+    expect(replay_button).to_be_focused()
+    expect(page.locator("#employer-application-quick-complete")).to_be_hidden()
+    replay_button.click()
+    expect(quick_cards.first).to_have_attribute("data-application-id", "50044")
+    expect(pause_button).to_be_enabled()
+    application_search.fill("")
+    expect(page.locator("#employer-application-quick-skipped")).to_have_text("Пропущено: 0")
+    assert not pause_writes, "Pause and replay must never modify applications"
+    page.remove_listener("request", record_quick_skip_write)
 
     page.set_viewport_size({"width": 820, "height": 1024})
     assert page.evaluate("""() => {

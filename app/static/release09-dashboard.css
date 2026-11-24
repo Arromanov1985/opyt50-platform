@@ -3964,3 +3964,25 @@ body.comfortable-view .employer-quick-handled{font-size:1rem}
   .employer-workqueue-quick-start{align-items:stretch;flex-direction:column}
   .employer-workqueue-quick-start>.btn{width:100%}
 }
+
+
+/* Session-only pause in employer's one-by-one review. */
+.employer-quick-skipped{font-size:13px;font-weight:700;color:#476B56}
+.employer-quick-revisit{
+  display:flex;align-items:center;flex-wrap:wrap;gap:8px 12px;
+  width:100%;min-width:0
+}
+.employer-quick-revisit [hidden]{display:none!important}
+.employer-quick-revisit .btn{min-height:46px;white-space:normal}
+.employer-quick-revisit .muted{font-size:12px;line-height:1.55;max-width:410px}
+.employer-quick-navigation [data-v02-action="employer-quick-skip"]{
+  background:#fff;color:#28533F;border-color:#B8D7C3
+}
+body.comfortable-view .employer-quick-skipped,
+body.comfortable-view .employer-quick-revisit .muted{font-size:1rem}
+@media(max-width:850px){
+ .employer-quick-navigation [data-v02-action="employer-quick-skip"]{
+   grid-column:1/-1;width:100%
+ }
+ .employer-quick-revisit .btn{width:100%}
+}
