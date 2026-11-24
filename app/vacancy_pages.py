@@ -83,12 +83,19 @@ def vacancy_page(job: dict, articles: list[dict] | None = None) -> HTMLResponse:
             '<small>' + _e(item["read"]) + ' чтения →</small></a>'
             for item in selected
         )
-    if not reading_cards:
+    if not reading_cards and articles is None:
         reading_cards = (
             '<a class="reading-card" href="/journal/kak-proverit-vakansiyu">'
             '<span>Безопасность</span><strong>Как проверить вакансию и сохранить свои данные</strong>'
             '<small>Практический чек-лист →</small></a>'
         )
+    reading_section = (
+        '<section class="tips"><h2>Полезно перед откликом</h2>'
+        '<p>Проверьте обязанности, оплату и график. Материалы ниже выбраны по содержанию вакансии, '
+        'без данных о посетителе.</p>'
+        f'<div class="reading-grid">{reading_cards}</div></section>'
+        if reading_cards else ""
+    )
     markup = f"""<!doctype html>
 <html lang="ru">
 <head>
@@ -146,10 +153,7 @@ def vacancy_page(job: dict, articles: list[dict] | None = None) -> HTMLResponse:
         <p>Отклик отправляется через СТАЖНО. Личные контакты кандидата не передаются автоматически — для знакомства предусмотрено отдельное согласие.</p>
       </aside>
     </article>
-    <section class="tips"><h2>Полезно перед откликом</h2>
-      <p>Проверьте обязанности, оплату и график. Материалы ниже выбраны по содержанию вакансии, без данных о посетителе.</p>
-      <div class="reading-grid">{reading_cards}</div>
-    </section>
+    {reading_section}
   </main>
   <footer class="wrap share-footer"><span>СТАЖНО · Ваш опыт работает на вас</span><a href="/journal">Практические материалы</a></footer>
 </body></html>"""
