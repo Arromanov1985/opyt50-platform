@@ -80,7 +80,10 @@ EMPLOYMENTS = {"Любая", "Полная", "Частичная", "Проект
 class GrowthEventIn(BaseModel):
     model_config = {"extra": "forbid"}
     source: str = Field(min_length=1, max_length=90)
-    action: Literal["view", "jobs_click", "profile_click", "community_click"]
+    action: Literal[
+        "view", "jobs_click", "profile_click", "community_click",
+        "company_click", "vacancy_click", "apply_click",
+    ]
 
 
 class PrivacyRightsRequestIn(BaseModel):
