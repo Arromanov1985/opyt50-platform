@@ -109,6 +109,24 @@ def exercise_application_destinations(page, jobs):
     assert result.status == 200, result.text()
     assert all(item["status"] == "applied" for item in result.json()["applications"])
 
+    # Turn one application into an introduction and verify the unified feed
+    # keeps it as one relationship instead of duplicating application + invitation.
+    interest = page.request.post(
+        URL + f"/api/employer/applications/{applications[0]}/interest",
+        headers=HEADERS,
+    )
+    assert interest.status == 200, interest.text()
+    assert page.request.post(URL + "/api/logout", headers=HEADERS).status == 200
+    login(page, "kladovshik@demo.example")
+    feed = page.locator("#dashboard-main .candidate-interaction-feed")
+    expect(feed).to_be_visible()
+    candidate_apps = page.request.get(URL + "/api/candidate/applications").json()["applications"]
+    candidate_invites = page.request.get(URL + "/api/candidate/invitations").json()["invitations"]
+    expected_feed_records = len({row["id"] for row in candidate_apps}) + sum(
+        1 for row in candidate_invites if not row.get("application_id")
+    )
+    expect(feed.locator(".candidate-interaction-entry")).to_have_count(min(expected_feed_records, 6))
+
 
 def exercise_profile_readiness(page):
     for email, field, heading in (
