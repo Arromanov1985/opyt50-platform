@@ -67,6 +67,14 @@ def test_shareable_vacancy_page_shows_public_information_only(tmp_path: Path):
         assert client.get("/static/employer-directory.css").status_code == 200
 
         with database(app.state.db_path) as db:
+            db.execute(
+                "UPDATE journal_entries SET status='hidden' WHERE slug='kak-proverit-vakansiyu'"
+            )
+        after_editor_hide = client.get(f"/vacancies/{job_id}")
+        assert 'href="/journal/kak-proverit-vakansiyu"' not in after_editor_hide.text
+        assert "Полезно перед откликом" in after_editor_hide.text
+
+        with database(app.state.db_path) as db:
             # Publishing the job already creates its moderation row.
             db.execute(
                 "UPDATE vacancy_moderation SET status='rejected' WHERE vacancy_id=?",
