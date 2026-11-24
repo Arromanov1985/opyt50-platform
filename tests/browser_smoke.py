@@ -989,6 +989,7 @@ def run_browser(page, playwright):
     expect(pause_button).to_be_disabled()
     expect(page.locator("#employer-application-quick-position")).to_contain_text("вернуться к пропущенным")
     expect(replay_button).to_be_visible()
+    expect(replay_button).to_be_focused()
     expect(page.locator("#employer-application-quick-complete")).to_be_hidden()
     replay_button.click()
     expect(quick_cards.first).to_have_attribute("data-application-id", "50044")
