@@ -72,7 +72,7 @@ def exercise_application_destinations(page, jobs):
     expect(page.locator(".candidate-application-card:visible")).to_have_count(0)
     selector.select_option("overview")
     page.locator(
-        f"[data-v02-action='open-candidate-applications'][data-application-id='{target_id}']"
+        f".candidate-overview-item [data-v02-action='open-candidate-applications'][data-application-id='{target_id}']"
     ).click()
     expect(page.locator("#candidate-application-search")).to_have_value("")
     expect(page.locator("[data-candidate-app-action='filter'][data-filter='all']")).to_have_attribute(
@@ -108,6 +108,24 @@ def exercise_application_destinations(page, jobs):
     result = page.request.get(URL + "/api/employer/applications")
     assert result.status == 200, result.text()
     assert all(item["status"] == "applied" for item in result.json()["applications"])
+
+    # Turn one application into an introduction and verify the unified feed
+    # keeps it as one relationship instead of duplicating application + invitation.
+    interest = page.request.post(
+        URL + f"/api/employer/applications/{applications[0]}/interest",
+        headers=HEADERS,
+    )
+    assert interest.status == 200, interest.text()
+    assert page.request.post(URL + "/api/logout", headers=HEADERS).status == 200
+    login(page, "kladovshik@demo.example")
+    feed = page.locator("#dashboard-main .candidate-interaction-feed")
+    expect(feed).to_be_visible()
+    candidate_apps = page.request.get(URL + "/api/candidate/applications").json()["applications"]
+    candidate_invites = page.request.get(URL + "/api/candidate/invitations").json()["invitations"]
+    expected_feed_records = len({row["id"] for row in candidate_apps}) + sum(
+        1 for row in candidate_invites if not row.get("application_id")
+    )
+    expect(feed.locator(".candidate-interaction-entry")).to_have_count(min(expected_feed_records, 6))
 
 
 def exercise_profile_readiness(page):
@@ -216,6 +234,11 @@ def run_overview(page):
     expect(dashboard.locator(".overview-stat-card")).to_have_count(4)
     expect(dashboard.locator(".candidate-status-row")).to_be_visible()
     expect(dashboard.locator(".candidate-status-chip")).to_have_count(3)
+    feed = dashboard.locator(".candidate-interaction-feed")
+    expect(feed).to_be_visible()
+    expect(feed.locator(".candidate-interaction-entry")).to_have_count(1)
+    expect(feed.locator('[data-action="open-candidate-invitations"]')).to_have_count(1)
+    assert not any(fragment in feed.inner_html() for fragment in ("mailto:", "tel:", "data-contact-phone", "data-contact-email"))
     expect(dashboard.locator(".candidate-overview-grid")).to_be_visible()
     expect(dashboard).to_contain_text("Вакансии для вас")
     expect(dashboard).to_contain_text("Сейчас в процессе")
