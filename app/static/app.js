@@ -1959,7 +1959,13 @@ function candidateInteractionFeedMarkup(applications = [], invitations = []) {
       company:String(item.company_name || ''),event:last?.event ? String(activityLabels[last.event] || last.event) : '',button});
   }
   for (const item of applications) add(item,'application');
-  for (const item of invitations) add(item,'invitation');
+  // Application-linked invitations already share the same unified timeline.
+  // Keep one canonical row for that relationship; only direct invitations are separate.
+  for (const item of invitations) {
+    const applicationId = Number(item?.application_id);
+    if (Number.isSafeInteger(applicationId) && applicationId > 0) continue;
+    add(item,'invitation');
+  }
   entries.sort((a,b) => b.activity - a.activity || b.id - a.id);
   const recent = entries.slice(0,6);
   return `<section class="panel candidate-interaction-feed" aria-label="Последние взаимодействия">
