@@ -953,6 +953,51 @@ def run_browser(page, playwright):
     expect(quick_cards.first).to_have_attribute("data-application-id", "50044")
     assert not quick_reads, "Next/previous quick review must not request additional applications"
 
+    # Session-only skip: no server mutation, no GET, and the next unskipped
+    # candidate is shown immediately. Skipped cards remain in the normal list.
+    pause_writes = []
+    def record_quick_skip_write(request):
+        if "/api/" in request.url and request.method not in ("GET", "HEAD", "OPTIONS"):
+            pause_writes.append((request.method, request.url))
+    page.on("request", record_quick_skip_write)
+    pause_button = page.locator("[data-v02-action='employer-quick-skip']")
+    replay_button = page.locator("[data-v02-action='employer-quick-revisit']")
+    pause_button.click()
+    expect(quick_cards.first).to_have_attribute("data-application-id", "50043")
+    expect(quick_cards.first).to_be_focused()
+    expect(page.locator("#employer-application-quick-skipped")).to_have_text("Пропущено: 1")
+    expect(page.locator("#employer-application-quick-handled")).to_have_text("Обработано за проход: 0")
+    expect(page.locator("#employer-application-quick-position")).to_have_text("Отклик 1 из 44")
+    pause_button.click()
+    expect(quick_cards.first).to_have_attribute("data-application-id", "50042")
+    expect(page.locator("#employer-application-quick-skipped")).to_have_text("Пропущено: 2")
+    expect(replay_button).to_contain_text("Вернуться к пропущенным (2)")
+    assert not pause_writes, "A local skip must not send POST or PATCH"
+    assert not quick_reads, "Skipping candidates must not reload the list"
+
+    replay_button.click()
+    expect(quick_cards.first).to_have_attribute("data-application-id", "50044")
+    expect(quick_cards.first).to_be_focused()
+    expect(page.locator("#employer-application-quick-skipped")).to_have_text("Пропущено: 0")
+    expect(page.locator("#employer-application-quick-position")).to_have_text("Отклик 1 из 45")
+    expect(replay_button).to_be_hidden()
+    application_search = page.locator("#employer-application-search")
+    application_search.fill("уникальный-навык-44")
+    expect(quick_cards.first).to_have_attribute("data-application-id", "50044")
+    pause_button.click()
+    expect(quick_cards).to_have_count(0)
+    expect(pause_button).to_be_disabled()
+    expect(page.locator("#employer-application-quick-position")).to_contain_text("больше нет")
+    expect(replay_button).to_be_visible()
+    expect(page.locator("#employer-application-quick-complete")).to_be_hidden()
+    replay_button.click()
+    expect(quick_cards.first).to_have_attribute("data-application-id", "50044")
+    expect(pause_button).to_be_enabled()
+    application_search.fill("")
+    expect(page.locator("#employer-application-quick-skipped")).to_have_text("Пропущено: 0")
+    assert not pause_writes, "Pause and replay must never modify applications"
+    page.remove_listener("request", record_quick_skip_write)
+
     page.set_viewport_size({"width": 820, "height": 1024})
     assert page.evaluate("""() => {
       const root = document.querySelector('#dashboard-main');
