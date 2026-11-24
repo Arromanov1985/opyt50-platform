@@ -1508,7 +1508,12 @@
           pendingApplicationRequests.delete(id);
           setApplicationPending(id, false);
         }
-        if (btn.isConnected) btn.disabled=false;
+        if (btn.isConnected) {
+          if (type === 'employer-quick-skip') {
+            btn.disabled = !employerApplicationQuickMode ||
+              !document.querySelector('#employer-application-results .application-review-card:not([hidden])');
+          } else btn.disabled = false;
+        }
       }
     });
     $('#job-dialog-close').addEventListener('click',()=>$('#job-dialog').close());
