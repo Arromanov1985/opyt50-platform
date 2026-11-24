@@ -1315,7 +1315,7 @@ async function showDashboard(scroll = false) {
     const view = state.employerWorkQueueView;
     view.returnPending = false;
     requestAnimationFrame(() => {
-      if (state.user?.id !== view.ownerId || state.user?.role !== 'employer' || state.tab !== 'overview') return;
+      if (Number(state.user?.id) !== view.ownerId || state.user?.role !== 'employer' || state.tab !== 'overview') return;
       const queue = document.querySelector('#employer-workqueue');
       if (!queue) return;
       const top = window.scrollY + queue.getBoundingClientRect().top;
