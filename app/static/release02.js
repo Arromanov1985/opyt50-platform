@@ -97,6 +97,18 @@
         ${selected ? 'В сравнении ✓' : 'Сравнить'}</button>`;
     }
 
+    function candidateSavedFavoriteMarkup(job) {
+      const id = Number(job.id);
+      const actions = `<div class="saved-job-actions">${candidateFavoriteCompareButton(job)}
+        <button class="btn btn-outline btn-tiny" data-v02-action="remove-favorite" data-id="${id}">Убрать из избранного</button></div>`;
+      const card = jobMarkup(job);
+      const closeAt = card.lastIndexOf('</article>');
+      const withActions = closeAt >= 0
+        ? card.slice(0,closeAt) + actions + card.slice(closeAt)
+        : card + actions;
+      return `<div class="saved-job">${withActions}</div>`;
+    }
+
     function candidateFavoriteCompareMarkup(jobs = []) {
       const selected = candidateFavoriteCompareSelection(jobs);
       const count = selected.length;
@@ -649,9 +661,7 @@
         if(state.tab==='favorites'){
           const {jobs}=await api('/api/candidate/favorites');
           candidateFavoriteCompareSelection(jobs);
-          const savedMarkup = jobs.length ? jobs.map(j=>`<div class="saved-job">${jobMarkup(j)}
-            <div class="saved-job-actions">${candidateFavoriteCompareButton(j)}<button class="btn btn-outline btn-tiny" data-v02-action="remove-favorite" data-id="${Number(j.id)}">Убрать из избранного</button></div>
-          </div>`).join('') : '<div class="empty-state empty-state-action"><span class="empty-state-icon" aria-hidden="true">♡</span><strong>Вы ещё не сохранили вакансий.</strong><p>Нажимайте ♡ на интересных вакансиях, чтобы вернуться к ним позже.</p><a class="btn btn-primary" href="#jobs">Посмотреть вакансии →</a></div>';
+          const savedMarkup = jobs.length ? jobs.map(candidateSavedFavoriteMarkup).join('') : '<div class="empty-state empty-state-action"><span class="empty-state-icon" aria-hidden="true">♡</span><strong>Вы ещё не сохранили вакансий.</strong><p>Нажимайте ♡ на интересных вакансиях, чтобы вернуться к ним позже.</p><a class="btn btn-primary" href="#jobs">Посмотреть вакансии →</a></div>';
           $('#dashboard-main').innerHTML=`<div class="panel"><div class="panel-title-row"><div><span class="section-kicker">СОХРАНЕНО</span><h3>Избранные вакансии</h3><p class="muted">Здесь собраны сохранённые варианты. Выберите 2–3 вакансии, чтобы сравнить основные условия.</p></div></div>${jobs.length ? candidateFavoriteCompareMarkup(jobs) : ''}<div class="dashboard-list">${savedMarkup}</div></div>`;
         }
         if(state.tab==='applications'){
