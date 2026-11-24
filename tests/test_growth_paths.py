@@ -23,7 +23,7 @@ def test_published_paths_have_counted_cta_and_aggregate_only(tmp_path: Path):
             page = client.get("/journal/paths/" + path["slug"])
             assert page.status_code == 200
             assert "data-growth-action=" in page.text
-            assert "/static/journal.js?v=4" in page.text
+            assert "/static/journal.js?v=5" in page.text
             action = "community_click" if path["href"] == "/community" else "jobs_click"
             assert 'data-growth-action="' + action + '"' in page.text
             assert post(client, source, "view").status_code == 204
@@ -53,7 +53,11 @@ def test_published_paths_have_counted_cta_and_aggregate_only(tmp_path: Path):
 def test_journal_client_tracks_only_whitelisted_actions():
     source = (Path(__file__).resolve().parents[1] / "app/static/journal.js").read_text()
     assert "path.startsWith('/journal/paths/')" in source
-    assert "action === 'community_click'" in source
+    assert "'community_click'" in source
+    assert "'company_click'" in source
+    assert "'vacancy_click'" in source
+    assert "'apply_click'" in source
+    assert ".includes(action)" in source
     assert "credentials: 'omit'" in source
     assert "referrerPolicy: 'no-referrer'" in source
     assert "data-growth-action" in source
