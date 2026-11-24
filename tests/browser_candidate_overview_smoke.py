@@ -214,6 +214,17 @@ def run_overview(page):
     expect(tasks).to_contain_text("Подтвердить электронную почту")
     assert tasks.locator(".overview-action-item").count() >= 2
     expect(tasks.locator("[data-action='open-candidate-invitations']")).to_be_visible()
+    stages = dashboard.locator(".candidate-stage-overview")
+    expect(stages).to_be_visible()
+    expect(stages.locator(".candidate-stage-card")).to_have_count(3)
+    server_applications = page.request.get(URL + "/api/candidate/applications").json()["applications"]
+    assert sum(int(card.locator("strong").inner_text())
+               for card in stages.locator(".candidate-stage-card").all()) == len({row["id"] for row in server_applications})
+    stages.locator('[data-filter="active"]').click()
+    expect(dashboard.locator(".candidate-application-toolbar")).to_be_visible()
+    expect(dashboard.locator('[data-candidate-app-action="filter"][data-filter="active"]')).to_have_attribute("aria-pressed","true")
+    page.locator('.dashboard-tabs [data-tab="overview"]').click()
+    expect(dashboard.locator(".candidate-stage-overview")).to_be_visible()
 
     # The overview must remain usable at the core mobile width.
     page.set_viewport_size({"width": 390, "height": 844})
