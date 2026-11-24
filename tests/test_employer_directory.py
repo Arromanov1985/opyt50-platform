@@ -64,6 +64,8 @@ def test_directory_only_contains_active_employers_with_approved_open_jobs(tmp_pa
         assert "Тестовое Производство" not in index.text
         assert 'id="employer-cards"' in index.text
         assert "Найдено компаний: 1" in index.text
+        assert f'href="/companies/{employer1}"' in index.text
+        assert f'href="/employers/{employer1}"' not in index.text
         assert "director1@example.invalid" not in index.text
         assert "director2@example.invalid" not in index.text
         assert "/employers" in viewer.get("/journal").text
