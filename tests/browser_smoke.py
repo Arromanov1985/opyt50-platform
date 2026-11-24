@@ -65,8 +65,11 @@ def run_browser(page, playwright):
     page.locator(".empty-list a[href='/employers']").click()
     expect(page.locator("#employer-cards .employer-card").first).to_be_visible()
     page.locator("#employer-cards .employer-card h2 a").first.click()
-    expect(page.locator(".company-vacancies .company-job").first).to_be_visible()
-    assert page.locator(".company-vacancies .company-job a[href^='/vacancies/']").count() >= 1
+    assert "/companies/" in page.url
+    expect(page.locator(".employer-jobs .public-employer-job").first).to_be_visible()
+    assert page.locator(".employer-jobs .public-employer-job a[href^='/vacancies/']").count() >= 1
+    expect(page.locator(".employer-reading")).to_be_visible()
+    expect(page.locator(".employer-reading-grid .employer-reading-card")).to_have_count(2)
     page.goto(URL, wait_until="networkidle")
     page.unroute("**/api/growth/event")
     expect(page.locator(".brand-word").first).to_contain_text("стажно")

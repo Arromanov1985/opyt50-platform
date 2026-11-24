@@ -35,7 +35,7 @@ def _asset(name: str) -> str:
     return f"/static/{name}?v={revision}"
 
 
-def vacancy_page(job: dict) -> HTMLResponse:
+def vacancy_page(job: dict, articles: list[dict] | None = None) -> HTMLResponse:
     from .legal_config import legal_approved
     from .main import production_runtime
 
@@ -66,6 +66,35 @@ def vacancy_page(job: dict) -> HTMLResponse:
     preparation = (
         '<a class="preparation-link" href="/journal/paths/nayti-rabotu">Подготовиться к поиску работы</a>'
         if prelaunch else ""
+    )
+    reading_cards = ""
+    if articles:
+        from .public_discovery import job_text, related_articles
+        selected = related_articles(
+            articles,
+            job_text(job),
+            limit=2,
+            fallback_slugs=("kak-proverit-vakansiyu", "sobesedovanie-posle-50"),
+        )
+        reading_cards = "".join(
+            '<a class="reading-card" href="/journal/' + _e(item["slug"]) + '">'
+            '<span>' + _e(item["category"]) + '</span>'
+            '<strong>' + _e(item["title"]) + '</strong>'
+            '<small>' + _e(item["read"]) + ' чтения →</small></a>'
+            for item in selected
+        )
+    if not reading_cards and articles is None:
+        reading_cards = (
+            '<a class="reading-card" href="/journal/kak-proverit-vakansiyu">'
+            '<span>Безопасность</span><strong>Как проверить вакансию и сохранить свои данные</strong>'
+            '<small>Практический чек-лист →</small></a>'
+        )
+    reading_section = (
+        '<section class="tips"><h2>Полезно перед откликом</h2>'
+        '<p>Проверьте обязанности, оплату и график. Материалы ниже выбраны по содержанию вакансии, '
+        'без данных о посетителе.</p>'
+        f'<div class="reading-grid">{reading_cards}</div></section>'
+        if reading_cards else ""
     )
     markup = f"""<!doctype html>
 <html lang="ru">
@@ -124,11 +153,9 @@ def vacancy_page(job: dict) -> HTMLResponse:
         <p>Отклик отправляется через СТАЖНО. Личные контакты кандидата не передаются автоматически — для знакомства предусмотрено отдельное согласие.</p>
       </aside>
     </article>
-    <section class="tips"><h2>Перед откликом</h2>
-      <p>Проверьте описание обязанностей, оплату и график. Никому не передавайте пароли или коды подтверждения.</p>
-      <a href="/journal/kak-proverit-vakansiyu">Как проверить вакансию →</a>
-    </section>
+    {reading_section}
   </main>
   <footer class="wrap share-footer"><span>СТАЖНО · Ваш опыт работает на вас</span><a href="/journal">Практические материалы</a></footer>
 </body></html>"""
-    return HTMLResponse(markup, headers={"Cache-Control": "public, max-age=60"})
+    cache_control = "no-store" if articles is not None else "public, max-age=60"
+    return HTMLResponse(markup, headers={"Cache-Control": cache_control})

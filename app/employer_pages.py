@@ -19,7 +19,7 @@ def _asset(name: str) -> str:
     return f"/static/{name}?v={revision}"
 
 
-def employer_page(data: dict) -> HTMLResponse:
+def employer_page(data: dict, articles: list[dict] | None = None) -> HTMLResponse:
     company = data["company"]
     jobs = data["jobs"]
     employer_id = int(company["id"])
@@ -72,6 +72,36 @@ def employer_page(data: dict) -> HTMLResponse:
             '<a class="employer-button secondary" href="/#jobs" data-growth-action="jobs_click">Все вакансии СТАЖНО</a>'
             '<a class="employer-job-link" href="/employers">Компании с открытыми вакансиями →</a></div>'
         )
+    reading_cards = ""
+    if articles:
+        from .public_discovery import job_text, related_articles
+        context = " ".join([
+            str(company.get("company_name") or ""),
+            str(company.get("about") or ""),
+            *(job_text(job) for job in jobs),
+        ])
+        selected = related_articles(
+            articles,
+            context,
+            limit=2,
+            fallback_slugs=("kak-proverit-vakansiyu", "sobesedovanie-posle-50"),
+        )
+        reading_cards = "".join(
+            '<a class="employer-reading-card" href="/journal/' + _e(item["slug"]) + '">'
+            '<span>' + _e(item["category"]) + '</span>'
+            '<strong>' + _e(item["title"]) + '</strong>'
+            '<small>' + _e(item["read"]) + ' чтения →</small></a>'
+            for item in selected
+        )
+    reading_section = (
+        '<section class="employer-reading" aria-labelledby="employer-reading-title">'
+        '<div class="employer-section-heading"><h2 id="employer-reading-title">Полезно перед знакомством</h2>'
+        '<a href="/journal">Все материалы →</a></div>'
+        '<p class="employer-section-note">Материалы выбраны по публичному описанию компании '
+        'и её вакансиям — без профиля посетителя.</p>'
+        f'<div class="employer-reading-grid">{reading_cards}</div></section>'
+        if reading_cards else ""
+    )
     description = _e((str(company.get("about") or "").strip()[:150]) or
                      "Описание работодателя и актуальные вакансии на СТАЖНО.")
     canonical = f"https://stazhno.ru/companies/{employer_id}"
@@ -109,7 +139,9 @@ def employer_page(data: dict) -> HTMLResponse:
 <dl class="employer-trust-facts"><div><dt>Проверка СТАЖНО</dt><dd>{'Пройдена' if trust.get('verified') else 'Нет отметки проверки'}</dd></div><div><dt>Email компании</dt><dd>{'Подтверждён' if trust.get('email_verified') else 'Нет отметки подтверждения'}</dd></div><div><dt>Реквизиты компании</dt><dd>{'Указаны' if trust.get('inn_provided') else 'Нет отметки об указании'}</dd></div></dl>
 <p class="employer-trust-note">Подтверждение email означает доступ к почте, а указание реквизитов — их наличие в профиле. Эти отметки не гарантируют условия работы. Обязанности, оплату и оформление обсудите с работодателем.</p></aside>
 </section>
+{reading_section}
 <aside class="employer-bottom"><h2>Следующий шаг — изучить вакансию</h2><p>Условия можно прочитать без регистрации. Доступные действия показаны на странице вакансии. Контакты соискателя не раскрываются автоматически: для знакомства предусмотрено отдельное согласие.</p><a href="/journal/kak-proverit-vakansiyu">Как проверить работодателя и вакансию</a></aside>
 </main><footer class="employer-wrap employer-footer">СТАЖНО · Ваш опыт работает на вас</footer>
 </body></html>"""
-    return HTMLResponse(html, headers={"Cache-Control": "public, max-age=60"})
+    cache_control = "no-store" if articles is not None else "public, max-age=60"
+    return HTMLResponse(html, headers={"Cache-Control": cache_control})

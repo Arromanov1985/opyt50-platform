@@ -45,7 +45,7 @@ def test_shareable_vacancy_page_shows_public_information_only(tmp_path: Path):
         job_id = create_public_job(client)
         page = client.get(f"/vacancies/{job_id}")
         assert page.status_code == 200, page.text
-        assert page.headers["cache-control"].startswith("public")
+        assert page.headers["cache-control"] == "no-store"
         assert "Кладовщик" in page.text
         assert "Тестовая фирма" in page.text
         assert "Москва" in page.text
@@ -54,6 +54,11 @@ def test_shareable_vacancy_page_shows_public_information_only(tmp_path: Path):
         assert f'href="/?vacancy={job_id}#jobs" data-growth-action="apply_click"' in page.text
         assert 'data-growth-action="company_click"' in page.text
         assert 'data-growth-action="jobs_click"' in page.text
+        assert "Полезно перед откликом" in page.text
+        assert 'class="reading-grid"' in page.text
+        assert page.text.count('class="reading-card"') == 2
+        assert page.text.count('href="/journal/') >= 2
+        assert "без данных о посетителе" in page.text
         assert f'https://stazhno.ru/vacancies/{job_id}' in page.text
         assert "Контакты" not in page.text or "Контакты не" in page.text
         assert "private-owner@example.invalid" not in page.text
@@ -61,6 +66,30 @@ def test_shareable_vacancy_page_shows_public_information_only(tmp_path: Path):
         assert "&lt;script&gt;alert" in page.text
         assert client.get("/static/vacancy-share.css").status_code == 200
         assert client.get("/static/employer-directory.css").status_code == 200
+
+        with database(app.state.db_path) as db:
+            db.execute(
+                """UPDATE journal_entries SET status='hidden'
+                   WHERE slug NOT IN ('kak-proverit-vakansiyu','sobesedovanie-posle-50')"""
+            )
+        curated = client.get(f"/vacancies/{job_id}")
+        assert 'href="/journal/kak-proverit-vakansiyu"' in curated.text
+        assert 'href="/journal/sobesedovanie-posle-50"' in curated.text
+        with database(app.state.db_path) as db:
+            db.execute(
+                "UPDATE journal_entries SET status='hidden' WHERE slug='kak-proverit-vakansiyu'"
+            )
+        after_editor_hide = client.get(f"/vacancies/{job_id}")
+        assert 'href="/journal/kak-proverit-vakansiyu"' not in after_editor_hide.text
+        assert 'href="/journal/sobesedovanie-posle-50"' in after_editor_hide.text
+        assert "Полезно перед откликом" in after_editor_hide.text
+
+        with database(app.state.db_path) as db:
+            db.execute("UPDATE journal_entries SET status='hidden'")
+        no_editorial = client.get(f"/vacancies/{job_id}")
+        assert "Полезно перед откликом" not in no_editorial.text
+        assert 'class="reading-card"' not in no_editorial.text
+        assert 'href="/journal/kak-proverit-vakansiyu"' not in no_editorial.text
 
         with database(app.state.db_path) as db:
             # Publishing the job already creates its moderation row.

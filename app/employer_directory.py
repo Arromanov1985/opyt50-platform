@@ -99,11 +99,11 @@ def employer_directory(query: str, city: str, db) -> HTMLResponse:
     rows = _company_rows(db, query, city)
     cards = "".join(
         f'<article class="employer-card"><span class="card-kicker">КОМПАНИЯ</span>'
-        f'<h2><a href="/employers/{int(row["id"])}">{_e(row["company_name"])}</a></h2>'
+        f'<h2><a href="/companies/{int(row["id"])}">{_e(row["company_name"])}</a></h2>'
         f'<p class="verification">{("Проверена администрацией СТАЖНО" if row["verified"] else "Нет отметки проверки СТАЖНО")}</p>'
         f'<p class="vacancy-counter"><strong>{int(row["vacancy_count"])}</strong> '
         f'открытых вакансий по текущему поиску</p>'
-        f'<a class="card-link" href="/employers/{int(row["id"])}">Вакансии компании →</a></article>'
+        f'<a class="card-link" href="/companies/{int(row["id"])}">Вакансии компании →</a></article>'
         for row in rows
     )
     empty = (

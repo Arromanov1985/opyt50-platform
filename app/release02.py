@@ -1067,7 +1067,7 @@ def install_routes(app) -> None:
                LEFT JOIN vacancy_moderation vm ON vm.vacancy_id=v.id
                WHERE v.employer_id=? AND v.status='open'
                  AND COALESCE(vm.status,'approved')='approved'
-               ORDER BY v.id DESC LIMIT 20""",
+               ORDER BY v.id DESC LIMIT 50""",
             (employer_id,),
         ).fetchall()
         trust = employer_trust(db, employer_id)
@@ -1088,7 +1088,8 @@ def install_routes(app) -> None:
         # Same public visibility conditions as the company API. Never query
         # internal account or contact fields for the rendered HTML.
         from .employer_pages import employer_page
-        return employer_page(public_company(employer_id, db))
+        from .journal_cms import public_articles
+        return employer_page(public_company(employer_id, db), public_articles(db))
 
     @app.post("/api/reports", status_code=201)
     def create_content_report(
@@ -1200,7 +1201,8 @@ def install_routes(app) -> None:
         # Reuse the existing moderated, active-only public detail query.
         # In particular, do not expose closed or unapproved vacancies.
         from .vacancy_pages import vacancy_page
-        return vacancy_page(job_detail(job_id, db)["job"])
+        from .journal_cms import public_articles
+        return vacancy_page(job_detail(job_id, db)["job"], public_articles(db))
 
     @app.get("/api/candidate/favorites")
     def favorites(user: dict = Depends(active_user), db: sqlite3.Connection = Depends(get_connection)):
