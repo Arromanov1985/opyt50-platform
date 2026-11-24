@@ -588,6 +588,14 @@ def run_browser(page, playwright):
                              if int(job["id"]) != sample_vacancy_id)
     fictional_queue_apps[-1]["vacancy_id"] = second_vacancy_id
     fictional_queue_apps[-1]["title"] = "Другая учебная вакансия"
+    # Resolved direct invitation without a corresponding application is
+    # included in vacancy analytics but is not a new actionable queue item.
+    completed_direct_invite = fictional_queue_invite(97003)
+    completed_direct_invite.update(
+        vacancy_id=second_vacancy_id, vacancy_title="Другая учебная вакансия",
+        contact_shared=True, status="accepted", direct_outcome="hired"
+    )
+    fictional_queue_invites.append(completed_direct_invite)
 
     def fake_workqueue_applications(route):
         assert route.request.method == "GET"
@@ -616,6 +624,48 @@ def run_browser(page, playwright):
     expect(queue_items.nth(1)).to_have_attribute("data-workqueue-id", "97001")
     assert "PRIVATE_QUEUE_NAME" not in work_queue.inner_html()
     assert "private-queue@example.invalid" not in work_queue.inner_html()
+
+    # Per-vacancy snapshot comes from existing server records, not temporary
+    # one-by-one review counters. Applications and direct invitations are
+    # distinct events, so the funnel is deliberately not monotonic.
+    analytics = page.locator("#employer-vacancy-analytics")
+    expect(analytics).to_be_visible()
+    expect(analytics).to_contain_text("Текущий срез")
+    first_metrics = analytics.locator(f'[data-analytics-vacancy-id="{sample_vacancy_id}"]')
+    second_metrics = analytics.locator(f'[data-analytics-vacancy-id="{second_vacancy_id}"]')
+    expect(first_metrics.locator('[data-analytics-metric="applications"]')).to_have_text("24")
+    expect(first_metrics.locator('[data-analytics-metric="invitations"]')).to_have_text("2")
+    expect(first_metrics.locator('[data-analytics-metric="agreements"]')).to_have_text("2")
+    expect(first_metrics.locator('[data-analytics-metric="contacts"]')).to_have_text("1")
+    expect(first_metrics.locator('[data-analytics-metric="outcomes"]')).to_have_text("0")
+    expect(first_metrics.locator('[data-analytics-metric="actions"]')).to_have_text("26")
+    expect(second_metrics.locator('[data-analytics-metric="applications"]')).to_have_text("1")
+    expect(second_metrics.locator('[data-analytics-metric="invitations"]')).to_have_text("1")
+    expect(second_metrics.locator('[data-analytics-metric="agreements"]')).to_have_text("1")
+    expect(second_metrics.locator('[data-analytics-metric="contacts"]')).to_have_text("1")
+    expect(second_metrics.locator('[data-analytics-metric="outcomes"]')).to_have_text("1")
+    expect(second_metrics.locator('[data-analytics-metric="actions"]')).to_have_text("1")
+    expect(second_metrics).to_contain_text("Доля положительных: 100%")
+    assert "PRIVATE_QUEUE_NAME" not in analytics.inner_html()
+    assert "private-queue@example.invalid" not in analytics.inner_html()
+
+    # Open / other filters must not fetch new data or mutate any record.
+    analytics_open = analytics.locator('[data-action="employer-analytics-filter"][data-filter="open"]')
+    analytics_all = analytics.locator('[data-action="employer-analytics-filter"][data-filter="all"]')
+    expected_open = sum(job["status"] == "open" for job in all_employer_jobs)
+    expected_total = len(all_employer_jobs)
+    expect(analytics.locator('[data-analytics-row]')).to_have_count(expected_total)
+    assert analytics.evaluate("""node => {
+      const all = [...node.querySelectorAll('[data-analytics-row]')];
+      node.querySelector('[data-action="employer-analytics-filter"][data-filter="open"]').click();
+      const visible = all.filter(row => !row.hidden);
+      return node.isConnected && visible.every(row => row.dataset.analyticsStatus === 'open') &&
+        Number(node.querySelector('#employer-analytics-visible-count').textContent) === visible.length;
+    }"""), "Filtering the analytics card must not rebuild the dashboard"
+    expect(analytics_open).to_have_attribute("aria-pressed","true")
+    expect(analytics.locator('[data-analytics-row]:visible')).to_have_count(expected_open)
+    analytics_all.click()
+    expect(analytics.locator('[data-analytics-row]:visible')).to_have_count(expected_total)
     # Wait until the preceding dashboard navigation has finished all its GETs.
     # Only requests initiated *after* this point belong to filter interactions.
     page.wait_for_load_state("networkidle")
@@ -686,6 +736,15 @@ def run_browser(page, playwright):
     expect(work_queue.locator("#employer-workqueue-visible")).to_have_text("27")
     expect(work_queue.locator("[data-action='employer-workqueue-more']")).to_be_hidden()
     page.set_viewport_size({"width": 390, "height": 844})
+    assert page.evaluate("""() => {
+      const analytics = document.querySelector('#employer-vacancy-analytics');
+      const root = analytics.querySelector('.employer-analytics-list');
+      const buttons = [...analytics.querySelectorAll('button')].filter(button =>
+        button.getClientRects().length > 0 && !button.hidden);
+      return analytics.scrollWidth <= analytics.clientWidth + 3 &&
+        root.scrollWidth <= root.clientWidth + 3 &&
+        buttons.every(button => button.getBoundingClientRect().height >= 44);
+    }"""), "Employer vacancy funnel must fit 390px with touch-sized controls"
     assert page.evaluate("""() => {
       const queue = document.querySelector('#employer-workqueue');
       const controls = [...queue.querySelectorAll('button,input,select')].filter(element =>
