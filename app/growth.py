@@ -66,6 +66,9 @@ def record_event(db_path: str, source: str, action: str) -> None:
                         (resource_id,),
                     ).fetchone()
                 else:
+                    # Company pages stay public as an empty state even when the
+                    # last approved vacancy closes. Match public_company() rather
+                    # than tying company visibility to vacancy availability.
                     valid = db.execute(
                         """SELECT 1 FROM employer_profiles e
                            JOIN users u ON u.id=e.user_id AND u.role='employer'
@@ -76,12 +79,6 @@ def record_event(db_path: str, source: str, action: str) -> None:
                                WHERE pr.user_id=e.user_id
                                  AND pr.kind IN ('deletion','stop_processing')
                                  AND pr.status IN ('received','in_review','completed')
-                             )
-                             AND EXISTS (
-                               SELECT 1 FROM vacancies v
-                               LEFT JOIN vacancy_moderation vm ON vm.vacancy_id=v.id
-                               WHERE v.employer_id=e.user_id AND v.status='open'
-                                 AND COALESCE(vm.status,'approved')='approved'
                              )""",
                         (resource_id,),
                     ).fetchone()
@@ -174,14 +171,9 @@ def _source_rollup(db: Any, counters: list[dict]) -> list[dict]:
                               WHERE pr.user_id=e.user_id
                                 AND pr.kind IN ('deletion','stop_processing')
                                 AND pr.status IN ('received','in_review','completed')
-                            )
-                            AND EXISTS (
-                              SELECT 1 FROM vacancies v
-                              LEFT JOIN vacancy_moderation vm ON vm.vacancy_id=v.id
-                              WHERE v.employer_id=e.user_id AND v.status='open'
-                                AND COALESCE(vm.status,'approved')='approved'
                             ) THEN 1 ELSE 0 END AS is_public
                    FROM employer_profiles e
+                   JOIN users u ON u.id=e.user_id AND u.role='employer'
                    LEFT JOIN account_controls c ON c.user_id=e.user_id
                    WHERE e.user_id=?""",
                 (resource_id,),
@@ -250,7 +242,10 @@ def aggregate_snapshot(db: Any, days: int) -> dict:
             item["total"] for item in counters
             if item["action"] == "view" and item["source"].startswith("company:")
         ),
-        "jobs_clicks": sum(item["total"] for item in counters if item["action"] == "jobs_click"),
+        "jobs_clicks": sum(
+            item["total"] for item in counters
+            if item["action"] == "jobs_click" and not PUBLIC_SOURCE_RE.fullmatch(item["source"])
+        ),
         "profile_clicks": sum(item["total"] for item in counters if item["action"] == "profile_click"),
         "community_clicks": sum(item["total"] for item in counters if item["action"] == "community_click"),
         "company_clicks": sum(item["total"] for item in counters if item["action"] == "company_click"),
