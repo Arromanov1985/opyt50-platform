@@ -695,9 +695,77 @@ def run_browser(page, playwright):
     expect(page.locator("#employer-applications-vacancy")).to_have_value(str(sample_vacancy_id))
     expect(page.locator("#dashboard-main [data-v02-action='employer-application-filter'][data-filter='attention']")).to_have_attribute("aria-pressed", "true")
     page.locator(".dashboard-tabs [data-tab='overview']").click()
+    # Return from a specific application: preserve stage, vacancy, query,
+    # expanded list length and the previous scroll position.
+    work_queue = page.locator("#employer-workqueue")
+    work_queue.locator("[data-action='employer-workqueue-filter'][data-filter='applications']").click()
+    work_queue.locator("[data-employer-workqueue-vacancy]").select_option(str(sample_vacancy_id))
+    work_queue.locator("[data-employer-workqueue-search]").fill("  ТЕСТОВЫЙ СПЕЦИАЛИСТ  ")
+    expect(work_queue.locator("#employer-workqueue-matched")).to_have_text("24")
+    expect(work_queue.locator("[data-employer-workqueue-item]:visible")).to_have_count(10)
+    work_queue.locator("[data-action='employer-workqueue-more']").click()
+    expect(work_queue.locator("#employer-workqueue-visible")).to_have_text("20")
+    # The click listener observes the scroll offset after Playwright has
+    # scrolled the target button into view, matching the app's capture phase.
+    page.evaluate("""() => {
+      document.querySelector('#account-content').addEventListener('click', event => {
+        if (!event.target.closest('#employer-workqueue [data-workqueue-id="70008"] button')) return;
+        window.__expectedQueueOffset = Math.max(0,
+          -document.querySelector('#employer-workqueue').getBoundingClientRect().top);
+      }, {capture:true, once:true});
+    }""")
+    work_queue.locator("[data-workqueue-id='70008'] button").click()
+    expect(page.locator("#employer-application-results .application-review-card[data-application-id='70008']")).to_be_focused()
+    page.locator(".dashboard-tabs [data-tab='overview']").click()
+    work_queue = page.locator("#employer-workqueue")
+    expect(work_queue.locator("[data-action='employer-workqueue-filter'][data-filter='applications']")).to_have_attribute("aria-pressed", "true")
+    expect(work_queue.locator("[data-employer-workqueue-vacancy]")).to_have_value(str(sample_vacancy_id))
+    expect(work_queue.locator("[data-employer-workqueue-search]")).to_have_value("  ТЕСТОВЫЙ СПЕЦИАЛИСТ  ")
+    expect(work_queue.locator("#employer-workqueue-matched")).to_have_text("24")
+    expect(work_queue.locator("#employer-workqueue-visible")).to_have_text("20")
+    page.wait_for_function("""() => {
+      const queue = document.querySelector('#employer-workqueue');
+      const offset = window.__expectedQueueOffset;
+      if (!queue || typeof offset !== 'number') return false;
+      const queueTop = window.scrollY + queue.getBoundingClientRect().top;
+      const max = Math.max(0, document.documentElement.scrollHeight-window.innerHeight);
+      const expectedY = Math.max(0,Math.min(max,queueTop+offset));
+      return Math.abs(window.scrollY - expectedY) < 16;
+    }""")
+
+    # When a task disappears while being handled, keep the selected vacancy
+    # and query but show the empty state instead of clearing user preferences.
+    work_queue.locator("[data-employer-workqueue-vacancy]").select_option(str(second_vacancy_id))
+    work_queue.locator("[data-employer-workqueue-search]").fill("СПЕЦИАЛИСТ 24")
+    expect(work_queue.locator("#employer-workqueue-matched")).to_have_text("1")
+    work_queue.locator("[data-workqueue-id='70024'] button").click()
+    expect(page.locator("#employer-application-results .application-review-card[data-application-id='70024']")).to_be_focused()
+    fictional_queue_apps[:] = [entry for entry in fictional_queue_apps if entry["id"] != 70024]
+    page.locator(".dashboard-tabs [data-tab='overview']").click()
+    work_queue = page.locator("#employer-workqueue")
+    expect(work_queue.locator("[data-action='employer-workqueue-filter'][data-filter='applications']")).to_have_attribute("aria-pressed", "true")
+    expect(work_queue.locator("[data-employer-workqueue-vacancy]")).to_have_value(str(second_vacancy_id))
+    expect(work_queue.locator("[data-employer-workqueue-search]")).to_have_value("СПЕЦИАЛИСТ 24")
+    expect(work_queue.locator("#employer-workqueue-matched")).to_have_text("0")
+    expect(work_queue.locator("[data-employer-workqueue-empty]")).to_be_visible()
+    work_queue.locator("[data-action='employer-workqueue-reset']").click()
+    expect(work_queue.locator("[data-action='employer-workqueue-filter'][data-filter='all']")).to_have_attribute("aria-pressed", "true")
+    expect(work_queue.locator("[data-employer-workqueue-search]")).to_have_value("")
+    expect(work_queue.locator("[data-employer-workqueue-vacancy]")).to_have_value("all")
+    expect(work_queue.locator("#employer-workqueue-matched")).to_have_text("26")
+    # Invitation navigation uses a different JS module; the same preferences
+    # must be captured and restored for both kinds of work item.
+    work_queue.locator("[data-action='employer-workqueue-filter'][data-filter='consent']").click()
+    work_queue.locator("[data-employer-workqueue-search]").fill("Кладовщик")
+    expect(work_queue.locator("#employer-workqueue-matched")).to_have_text("1")
     page.locator("#employer-workqueue [data-workqueue-kind='invitation'][data-workqueue-id='97001'] button").click()
     expect(page.locator("#employer-invitation-results .employer-invitation-card[data-invitation-id='97001']")).to_be_focused()
     expect(page.locator("#dashboard-main [data-action='filter-employer-invitations'][data-filter='action']")).to_have_attribute("aria-pressed", "true")
+    page.locator(".dashboard-tabs [data-tab='overview']").click()
+    work_queue = page.locator("#employer-workqueue")
+    expect(work_queue.locator("[data-action='employer-workqueue-filter'][data-filter='consent']")).to_have_attribute("aria-pressed", "true")
+    expect(work_queue.locator("[data-employer-workqueue-search]")).to_have_value("Кладовщик")
+    expect(work_queue.locator("#employer-workqueue-matched")).to_have_text("1")
     assert not queue_writes, "Overview navigation must never create or mutate invitations or applications"
     page.remove_listener("request", monitor_workqueue)
     page.unroute("**/api/employer/applications", fake_workqueue_applications)
