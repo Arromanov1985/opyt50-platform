@@ -2333,11 +2333,26 @@ function employerWorkQueueMarkup(tasks) {
   const total = tasks.length;
   const visible = Math.min(total, 10);
   const count = priority => tasks.filter(task => task.priority === priority).length;
+  const vacancies = [...new Map(tasks.filter(task => task.vacancyId)
+    .map(task => [task.vacancyId, task.vacancy])).entries()]
+    .sort((a,b) => String(a[1]).localeCompare(String(b[1]), 'ru'));
+  const vacancyOptions = vacancies.map(([id,title]) =>
+    `<option value="${id}">${esc(title)}</option>`).join('');
+  const stageOptions = [
+    ['all', 'Все задачи', total],
+    ['outcome', 'Ждут итога', count(0)],
+    ['consent', 'Есть согласие', count(1)],
+    ['applications', 'Отклики', count(2)+count(3)]
+  ];
+  const stageButtons = stageOptions.map(([value,label,amount]) =>
+    `<button type="button" class="btn btn-tiny ${value === 'all' ? 'btn-dark' : 'btn-outline'}" data-action="employer-workqueue-filter" data-filter="${value}" aria-pressed="${value === 'all'}">${label} · ${amount}</button>`).join('');
   const cards = tasks.map((task, index) => {
     const target = task.kind === 'invitation'
       ? `data-action="open-employer-invitations" data-invitation-id="${task.id}" data-vacancy-id="${task.vacancyId || ''}" data-filter="${task.filter}"`
       : `data-v02-action="open-employer-applications" data-application-id="${task.id}" data-vacancy-id="${task.vacancyId || ''}" data-filter="attention"`;
-    return `<article class="employer-workqueue-item" data-employer-workqueue-item data-workqueue-kind="${task.kind}" data-workqueue-id="${task.id}" ${index >= 10 ? 'hidden' : ''}>
+    const stage = task.priority === 0 ? 'outcome' : task.priority === 1 ? 'consent' : 'applications';
+    const searchText = [task.profession, task.vacancy].join(' ');
+    return `<article class="employer-workqueue-item" data-employer-workqueue-item data-workqueue-kind="${task.kind}" data-workqueue-id="${task.id}" data-workqueue-stage="${stage}" data-workqueue-vacancy="${task.vacancyId || ''}" data-workqueue-search="${esc(searchText)}" ${index >= 10 ? 'hidden' : ''}>
         <div class="employer-workqueue-content"><span class="employer-workqueue-stage">${esc(task.stage)}</span>
           <h4>${esc(task.profession)} <small>№${task.id}</small></h4>
           <p class="employer-workqueue-vacancy">Вакансия: ${esc(task.vacancy)}</p>
@@ -2346,18 +2361,60 @@ function employerWorkQueueMarkup(tasks) {
         <button type="button" class="btn btn-primary btn-tiny" ${target}>${esc(task.actionLabel)} →</button>
       </article>`;
   }).join('');
-  return `<section class="panel employer-workqueue" id="employer-workqueue" aria-label="Единая рабочая очередь работодателя">
+  return `<section class="panel employer-workqueue" id="employer-workqueue" aria-label="Единая рабочая очередь работодателя" data-visible-limit="10">
     <div class="split-header"><div><span class="section-kicker">РАБОЧАЯ ОЧЕРЕДЬ</span><h3>Требуют действия: ${total}</h3>
       <p class="muted">Отклики и знакомства в одном списке. Сначала завершите начатые знакомства, затем обработайте согласия и новые отклики. Каждый переход открывает нужную запись.</p></div></div>
     <div class="employer-workqueue-summary" aria-label="Состав очереди">
       <span><strong>${count(0)}</strong> Ждут итога</span><span><strong>${count(1)}</strong> Есть согласие</span>
       <span><strong>${count(2) + count(3)}</strong> Отклики на разбор</span>
     </div>
-    ${total ? `<div class="employer-workqueue-list">${cards}</div>
-      <div class="employer-workqueue-footer"><span role="status" aria-live="polite">Показано <strong id="employer-workqueue-visible">${visible}</strong> из ${total}</span>
-      ${total > visible ? `<button type="button" class="btn btn-outline" data-action="employer-workqueue-more">Показать ещё ${Math.min(10, total - visible)} задач</button>` : ''}</div>`
+    ${total ? `
+      <div class="employer-workqueue-tools">
+        <div class="employer-workqueue-stage-filter" role="group" aria-label="Фильтр задач по этапу">${stageButtons}</div>
+        <div class="employer-workqueue-fields">
+          <label><span>Вакансия</span><select data-employer-workqueue-vacancy><option value="all">Все вакансии</option>${vacancyOptions}</select></label>
+          <label><span>Поиск по профессии или вакансии</span><input type="search" data-employer-workqueue-search autocomplete="off" placeholder="Например, кладовщик"></label>
+        </div>
+      </div>
+      <div class="employer-workqueue-list">${cards}</div>
+      <div class="employer-workqueue-empty" data-employer-workqueue-empty hidden>
+        <strong>По выбранным условиям задач нет</strong><p>Измените поиск или этап, либо сбросьте фильтры.</p>
+        <button type="button" class="btn btn-outline btn-tiny" data-action="employer-workqueue-reset">Сбросить фильтры</button>
+      </div>
+      <div class="employer-workqueue-footer">
+        <span role="status" aria-live="polite">Показано <strong id="employer-workqueue-visible">${visible}</strong> из <strong id="employer-workqueue-matched">${total}</strong> по фильтрам (всего ${total})</span>
+        <button type="button" class="btn btn-outline" data-action="employer-workqueue-more" ${total <= 10 ? 'hidden' : ''}>Показать ещё ${Math.min(10,total - visible)} задач</button>
+      </div>`
       : '<div class="empty-state"><strong>Срочных действий сейчас нет</strong><p>Новые отклики и согласия появятся в этой очереди. Можно продолжить подбор по вакансиям.</p><button type="button" class="btn btn-outline" data-tab="vacancies">К вакансиям →</button></div>'}
   </section>`;
+}
+function applyEmployerWorkQueueFilters(queue) {
+  if (!queue || state.user?.role !== 'employer' || state.tab !== 'overview') return;
+  const stage = queue.querySelector('[data-action="employer-workqueue-filter"][aria-pressed="true"]')?.dataset.filter || 'all';
+  const vacancy = queue.querySelector('[data-employer-workqueue-vacancy]')?.value || 'all';
+  const query = String(queue.querySelector('[data-employer-workqueue-search]')?.value || '').trim().toLocaleLowerCase('ru-RU');
+  const limit = Math.max(10, Number(queue.dataset.visibleLimit) || 10);
+  let matching = 0, visible = 0;
+  for (const card of queue.querySelectorAll('[data-employer-workqueue-item]')) {
+    const matches = (stage === 'all' || card.dataset.workqueueStage === stage) &&
+      (vacancy === 'all' || card.dataset.workqueueVacancy === vacancy) &&
+      (!query || String(card.dataset.workqueueSearch || '').toLocaleLowerCase('ru-RU').includes(query));
+    if (matches) matching += 1;
+    card.hidden = !matches || matching > limit;
+    if (!card.hidden) visible += 1;
+  }
+  const visibleText = queue.querySelector('#employer-workqueue-visible');
+  const matchingText = queue.querySelector('#employer-workqueue-matched');
+  if (visibleText) visibleText.textContent = String(visible);
+  if (matchingText) matchingText.textContent = String(matching);
+  const empty = queue.querySelector('[data-employer-workqueue-empty]');
+  if (empty) empty.hidden = matching !== 0;
+  const more = queue.querySelector('[data-action="employer-workqueue-more"]');
+  if (more) {
+    const remaining = matching - visible;
+    more.hidden = remaining <= 0;
+    if (remaining > 0) more.textContent = 'Показать ещё ' + Math.min(10,remaining) + ' задач';
+  }
 }
 
 async function renderEmployer() {
