@@ -412,9 +412,9 @@ def run_browser(page, playwright):
     unsaved_favorites = page.locator("#public-jobs .job-card [data-v02-action='favorite']")
     assert unsaved_favorites.count() >= 2
     unsaved_favorites.first.click()
-    expect(page.locator("#toast")).to_contain_text("сохранена")
+    expect(page.locator("#public-jobs .job-card .favorite-toggle[aria-pressed='true']")).to_have_count(2)
     page.locator("#public-jobs .job-card [data-v02-action='favorite']").first.click()
-    expect(page.locator("#toast")).to_contain_text("сохранена")
+    expect(page.locator("#public-jobs .job-card .favorite-toggle[aria-pressed='true']")).to_have_count(3)
     page.locator(".dashboard-tabs [data-tab='favorites']").click()
     expect(page.locator("#dashboard-main")).to_contain_text("Избранные вакансии")
     expect(page.locator("#dashboard-main")).to_contain_text("Кладовщик")
