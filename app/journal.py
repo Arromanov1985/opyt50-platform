@@ -38,7 +38,7 @@ def _layout(title: str, description: str, path: str, body: str) -> str:
         f"<meta property=\"og:title\" content=\"{_e(title)}\">"
         f"<meta property=\"og:description\" content=\"{_e(description)}\">"
         f"<meta property=\"og:url\" content=\"{_e(canonical)}\">"
-        "<link rel=\"stylesheet\" href=\"/static/journal.css?v=5\">"
+        "<link rel=\"stylesheet\" href=\"/static/journal.css?v=6\">"
         "<script src=\"/static/journal.js?v=5\" defer></script>"
         "</head><body class=\"jr-page\">"
         "<a class=\"jr-skip\" href=\"#jr-content\">К основному содержанию</a>"
@@ -89,6 +89,24 @@ def _article_card(article: dict) -> str:
         f'<p>{_e(article["description"])}</p>'
         f'<span class="jr-card-link">Читать · {_e(article["read"])} →</span></a>'
     )
+
+
+def _job_card(job: dict) -> str:
+    from .vacancy_pages import _pay
+    return (
+        f'<a class="jr-card jr-job-card" href="/vacancies/{int(job["id"])}" '
+        'data-growth-action="jobs_click">'
+        f'<span class="jr-tag">Вакансия · {_e(job.get("city") or "город не указан")}</span>'
+        f'<h2>{_e(job.get("title") or "Вакансия")}</h2>'
+        f'<p>{_e(job.get("company_name") or "Работодатель")}</p>'
+        f'<span class="jr-card-link">{_e(_pay(job.get("salary_min"), job.get("salary_max")))} →</span></a>'
+    )
+
+
+def _public_jobs(request: Request) -> list[dict]:
+    from .public_discovery import public_jobs
+    with database(request.app.state.db_path) as db:
+        return public_jobs(db)
 
 
 def _catalog(request: Request) -> list[dict]:
@@ -146,7 +164,11 @@ def journal_index(articles: list[dict] | None = None) -> HTMLResponse:
                                "/journal", body), headers={"Cache-Control": "public, max-age=300"})
 
 
-def journal_article(slug: str, articles: list[dict] | None = None) -> HTMLResponse:
+def journal_article(
+    slug: str,
+    articles: list[dict] | None = None,
+    jobs: list[dict] | None = None,
+) -> HTMLResponse:
     if articles is None:
         articles = ARTICLES
     article = next((item for item in articles if item["slug"] == slug), None)
@@ -164,6 +186,17 @@ def journal_article(slug: str, articles: list[dict] | None = None) -> HTMLRespon
         key=lambda item: (item["category"] != article["category"], articles.index(item)),
     )[:2]
     related_cards = "".join(_article_card(item) for item in related_items)
+    from .public_discovery import related_jobs
+    recommended_jobs = related_jobs(article, jobs or [], limit=3) if jobs else []
+    job_cards = "".join(_job_card(item) for item in recommended_jobs)
+    opportunities = (
+        '<section class="jr-opportunities" aria-label="Актуальные вакансии">'
+        '<div class="jr-opportunities-heading"><div><span class="jr-kicker">СЛЕДУЮЩИЙ ШАГ</span>'
+        '<h2>Актуальные вакансии</h2></div><a href="/#jobs" data-growth-action="jobs_click">Все вакансии →</a></div>'
+        '<p>Подбор строится только по содержанию этой статьи и открытых вакансий — без профиля и истории посетителя.</p>'
+        f'<div class="jr-grid">{job_cards}</div></section>'
+        if job_cards else ""
+    )
     article_body = (
         '<div class="jr-breadcrumb"><a href="/">Главная</a>'
         '<span aria-hidden="true">/</span><a href="/journal">Журнал</a>'
@@ -187,6 +220,7 @@ def journal_article(slug: str, articles: list[dict] | None = None) -> HTMLRespon
         ) +
         '<a class="jr-secondary" href="/#jobs" data-growth-action="jobs_click">Посмотреть вакансии</a>'
         '<a class="jr-secondary" href="/community" data-growth-action="community_click">Найти коллег</a></aside></div>'
+        + opportunities +
         '<section class="jr-related" aria-label="Другие полезные материалы">'
         '<h2>Читайте также</h2>'
         f'<div class="jr-grid">{related_cards}</div></section>'
@@ -212,7 +246,7 @@ def journal_highlights(request: Request) -> dict:
 def journal_renderer_sha256() -> str:
     """Identify the two fixed renderers without exposing code or local paths."""
     digest = hashlib.sha256(b"stazhno-journal-renderer-v1\0")
-    for name in ("journal.py", "journal_paths.py"):
+    for name in ("journal.py", "journal_paths.py", "public_discovery.py"):
         payload = Path(__file__).with_name(name).read_bytes()
         digest.update(name.encode("ascii") + b"\0" + len(payload).to_bytes(8, "big") + payload)
     return digest.hexdigest()
@@ -233,9 +267,12 @@ def journal_manifest(request: Request) -> dict:
         pages["/journal/paths/" + path["slug"]] = hashlib.sha256(
             path_detail(path["slug"], articles).body
         ).hexdigest()
+    jobs = _public_jobs(request)
     for article in articles:
         path = "/journal/" + article["slug"]
-        pages[path] = hashlib.sha256(journal_article(article["slug"], articles).body).hexdigest()
+        pages[path] = hashlib.sha256(
+            journal_article(article["slug"], articles, jobs).body
+        ).hexdigest()
     pages["/sitemap.xml"] = hashlib.sha256(journal_sitemap(articles).body).hexdigest()
     return {"pages": pages, "count": len(articles), "renderer_sha256": journal_renderer_sha256()}
 
@@ -288,7 +325,7 @@ def install_journal_routes(app: FastAPI) -> None:
         return journal_index(_catalog(request))
 
     def article_http(slug: str, request: Request):
-        return journal_article(slug, _catalog(request))
+        return journal_article(slug, _catalog(request), _public_jobs(request))
 
     app.add_api_route("/robots.txt", journal_robots, methods=["GET"], include_in_schema=False)
     app.add_api_route("/sitemap.xml", sitemap_http, methods=["GET"], include_in_schema=False)
