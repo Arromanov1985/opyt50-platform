@@ -616,6 +616,9 @@ def run_browser(page, playwright):
     expect(queue_items.nth(1)).to_have_attribute("data-workqueue-id", "97001")
     assert "PRIVATE_QUEUE_NAME" not in work_queue.inner_html()
     assert "private-queue@example.invalid" not in work_queue.inner_html()
+    # Wait until the preceding dashboard navigation has finished all its GETs.
+    # Only requests initiated *after* this point belong to filter interactions.
+    page.wait_for_load_state("networkidle")
     # Stage buttons, vacancy selection and type-ahead search are local-only.
     queue_reads = []
     def watch_queue_reads(request):
@@ -661,7 +664,7 @@ def run_browser(page, playwright):
     expect(work_queue.locator("#employer-workqueue-matched")).to_have_text("2")
     expect(work_queue.locator("[data-employer-workqueue-item]:visible")).to_have_count(2)
     work_search.fill("")
-    assert not queue_reads, "Overview queue controls must not reload employer applications or invitations"
+    assert not queue_reads, f"Overview queue controls must not reload employer lists: {queue_reads}"
     assert not queue_writes, "Overview queue controls must not mutate candidates"
     page.remove_listener("request", watch_queue_reads)
     expect(work_queue.locator("[data-employer-workqueue-item]:visible")).to_have_count(10)
