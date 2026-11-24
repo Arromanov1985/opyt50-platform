@@ -942,6 +942,10 @@ def run_browser(page, playwright):
     expect(page.locator(".employer-application-stage-filter [data-filter='attention']")).to_have_attribute("aria-pressed", "true")
     expect(page.locator("#employer-application-quick-controls")).to_be_visible()
     expect(page.locator("#employer-application-quick-position")).to_have_text("Отклик 1 из 45")
+    expect(page.locator('[data-quick-summary="processed"]')).to_have_text("0")
+    expect(page.locator('[data-quick-summary="requests"]')).to_have_text("0")
+    expect(page.locator('[data-quick-summary="refusals"]')).to_have_text("0")
+    expect(page.locator('[data-quick-summary="remaining"]')).to_have_text("45")
     quick_cards = page.locator("#employer-application-results .application-review-card:visible")
     expect(quick_cards).to_have_count(1)
     expect(quick_cards.first).to_have_attribute("data-application-id", "50044")
@@ -976,6 +980,8 @@ def run_browser(page, playwright):
     pause_button.click()
     expect(quick_cards.first).to_have_attribute("data-application-id", "50042")
     expect(page.locator("#employer-application-quick-skipped")).to_have_text("Пропущено: 2")
+    expect(page.locator('[data-quick-summary="processed"]')).to_have_text("0")
+    expect(page.locator('[data-quick-summary="remaining"]')).to_have_text("45")
     expect(replay_button).to_contain_text("Вернуться к пропущенным (2)")
     assert not pause_writes, "A local skip must not send POST or PATCH"
     assert not quick_reads, "Skipping candidates must not reload the list"
@@ -992,6 +998,7 @@ def run_browser(page, playwright):
     pause_button.click()
     expect(quick_cards).to_have_count(0)
     expect(pause_button).to_be_disabled()
+    expect(page.locator('[data-quick-summary="remaining"]')).to_have_text("1")
     expect(page.locator("#employer-application-quick-position")).to_contain_text("вернуться к пропущенным")
     expect(replay_button).to_be_visible()
     expect(replay_button).to_be_focused()
@@ -1043,6 +1050,10 @@ def run_browser(page, playwright):
     expect(quick_cards.first).to_be_focused()
     expect(page.locator("#employer-application-quick-position")).to_have_text("Отклик 1 из 44")
     expect(page.locator("#employer-application-quick-handled")).to_have_text("Обработано за проход: 1")
+    expect(page.locator('[data-quick-summary="processed"]')).to_have_text("1")
+    expect(page.locator('[data-quick-summary="requests"]')).to_have_text("0")
+    expect(page.locator('[data-quick-summary="refusals"]')).to_have_text("0")
+    expect(page.locator('[data-quick-summary="remaining"]')).to_have_text("44")
     quick_cards.first.locator("[data-v02-action='express-interest']").evaluate(
         "(button) => {button.click(); button.click();}"
     )
@@ -1050,13 +1061,64 @@ def run_browser(page, playwright):
     expect(quick_cards.first).to_be_focused()
     expect(page.locator("#employer-application-quick-position")).to_have_text("Отклик 1 из 43")
     expect(page.locator("#employer-application-quick-handled")).to_have_text("Обработано за проход: 2")
-    assert quick_writes == [("status", "PATCH"), ("interest", "POST")], quick_writes
+    expect(page.locator('[data-quick-summary="processed"]')).to_have_text("2")
+    expect(page.locator('[data-quick-summary="requests"]')).to_have_text("1")
+    expect(page.locator('[data-quick-summary="refusals"]')).to_have_text("0")
+    expect(page.locator('[data-quick-summary="remaining"]')).to_have_text("43")
+
+    # A refused application is counted only after confirming the dialog.
+    def fake_quick_refusal(route):
+        assert route.request.method == "PATCH"
+        assert route.request.post_data_json["status"] == "rejected"
+        quick_writes.append(("refusal", "PATCH"))
+        generated_applications[-3]["status"] = "rejected"
+        route.fulfill(status=200, content_type="application/json",
+                      body='{"ok":true,"status":"rejected"}')
+    page.route("**/api/employer/applications/50042/status", fake_quick_refusal)
+    page.once("dialog", lambda dialog: dialog.dismiss())
+    quick_cards.first.locator("[data-v02-action='application-status'][data-status='rejected']").click()
+    expect(page.locator('[data-quick-summary="processed"]')).to_have_text("2")
+    expect(page.locator('[data-quick-summary="refusals"]')).to_have_text("0")
+    expect(quick_cards.first).to_have_attribute("data-application-id", "50042")
+    page.once("dialog", lambda dialog: dialog.accept())
+    quick_cards.first.locator("[data-v02-action='application-status'][data-status='rejected']").click()
+    expect(quick_cards.first).to_have_attribute("data-application-id", "50041")
+    expect(page.locator('[data-quick-summary="processed"]')).to_have_text("3")
+    expect(page.locator('[data-quick-summary="requests"]')).to_have_text("1")
+    expect(page.locator('[data-quick-summary="refusals"]')).to_have_text("1")
+    expect(page.locator('[data-quick-summary="remaining"]')).to_have_text("42")
+
+    # An existing consent request must not count as a newly sent one.
+    def fake_existing_interest(route):
+        assert route.request.method == "POST"
+        quick_writes.append(("interest-existing", "POST"))
+        generated_applications[-4].update(
+            status="interview", invitation_id=999002, invitation_status="sent"
+        )
+        route.fulfill(status=200, content_type="application/json",
+                      body='{"created":false,"id":999002}')
+    page.route("**/api/employer/applications/50041/interest", fake_existing_interest)
+    quick_cards.first.locator("[data-v02-action='express-interest']").click()
+    expect(quick_cards.first).to_have_attribute("data-application-id", "50040")
+    expect(page.locator('[data-quick-summary="processed"]')).to_have_text("4")
+    expect(page.locator('[data-quick-summary="requests"]')).to_have_text("1")
+    expect(page.locator('[data-quick-summary="refusals"]')).to_have_text("1")
+    expect(page.locator('[data-quick-summary="remaining"]')).to_have_text("41")
+    assert quick_writes == [("status", "PATCH"), ("interest", "POST"),
+                            ("refusal", "PATCH"), ("interest-existing", "POST")], quick_writes
     assert page.request.get(URL + "/api/employer/applications").json()["applications"][0]["status"] == "applied", "Fictional quick review must not mutate the local database"
     page.unroute("**/api/employer/applications/50044/status", fake_quick_review_status)
     page.unroute("**/api/employer/applications/50043/interest", fake_quick_review_interest)
+    page.unroute("**/api/employer/applications/50042/status", fake_quick_refusal)
+    page.unroute("**/api/employer/applications/50041/interest", fake_existing_interest)
     page.locator("[data-v02-action='employer-quick-toggle']").click()
     expect(page.locator("#employer-application-quick-controls")).to_be_hidden()
     expect(quick_cards).to_have_count(20)
+    page.locator("[data-v02-action='employer-quick-toggle']").click()
+    expect(page.locator('[data-quick-summary="processed"]')).to_have_text("0")
+    expect(page.locator('[data-quick-summary="requests"]')).to_have_text("0")
+    expect(page.locator('[data-quick-summary="refusals"]')).to_have_text("0")
+    page.locator("[data-v02-action='employer-quick-toggle']").click()
     page.unroute("**/api/employer/applications", fake_many_applications)
     # Guided continuation: start with the highest-priority action, and when
     # the last new application is refused, offer the next outstanding stage.
@@ -1127,6 +1189,10 @@ def run_browser(page, playwright):
     page.once("dialog", lambda dialog: dialog.accept())
     visible_guided.first.locator("[data-v02-action='application-status'][data-status='rejected']").click()
     expect(visible_guided).to_have_count(0)
+    expect(page.locator('[data-quick-summary="processed"]')).to_have_text("1")
+    expect(page.locator('[data-quick-summary="requests"]')).to_have_text("0")
+    expect(page.locator('[data-quick-summary="refusals"]')).to_have_text("1")
+    expect(page.locator('[data-quick-summary="remaining"]')).to_have_text("0")
     expect(page.locator("#employer-application-quick-position")).to_contain_text("На этом этапе откликов больше нет")
     next_guided = page.locator("[data-v02-action='employer-quick-stage']")
     expect(next_guided).to_contain_text("Завершить знакомства (1)")

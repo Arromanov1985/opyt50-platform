@@ -3986,3 +3986,25 @@ body.comfortable-view .employer-quick-revisit .muted{font-size:1rem}
  }
  .employer-quick-revisit .btn{width:100%}
 }
+
+
+/* Employer quick-review summary: counts only this active pass, no contacts. */
+.employer-quick-summary{
+  display:grid;grid-template-columns:repeat(4,minmax(0,1fr));
+  gap:10px;width:100%;min-width:0;margin:6px 0 0
+}
+.employer-quick-summary>span{
+  display:flex;flex-direction:column;gap:5px;min-width:0;
+  padding:13px 15px;border:1px solid #D8E7DE;
+  border-radius:12px;background:#F5FAF6;color:#1B4730
+}
+.employer-quick-summary strong{font-size:24px;line-height:1.15;font-weight:800;font-variant-numeric:tabular-nums}
+.employer-quick-summary small{font-size:12px;font-weight:700;line-height:1.4;overflow-wrap:anywhere}
+.employer-quick-summary-note{width:100%;margin:0;font-size:12px;line-height:1.55;color:#5D7365}
+body.comfortable-view .employer-quick-summary strong{font-size:1.7rem}
+body.comfortable-view .employer-quick-summary small,
+body.comfortable-view .employer-quick-summary-note{font-size:1rem}
+@media(max-width:690px){
+  .employer-quick-summary{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .employer-quick-summary>span{padding:12px}
+}

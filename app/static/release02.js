@@ -662,6 +662,8 @@
     // Completed decisions stay visible in normal lists, but are skipped
     // for the remainder of the current one-by-one review pass.
     const employerApplicationQuickHandledIds = new Set();
+    // Count only successful explicit decisions; keep this entirely in memory.
+    const employerApplicationQuickDecisions = new Map();
     // Skip is session-only: map ID -> stage for local progress counters.
     const employerApplicationQuickSkipped = new Map();
     const employerQuickStageOrder = ['introduced','ready','attention','consent'];
@@ -719,6 +721,7 @@
       if (startQuickReview) {
         employerApplicationQuickMode = true;
         employerApplicationQuickHandledIds.clear();
+        employerApplicationQuickDecisions.clear();
         employerApplicationQuickSkipped.clear();
         employerApplicationQuickSelectedId = targetApplication || null;
         employerApplicationQuickIndex = 0;
@@ -753,6 +756,15 @@
           !employerApplicationQuickSkipped.has(Number(card.dataset.applicationId))))
       );
       const matched = matches.length;
+      // Remaining includes skipped matches, since skipping isn't a decision.
+      // The cards are already scoped to the chosen vacancy and stage.
+      const remaining = employerApplicationQuickMode
+        ? cards.filter(card => {
+            const id = Number(card.dataset.applicationId);
+            return (!query || String(card.dataset.applicationSearch || '').toLocaleLowerCase('ru-RU').includes(query)) &&
+              !employerApplicationQuickHandledIds.has(id);
+          }).length
+        : 0;
       let visible = 0;
       if (employerApplicationQuickMode) {
         const savedIndex = matches.findIndex(card =>
@@ -795,6 +807,23 @@
       if (controls) controls.hidden = !employerApplicationQuickMode;
       const handledCount = document.querySelector('#employer-application-quick-handled');
       if (handledCount) handledCount.textContent = 'Обработано за проход: ' + employerApplicationQuickHandledIds.size;
+      const reviewSummary = document.querySelector('#employer-quick-review-summary');
+      if (reviewSummary) {
+        const requestCount = [...employerApplicationQuickDecisions.values()]
+          .filter(decision => decision === 'interest-created').length;
+        const refusalCount = [...employerApplicationQuickDecisions.values()]
+          .filter(decision => decision === 'rejected').length;
+        const stats = {
+          processed: employerApplicationQuickHandledIds.size,
+          requests: requestCount,
+          refusals: refusalCount,
+          remaining
+        };
+        for (const [key,value] of Object.entries(stats)) {
+          const count = reviewSummary.querySelector('[data-quick-summary="' + key + '"]');
+          if (count) count.textContent = String(value);
+        }
+      }
       const skippedCount = document.querySelector('#employer-application-quick-skipped');
       if (skippedCount) skippedCount.textContent = 'Пропущено: ' + employerApplicationQuickSkipped.size;
       const skipButton = document.querySelector('[data-v02-action="employer-quick-skip"]');
@@ -840,6 +869,7 @@
         employerApplicationQuickSelectedId = null;
         employerApplicationQuickIndex = 0;
         employerApplicationQuickHandledIds.clear();
+        employerApplicationQuickDecisions.clear();
         employerApplicationQuickSkipped.clear();
         employerApplicationQuickFocusOnRender = false;
         await oldEmployer();
@@ -924,6 +954,13 @@
               <span id="employer-application-quick-position" role="status" aria-live="polite"></span>
               <span class="employer-quick-handled muted" id="employer-application-quick-handled"></span>
               <span class="employer-quick-skipped muted" id="employer-application-quick-skipped"></span>
+              <div class="employer-quick-summary" id="employer-quick-review-summary" role="group" aria-label="Сводка текущего прохода">
+                <span><strong data-quick-summary="processed">0</strong><small>Обработано</small></span>
+                <span><strong data-quick-summary="requests">0</strong><small>Запросов на знакомство</small></span>
+                <span><strong data-quick-summary="refusals">0</strong><small>Отказов</small></span>
+                <span><strong data-quick-summary="remaining">0</strong><small>Осталось по фильтру</small></span>
+              </div>
+              <p class="employer-quick-summary-note">Учитываются подтверждённые действия этого прохода. Запрос на знакомство ещё не означает согласия кандидата. В остатке учтены пропущенные анкеты.</p>
               <div class="employer-quick-navigation">
                 <button type="button" class="btn btn-outline" data-v02-action="employer-quick-previous">← Предыдущий</button>
                 <button type="button" class="btn btn-dark" data-v02-action="employer-quick-next">Следующий →</button>
@@ -1075,6 +1112,7 @@
       employerApplicationQuickSelectedId = null;
       employerApplicationQuickIndex = 0;
       employerApplicationQuickHandledIds.clear();
+      employerApplicationQuickDecisions.clear();
       employerApplicationQuickSkipped.clear();
       if (state.user?.role === 'employer' && state.tab === 'applications') {
         renderEmployer().then(() => {
@@ -1315,6 +1353,7 @@
           employerApplicationQuickSelectedId = null;
           employerApplicationQuickIndex = 0;
           employerApplicationQuickHandledIds.clear();
+          employerApplicationQuickDecisions.clear();
           employerApplicationQuickSkipped.clear();
           if (employerApplicationQuickMode &&
               state.employerApplicationsStatusFilter === 'all' &&
@@ -1430,6 +1469,7 @@
             // Count an application as handled only after successful confirmation.
             // Even "Взять в рассмотрение" advances instead of showing it twice.
             employerApplicationQuickHandledIds.add(id);
+            employerApplicationQuickDecisions.set(id, btn.dataset.status === 'rejected' ? 'rejected' : 'reviewing');
             employerApplicationQuickSelectedId = nextId;
             employerApplicationQuickIndex = 0;
             employerApplicationQuickFocusOnRender = true;
@@ -1442,6 +1482,7 @@
           const data=await req('POST',`/api/employer/applications/${id}/interest`);
           if (employerApplicationQuickMode) {
             employerApplicationQuickHandledIds.add(id);
+            employerApplicationQuickDecisions.set(id, data.created === true ? 'interest-created' : 'interest-existing');
             employerApplicationQuickSelectedId = nextId;
             employerApplicationQuickIndex = 0;
             employerApplicationQuickFocusOnRender = true;
