@@ -659,6 +659,9 @@
     let employerApplicationQuickIndex = 0;
     let employerApplicationQuickCounts = {introduced:0,ready:0,attention:0,consent:0,closed:0};
     let employerApplicationQuickFocusOnRender = false;
+    // Completed decisions stay visible in normal lists, but are skipped
+    // for the remainder of the current one-by-one review pass.
+    const employerApplicationQuickHandledIds = new Set();
     const employerQuickStageOrder = ['introduced','ready','attention','consent'];
     const employerQuickStageCalls = {
       introduced:'Завершить знакомства',
@@ -684,7 +687,21 @@
       card.scrollIntoView({block:'nearest'});
     }
 
-    async function openEmployerApplications(filter, vacancyId, applicationId) {
+    function employerQuickNextAfterAction(currentId) {
+      const query = String(state.employerApplicationsQuery || '').trim().toLocaleLowerCase('ru-RU');
+      const cards = Array.from(document.querySelectorAll('#employer-application-results .application-review-card'))
+        .filter(card => {
+          const id = Number(card.dataset.applicationId);
+          return id > 0 && !employerApplicationQuickHandledIds.has(id) &&
+            (!query || String(card.dataset.applicationSearch || '').toLocaleLowerCase('ru-RU').includes(query));
+        });
+      const index = cards.findIndex(card => Number(card.dataset.applicationId) === currentId);
+      const next = cards.slice(Math.max(0,index + 1)).find(card => Number(card.dataset.applicationId) !== currentId)
+        || cards.find(card => Number(card.dataset.applicationId) !== currentId);
+      return next ? Number(next.dataset.applicationId) : null;
+    }
+
+    async function openEmployerApplications(filter, vacancyId, applicationId, startQuickReview = false) {
       if (state.user?.role !== 'employer' || !mayLeaveEditor()) return;
       const ownerId = state.user.id;
       const targetVacancy = navigationId(vacancyId);
@@ -695,10 +712,17 @@
         ? filter : 'all';
       state.employerApplicationsQuery = '';
       employerApplicationVisibleLimit = employerApplicationPageSize;
+      if (startQuickReview) {
+        employerApplicationQuickMode = true;
+        employerApplicationQuickHandledIds.clear();
+        employerApplicationQuickSelectedId = targetApplication || null;
+        employerApplicationQuickIndex = 0;
+        employerApplicationQuickFocusOnRender = true;
+      }
       state.tab = 'applications';
       state.activeVacancy = null;
       await showDashboard();
-      if (state.user?.id === ownerId && state.tab === 'applications') {
+      if (state.user?.id === ownerId && state.tab === 'applications' && !startQuickReview) {
         const card = targetApplication
           ? document.querySelector('#employer-application-results .application-review-card[data-application-id="' + targetApplication + '"]')
           : null;
@@ -719,7 +743,8 @@
       const query = String(state.employerApplicationsQuery || '').trim().toLocaleLowerCase('ru-RU');
       const cards = Array.from(list.querySelectorAll('.application-review-card'));
       const matches = cards.filter(card =>
-        !query || String(card.dataset.applicationSearch || '').toLocaleLowerCase('ru-RU').includes(query)
+        (!query || String(card.dataset.applicationSearch || '').toLocaleLowerCase('ru-RU').includes(query)) &&
+        (!employerApplicationQuickMode || !employerApplicationQuickHandledIds.has(Number(card.dataset.applicationId)))
       );
       const matched = matches.length;
       let visible = 0;
@@ -762,6 +787,8 @@
       }
       const controls = document.querySelector('#employer-application-quick-controls');
       if (controls) controls.hidden = !employerApplicationQuickMode;
+      const handledCount = document.querySelector('#employer-application-quick-handled');
+      if (handledCount) handledCount.textContent = 'Обработано за проход: ' + employerApplicationQuickHandledIds.size;
       const position = document.querySelector('#employer-application-quick-position');
       if (position) position.textContent = !matched
         ? (query ? 'По запросу откликов нет. Очистите поиск, чтобы продолжить.' : 'На этом этапе откликов больше нет.')
@@ -794,6 +821,7 @@
         employerApplicationQuickMode = false;
         employerApplicationQuickSelectedId = null;
         employerApplicationQuickIndex = 0;
+        employerApplicationQuickHandledIds.clear();
         employerApplicationQuickFocusOnRender = false;
         await oldEmployer();
         return;
@@ -827,7 +855,14 @@
         const pinnedIndex = pinnedId
           ? shown.findIndex(item => Number(item.id) === pinnedId) : -1;
         if (pinnedIndex > 0) shown.unshift(shown.splice(pinnedIndex, 1)[0]);
-        employerApplicationQuickCounts = {...bucketCounts};
+        employerApplicationQuickCounts = employerApplicationQuickMode
+          ? vacancyScoped.filter(item => !employerApplicationQuickHandledIds.has(Number(item.id)))
+              .reduce((counts,item) => {
+                const bucket = employerApplicationBucket(item);
+                counts[bucket] = (counts[bucket] || 0) + 1;
+                return counts;
+              }, {attention:0,consent:0,ready:0,introduced:0,closed:0})
+          : {...bucketCounts};
         const nextQueue = ['introduced','ready','attention'].find(stage => bucketCounts[stage] > 0);
         const queueCopy = {
           introduced: ['Нужно завершить знакомство', 'Контакты открыты с согласия кандидата. Зафиксируйте результат общения.'],
@@ -867,6 +902,7 @@
             <button type="button" class="btn btn-outline" data-v02-action="employer-quick-toggle" aria-pressed="false">Разбирать по одному</button>
             <div class="employer-quick-controls" id="employer-application-quick-controls" hidden>
               <span id="employer-application-quick-position" role="status" aria-live="polite"></span>
+              <span class="employer-quick-handled muted" id="employer-application-quick-handled"></span>
               <div class="employer-quick-navigation">
                 <button type="button" class="btn btn-outline" data-v02-action="employer-quick-previous">← Предыдущий</button>
                 <button type="button" class="btn btn-dark" data-v02-action="employer-quick-next">Следующий →</button>
@@ -1243,13 +1279,17 @@
           await openCandidateApplications(btn.dataset.applicationId, btn.dataset.vacancyId);
         }
         else if(type==='open-employer-applications'){
-          await openEmployerApplications(btn.dataset.filter, btn.dataset.vacancyId, btn.dataset.applicationId);
+          const overviewQueue = btn.closest('#employer-workqueue');
+          const queueVacancy = overviewQueue?.querySelector('[data-employer-workqueue-vacancy]')?.value || 'all';
+          await openEmployerApplications(btn.dataset.filter,
+            btn.dataset.vacancyId || queueVacancy, btn.dataset.applicationId, btn.dataset.quick === 'true');
         }
         else if(type==='employer-quick-toggle'){
           if (state.user?.role !== 'employer' || state.tab !== 'applications') return;
           employerApplicationQuickMode = !employerApplicationQuickMode;
           employerApplicationQuickSelectedId = null;
           employerApplicationQuickIndex = 0;
+          employerApplicationQuickHandledIds.clear();
           if (employerApplicationQuickMode &&
               state.employerApplicationsStatusFilter === 'all' &&
               !String(state.employerApplicationsQuery || '').trim() &&
@@ -1326,20 +1366,26 @@
           applyEmployerApplicationsSearch();
         }
         else if(type==='application-status'){
+          const nextId = employerApplicationQuickMode ? employerQuickNextAfterAction(id) : null;
           await req('PATCH',`/api/employer/applications/${id}/status`,{status:btn.dataset.status});
           if (employerApplicationQuickMode) {
-            // Reviewing remains in the same stage; a refusal drops out and
-            // selects the next matching application only after server success.
-            employerApplicationQuickSelectedId = btn.dataset.status === 'reviewing' ? id : null;
+            // Count an application as handled only after successful confirmation.
+            // Even "Взять в рассмотрение" advances instead of showing it twice.
+            employerApplicationQuickHandledIds.add(id);
+            employerApplicationQuickSelectedId = nextId;
+            employerApplicationQuickIndex = 0;
             employerApplicationQuickFocusOnRender = true;
           }
           await showDashboard();
           toast('Статус обновлён');
         }
         else if(type==='express-interest'){
+          const nextId = employerApplicationQuickMode ? employerQuickNextAfterAction(id) : null;
           const data=await req('POST',`/api/employer/applications/${id}/interest`);
           if (employerApplicationQuickMode) {
-            employerApplicationQuickSelectedId = null;
+            employerApplicationQuickHandledIds.add(id);
+            employerApplicationQuickSelectedId = nextId;
+            employerApplicationQuickIndex = 0;
             employerApplicationQuickFocusOnRender = true;
           } else {
             state.employerApplicationsStatusFilter='consent';

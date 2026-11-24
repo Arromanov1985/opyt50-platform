@@ -767,6 +767,25 @@ def run_browser(page, playwright):
     expect(work_queue.locator("[data-employer-workqueue-search]")).to_have_value("Кладовщик")
     expect(work_queue.locator("#employer-workqueue-matched")).to_have_text("1")
     assert not queue_writes, "Overview navigation must never create or mutate invitations or applications"
+    # One-click quick review from the overview uses the existing review
+    # workflow, preserving the currently selected vacancy and queue filters.
+    work_queue.locator("[data-employer-workqueue-vacancy]").select_option(str(sample_vacancy_id))
+    expect(work_queue.locator("#employer-workqueue-matched")).to_have_text("1")
+    quick_start = work_queue.locator("[data-v02-action='open-employer-applications'][data-quick='true']")
+    expect(quick_start).to_be_visible()
+    quick_start.click()
+    expect(page.locator("#employer-applications-vacancy")).to_have_value(str(sample_vacancy_id))
+    expect(page.locator("[data-v02-action='employer-quick-toggle']")).to_have_attribute("aria-pressed","true")
+    expect(page.locator(".employer-application-stage-filter [data-filter='attention']")).to_have_attribute("aria-pressed","true")
+    expect(page.locator("#employer-application-results .application-review-card:visible")).to_have_count(1)
+    expect(page.locator("#employer-application-results .application-review-card:visible")).to_have_attribute("data-application-id","70023")
+    expect(page.locator("#employer-application-quick-handled")).to_have_text("Обработано за проход: 0")
+    page.locator(".dashboard-tabs [data-tab='overview']").click()
+    work_queue = page.locator("#employer-workqueue")
+    expect(work_queue.locator("[data-action='employer-workqueue-filter'][data-filter='consent']")).to_have_attribute("aria-pressed","true")
+    expect(work_queue.locator("[data-employer-workqueue-search]")).to_have_value("Кладовщик")
+    expect(work_queue.locator("[data-employer-workqueue-vacancy]")).to_have_value(str(sample_vacancy_id))
+    assert not queue_writes, "Quick review navigation must not mutate any candidate"
     page.remove_listener("request", monitor_workqueue)
     page.unroute("**/api/employer/applications", fake_workqueue_applications)
     page.unroute("**/api/employer/invitations", fake_workqueue_invitations)
@@ -959,28 +978,31 @@ def run_browser(page, playwright):
     def fake_quick_review_interest(route):
         assert route.request.method == "POST"
         quick_writes.append(("interest", route.request.method))
-        generated_applications[-1].update(
+        generated_applications[-2].update(
             status="interview", invitation_id=999001, invitation_status="sent"
         )
         route.fulfill(status=200, content_type="application/json",
                       body='{"created":true,"id":999001}')
     page.route("**/api/employer/applications/50044/status", fake_quick_review_status)
-    page.route("**/api/employer/applications/50044/interest", fake_quick_review_interest)
+    page.route("**/api/employer/applications/50043/interest", fake_quick_review_interest)
     quick_cards.first.locator("[data-v02-action='application-status'][data-status='reviewing']").click()
-    expect(quick_cards.first).to_have_attribute("data-application-id", "50044")
-    expect(quick_cards.first).to_be_focused()
-    expect(quick_cards.first.locator("[data-v02-action='application-status'][data-status='reviewing']")).to_have_count(0)
-    expect(page.locator("#employer-application-quick-position")).to_have_text("Отклик 1 из 45")
-    quick_cards.first.locator("[data-v02-action='express-interest']").evaluate(
-        "(button) => {button.click(); button.click();}"
-    )
+    # Successful "take for review" moves to the NEXT unhandled application,
+    # even though the reviewed application stays in the "attention" bucket.
     expect(quick_cards.first).to_have_attribute("data-application-id", "50043")
     expect(quick_cards.first).to_be_focused()
     expect(page.locator("#employer-application-quick-position")).to_have_text("Отклик 1 из 44")
+    expect(page.locator("#employer-application-quick-handled")).to_have_text("Обработано за проход: 1")
+    quick_cards.first.locator("[data-v02-action='express-interest']").evaluate(
+        "(button) => {button.click(); button.click();}"
+    )
+    expect(quick_cards.first).to_have_attribute("data-application-id", "50042")
+    expect(quick_cards.first).to_be_focused()
+    expect(page.locator("#employer-application-quick-position")).to_have_text("Отклик 1 из 43")
+    expect(page.locator("#employer-application-quick-handled")).to_have_text("Обработано за проход: 2")
     assert quick_writes == [("status", "PATCH"), ("interest", "POST")], quick_writes
     assert page.request.get(URL + "/api/employer/applications").json()["applications"][0]["status"] == "applied", "Fictional quick review must not mutate the local database"
     page.unroute("**/api/employer/applications/50044/status", fake_quick_review_status)
-    page.unroute("**/api/employer/applications/50044/interest", fake_quick_review_interest)
+    page.unroute("**/api/employer/applications/50043/interest", fake_quick_review_interest)
     page.locator("[data-v02-action='employer-quick-toggle']").click()
     expect(page.locator("#employer-application-quick-controls")).to_be_hidden()
     expect(quick_cards).to_have_count(20)

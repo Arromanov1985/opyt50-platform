@@ -3944,3 +3944,23 @@ body.comfortable-view .employer-workqueue-stage-filter .btn{font-size:1rem}
 @media(max-width:340px){
   .employer-workqueue-stage-filter{grid-template-columns:minmax(0,1fr)}
 }
+
+
+/* One-click employer review handoff from the overview queue. */
+.employer-workqueue-quick-start{
+  display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;
+  gap:14px;padding:16px;margin:14px 0 10px;
+  border:1px solid #D5E6DB;border-radius:12px;background:#F6FBF7
+}
+.employer-workqueue-quick-start>div{flex:1 1 250px;min-width:0}
+.employer-workqueue-quick-start strong{display:block;color:#143E2B;font-size:15px}
+.employer-workqueue-quick-start .muted{margin:5px 0 0;font-size:13px;line-height:1.55}
+.employer-workqueue-quick-start>.btn{min-height:46px;white-space:normal;max-width:100%}
+.employer-quick-handled{font-size:13px;color:#476B56}
+body.comfortable-view .employer-workqueue-quick-start strong,
+body.comfortable-view .employer-workqueue-quick-start .muted,
+body.comfortable-view .employer-quick-handled{font-size:1rem}
+@media(max-width:680px){
+  .employer-workqueue-quick-start{align-items:stretch;flex-direction:column}
+  .employer-workqueue-quick-start>.btn{width:100%}
+}
