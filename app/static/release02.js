@@ -681,6 +681,7 @@
       const card = document.querySelector('#employer-application-results .application-review-card:not([hidden])');
       if (!card) {
         (document.querySelector('[data-v02-action="employer-quick-stage"]:not([hidden])')
+          || document.querySelector('[data-v02-action="employer-quick-revisit"]:not([hidden])')
           || document.querySelector('[data-v02-action="employer-quick-toggle"]'))?.focus({preventScroll:true});
         return;
       }
