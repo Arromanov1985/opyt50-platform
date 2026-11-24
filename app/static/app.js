@@ -4100,7 +4100,12 @@ async function renderAdmin() {
       } else {
         const growthUnits = [
           ['Загрузки журнала и маршрутов', growthSummary.journal_requests],
-          ['Переходы к вакансиям', growthSummary.jobs_clicks],
+          ['Просмотры публичных вакансий', growthSummary.public_vacancy_views],
+          ['Просмотры публичных компаний', growthSummary.public_company_views],
+          ['Журнал → вакансии', growthSummary.jobs_clicks],
+          ['Вакансия → компания', growthSummary.company_clicks],
+          ['Компания → вакансия', growthSummary.vacancy_clicks],
+          ['Вход в сценарий отклика', growthSummary.apply_clicks],
           ['Переходы к профилю', growthSummary.profile_clicks],
           ['Переходы в сообщество', growthSummary.community_clicks],
           ['Новые кандидаты', growthSummary.new_candidates],
@@ -4112,19 +4117,21 @@ async function renderAdmin() {
         ).join('');
         const sources = Array.isArray(growth.by_source) ? growth.by_source : [];
         growthArticlesArea.innerHTML =
-          '<table class="admin-growth-table"><caption>События по маршрутам и материалам за 30 дней, по UTC</caption>' +
-          '<thead><tr><th scope="col">Материал</th><th scope="col">Загрузки</th>' +
-          '<th scope="col">К вакансиям</th><th scope="col">К профилю</th><th scope="col">В сообщество</th><th scope="col">Клики / загрузки*</th></tr></thead><tbody>' +
+          '<table class="admin-growth-table"><caption>Анонимные агрегированные события публичной воронки за 30 дней, по UTC</caption>' +
+          '<thead><tr><th scope="col">Источник</th><th scope="col">Загрузки</th>' +
+          '<th scope="col">К вакансиям</th><th scope="col">К профилю</th><th scope="col">В сообщество</th>' +
+          '<th scope="col">К компании</th><th scope="col">К вакансии компании</th><th scope="col">К отклику</th>' +
+          '<th scope="col">Клики / загрузки*</th></tr></thead><tbody>' +
           sources.map(item =>
             '<tr data-growth-source="' + esc(item.source) + '"><th scope="row">' +
             (item.kind === 'path' ? 'Маршрут: ' : '') + esc(item.title) +
             (item.published ? '' : ' (снят с публикации)') + '</th>' +
-            ['view','jobs_click','profile_click','community_click'].map(action =>
+            ['view','jobs_click','profile_click','community_click','company_click','vacancy_click','apply_click'].map(action =>
               '<td>' + Number(item[action] || 0).toLocaleString('ru-RU') + '</td>'
             ).join('') + '<td>' + (item.clicks_per_view_percent != null
               ? Number(item.clicks_per_view_percent).toLocaleString('ru-RU', {maximumFractionDigits: 1}) + '%'
               : '—') + '</td></tr>'
-          ).join('') + '</tbody></table><p class="muted">* Соотношение событий, не конверсия уникальных людей. Может превышать 100%.</p>';
+          ).join('') + '</tbody></table><p class="muted">* Соотношение событий, не конверсия уникальных людей. Может превышать 100%. Источник конкретной регистрации не определяется.</p>';
       }
     }
 
