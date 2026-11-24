@@ -42,6 +42,7 @@ def test_public_employer_page_preserves_moderation_and_privacy(tmp_path: Path):
 
         page = visitor.get(f"/companies/{owner_id}")
         assert page.status_code == 200, page.text
+        assert page.headers["cache-control"] == "no-store"
         assert page.headers["content-type"].startswith("text/html")
         assert "Учебная &amp; Компания" in page.text
         assert "Кладовщик" in page.text
@@ -103,3 +104,38 @@ def test_public_employer_page_preserves_moderation_and_privacy(tmp_path: Path):
             assert db.execute(
                 "SELECT COUNT(*) FROM employer_profiles WHERE user_id=?", (owner_id,)
             ).fetchone()[0] == 1
+
+
+
+def test_canonical_company_page_keeps_more_than_twenty_open_vacancies(tmp_path: Path):
+    app = create_app(str(tmp_path / "employer-many-jobs.db"))
+    with TestClient(app) as employer, TestClient(app) as visitor:
+        registration = employer.post("/api/register", headers=XHR, json={
+            "role": "employer",
+            "name": "Работодатель с большим списком",
+            "company_name": "Компания с вакансиями",
+            "email": "many-jobs@example.invalid",
+            "password": "SyntheticManyJobs2026!",
+        })
+        assert registration.status_code == 201, registration.text
+        owner_id = int(registration.json()["user"]["id"])
+
+        for index in range(21):
+            created = employer.post("/api/employer/vacancies", headers=XHR, json={
+                "title": f"Вакансия {index:02d}",
+                "city": "Москва",
+                "skills": "Опыт",
+                "salary_min": 50000 + index,
+                "salary_max": 70000 + index,
+                "schedule": "Полный день",
+                "employment": "Полная",
+                "description": "Публичная тестовая вакансия.",
+            })
+            assert created.status_code == 201, created.text
+
+        page = visitor.get(f"/companies/{owner_id}")
+        assert page.status_code == 200, page.text
+        assert page.text.count('class="public-employer-job"') == 21
+        assert "Открытые вакансии <span>21</span>" in page.text
+        assert "Вакансия 00" in page.text
+        assert "Вакансия 20" in page.text
