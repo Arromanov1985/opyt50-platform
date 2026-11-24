@@ -4008,3 +4008,63 @@ body.comfortable-view .employer-quick-summary-note{font-size:1rem}
   .employer-quick-summary{grid-template-columns:repeat(2,minmax(0,1fr))}
   .employer-quick-summary>span{padding:12px}
 }
+
+
+/* Employer funnel snapshots: one read-only card per vacancy. */
+.employer-vacancy-analytics{min-width:0}
+.employer-analytics-filters{display:flex;flex-wrap:wrap;gap:8px;margin:14px 0 6px}
+.employer-analytics-filters .btn{min-height:44px;white-space:normal;font-size:13px;line-height:1.4}
+.employer-analytics-visible{margin:6px 0 10px;font-size:13px;color:#526B5A}
+.employer-analytics-list{display:grid;gap:12px;min-width:0}
+.employer-analytics-vacancy{
+  border:1px solid #DEEAE1;border-radius:12px;padding:16px;
+  background:#FBFDFC;min-width:0
+}
+.employer-analytics-vacancy[hidden],.employer-analytics-empty[hidden]{display:none!important}
+.employer-analytics-heading{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;flex-wrap:wrap}
+.employer-analytics-heading>div:first-child{min-width:0;flex:1 1 200px}
+.employer-analytics-heading h4{
+  margin:0 0 6px;font-size:17px;line-height:1.4;overflow-wrap:anywhere;color:#183E2D
+}
+.employer-analytics-status{
+  display:inline-block;border:1px solid #CADFD1;border-radius:8px;
+  padding:3px 8px;font-size:12px;line-height:1.5;color:#44634F
+}
+.employer-analytics-actions{display:flex;gap:8px;flex-wrap:wrap}
+.employer-analytics-actions .btn{min-height:44px;white-space:normal}
+.employer-analytics-metrics{
+  display:grid;grid-template-columns:repeat(3,minmax(0,1fr));
+  gap:10px;margin-top:14px;min-width:0
+}
+.employer-analytics-metric{
+  display:flex;align-items:center;gap:9px;min-width:0;
+  border:1px solid #E2ECE5;background:#F3F9F4;
+  padding:10px 12px;border-radius:10px
+}
+.employer-analytics-metric strong{font-size:22px;line-height:1.2;color:#153E29;font-weight:800;font-variant-numeric:tabular-nums}
+.employer-analytics-metric small{font-size:12px;font-weight:700;line-height:1.4;overflow-wrap:anywhere;color:#496753}
+.employer-analytics-outcomes{font-size:13px;line-height:1.55;color:#42624F;margin:12px 0 0}
+.employer-analytics-empty{
+  padding:16px;background:#F7FAF8;border:1px dashed #CADBD0;
+  border-radius:10px;color:#476550
+}
+.employer-analytics-note{
+  margin:15px 0 0;color:#617267;font-size:12px;line-height:1.6
+}
+body.comfortable-view .employer-analytics-heading h4{font-size:1.2rem}
+body.comfortable-view .employer-analytics-status,
+body.comfortable-view .employer-analytics-metric small,
+body.comfortable-view .employer-analytics-actions .btn,
+body.comfortable-view .employer-analytics-filters .btn,
+body.comfortable-view .employer-analytics-visible,
+body.comfortable-view .employer-analytics-outcomes,
+body.comfortable-view .employer-analytics-note{font-size:1rem}
+@media(max-width:700px){
+  .employer-analytics-metrics{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .employer-analytics-heading{flex-direction:column;align-items:stretch}
+  .employer-analytics-actions{width:100%}
+  .employer-analytics-actions .btn{flex:1 1 140px;min-width:0}
+}
+@media(max-width:350px){
+  .employer-analytics-metrics{grid-template-columns:minmax(0,1fr)}
+}
