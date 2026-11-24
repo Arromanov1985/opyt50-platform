@@ -143,4 +143,5 @@ def employer_page(data: dict, articles: list[dict] | None = None) -> HTMLRespons
 <aside class="employer-bottom"><h2>Следующий шаг — изучить вакансию</h2><p>Условия можно прочитать без регистрации. Доступные действия показаны на странице вакансии. Контакты соискателя не раскрываются автоматически: для знакомства предусмотрено отдельное согласие.</p><a href="/journal/kak-proverit-vakansiyu">Как проверить работодателя и вакансию</a></aside>
 </main><footer class="employer-wrap employer-footer">СТАЖНО · Ваш опыт работает на вас</footer>
 </body></html>"""
-    return HTMLResponse(html, headers={"Cache-Control": "public, max-age=60"})
+    cache_control = "no-store" if articles is not None else "public, max-age=60"
+    return HTMLResponse(html, headers={"Cache-Control": cache_control})
