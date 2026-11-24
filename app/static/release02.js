@@ -659,7 +659,10 @@
       $('#account-content').innerHTML=`<div class="dashboard-grid">${tabsMarkup(nav,'ДЛЯ СОИСКАТЕЛЯ','Ваша карьера')}<div id="dashboard-main"><div class="loading">Загрузка...</div></div></div>`;
       try {
         if(state.tab==='favorites'){
+          const favoriteOwnerId = state.user?.id;
+          const favoriteTab = state.tab;
           const {jobs}=await api('/api/candidate/favorites');
+          if(state.user?.id !== favoriteOwnerId || state.tab !== favoriteTab) return;
           candidateFavoriteCompareSelection(jobs);
           const savedMarkup = jobs.length ? jobs.map(candidateSavedFavoriteMarkup).join('') : '<div class="empty-state empty-state-action"><span class="empty-state-icon" aria-hidden="true">♡</span><strong>Вы ещё не сохранили вакансий.</strong><p>Нажимайте ♡ на интересных вакансиях, чтобы вернуться к ним позже.</p><a class="btn btn-primary" href="#jobs">Посмотреть вакансии →</a></div>';
           $('#dashboard-main').innerHTML=`<div class="panel"><div class="panel-title-row"><div><span class="section-kicker">СОХРАНЕНО</span><h3>Избранные вакансии</h3><p class="muted">Здесь собраны сохранённые варианты. Выберите 2–3 вакансии, чтобы сравнить основные условия.</p></div></div>${jobs.length ? candidateFavoriteCompareMarkup(jobs) : ''}<div class="dashboard-list">${savedMarkup}</div></div>`;
