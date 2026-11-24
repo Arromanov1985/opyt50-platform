@@ -4092,3 +4092,16 @@ body.comfortable-view .employer-analytics-sorting .btn,body.comfortable-view .em
 .candidate-stage-note{margin:12px 0 0;color:#64776A;font-size:12px;line-height:1.6}
 body.comfortable-view .candidate-stage-card span,body.comfortable-view .candidate-stage-card small,body.comfortable-view .candidate-stage-note{font-size:1rem}
 @media(max-width:700px){.candidate-stage-grid{grid-template-columns:minmax(0,1fr)}.candidate-stage-card{min-height:80px}}
+
+/* Candidate cross-record interaction feed; read-only server snapshot. */
+.candidate-interaction-feed{min-width:0}
+.candidate-interaction-list{list-style:none;display:grid;gap:10px;padding:0;margin:14px 0 0}
+.candidate-interaction-entry{display:grid;grid-template-columns:minmax(80px,105px) minmax(0,1fr) auto;align-items:center;gap:12px;border:1px solid #E1EAE3;border-radius:12px;padding:12px 14px;background:#FBFDFC;min-width:0}
+.candidate-interaction-type{font-size:12px;font-weight:800;color:#3D6750;border-radius:7px;background:#EAF3ED;padding:6px 9px;text-align:center}
+.candidate-interaction-info{display:flex;flex-direction:column;align-items:flex-start;gap:3px;min-width:0}
+.candidate-interaction-info strong{font-size:15px;overflow-wrap:anywhere;color:#1C3C2B}
+.candidate-interaction-info small,.candidate-interaction-info span,.candidate-interaction-info time{font-size:12px;color:#56705D;line-height:1.5;overflow-wrap:anywhere}
+.candidate-interaction-entry .btn{min-height:44px;white-space:normal}
+.candidate-interaction-note{font-size:12px;line-height:1.6;color:#5F7065;margin:12px 0 0}
+body.comfortable-view .candidate-interaction-type,body.comfortable-view .candidate-interaction-info small,body.comfortable-view .candidate-interaction-info span,body.comfortable-view .candidate-interaction-info time,body.comfortable-view .candidate-interaction-note{font-size:1rem}
+@media(max-width:700px){.candidate-interaction-entry{grid-template-columns:minmax(0,1fr);align-items:stretch}.candidate-interaction-type{justify-self:start}.candidate-interaction-entry .btn{width:100%}}
