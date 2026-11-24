@@ -157,4 +157,5 @@ def vacancy_page(job: dict, articles: list[dict] | None = None) -> HTMLResponse:
   </main>
   <footer class="wrap share-footer"><span>СТАЖНО · Ваш опыт работает на вас</span><a href="/journal">Практические материалы</a></footer>
 </body></html>"""
-    return HTMLResponse(markup, headers={"Cache-Control": "public, max-age=60"})
+    cache_control = "no-store" if articles is not None else "public, max-age=60"
+    return HTMLResponse(markup, headers={"Cache-Control": cache_control})
