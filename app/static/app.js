@@ -4090,6 +4090,15 @@ async function handleDashboardSubmit(event) {
 let employerInvitationSearchTimer = null;
 let candidateInvitationSearchTimer = null;
 function handleDashboardInput(event) {
+  const workQueueSearch = event.target.closest('[data-employer-workqueue-search]');
+  if (workQueueSearch && state.user?.role === 'employer' && state.tab === 'overview') {
+    const queue = workQueueSearch.closest('#employer-workqueue');
+    if (queue) {
+      queue.dataset.visibleLimit = '10';
+      applyEmployerWorkQueueFilters(queue);
+    }
+    return;
+  }
   const vacancySearch = event.target.closest('[data-employer-vacancy-search]');
   if (vacancySearch && state.user?.role === 'employer' && state.tab === 'vacancies') {
     state.employerVacancySearch = vacancySearch.value;
@@ -4138,6 +4147,15 @@ function handleDashboardInput(event) {
   }, 180);
 }
 async function handleDashboardChange(event) {
+  const workQueueVacancy = event.target.closest('[data-employer-workqueue-vacancy]');
+  if (workQueueVacancy && state.user?.role === 'employer' && state.tab === 'overview') {
+    const queue = workQueueVacancy.closest('#employer-workqueue');
+    if (queue) {
+      queue.dataset.visibleLimit = '10';
+      applyEmployerWorkQueueFilters(queue);
+    }
+    return;
+  }
   editorChanged(editorForControl(event.target));
   const introductionVacancy = event.target.closest('[data-employer-introduction-vacancy-filter]');
   if (introductionVacancy) {
@@ -4312,23 +4330,53 @@ async function handleDashboardClick(event) {
     }
     return;
   }
-  if (action === 'employer-workqueue-more') {
+  if (action === 'employer-workqueue-filter') {
+    if (state.user?.role !== 'employer' || state.tab !== 'overview') return;
+    const queue = btn.closest('#employer-workqueue');
+    const selected = btn.dataset.filter;
+    if (!queue || !['all','outcome','consent','applications'].includes(selected)) return;
+    for (const filterButton of queue.querySelectorAll('[data-action="employer-workqueue-filter"]')) {
+      const active = filterButton.dataset.filter === selected;
+      filterButton.setAttribute('aria-pressed',String(active));
+      filterButton.classList.toggle('btn-dark',active);
+      filterButton.classList.toggle('btn-outline',!active);
+    }
+    queue.dataset.visibleLimit = '10';
+    applyEmployerWorkQueueFilters(queue);
+    return;
+  }
+  if (action === 'employer-workqueue-reset') {
     if (state.user?.role !== 'employer' || state.tab !== 'overview') return;
     const queue = btn.closest('#employer-workqueue');
     if (!queue) return;
-    const remaining = Array.from(queue.querySelectorAll('[data-employer-workqueue-item][hidden]'));
-    const next = remaining.slice(0, 10);
-    for (const card of next) card.hidden = false;
-    const count = queue.querySelector('#employer-workqueue-visible');
-    const visibleCount = queue.querySelectorAll('[data-employer-workqueue-item]:not([hidden])').length;
-    if (count) count.textContent = String(visibleCount);
-    const left = remaining.length - next.length;
-    if (left) btn.textContent = 'Показать ещё ' + Math.min(10, left) + ' задач';
-    else btn.remove();
-    if (next.length) {
-      next[0].tabIndex = -1;
-      next[0].focus({preventScroll:true});
-      next[0].scrollIntoView({block:'nearest'});
+    const search = queue.querySelector('[data-employer-workqueue-search]');
+    const select = queue.querySelector('[data-employer-workqueue-vacancy]');
+    if (search) search.value = '';
+    if (select) select.value = 'all';
+    for (const filterButton of queue.querySelectorAll('[data-action="employer-workqueue-filter"]')) {
+      const active = filterButton.dataset.filter === 'all';
+      filterButton.setAttribute('aria-pressed',String(active));
+      filterButton.classList.toggle('btn-dark',active);
+      filterButton.classList.toggle('btn-outline',!active);
+    }
+    queue.dataset.visibleLimit = '10';
+    applyEmployerWorkQueueFilters(queue);
+    search?.focus({preventScroll:true});
+    return;
+  }
+  if (action === 'employer-workqueue-more') {
+    if (state.user?.role !== 'employer' || state.tab !== 'overview') return;
+    const queue = btn.closest('#employer-workqueue');
+    if (!queue || btn.hidden) return;
+    const previous = new Set(queue.querySelectorAll('[data-employer-workqueue-item]:not([hidden])'));
+    queue.dataset.visibleLimit = String((Number(queue.dataset.visibleLimit) || 10) + 10);
+    applyEmployerWorkQueueFilters(queue);
+    const firstNew = Array.from(queue.querySelectorAll('[data-employer-workqueue-item]:not([hidden])'))
+      .find(card => !previous.has(card));
+    if (firstNew) {
+      firstNew.tabIndex = -1;
+      firstNew.focus({preventScroll:true});
+      firstNew.scrollIntoView({block:'nearest'});
     }
     return;
   }
