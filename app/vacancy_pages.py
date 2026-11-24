@@ -101,7 +101,7 @@ def vacancy_page(job: dict) -> HTMLResponse:
     </nav>
     <article class="vacancy-sheet">
       <span class="kicker">ОТКРЫТАЯ ВАКАНСИЯ</span>
-      <h1>{title}</h1><p class="company"><a href="/companies/{int(job['employer_id'])}">{company}</a> · {city}</p>
+      <h1>{title}</h1><p class="company"><a href="/companies/{int(job['employer_id'])}" data-growth-action="company_click">{company}</a> · {city}</p>
       <p class="salary"><span>Оплата</span><strong>{pay}</strong></p>
       <dl class="facts" aria-label="Основные условия">
         <div><dt>Город</dt><dd>{city}</dd></div>
@@ -113,8 +113,8 @@ def vacancy_page(job: dict) -> HTMLResponse:
         <h2 id="next-step-title">Как откликнуться</h2>
         <p class="share-entry-note">{entry_note}</p>
         <div class="share-actions">
-          <a class="button primary" href="{start_url}">Перейти к отклику</a>
-          <a class="button secondary" href="/#jobs">Другие вакансии</a>
+          <a class="button primary" href="{start_url}" data-growth-action="apply_click">Перейти к отклику</a>
+          <a class="button secondary" href="/#jobs" data-growth-action="jobs_click">Другие вакансии</a>
         </div>
         {preparation}
       </section>
