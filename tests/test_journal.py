@@ -180,6 +180,7 @@ def test_article_recommends_only_current_public_vacancies_and_manifest_matches(t
         path = "/journal/cifrovye-navyki-dlya-raboty"
         page = visitor.get(path)
         assert page.status_code == 200
+        assert page.headers["cache-control"] == "no-store"
         assert 'class="jr-opportunities"' in page.text
         assert "Кладовщик 1С" in page.text
         assert "Учебный склад" in page.text
