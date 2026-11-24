@@ -57,9 +57,20 @@ body.comfortable-view .jr-nav a,body.comfortable-view .jr-text-toggle{font-size:
 .jr-related>h2{font-size:24px;margin:0 0 18px}
 .jr-related .jr-card{min-height:0}
 .jr-related .jr-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
+.jr-opportunities{margin:42px 0;padding:30px;border:1px solid #D5E6DA;border-radius:20px;background:#F2F8F4}
+.jr-opportunities-heading{display:flex;justify-content:space-between;align-items:end;gap:16px;margin-bottom:8px}
+.jr-opportunities-heading h2{font-size:27px;margin:6px 0 0}
+.jr-opportunities-heading>a{font-weight:800;white-space:nowrap}
+.jr-opportunities>p{margin:0 0 20px;color:#506B5C;max-width:76ch}
+.jr-opportunities .jr-grid{grid-template-columns:repeat(3,minmax(0,1fr))}
+.jr-opportunities .jr-card{min-height:235px;padding:23px}
+.jr-job-card h2{font-size:21px;margin-top:18px}
+.jr-job-card p{margin-bottom:14px}
+
 body.comfortable-view .jr-discovery label,
 body.comfortable-view .jr-category-filters button,
 body.comfortable-view .jr-results-count{font-size:1rem}
+@media(max-width:760px){.jr-opportunities .jr-grid{grid-template-columns:1fr}.jr-opportunities{padding:22px}.jr-opportunities-heading{align-items:start;flex-direction:column}.jr-opportunities-heading>a{white-space:normal}}
 @media(max-width:620px){.jr-discovery{padding:15px}.jr-related .jr-grid{grid-template-columns:1fr}}
 
 /* Curated learning journeys, readable without login or visitor tracking. */
