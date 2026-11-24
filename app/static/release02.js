@@ -69,6 +69,66 @@
     // never looks like a system failure. The server still enforces uniqueness.
     let applicationByVacancy = new Map();
     let favoriteVacancyIds = new Set();
+    let candidateFavoriteCompareOwnerId = null;
+    const candidateFavoriteCompareIds = new Set();
+
+    function syncCandidateFavoriteCompareOwner() {
+      const ownerId = Number(state.user?.id || 0);
+      if (ownerId !== candidateFavoriteCompareOwnerId) {
+        candidateFavoriteCompareOwnerId = ownerId;
+        candidateFavoriteCompareIds.clear();
+      }
+    }
+
+    function candidateFavoriteCompareSelection(jobs = []) {
+      syncCandidateFavoriteCompareOwner();
+      const available = new Set((jobs || []).map(job => Number(job.id)).filter(id => Number.isSafeInteger(id) && id > 0));
+      for (const id of [...candidateFavoriteCompareIds]) {
+        if (!available.has(id)) candidateFavoriteCompareIds.delete(id);
+      }
+      return (jobs || []).filter(job => candidateFavoriteCompareIds.has(Number(job.id))).slice(0,3);
+    }
+
+    function candidateFavoriteCompareButton(job) {
+      const id = Number(job.id);
+      const selected = candidateFavoriteCompareIds.has(id);
+      return `<button type="button" class="btn btn-tiny ${selected ? 'btn-dark' : 'btn-outline'} candidate-favorite-compare-toggle"
+        data-v02-action="favorite-compare-toggle" data-id="${id}" aria-pressed="${selected}">
+        ${selected ? 'В сравнении ✓' : 'Сравнить'}</button>`;
+    }
+
+    function candidateFavoriteCompareMarkup(jobs = []) {
+      const selected = candidateFavoriteCompareSelection(jobs);
+      const count = selected.length;
+      const cards = selected.map(job => {
+        const id = Number(job.id);
+        const skills = String(job.skills || '').split(',').map(value => value.trim()).filter(Boolean).slice(0,6).join(', ');
+        const open = job.status !== 'closed';
+        return `<article class="candidate-favorite-compare-card">
+          <div class="candidate-favorite-compare-head"><span class="mini-badge ${open ? '' : 'gray'}">${open ? 'Открыта' : 'Закрыта'}</span>
+            <h4>${esc(job.title || 'Вакансия')}</h4><small>${esc(job.company_name || 'Работодатель')}</small></div>
+          <dl class="candidate-favorite-compare-facts">
+            <div><dt>Зарплата</dt><dd>${esc(formatPay(job))}</dd></div>
+            <div><dt>Город</dt><dd>${esc(job.city || 'Не указан')}</dd></div>
+            <div><dt>График</dt><dd>${esc(job.schedule || 'Не указан')}</dd></div>
+            <div><dt>Занятость</dt><dd>${esc(job.employment || 'Не указана')}</dd></div>
+            <div><dt>Навыки</dt><dd>${esc(skills || 'Не указаны')}</dd></div>
+          </dl>
+          <a class="btn btn-outline btn-tiny" href="/vacancies/${id}">Открыть вакансию</a>
+        </article>`;
+      }).join('');
+      const body = count >= 2
+        ? `<div class="candidate-favorite-compare-grid">${cards}</div>`
+        : `<div class="candidate-favorite-compare-hint"><strong>${count ? 'Добавьте ещё одну вакансию' : 'Выберите вакансии для сравнения'}</strong><span>Сравнивать можно от двух до трёх сохранённых вакансий.</span></div>`;
+      return `<section class="candidate-favorite-compare-panel" aria-label="Сравнение сохранённых вакансий">
+        <div class="split-header"><div><span class="section-kicker">СРАВНЕНИЕ</span><h4>Сопоставьте условия</h4>
+          <p class="muted">Зарплата, город, график, занятость и ключевые навыки — рядом, без открытия нескольких вкладок.</p></div>
+          <div class="candidate-favorite-compare-controls"><strong>Выбрано ${count} из 3</strong>
+            ${count ? '<button type="button" class="btn btn-outline btn-tiny" data-v02-action="favorite-compare-clear">Очистить</button>' : ''}
+          </div></div>
+        ${body}
+      </section>`;
+    }
     // A vacancy can have several CTA buttons (list, recommendation, dialog).
     // Prevent one fast sequence of clicks from dispatching duplicate POSTs.
     const pendingApplicationRequests = new Set();
@@ -588,7 +648,11 @@
       try {
         if(state.tab==='favorites'){
           const {jobs}=await api('/api/candidate/favorites');
-          $('#dashboard-main').innerHTML=`<div class="panel"><div class="panel-title-row"><div><span class="section-kicker">СОХРАНЕНО</span><h3>Избранные вакансии</h3><p class="muted">Здесь собраны сохранённые варианты, к которым можно вернуться позже.</p></div></div><div class="dashboard-list">${jobs.length?jobs.map(j=>`<div class="saved-job">${jobMarkup(j)}<button class="btn btn-outline btn-tiny" data-v02-action="remove-favorite" data-id="${Number(j.id)}">Убрать из избранного</button></div>`).join(''):'<div class="empty-state empty-state-action"><span class="empty-state-icon" aria-hidden="true">♡</span><strong>Вы ещё не сохранили вакансий.</strong><p>Нажимайте ♡ на интересных вакансиях, чтобы вернуться к ним позже.</p><a class="btn btn-primary" href="#jobs">Посмотреть вакансии →</a></div>'}</div></div>`;
+          candidateFavoriteCompareSelection(jobs);
+          const savedMarkup = jobs.length ? jobs.map(j=>`<div class="saved-job">${jobMarkup(j)}
+            <div class="saved-job-actions">${candidateFavoriteCompareButton(j)}<button class="btn btn-outline btn-tiny" data-v02-action="remove-favorite" data-id="${Number(j.id)}">Убрать из избранного</button></div>
+          </div>`).join('') : '<div class="empty-state empty-state-action"><span class="empty-state-icon" aria-hidden="true">♡</span><strong>Вы ещё не сохранили вакансий.</strong><p>Нажимайте ♡ на интересных вакансиях, чтобы вернуться к ним позже.</p><a class="btn btn-primary" href="#jobs">Посмотреть вакансии →</a></div>';
+          $('#dashboard-main').innerHTML=`<div class="panel"><div class="panel-title-row"><div><span class="section-kicker">СОХРАНЕНО</span><h3>Избранные вакансии</h3><p class="muted">Здесь собраны сохранённые варианты. Выберите 2–3 вакансии, чтобы сравнить основные условия.</p></div></div>${jobs.length ? candidateFavoriteCompareMarkup(jobs) : ''}<div class="dashboard-list">${savedMarkup}</div></div>`;
         }
         if(state.tab==='applications'){
           const {applications}=await api('/api/candidate/applications');
@@ -1302,9 +1366,24 @@
           favoriteVacancyIds.delete(id);
           toast('Вакансия удалена из избранного');
           await loadPublicJobs();
+        }else if(type==='favorite-compare-toggle'){
+          if(state.user?.role!=='candidate'||state.tab!=='favorites') return;
+          syncCandidateFavoriteCompareOwner();
+          if(candidateFavoriteCompareIds.has(id)) candidateFavoriteCompareIds.delete(id);
+          else if(candidateFavoriteCompareIds.size >= 3){
+            toast('Можно сравнить не более трёх вакансий.');
+            return;
+          } else candidateFavoriteCompareIds.add(id);
+          await showDashboard();
+        }else if(type==='favorite-compare-clear'){
+          if(state.user?.role!=='candidate'||state.tab!=='favorites') return;
+          syncCandidateFavoriteCompareOwner();
+          candidateFavoriteCompareIds.clear();
+          await showDashboard();
         }else if(type==='remove-favorite'){
           await req('DELETE',`/api/candidate/favorites/${id}`);
           favoriteVacancyIds.delete(id);
+          candidateFavoriteCompareIds.delete(id);
           await showDashboard();
           toast('Вакансия удалена из избранного');
         }
