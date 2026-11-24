@@ -666,6 +666,22 @@ def run_browser(page, playwright):
     expect(analytics.locator('[data-analytics-row]:visible')).to_have_count(expected_open)
     analytics_all.click()
     expect(analytics.locator('[data-analytics-row]:visible')).to_have_count(expected_total)
+    # Per-vacancy conversion cards and sorting must remain read-only and accessible.
+    expect(analytics.locator('.employer-analytics-conversions')).to_have_count(expected_total)
+    expect(analytics.locator('[data-action="employer-analytics-sort"]')).to_have_count(3)
+    sort_results = analytics.locator('[data-action="employer-analytics-sort"][data-sort="results"]')
+    sort_results.click()
+    expect(sort_results).to_have_attribute("aria-pressed","true")
+    result_counts = analytics.locator('[data-analytics-row]').evaluate_all(
+        "nodes => nodes.map(node => Number(node.dataset.analyticsPositive))"
+    )
+    assert result_counts == sorted(result_counts,reverse=True)
+    analytics.locator('[data-action="employer-analytics-sort"][data-sort="attention"]').click()
+    attention_counts = analytics.locator('[data-analytics-row]').evaluate_all(
+        "nodes => nodes.map(node => Number(node.dataset.analyticsAttention))"
+    )
+    assert attention_counts == sorted(attention_counts,reverse=True)
+    analytics.locator('[data-action="employer-analytics-sort"][data-sort="activity"]').click()
     # Wait until the preceding dashboard navigation has finished all its GETs.
     # Only requests initiated *after* this point belong to filter interactions.
     page.wait_for_load_state("networkidle")

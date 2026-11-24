@@ -2559,6 +2559,20 @@ function employerVacancyAnalyticsRows(jobs = [], applications = [], invitations 
     a.title.localeCompare(b.title,'ru')
   );
 }
+function employerVacancyInsight(row) {
+  // These are event ratios, not a candidate journey: direct invitations need no application.
+  const ratio = (count,total) => total > 0 ? Math.round(100 * count / total) + '%' : '—';
+  const agreementRate = ratio(row.agreements,row.invitations);
+  const outcomeRate = ratio(row.outcomes,row.contacts);
+  const positiveRate = ratio(row.hired,row.outcomes);
+  const flags = [];
+  if (row.invitations >= 5 && row.agreements === 0) flags.push('Нет согласий при 5+ запросах');
+  if (row.contacts >= 5 && row.outcomes === 0) flags.push('Нет итогов при 5+ открытых контактах');
+  if (row.applications >= 10 && row.invitations === 0) flags.push('10+ откликов без запросов на знакомство');
+  return {agreementRate,outcomeRate,positiveRate,flags,
+    priority:flags.length ? 1 : 0,
+    effectiveness:row.outcomes > 0 ? row.hired / row.outcomes : -1};
+}
 function employerVacancyAnalyticsMarkup(jobs, applications, invitations, workQueue) {
   const rows = employerVacancyAnalyticsRows(jobs,applications,invitations,workQueue);
   const open = rows.filter(row => row.status === 'open').length;
@@ -2573,7 +2587,10 @@ function employerVacancyAnalyticsMarkup(jobs, applications, invitations, workQue
     ['outcomes','Итоги'],
     ['actions','Требуют действия']
   ];
+  const sorting = [['activity','По активности'],['results','По положительным итогам'],['attention','Требуют внимания']]
+    .map(([value,label]) => `<button type="button" class="btn btn-tiny ${value === 'activity' ? 'btn-dark' : 'btn-outline'}" data-action="employer-analytics-sort" data-sort="${value}" aria-pressed="${value === 'activity'}">${label}</button>`).join('');
   const cards = rows.map(row => {
+    const insight = employerVacancyInsight(row);
     const status = row.status === 'open' ? 'Открыта' : row.status === 'closed' ? 'Закрыта' : 'В архиве';
     const values = metrics.map(([key,label]) => `<span class="employer-analytics-metric"><strong data-analytics-metric="${key}">${row[key]}</strong><small>${label}</small></span>`).join('');
     const action = row.applications && row.id
@@ -2585,9 +2602,16 @@ function employerVacancyAnalyticsMarkup(jobs, applications, invitations, workQue
     const fallbackAction = !action && !invitationsAction
       ? '<button type="button" class="btn btn-outline btn-tiny" data-tab="vacancies">Мои вакансии</button>'
       : '';
-    return `<article class="employer-analytics-vacancy" data-analytics-row data-analytics-vacancy-id="${row.id}" data-analytics-status="${row.status}">
+    const insightMarkup = `<div class="employer-analytics-conversions" aria-label="Конверсия событий">
+      <span><strong>${insight.agreementRate}</strong><small>Согласия / запросы</small></span>
+      <span><strong>${insight.outcomeRate}</strong><small>Итоги / открытые контакты</small></span>
+      <span><strong>${insight.positiveRate}</strong><small>Положительные / итоги</small></span>
+    </div>`;
+    const attention = insight.flags.length ? `<p class="employer-analytics-attention"><strong>Обратите внимание:</strong> ${insight.flags.join('; ')}.</p>` : '';
+    return `<article class="employer-analytics-vacancy" data-analytics-row data-analytics-vacancy-id="${row.id}" data-analytics-status="${row.status}" data-analytics-positive="${row.hired}" data-analytics-attention="${insight.priority}" data-analytics-order="${rows.indexOf(row)}">
       <div class="employer-analytics-heading"><div><h4>${esc(row.title)}</h4><span class="employer-analytics-status">${status}</span></div><div class="employer-analytics-actions">${action}${invitationsAction}${fallbackAction}</div></div>
       <div class="employer-analytics-metrics" aria-label="Показатели вакансии">${values}</div>
+      ${insightMarkup}${attention}
       <p class="employer-analytics-outcomes">Из ${row.outcomes} итогов: положительных — ${row.hired}, не договорились — ${row.rejected}.${row.outcomes ? ' Доля положительных: ' + Math.round(100 * row.hired / row.outcomes) + '%.' : ''}</p>
     </article>`;
   }).join('');
@@ -2595,10 +2619,12 @@ function employerVacancyAnalyticsMarkup(jobs, applications, invitations, workQue
     <div class="split-header"><div><span class="section-kicker">АНАЛИТИКА ПО ВАКАНСИЯМ</span><h3>Результаты по каждой вакансии</h3>
       <p class="muted">Текущий срез записей компании, включая закрытые вакансии. Данные обновляются при открытии кабинета, отдельно от быстрого разбора откликов.</p></div></div>
     ${rows.length ? `<div class="employer-analytics-filters" role="group" aria-label="Статус вакансии">${filters}</div>
+      <div class="employer-analytics-sorting" role="group" aria-label="Сортировка вакансий">${sorting}</div>
       <p class="employer-analytics-visible" role="status" aria-live="polite">Показано <strong id="employer-analytics-visible-count">${rows.length}</strong> из ${rows.length} вакансий</p>
       <div class="employer-analytics-list">${cards}</div>
       <div class="employer-analytics-empty" hidden>По выбранному статусу вакансий пока нет. Выберите «Все».</div>`
       : '<div class="empty-state"><strong>Вакансий пока нет</strong><p>Создайте вакансию, чтобы здесь появилась аналитика.</p><button type="button" class="btn btn-primary" data-tab="create">Создать вакансию</button></div>'}
+    <p class="employer-analytics-note">Проценты рассчитываются только при наличии событий в знаменателе; «—» означает отсутствие базы для расчёта. Сигналы показывают возможные узкие места, а не качество кандидатов. Это текущий срез, не исторический тренд.</p>
     <p class="employer-analytics-note">Отклик и приглашение — разные события: компания может направить запрос без предварительного отклика, поэтому числа по этапам не обязательно убывают. Итог означает зафиксированный результат знакомства, а не подтверждённое трудоустройство.</p>
   </section>`;
 }
@@ -4860,6 +4886,33 @@ async function handleDashboardClick(event) {
     }
     if (action === 'more-vacancy-history') {
       await loadMoreEmployerVacancyHistory(btn,id);
+      return;
+    }
+    if (action === 'employer-analytics-sort') {
+      if (state.user?.role !== 'employer' || state.tab !== 'overview') return;
+      const root = btn.closest('#employer-vacancy-analytics');
+      const selected = btn.dataset.sort;
+      if (!root || !['activity','results','attention'].includes(selected)) return;
+      for (const control of root.querySelectorAll('[data-action="employer-analytics-sort"]')) {
+        const active = control.dataset.sort === selected;
+        control.setAttribute('aria-pressed',String(active));
+        control.classList.toggle('btn-dark',active);
+        control.classList.toggle('btn-outline',!active);
+      }
+      const list = root.querySelector('.employer-analytics-list');
+      if (list) {
+        const items = [...list.querySelectorAll('[data-analytics-row]')];
+        const number = (el,key) => Number(el.dataset[key]) || 0;
+        items.sort((a,b) => {
+          if (selected === 'results') return number(b,'analyticsPositive') - number(a,'analyticsPositive') || number(b,'analyticsAttention') - number(a,'analyticsAttention');
+          if (selected === 'attention') return number(b,'analyticsAttention') - number(a,'analyticsAttention') || number(b,'analyticsPositive') - number(a,'analyticsPositive');
+          return number(b,'analyticsStatus') - number(a,'analyticsStatus') || 0;
+        });
+        if (selected === 'activity') {
+          items.sort((a,b) => (a.dataset.analyticsStatus === 'open' ? -1 : 0) - (b.dataset.analyticsStatus === 'open' ? -1 : 0) || number(a,'analyticsOrder')-number(b,'analyticsOrder'));
+        }
+        items.forEach(item => list.appendChild(item));
+      }
       return;
     }
     if (action === 'employer-analytics-filter') {
