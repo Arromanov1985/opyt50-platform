@@ -71,7 +71,7 @@ def test_directory_only_contains_active_employers_with_approved_open_jobs(tmp_pa
         profile = viewer.get(f"/employers/{employer1}")
         assert profile.status_code == 200
         assert "Мастер склада" in profile.text
-        assert f'href="/vacancies/{open_job_id}"' in profile.text
+        assert f'href="/vacancies/{open_job_id}" data-growth-action="vacancy_click"' in profile.text
         assert "Инвентаризация" not in index.text  # No applicant or job descriptions
         assert "director1@example.invalid" not in profile.text
         assert "SyntheticEmployerPass2026" not in profile.text

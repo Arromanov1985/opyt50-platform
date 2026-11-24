@@ -398,7 +398,10 @@ GROWTH_ANALYTICS_DDL = (
     """CREATE TABLE IF NOT EXISTS growth_daily_counts (
         event_date TEXT NOT NULL,
         source TEXT NOT NULL,
-        action TEXT NOT NULL CHECK(action IN ('view','jobs_click','profile_click','community_click')),
+        action TEXT NOT NULL CHECK(action IN (
+            'view','jobs_click','profile_click','community_click',
+            'company_click','vacancy_click','apply_click'
+        )),
         total INTEGER NOT NULL DEFAULT 0 CHECK(total>=0),
         PRIMARY KEY (event_date,source,action)
     )""",
@@ -412,7 +415,7 @@ MIGRATION += "\n" + "\n".join(
 
 
 def _upgrade_growth_action_constraint(db, *, postgres: bool) -> None:
-    """Allow the community CTA while retaining every existing aggregate.
+    """Allow all approved funnel actions while retaining every existing aggregate.
 
     CREATE TABLE IF NOT EXISTS does not update an existing CHECK constraint.
     PostgreSQL can replace it in place; SQLite requires an atomic table copy.
@@ -424,13 +427,16 @@ def _upgrade_growth_action_constraint(db, *, postgres: bool) -> None:
                WHERE conrelid='growth_daily_counts'::regclass
                AND conname='growth_daily_counts_action_check' AND contype='c'"""
         ).fetchone()
-        if constraint and "'community_click'" in constraint["definition"]:
+        if constraint and "'apply_click'" in constraint["definition"]:
             return
         db.execute(
             """ALTER TABLE growth_daily_counts
                DROP CONSTRAINT IF EXISTS growth_daily_counts_action_check,
                ADD CONSTRAINT growth_daily_counts_action_check
-               CHECK(action IN ('view','jobs_click','profile_click','community_click'))"""
+               CHECK(action IN (
+                 'view','jobs_click','profile_click','community_click',
+                 'company_click','vacancy_click','apply_click'
+               ))"""
         )
         return
 
@@ -441,7 +447,7 @@ def _upgrade_growth_action_constraint(db, *, postgres: bool) -> None:
     definition = db.execute(
         "SELECT sql FROM sqlite_master WHERE type='table' AND name='growth_daily_counts'"
     ).fetchone()
-    if "'community_click'" in definition["sql"]:
+    if "'apply_click'" in definition["sql"]:
         return
     db.execute(GROWTH_ANALYTICS_DDL[0].replace(
         "CREATE TABLE IF NOT EXISTS growth_daily_counts",
