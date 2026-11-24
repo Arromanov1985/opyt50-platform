@@ -3899,3 +3899,48 @@ body.comfortable-view .employer-workqueue-footer{font-size:1rem}
   .employer-workqueue-footer{align-items:stretch;flex-direction:column}
   .employer-workqueue-footer .btn{width:100%}
 }
+
+
+/* Employer task queue: local filters without extra API calls. */
+.employer-workqueue-tools{display:grid;gap:12px;margin:16px 0 6px;min-width:0}
+.employer-workqueue-stage-filter{display:flex;flex-wrap:wrap;gap:8px}
+.employer-workqueue-stage-filter .btn{
+  min-height:44px;white-space:normal;text-align:center;font-size:13px;line-height:1.4
+}
+.employer-workqueue-fields{
+  display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.5fr);
+  gap:12px;min-width:0
+}
+.employer-workqueue-fields label{display:grid;gap:6px;min-width:0;font-weight:700;font-size:13px;color:#2E5943}
+.employer-workqueue-fields select,
+.employer-workqueue-fields input{
+  box-sizing:border-box;display:block;width:100%;min-width:0;min-height:44px;
+  border:1px solid #C8D9D0;border-radius:10px;
+  padding:9px 12px;background:#FFF;color:#173A30;font:inherit;font-size:14px
+}
+.employer-workqueue-fields select:focus-visible,
+.employer-workqueue-fields input:focus-visible,
+.employer-workqueue-stage-filter .btn:focus-visible{
+  outline:3px solid #82C9A1;outline-offset:2px
+}
+.employer-workqueue [data-action="employer-workqueue-more"][hidden],
+.employer-workqueue [data-employer-workqueue-empty][hidden]{display:none!important}
+.employer-workqueue-empty{
+  margin:14px 0;padding:18px;border:1px dashed #CCDCD3;
+  border-radius:12px;background:#F8FCF9
+}
+.employer-workqueue-empty strong{display:block;color:#163F2D;margin-bottom:6px}
+.employer-workqueue-empty p{font-size:13px;line-height:1.55;color:#567261}
+.employer-workqueue-empty .btn{min-height:44px}
+body.comfortable-view .employer-workqueue-fields label,
+body.comfortable-view .employer-workqueue-fields select,
+body.comfortable-view .employer-workqueue-fields input,
+body.comfortable-view .employer-workqueue-stage-filter .btn{font-size:1rem}
+@media(max-width:620px){
+  .employer-workqueue-stage-filter{display:grid;grid-template-columns:repeat(2,minmax(0,1fr))}
+  .employer-workqueue-stage-filter .btn{min-width:0;width:100%}
+  .employer-workqueue-fields{grid-template-columns:minmax(0,1fr)}
+}
+@media(max-width:340px){
+  .employer-workqueue-stage-filter{grid-template-columns:minmax(0,1fr)}
+}
