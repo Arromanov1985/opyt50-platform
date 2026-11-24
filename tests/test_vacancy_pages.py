@@ -45,7 +45,7 @@ def test_shareable_vacancy_page_shows_public_information_only(tmp_path: Path):
         job_id = create_public_job(client)
         page = client.get(f"/vacancies/{job_id}")
         assert page.status_code == 200, page.text
-        assert page.headers["cache-control"].startswith("public")
+        assert page.headers["cache-control"] == "no-store"
         assert "Кладовщик" in page.text
         assert "Тестовая фирма" in page.text
         assert "Москва" in page.text
