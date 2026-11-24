@@ -72,7 +72,7 @@ def exercise_application_destinations(page, jobs):
     expect(page.locator(".candidate-application-card:visible")).to_have_count(0)
     selector.select_option("overview")
     page.locator(
-        f"[data-v02-action='open-candidate-applications'][data-application-id='{target_id}']"
+        f".candidate-overview-item [data-v02-action='open-candidate-applications'][data-application-id='{target_id}']"
     ).click()
     expect(page.locator("#candidate-application-search")).to_have_value("")
     expect(page.locator("[data-candidate-app-action='filter'][data-filter='all']")).to_have_attribute(
@@ -216,6 +216,11 @@ def run_overview(page):
     expect(dashboard.locator(".overview-stat-card")).to_have_count(4)
     expect(dashboard.locator(".candidate-status-row")).to_be_visible()
     expect(dashboard.locator(".candidate-status-chip")).to_have_count(3)
+    feed = dashboard.locator(".candidate-interaction-feed")
+    expect(feed).to_be_visible()
+    expect(feed.locator(".candidate-interaction-entry")).to_have_count(1)
+    expect(feed.locator('[data-action="open-candidate-invitations"]')).to_have_count(1)
+    assert not any(fragment in feed.inner_html() for fragment in ("mailto:", "tel:", "data-contact-phone", "data-contact-email"))
     expect(dashboard.locator(".candidate-overview-grid")).to_be_visible()
     expect(dashboard).to_contain_text("Вакансии для вас")
     expect(dashboard).to_contain_text("Сейчас в процессе")
