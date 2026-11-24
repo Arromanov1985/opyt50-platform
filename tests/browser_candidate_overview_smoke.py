@@ -49,9 +49,9 @@ def exercise_application_destinations(page, jobs):
         applications.append(response.json()["id"])
     target_id = applications[0]
     before = page.request.get(URL + "/api/candidate/applications").json()["applications"]
-    # API-created test records are not in the already-rendered overview.
-    # Reload the existing overview before asserting the current server snapshot.
-    page.locator("[data-dashboard-tab-select]").select_option("applications")
+    # API-created test records require a fresh dashboard load, not a tab switch.
+    page.reload()
+    expect(page.locator("[data-dashboard-tab-select]")).to_be_visible()
     page.locator("[data-dashboard-tab-select]").select_option("overview")
     stages = page.locator("#dashboard-main .candidate-stage-overview")
     expect(stages).to_be_visible()
@@ -72,7 +72,7 @@ def exercise_application_destinations(page, jobs):
     expect(page.locator(".candidate-application-card:visible")).to_have_count(0)
     selector.select_option("overview")
     page.locator(
-        f"[data-v02-action='open-candidate-applications'][data-application-id='{target_id}']"
+        f".candidate-overview-item [data-v02-action='open-candidate-applications'][data-application-id='{target_id}']"
     ).click()
     expect(page.locator("#candidate-application-search")).to_have_value("")
     expect(page.locator("[data-candidate-app-action='filter'][data-filter='all']")).to_have_attribute(
