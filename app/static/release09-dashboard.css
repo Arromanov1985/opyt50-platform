@@ -4105,3 +4105,31 @@ body.comfortable-view .candidate-stage-card span,body.comfortable-view .candidat
 .candidate-interaction-note{font-size:12px;line-height:1.6;color:#5F7065;margin:12px 0 0}
 body.comfortable-view .candidate-interaction-type,body.comfortable-view .candidate-interaction-info small,body.comfortable-view .candidate-interaction-info span,body.comfortable-view .candidate-interaction-info time,body.comfortable-view .candidate-interaction-note{font-size:1rem}
 @media(max-width:700px){.candidate-interaction-entry{grid-template-columns:minmax(0,1fr);align-items:stretch}.candidate-interaction-type{justify-self:start}.candidate-interaction-entry .btn{width:100%}}
+
+/* Candidate saved-vacancy comparison: local selection, no new persistence. */
+.candidate-favorite-compare-panel{margin:16px 0 20px;padding:16px;border:1px solid #DDE9E0;border-radius:12px;background:#F8FBF9;min-width:0}
+.candidate-favorite-compare-controls{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.candidate-favorite-compare-controls strong{font-size:13px;color:#365844;font-variant-numeric:tabular-nums}
+.candidate-favorite-compare-hint{display:flex;flex-direction:column;gap:4px;margin-top:12px;padding:14px;border:1px dashed #C9DBCE;border-radius:10px;background:#FFF;color:#496352}
+.candidate-favorite-compare-hint strong{font-size:14px}
+.candidate-favorite-compare-hint span{font-size:12px;line-height:1.5}
+.candidate-favorite-compare-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;margin-top:14px}
+.candidate-favorite-compare-card{display:flex;flex-direction:column;gap:12px;min-width:0;padding:14px;border:1px solid #DCE8DF;border-radius:12px;background:#FFF}
+.candidate-favorite-compare-head{display:flex;flex-direction:column;align-items:flex-start;gap:5px;min-width:0}
+.candidate-favorite-compare-head h4{margin:0;font-size:16px;line-height:1.4;color:#183E2D;overflow-wrap:anywhere}
+.candidate-favorite-compare-head small{font-size:12px;line-height:1.45;color:#5A7161;overflow-wrap:anywhere}
+.candidate-favorite-compare-facts{display:grid;gap:0;margin:0}
+.candidate-favorite-compare-facts>div{display:grid;grid-template-columns:minmax(82px,.75fr) minmax(0,1.25fr);gap:8px;padding:8px 0;border-top:1px solid #E6EEE8}
+.candidate-favorite-compare-facts dt{font-size:12px;font-weight:700;color:#607568}
+.candidate-favorite-compare-facts dd{margin:0;font-size:12px;line-height:1.45;color:#273D31;overflow-wrap:anywhere}
+.saved-job-actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:8px}
+.saved-job-actions .btn{min-height:44px;white-space:normal}
+body.comfortable-view .candidate-favorite-compare-controls strong,
+body.comfortable-view .candidate-favorite-compare-hint strong,
+body.comfortable-view .candidate-favorite-compare-hint span,
+body.comfortable-view .candidate-favorite-compare-head small,
+body.comfortable-view .candidate-favorite-compare-facts dt,
+body.comfortable-view .candidate-favorite-compare-facts dd,
+body.comfortable-view .saved-job-actions .btn{font-size:1rem}
+@media(max-width:900px){.candidate-favorite-compare-grid{grid-template-columns:minmax(0,1fr)}}
+@media(max-width:700px){.saved-job-actions .btn{flex:1 1 150px}.candidate-favorite-compare-facts>div{grid-template-columns:minmax(0,1fr)}}
