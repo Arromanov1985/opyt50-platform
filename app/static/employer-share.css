@@ -63,12 +63,20 @@ h1,h2,h3,p,dd,a{overflow-wrap:anywhere}
 .public-employer-empty{grid-column:1/-1;padding:26px;background:#fff;border:1px dashed #bcd5c4;border-radius:14px;display:flex;flex-wrap:wrap;align-items:center;gap:12px 24px}
 .public-employer-empty h3{font-size:1.2em;margin:0;width:100%}
 .public-employer-empty p{margin:0;width:100%;max-width:70ch;color:#4c6757}
+.employer-reading{padding:6px 0 34px}
+.employer-reading-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px}
+.employer-reading-card{display:flex;flex-direction:column;gap:8px;min-width:0;padding:22px;border:1px solid #DCE9E0;border-radius:15px;background:#fff;text-decoration:none;color:#183E2E}
+.employer-reading-card span{font-size:.75em;font-weight:800;color:#126842;text-transform:uppercase;letter-spacing:.04em}
+.employer-reading-card strong{font-size:1.08em;line-height:1.4}
+.employer-reading-card small{margin-top:auto;color:#536B5C;font-weight:700}
+.employer-reading-card:hover{border-color:#A9CFB6;background:#F7FBF8}
 .employer-bottom{border:1px solid #d7e8db;background:#e9f4ec;border-radius:18px;padding:28px;margin-bottom:42px}
 .employer-bottom p{margin:0 0 12px;max-width:75ch}
 .employer-footer{color:#526b5a;font-size:.85em;padding-bottom:30px}
 @media(max-width:760px){
   .employer-body{grid-template-columns:1fr;padding:28px 0;gap:24px}
   .employer-jobs-grid{grid-template-columns:1fr}
+  .employer-reading-grid{grid-template-columns:1fr}
   .employer-top-inner{min-height:68px}
   .employer-top nav{order:3;flex-basis:100%;gap:8px 18px}
   .employer-bottom{padding:22px}
