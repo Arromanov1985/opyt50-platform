@@ -25,7 +25,7 @@ def test_journal_public_pages_and_no_leaks(tmp_path):
         assert index.status_code == 200
         assert index.headers["content-type"].startswith("text/html")
         assert 'href="https://stazhno.ru/journal"' in index.text
-        assert 'href="/static/journal.css?v=5"' in index.text
+        assert 'href="/static/journal.css?v=6"' in index.text
         assert 'id="reading-mode-toggle"' in index.text
         assert 'id="jr-article-search"' in index.text
         assert 'data-jr-category-filter="all"' in index.text
@@ -146,3 +146,55 @@ def test_journal_preactivation_and_approved_actions(monkeypatch, tmp_path):
         assert 'href="/#candidate-path" data-growth-action="profile_click"' in ready.text
         article = client.get("/journal/kak-proverit-vakansiyu")
         assert 'href="/#candidate-path" data-growth-action="profile_click"' in article.text
+
+
+
+def test_article_recommends_only_current_public_vacancies_and_manifest_matches(tmp_path):
+    import hashlib
+    from app.db import database
+
+    app = create_app(str(tmp_path / "journal-discovery.sqlite"))
+    headers = {"X-Requested-With": "OPYT50"}
+    with TestClient(app) as employer, TestClient(app) as visitor:
+        registered = employer.post("/api/register", headers=headers, json={
+            "role": "employer",
+            "name": "Вымышленный работодатель",
+            "company_name": "Учебный склад",
+            "email": "discovery-owner@example.invalid",
+            "password": "SyntheticDiscoveryPassword2026!",
+        })
+        assert registered.status_code == 201, registered.text
+        vacancy = employer.post("/api/employer/vacancies", headers=headers, json={
+            "title": "Кладовщик 1С",
+            "city": "Москва",
+            "skills": "Склад, учёт товаров",
+            "salary_min": 60000,
+            "salary_max": 85000,
+            "schedule": "Сменный",
+            "employment": "Полная",
+            "description": "Приёмка товара, инвентаризация и работа с учётом.",
+        })
+        assert vacancy.status_code == 201, vacancy.text
+        job_id = int(vacancy.json()["id"])
+
+        path = "/journal/cifrovye-navyki-dlya-raboty"
+        page = visitor.get(path)
+        assert page.status_code == 200
+        assert 'class="jr-opportunities"' in page.text
+        assert "Кладовщик 1С" in page.text
+        assert "Учебный склад" in page.text
+        assert f'href="/vacancies/{job_id}" data-growth-action="jobs_click"' in page.text
+        assert "без профиля и истории посетителя" in page.text
+
+        manifest = visitor.get("/api/public/journal/manifest").json()
+        assert manifest["pages"][path] == hashlib.sha256(page.content).hexdigest()
+
+        with database(app.state.db_path) as db:
+            db.execute(
+                "UPDATE vacancy_moderation SET status='rejected' WHERE vacancy_id=?",
+                (job_id,),
+            )
+        hidden = visitor.get(path)
+        assert "Кладовщик 1С" not in hidden.text
+        manifest = visitor.get("/api/public/journal/manifest").json()
+        assert manifest["pages"][path] == hashlib.sha256(hidden.content).hexdigest()
