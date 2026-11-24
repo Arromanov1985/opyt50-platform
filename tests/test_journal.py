@@ -184,7 +184,7 @@ def test_article_recommends_only_current_public_vacancies_and_manifest_matches(t
         assert "Кладовщик 1С" in page.text
         assert "Учебный склад" in page.text
         assert f'href="/vacancies/{job_id}" data-growth-action="jobs_click"' in page.text
-        assert "без профиля и истории посетителя" in page.text
+        assert "Профиль и история посетителя не используются" in page.text
 
         manifest = visitor.get("/api/public/journal/manifest").json()
         assert manifest["pages"][path] == hashlib.sha256(page.content).hexdigest()
