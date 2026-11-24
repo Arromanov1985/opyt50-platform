@@ -2,7 +2,7 @@
 'use strict';
 const $ = (selector, root = document) => root.querySelector(selector);
 const $$ = (selector, root = document) => [...root.querySelectorAll(selector)];
-const state = { user: null, mode: 'register', role: 'candidate', tab: 'overview', activeVacancy: null, editVacancy: null, activeDraft: null, employerVacancyFilter: 'all', employerVacancySearch: '', employerApplicationsVacancyFilter: 'all', employerApplicationsStatusFilter: 'all', employerApplicationsQuery: '', employerInvitationsFilter: 'all', employerInvitationsVacancyFilter: 'all', employerInvitationsQuery: '', employerInvitationsData: null, candidateInvitationsFilter: 'all', candidateInvitationsQuery: '', candidateInvitationsData: null, pendingApplicationVacancyId: null, mfaChallenge: null, mfaMethod: null, mfaCodeLength: 8, mfaPublicKey: null, mfaTotpFallback: false, actionSummary: null };
+const state = { user: null, mode: 'register', role: 'candidate', tab: 'overview', activeVacancy: null, editVacancy: null, activeDraft: null, employerVacancyFilter: 'all', employerVacancySearch: '', employerApplicationsVacancyFilter: 'all', employerApplicationsStatusFilter: 'all', employerApplicationsQuery: '', employerInvitationsFilter: 'all', employerInvitationsVacancyFilter: 'all', employerInvitationsQuery: '', employerInvitationsData: null, candidateInvitationsFilter: 'all', candidateInvitationsQuery: '', candidateInvitationsData: null, pendingApplicationVacancyId: null, mfaChallenge: null, mfaMethod: null, mfaCodeLength: 8, mfaPublicKey: null, mfaTotpFallback: false, actionSummary: null, employerWorkQueueView: null };
 const esc = value => String(value ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const money = value => Number(value || 0).toLocaleString('ru-RU') + ' ₽';
 const candidateSalaryText = value => Number(value) > 0
@@ -1279,7 +1279,10 @@ async function reloadUser() {
     state.user = previousUser && (error.networkFailure || error.httpStatus >= 500)
       ? previousUser : null;
   }
-  if (state.user?.id !== previousUserId) state.actionSummary = null;
+  if (state.user?.id !== previousUserId) {
+    state.actionSummary = null;
+    state.employerWorkQueueView = null;
+  }
   syncEmployerMatchAccount();
   updateActionBadges();
   $('#guest-actions').classList.toggle('hidden', !!state.user);
@@ -1306,7 +1309,20 @@ async function showDashboard(scroll = false) {
   if (state.user.role === 'employer') await renderEmployer();
   if (state.user.role === 'admin') await renderAdmin();
   prepareEditorForms();
-  if (scroll) $('#dashboard').scrollIntoView({behavior:'smooth',block:'start'});
+  const returningToQueue = state.user.role === 'employer' && state.tab === 'overview' &&
+    state.employerWorkQueueView?.returnPending === true;
+  if (returningToQueue) {
+    const view = state.employerWorkQueueView;
+    view.returnPending = false;
+    requestAnimationFrame(() => {
+      if (state.user?.id !== view.ownerId || state.user?.role !== 'employer' || state.tab !== 'overview') return;
+      const queue = document.querySelector('#employer-workqueue');
+      if (!queue) return;
+      const top = window.scrollY + queue.getBoundingClientRect().top;
+      const maximum = Math.max(0,document.documentElement.scrollHeight - window.innerHeight);
+      window.scrollTo({top:Math.max(0,Math.min(maximum,top + (Number(view.scrollOffset) || 0))),behavior:'auto'});
+    });
+  } else if (scroll) $('#dashboard').scrollIntoView({behavior:'smooth',block:'start'});
 }
 function resumePendingApplicationVacancy() {
   const id = Number(state.pendingApplicationVacancyId);
@@ -2329,12 +2345,75 @@ function employerWorkQueueEntries(applications, invitations) {
   }
   return tasks.sort((a, b) => a.priority - b.priority || b.activity - a.activity || b.id - a.id);
 }
-function employerWorkQueueMarkup(tasks) {
+function ensureEmployerWorkQueueView() {
+  if (state.user?.role !== 'employer') return null;
+  const ownerId = Number(state.user.id);
+  if (!Number.isSafeInteger(ownerId) || ownerId <= 0) return null;
+  const previous = state.employerWorkQueueView;
+  if (previous?.ownerId === ownerId) return previous;
+  const view = {
+    ownerId, stage: 'all', vacancy: 'all', query: '', visibleLimit: 10,
+    returnPending: false, scrollOffset: 0
+  };
+  state.employerWorkQueueView = view;
+  return view;
+}
+function rememberEmployerWorkQueueView(queue) {
+  if (!queue || state.tab !== 'overview') return;
+  const view = ensureEmployerWorkQueueView();
+  if (!view) return;
+  view.stage = queue.querySelector('[data-action="employer-workqueue-filter"][aria-pressed="true"]')?.dataset.filter || 'all';
+  view.vacancy = queue.querySelector('[data-employer-workqueue-vacancy]')?.value || 'all';
+  view.query = String(queue.querySelector('[data-employer-workqueue-search]')?.value || '');
+  view.visibleLimit = Math.max(10, Math.min(10000, Number(queue.dataset.visibleLimit) || 10));
+}
+function restoreEmployerWorkQueueView(queue) {
+  if (!queue || state.tab !== 'overview') return;
+  const view = ensureEmployerWorkQueueView();
+  if (!view) return;
+  const stage = ['all','outcome','consent','applications'].includes(view.stage) ? view.stage : 'all';
+  for (const button of queue.querySelectorAll('[data-action="employer-workqueue-filter"]')) {
+    const active = button.dataset.filter === stage;
+    button.setAttribute('aria-pressed', String(active));
+    button.classList.toggle('btn-dark',active);
+    button.classList.toggle('btn-outline',!active);
+  }
+  const select = queue.querySelector('[data-employer-workqueue-vacancy]');
+  if (select) {
+    const vacancy = String(view.vacancy || 'all');
+    select.value = [...select.options].some(option => option.value === vacancy) ? vacancy : 'all';
+  }
+  const search = queue.querySelector('[data-employer-workqueue-search]');
+  if (search) search.value = String(view.query || '');
+  queue.dataset.visibleLimit = String(Math.max(10, Math.min(10000, Number(view.visibleLimit) || 10)));
+  applyEmployerWorkQueueFilters(queue);
+  rememberEmployerWorkQueueView(queue);
+}
+function captureEmployerWorkQueueNavigation(event) {
+  if (state.user?.role !== 'employer' || state.tab !== 'overview') return;
+  const button = event.target.closest('[data-action="open-employer-invitations"],[data-v02-action="open-employer-applications"]');
+  const queue = button?.closest('#employer-workqueue');
+  if (!queue || button.disabled) return;
+  rememberEmployerWorkQueueView(queue);
+  const view = ensureEmployerWorkQueueView();
+  if (!view) return;
+  view.returnPending = true;
+  view.scrollOffset = Math.max(0, Math.round(-queue.getBoundingClientRect().top));
+}
+
+function employerWorkQueueMarkup(tasks, jobs = []) {
   const total = tasks.length;
   const visible = Math.min(total, 10);
   const count = priority => tasks.filter(task => task.priority === priority).length;
-  const vacancies = [...new Map(tasks.filter(task => task.vacancyId)
-    .map(task => [task.vacancyId, task.vacancy])).entries()]
+  const vacancyNames = new Map();
+  for (const job of jobs || []) {
+    const id = Number(job.id);
+    if (Number.isSafeInteger(id) && id > 0) vacancyNames.set(id,String(job.title || 'Вакансия №'+id));
+  }
+  for (const task of tasks) {
+    if (task.vacancyId && !vacancyNames.has(task.vacancyId)) vacancyNames.set(task.vacancyId,task.vacancy);
+  }
+  const vacancies = [...vacancyNames.entries()]
     .sort((a,b) => String(a[1]).localeCompare(String(b[1]), 'ru'));
   const vacancyOptions = vacancies.map(([id,title]) =>
     `<option value="${id}">${esc(title)}</option>`).join('');
@@ -2481,7 +2560,7 @@ async function renderEmployer() {
           <span class="section-kicker">ПРИОРИТЕТ СЕЙЧАС</span>
           <div class="overview-priority"><div><h3>${esc(nextTitle)}</h3><p class="muted">${esc(nextText)}</p></div>${nextAction}</div>
         </section>
-        ${employerWorkQueueMarkup(workQueue)}
+        ${employerWorkQueueMarkup(workQueue, jobs)}
         ${showDraftReminder ? `<section class="panel employer-draft-reminder">
           <div><span class="section-kicker">НЕЗАВЕРШЁННАЯ ВАКАНСИЯ</span><h3>Черновики: ${drafts.length}</h3>
           <p class="muted">${esc(String(recentDraft.fields?.title || '').trim() || 'Без названия')} · Последнее сохранение: ${esc(draftSavedAt(recentDraft.updated_at))}</p>
@@ -2515,6 +2594,7 @@ async function renderEmployer() {
           <p class="employer-outcome-rate">Доля положительных итогов среди завершённых знакомств: <strong>${hireConversion}%</strong></p>
         </section>
       </div>`;
+      restoreEmployerWorkQueueView(target.querySelector('#employer-workqueue'));
     } else if (state.tab === 'company') {
       const result = await api('/api/employer/company');
       target.innerHTML = employerCompanyMarkup(result);
@@ -4096,6 +4176,7 @@ function handleDashboardInput(event) {
     if (queue) {
       queue.dataset.visibleLimit = '10';
       applyEmployerWorkQueueFilters(queue);
+      rememberEmployerWorkQueueView(queue);
     }
     return;
   }
@@ -4153,6 +4234,7 @@ async function handleDashboardChange(event) {
     if (queue) {
       queue.dataset.visibleLimit = '10';
       applyEmployerWorkQueueFilters(queue);
+      rememberEmployerWorkQueueView(queue);
     }
     return;
   }
@@ -4343,6 +4425,7 @@ async function handleDashboardClick(event) {
     }
     queue.dataset.visibleLimit = '10';
     applyEmployerWorkQueueFilters(queue);
+    rememberEmployerWorkQueueView(queue);
     return;
   }
   if (action === 'employer-workqueue-reset') {
@@ -4361,6 +4444,7 @@ async function handleDashboardClick(event) {
     }
     queue.dataset.visibleLimit = '10';
     applyEmployerWorkQueueFilters(queue);
+    rememberEmployerWorkQueueView(queue);
     search?.focus({preventScroll:true});
     return;
   }
@@ -4371,6 +4455,7 @@ async function handleDashboardClick(event) {
     const previous = new Set(queue.querySelectorAll('[data-employer-workqueue-item]:not([hidden])'));
     queue.dataset.visibleLimit = String((Number(queue.dataset.visibleLimit) || 10) + 10);
     applyEmployerWorkQueueFilters(queue);
+    rememberEmployerWorkQueueView(queue);
     const firstNew = Array.from(queue.querySelectorAll('[data-employer-workqueue-item]:not([hidden])'))
       .find(card => !previous.has(card));
     if (firstNew) {
@@ -4924,9 +5009,10 @@ async function start() {
   });
   $$('[data-register]').forEach(button=>button.addEventListener('click',()=>openAuth('register',button.dataset.register)));
   $('#account-open').addEventListener('click',()=>{ if (mayLeaveEditor()) showDashboard(true); });
-  $('#logout').addEventListener('click',async()=>{ if (!mayLeaveEditor()) return; try { await api('/api/logout',{method:'POST'}); state.user=null; syncEmployerMatchAccount(); $('#account-content').innerHTML=''; await reloadUser(); await loadPublicJobs(); window.scrollTo({top:0,behavior:'smooth'}); toast('Вы вышли из аккаунта.'); } catch(e) { toast(e.message,true); }});
+  $('#logout').addEventListener('click',async()=>{ if (!mayLeaveEditor()) return; try { await api('/api/logout',{method:'POST'}); state.user=null; state.employerWorkQueueView=null; syncEmployerMatchAccount(); $('#account-content').innerHTML=''; await reloadUser(); await loadPublicJobs(); window.scrollTo({top:0,behavior:'smooth'}); toast('Вы вышли из аккаунта.'); } catch(e) { toast(e.message,true); }});
   $('#jobs-filter').addEventListener('click',loadPublicJobs);
   $('#city-filter').addEventListener('keydown',e=>{if(e.key==='Enter')loadPublicJobs();});
+  $('#account-content').addEventListener('click',captureEmployerWorkQueueNavigation,true);
   $('#account-content').addEventListener('click',handleDashboardClick);
   $('#account-content').addEventListener('input',handleDashboardInput);
   $('#account-content').addEventListener('change',handleDashboardChange);
