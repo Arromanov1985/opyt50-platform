@@ -4079,3 +4079,16 @@ body.comfortable-view .employer-analytics-note{font-size:1rem}
 .employer-analytics-attention{padding:10px 12px;border-left:3px solid #B47A30;background:#FFF8EC;border-radius:5px;color:#65471D;font-size:13px;line-height:1.6;margin:12px 0 0}
 body.comfortable-view .employer-analytics-sorting .btn,body.comfortable-view .employer-analytics-conversions small,body.comfortable-view .employer-analytics-attention{font-size:1rem}
 @media(max-width:700px){.employer-analytics-conversions{grid-template-columns:minmax(0,1fr)}.employer-analytics-sorting .btn{flex:1 1 140px}}
+
+/* Candidate dashboard: stage snapshot linking to existing application filters. */
+.candidate-stage-overview{min-width:0}
+.candidate-stage-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;margin-top:14px}
+.candidate-stage-card{display:flex;flex-direction:column;align-items:flex-start;min-width:0;gap:5px;padding:16px;text-align:left;cursor:pointer;background:#F6FAF7;border:1px solid #DCE9DE;border-radius:12px;font:inherit;color:#193E2B;min-height:120px}
+.candidate-stage-card strong{font-size:28px;line-height:1.15;font-weight:800;font-variant-numeric:tabular-nums}
+.candidate-stage-card span{font-size:15px;font-weight:750;line-height:1.4}
+.candidate-stage-card small{font-size:12px;line-height:1.5;color:#57715D;overflow-wrap:anywhere}
+.candidate-stage-card:hover{border-color:#588D68;background:#EDF6EF}
+.candidate-stage-card:focus-visible{outline:3px solid #397C52;outline-offset:3px}
+.candidate-stage-note{margin:12px 0 0;color:#64776A;font-size:12px;line-height:1.6}
+body.comfortable-view .candidate-stage-card span,body.comfortable-view .candidate-stage-card small,body.comfortable-view .candidate-stage-note{font-size:1rem}
+@media(max-width:700px){.candidate-stage-grid{grid-template-columns:minmax(0,1fr)}.candidate-stage-card{min-height:80px}}

@@ -49,7 +49,20 @@ def exercise_application_destinations(page, jobs):
         applications.append(response.json()["id"])
     target_id = applications[0]
     before = page.request.get(URL + "/api/candidate/applications").json()["applications"]
+    # API-created test records require a fresh dashboard load, not a tab switch.
+    page.reload()
+    expect(page.locator("[data-dashboard-tab-select]")).to_be_visible()
+    page.locator("[data-dashboard-tab-select]").select_option("overview")
+    stages = page.locator("#dashboard-main .candidate-stage-overview")
+    expect(stages).to_be_visible()
+    assert sum(int(card.locator("strong").inner_text()) for card in
+               stages.locator(".candidate-stage-card").all()) == len({row["id"] for row in before})
+    stages.locator('[data-filter="active"]').click()
+    expect(page.locator(".candidate-application-toolbar")).to_be_visible()
+    expect(page.locator('[data-candidate-app-action="filter"][data-filter="active"]')).to_have_attribute("aria-pressed","true")
     selector = page.locator("[data-dashboard-tab-select]")
+    selector.select_option("overview")
+    expect(page.locator(".candidate-stage-overview")).to_be_visible()
     selector.select_option("applications")
     expect(page.locator(".candidate-application-card:visible").first).to_have_attribute(
         "data-application-id", str(applications[1])
@@ -214,6 +227,8 @@ def run_overview(page):
     expect(tasks).to_contain_text("Подтвердить электронную почту")
     assert tasks.locator(".overview-action-item").count() >= 2
     expect(tasks.locator("[data-action='open-candidate-invitations']")).to_be_visible()
+    expect(dashboard.locator(".candidate-stage-overview")).to_be_visible()
+    expect(dashboard.locator(".candidate-stage-card")).to_have_count(3)
 
     # The overview must remain usable at the core mobile width.
     page.set_viewport_size({"width": 390, "height": 844})

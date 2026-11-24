@@ -363,12 +363,12 @@
       target.scrollIntoView({block: 'nearest'});
     }
 
-    async function openCandidateApplications(applicationId, vacancyId) {
+    async function openCandidateApplications(applicationId, vacancyId, requestedFilter = 'all') {
       if (state.user?.role !== 'candidate' || !mayLeaveEditor()) return;
       const ownerId = state.user.id;
       const targetId = navigationId(applicationId);
       const targetVacancy = navigationId(vacancyId);
-      candidateApplicationStageFilter = 'all';
+      candidateApplicationStageFilter = !targetId && !targetVacancy && Object.hasOwn(candidateApplicationFilterLabels,requestedFilter) ? requestedFilter : 'all';
       candidateApplicationQuery = '';
       candidateApplicationVisibleLimit = candidateApplicationPageSize;
       candidateApplicationTarget = targetId || targetVacancy
@@ -1339,7 +1339,7 @@
           toast('Изменение отмечено прочитанным.');
         }
         else if(type==='open-candidate-applications' || type==='see-applications'){
-          await openCandidateApplications(btn.dataset.applicationId, btn.dataset.vacancyId);
+          await openCandidateApplications(btn.dataset.applicationId, btn.dataset.vacancyId, btn.dataset.filter || 'all');
         }
         else if(type==='open-employer-applications'){
           const overviewQueue = btn.closest('#employer-workqueue');
