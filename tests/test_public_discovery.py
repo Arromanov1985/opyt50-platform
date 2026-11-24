@@ -79,11 +79,11 @@ def test_article_discovery_never_surfaces_privacy_restricted_employer(tmp_path: 
         page = visitor.get("/journal/cifrovye-navyki-dlya-raboty")
         assert f'href="/vacancies/{job_id}"' in page.text
 
-        with database(app.state.db_path) as db:
-            db.execute(
-                """INSERT INTO privacy_rights_requests(user_id,kind,status)
-                   VALUES(?,'stop_processing','received')""",
-                (owner_id,),
-            )
+        rights = employer.post(
+            "/api/account/privacy-requests",
+            headers=XHR,
+            json={"kind": "stop_processing"},
+        )
+        assert rights.status_code == 201, rights.text
         restricted = visitor.get("/journal/cifrovye-navyki-dlya-raboty")
         assert f'href="/vacancies/{job_id}"' not in restricted.text
