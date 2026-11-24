@@ -194,14 +194,14 @@ def employer_profile(employer_id: int, db, email_pattern, phone_pattern) -> HTML
         else '<p class="company-about">Компания пока не добавила публичное описание.</p>'
     )
     jobs = "".join(
-        f'<article class="company-job"><div class="company-job-content"><h3><a href="/vacancies/{int(job["id"])}">{_e(job["title"])}</a></h3>'
+        f'<article class="company-job"><div class="company-job-content"><h3><a href="/vacancies/{int(job["id"])}" data-growth-action="vacancy_click">{_e(job["title"])}</a></h3>'
         '<dl class="company-job-facts">'
         f'<div><dt>Оплата</dt><dd class="company-job-pay">{_e(_pay(job["salary_min"],job["salary_max"]))}</dd></div>'
         f'<div><dt>Город</dt><dd>{_e(job["city"] or "Не указан")}</dd></div>'
         f'<div><dt>График</dt><dd>{_e(job["schedule"] or "Уточняется")}</dd></div>'
         f'<div><dt>Занятость</dt><dd>{_e(job["employment"] or "Уточняется")}</dd></div>'
         '</dl></div>'
-        f'<a class="button secondary" href="/vacancies/{int(job["id"])}">Посмотреть условия</a></article>'
+        f'<a class="button secondary" href="/vacancies/{int(job["id"])}" data-growth-action="vacancy_click">Посмотреть условия</a></article>'
         for job in rows
     )
     locations = list(dict.fromkeys(str(job["city"] or "Город не указан") for job in rows))
