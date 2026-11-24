@@ -2500,6 +2500,109 @@ function applyEmployerWorkQueueFilters(queue) {
   }
 }
 
+function employerVacancyAnalyticsRows(jobs = [], applications = [], invitations = [], workQueue = []) {
+  const rows = new Map();
+  const validId = value => {
+    const id = Number(value);
+    return Number.isSafeInteger(id) && id > 0 ? id : 0;
+  };
+  function ensure(id, title = '', status = '') {
+    const key = validId(id);
+    if (!rows.has(key)) {
+      rows.set(key, {
+        id:key, title:key ? 'Вакансия №' + key : 'Без привязки к вакансии',
+        status:'archive', applications:0, invitations:0, agreements:0,
+        contacts:0, outcomes:0, hired:0, rejected:0, actions:0
+      });
+    }
+    const row = rows.get(key);
+    if (title && (row.title.startsWith('Вакансия №') || row.title === 'Без привязки к вакансии')) {
+      row.title = String(title);
+    }
+    if (status) row.status = status === 'open' ? 'open' : 'closed';
+    return row;
+  }
+  for (const job of jobs || []) {
+    const id = validId(job.id);
+    if (id) ensure(id,job.title,job.status);
+  }
+  const seenApplications = new Set();
+  for (const app of applications || []) {
+    const id = validId(app.id);
+    if (!id || seenApplications.has(id)) continue;
+    seenApplications.add(id);
+    ensure(app.vacancy_id,app.title).applications += 1;
+  }
+  const seenInvitations = new Set();
+  for (const invite of invitations || []) {
+    const id = validId(invite.id);
+    if (!id || seenInvitations.has(id)) continue;
+    seenInvitations.add(id);
+    const row = ensure(invite.vacancy_id,invite.vacancy_title);
+    row.invitations += 1;
+    const shared = Boolean(invite.contact_shared || invite.contact);
+    if (invite.status === 'accepted' || shared) row.agreements += 1;
+    if (shared) row.contacts += 1;
+    const outcome = invitationFinalOutcome(invite);
+    if (outcome === 'hired' || outcome === 'rejected') {
+      row.outcomes += 1;
+      row[outcome] += 1;
+    }
+  }
+  for (const task of workQueue || []) {
+    ensure(task.vacancyId,task.vacancy).actions += 1;
+  }
+  return [...rows.values()].sort((a,b) =>
+    Number(b.status === 'open') - Number(a.status === 'open') ||
+    b.actions - a.actions ||
+    b.applications - a.applications ||
+    a.title.localeCompare(b.title,'ru')
+  );
+}
+function employerVacancyAnalyticsMarkup(jobs, applications, invitations, workQueue) {
+  const rows = employerVacancyAnalyticsRows(jobs,applications,invitations,workQueue);
+  const open = rows.filter(row => row.status === 'open').length;
+  const closed = rows.length - open;
+  const filters = [['all','Все',rows.length],['open','Открытые',open],['closed','Остальные',closed]]
+    .map(([value,label,count]) => `<button type="button" class="btn btn-tiny ${value === 'all' ? 'btn-dark' : 'btn-outline'}" data-action="employer-analytics-filter" data-filter="${value}" aria-pressed="${value === 'all'}">${label} · ${count}</button>`).join('');
+  const metrics = [
+    ['applications','Отклики'],
+    ['invitations','Запросы'],
+    ['agreements','Согласия'],
+    ['contacts','Контакты'],
+    ['outcomes','Итоги'],
+    ['actions','Требуют действия']
+  ];
+  const cards = rows.map(row => {
+    const status = row.status === 'open' ? 'Открыта' : row.status === 'closed' ? 'Закрыта' : 'В архиве';
+    const values = metrics.map(([key,label]) => `<span class="employer-analytics-metric"><strong data-analytics-metric="${key}">${row[key]}</strong><small>${label}</small></span>`).join('');
+    const action = row.applications && row.id
+      ? `<button type="button" class="btn btn-outline btn-tiny" data-v02-action="open-employer-applications" data-filter="all" data-vacancy-id="${row.id}">Посмотреть отклики</button>`
+      : '';
+    const invitationsAction = row.invitations && row.id
+      ? `<button type="button" class="btn btn-outline btn-tiny" data-action="open-employer-invitations" data-filter="all" data-vacancy-id="${row.id}">Посмотреть знакомства</button>`
+      : '';
+    const fallbackAction = !action && !invitationsAction
+      ? '<button type="button" class="btn btn-outline btn-tiny" data-tab="vacancies">Мои вакансии</button>'
+      : '';
+    return `<article class="employer-analytics-vacancy" data-analytics-row data-analytics-vacancy-id="${row.id}" data-analytics-status="${row.status}">
+      <div class="employer-analytics-heading"><div><h4>${esc(row.title)}</h4><span class="employer-analytics-status">${status}</span></div><div class="employer-analytics-actions">${action}${invitationsAction}${fallbackAction}</div></div>
+      <div class="employer-analytics-metrics" aria-label="Показатели вакансии">${values}</div>
+      <p class="employer-analytics-outcomes">Из ${row.outcomes} итогов: положительных — ${row.hired}, не договорились — ${row.rejected}.${row.outcomes ? ' Доля положительных: ' + Math.round(100 * row.hired / row.outcomes) + '%.' : ''}</p>
+    </article>`;
+  }).join('');
+  return `<section class="panel employer-vacancy-analytics" id="employer-vacancy-analytics" aria-label="Аналитика по вакансиям">
+    <div class="split-header"><div><span class="section-kicker">АНАЛИТИКА ПО ВАКАНСИЯМ</span><h3>Результаты по каждой вакансии</h3>
+      <p class="muted">Текущий срез записей компании, включая закрытые вакансии. Данные обновляются при открытии кабинета, отдельно от быстрого разбора откликов.</p></div></div>
+    ${rows.length ? `<div class="employer-analytics-filters" role="group" aria-label="Статус вакансии">${filters}</div>
+      <p class="employer-analytics-visible" role="status" aria-live="polite">Показано <strong id="employer-analytics-visible-count">${rows.length}</strong> из ${rows.length} вакансий</p>
+      <div class="employer-analytics-list">${cards}</div>
+      <div class="employer-analytics-empty" hidden>По выбранному статусу вакансий пока нет. Выберите «Все».</div>`
+      : '<div class="empty-state"><strong>Вакансий пока нет</strong><p>Создайте вакансию, чтобы здесь появилась аналитика.</p><button type="button" class="btn btn-primary" data-tab="create">Создать вакансию</button></div>'}
+    <p class="employer-analytics-note">Отклик и приглашение — разные события: компания может направить запрос без предварительного отклика, поэтому числа по этапам не обязательно убывают. Итог означает зафиксированный результат знакомства, а не подтверждённое трудоустройство.</p>
+  </section>`;
+}
+
 async function renderEmployer() {
   const nav = [{id:'overview',label:'Обзор'},{id:'company',label:'Компания'},{id:'vacancies',label:'Мои вакансии'},{id:'create',label:'Новая вакансия'},{id:'applications',label:'Отклики'},{id:'invitations',label:'Знакомства и контакты'},{id:'security',label:'Безопасность'}];
   if (state.tab === 'edit') nav.splice(2, 0, {id:'edit',label:'Редактирование'});
@@ -2597,6 +2700,7 @@ async function renderEmployer() {
           </div>
           <p class="employer-outcome-rate">Доля положительных итогов среди завершённых знакомств: <strong>${hireConversion}%</strong></p>
         </section>
+        ${employerVacancyAnalyticsMarkup(jobs,applications,invitations,workQueue)}
       </div>`;
       restoreEmployerWorkQueueView(target.querySelector('#employer-workqueue'));
     } else if (state.tab === 'company') {
@@ -4756,6 +4860,29 @@ async function handleDashboardClick(event) {
     }
     if (action === 'more-vacancy-history') {
       await loadMoreEmployerVacancyHistory(btn,id);
+      return;
+    }
+    if (action === 'employer-analytics-filter') {
+      if (state.user?.role !== 'employer' || state.tab !== 'overview') return;
+      const root = btn.closest('#employer-vacancy-analytics');
+      const selected = btn.dataset.filter;
+      if (!root || !['all','open','closed'].includes(selected)) return;
+      for (const filter of root.querySelectorAll('[data-action="employer-analytics-filter"]')) {
+        const active = filter.dataset.filter === selected;
+        filter.setAttribute('aria-pressed',String(active));
+        filter.classList.toggle('btn-dark',active);
+        filter.classList.toggle('btn-outline',!active);
+      }
+      let visible = 0;
+      for (const row of root.querySelectorAll('[data-analytics-row]')) {
+        row.hidden = selected !== 'all' &&
+          (selected === 'open' ? row.dataset.analyticsStatus !== 'open' : row.dataset.analyticsStatus === 'open');
+        if (!row.hidden) visible += 1;
+      }
+      const count = root.querySelector('#employer-analytics-visible-count');
+      if (count) count.textContent = String(visible);
+      const empty = root.querySelector('.employer-analytics-empty');
+      if (empty) empty.hidden = visible !== 0;
       return;
     }
     if (action === 'filter-employer-jobs') {
