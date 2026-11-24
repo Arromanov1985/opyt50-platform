@@ -51,7 +51,9 @@ def test_shareable_vacancy_page_shows_public_information_only(tmp_path: Path):
         assert "Москва" in page.text
         assert "от 50 000 до 80 000 ₽" in page.text
         assert "Сменный" in page.text
-        assert f'href="/?vacancy={job_id}#jobs"' in page.text
+        assert f'href="/?vacancy={job_id}#jobs" data-growth-action="apply_click"' in page.text
+        assert 'data-growth-action="company_click"' in page.text
+        assert 'data-growth-action="jobs_click"' in page.text
         assert f'https://stazhno.ru/vacancies/{job_id}' in page.text
         assert "Контакты" not in page.text or "Контакты не" in page.text
         assert "private-owner@example.invalid" not in page.text
