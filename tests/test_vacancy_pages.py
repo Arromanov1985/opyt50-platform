@@ -54,6 +54,10 @@ def test_shareable_vacancy_page_shows_public_information_only(tmp_path: Path):
         assert f'href="/?vacancy={job_id}#jobs" data-growth-action="apply_click"' in page.text
         assert 'data-growth-action="company_click"' in page.text
         assert 'data-growth-action="jobs_click"' in page.text
+        assert "Полезно перед откликом" in page.text
+        assert 'class="reading-grid"' in page.text
+        assert 'href="/journal/kak-proverit-vakansiyu"' in page.text
+        assert "без данных о посетителе" in page.text
         assert f'https://stazhno.ru/vacancies/{job_id}' in page.text
         assert "Контакты" not in page.text or "Контакты не" in page.text
         assert "private-owner@example.invalid" not in page.text
