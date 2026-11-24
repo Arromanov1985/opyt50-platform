@@ -1934,6 +1934,48 @@ function candidateApplicationStageOverview(applications = []) {
     <p class="candidate-stage-note">Это не историческая статистика: этапы меняются вместе со статусами записей. Контактные данные здесь не отображаются.</p>
   </section>`;
 }
+function candidateInteractionFeedMarkup(applications = [], invitations = []) {
+  // Display one most recent server-side event per record. Do not infer events from dates,
+  // combine unrelated records, or copy any contact fields into the overview.
+  const entries = [];
+  const seen = new Set();
+  function add(item, type) {
+    const id = Number(item?.id);
+    if (!Number.isSafeInteger(id) || id <= 0 || seen.has(type + ':' + id)) return;
+    seen.add(type + ':' + id);
+    const timeline = Array.isArray(item.timeline) ? item.timeline : [];
+    const last = timeline.length ? timeline[timeline.length - 1] : null;
+    const rawDate = last?.created_at || item.updated_at || item.created_at || '';
+    const iso = String(rawDate).trim().replace(' ', 'T');
+    const parsed = Date.parse(iso && /(?:Z|[+-]\d{2}:?\d{2})$/i.test(iso) ? iso : iso + 'Z');
+    const activity = Number.isFinite(parsed) ? parsed : 0;
+    const status = type === 'application'
+      ? candidateWorkflowStatus(item,statusTitle[item.status] || item.status || 'В процессе')
+      : candidateWorkflowStatus(item,statusTitle[item.status] || item.status || 'Знакомство');
+    const button = type === 'application'
+      ? `<button type="button" class="btn btn-outline btn-tiny" data-v02-action="open-candidate-applications" data-application-id="${id}">Открыть отклик</button>`
+      : `<button type="button" class="btn btn-outline btn-tiny" data-action="open-candidate-invitations" data-invitation-id="${id}">Открыть знакомство</button>`;
+    entries.push({id,type,activity,rawDate,status,title:String(item.title || item.vacancy_title || 'Вакансия'),
+      company:String(item.company_name || ''),event:last?.event ? String(activityLabels[last.event] || last.event) : '',button});
+  }
+  for (const item of applications) add(item,'application');
+  for (const item of invitations) add(item,'invitation');
+  entries.sort((a,b) => b.activity - a.activity || b.id - a.id);
+  const recent = entries.slice(0,6);
+  return `<section class="panel candidate-interaction-feed" aria-label="Последние взаимодействия">
+    <div class="split-header"><div><span class="section-kicker">ИСТОРИЯ ВЗАИМОДЕЙСТВИЙ</span><h3>Последние события</h3>
+    <p class="muted">Отклики и знакомства в одной хронологии. Полная история доступна внутри каждой записи.</p></div></div>
+    ${recent.length ? `<ol class="candidate-interaction-list">${recent.map(entry => `<li class="candidate-interaction-entry">
+      <span class="candidate-interaction-type">${entry.type === 'application' ? 'Отклик' : 'Знакомство'}</span>
+      <div class="candidate-interaction-info"><strong>${esc(entry.title)}</strong><small>${esc(entry.company)}</small>
+      <span>${esc(entry.status)}${entry.event ? ' · ' + esc(entry.event) : ''}</span>
+      ${entry.activity ? `<time>${esc(formatActivityTimestamp(entry.rawDate))}</time>` : ''}</div>
+      ${entry.button}
+    </li>`).join('')}</ol>` :
+    '<div class="empty-state"><strong>Взаимодействий пока нет</strong><p>После первых откликов или приглашений они появятся здесь.</p><button type="button" class="btn btn-outline" data-tab="offers">Подходящие вакансии</button></div>'}
+    ${entries.length > 6 ? '<p class="candidate-interaction-note">Показаны 6 последних записей. Для полной истории откройте «Отклики» или «Знакомства».</p>' : ''}
+  </section>`;
+}
 function overviewTaskListMarkup(title, items) {
   // Actions are markup assembled only from fixed, local buttons. Text from
   // user-owned content is always escaped before rendering.
@@ -2106,6 +2148,7 @@ async function renderCandidate() {
         </section>
         ${overviewTaskListMarkup('Что сделать дальше', candidateTasks)}
         ${candidateApplicationStageOverview(applications)}
+        ${candidateInteractionFeedMarkup(applications,invitations)}
         ${pendingInvitationsList.length ? `<section class="panel candidate-overview-section candidate-invitations-preview"><div class="split-header"><div><span class="section-kicker">ТРЕБУЕТ ОТВЕТА</span><h3>Новые приглашения</h3><p class="muted">Решение за вами: контакты остаются закрытыми, пока вы не согласитесь.</p></div><button class="btn btn-outline btn-tiny" data-tab="invitations">Все знакомства</button></div><div class="candidate-overview-list">${pendingInvitationsList.slice(0,2).map(candidateOverviewInvitationCard).join('')}</div></section>` : ''}
         <section class="candidate-overview-grid">
           <div class="panel candidate-overview-section">
