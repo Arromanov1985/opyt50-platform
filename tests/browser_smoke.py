@@ -619,6 +619,9 @@ def run_browser(page, playwright):
     # Wait until the preceding dashboard navigation has finished all its GETs.
     # Only requests initiated *after* this point belong to filter interactions.
     page.wait_for_load_state("networkidle")
+    # A local-only control must preserve this actual DOM node, rather than
+    # rebuilding the dashboard and losing keyboard focus or pagination.
+    work_queue.evaluate("(node) => { node.dataset.filterProbe = 'unchanged'; }")
     # Stage buttons, vacancy selection and type-ahead search are local-only.
     queue_reads = []
     def watch_queue_reads(request):
@@ -664,7 +667,9 @@ def run_browser(page, playwright):
     expect(work_queue.locator("#employer-workqueue-matched")).to_have_text("2")
     expect(work_queue.locator("[data-employer-workqueue-item]:visible")).to_have_count(2)
     work_search.fill("")
-    assert not queue_reads, f"Overview queue controls must not reload employer lists: {queue_reads}"
+    assert work_queue.get_attribute("data-filter-probe") == "unchanged", (
+        f"Queue unexpectedly re-rendered during local filtering; concurrent GETs: {queue_reads}"
+    )
     assert not queue_writes, "Overview queue controls must not mutate candidates"
     page.remove_listener("request", watch_queue_reads)
     expect(work_queue.locator("[data-employer-workqueue-item]:visible")).to_have_count(10)
