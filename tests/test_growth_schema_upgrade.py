@@ -1,4 +1,4 @@
-"""Existing daily counters survive the addition of the community CTA."""
+"""Existing daily counters survive expansion of the public funnel actions."""
 import sqlite3
 
 import pytest
@@ -42,8 +42,9 @@ def test_sqlite_upgrade_preserves_counts_and_constraints(tmp_path, monkeypatch):
         columns = db.execute("PRAGMA table_info(growth_daily_counts)").fetchall()
         assert [row["name"] for row in columns] == ["event_date", "source", "action", "total"]
         assert [row["pk"] for row in columns] == [1, 2, 3, 0]
-        db.execute("INSERT INTO growth_daily_counts VALUES(?,?,?,?)",
-                   ("2026-11-03", "journal", "community_click", 2))
+        for action in ("community_click", "company_click", "vacancy_click", "apply_click"):
+            db.execute("INSERT INTO growth_daily_counts VALUES(?,?,?,?)",
+                       ("2026-11-03", "journal", action, 2))
 
     for action, total in (("unknown", 1), ("community_click", -1)):
         with pytest.raises(sqlite3.IntegrityError):
@@ -73,6 +74,7 @@ def test_sqlite_upgrade_rolls_back_if_later_startup_fails(tmp_path, monkeypatch)
             "SELECT sql FROM sqlite_master WHERE name='growth_daily_counts'"
         ).fetchone()["sql"]
         assert "community_click" not in definition
+        assert "apply_click" not in definition
         assert db.execute(
             "SELECT 1 FROM sqlite_master WHERE name='growth_daily_counts_upgrade'"
         ).fetchone() is None
