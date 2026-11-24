@@ -2447,6 +2447,10 @@ function employerWorkQueueMarkup(tasks, jobs = []) {
       <span><strong>${count(0)}</strong> Ждут итога</span><span><strong>${count(1)}</strong> Есть согласие</span>
       <span><strong>${count(2) + count(3)}</strong> Отклики на разбор</span>
     </div>
+    ${count(2) + count(3) > 0 ? `<div class="employer-workqueue-quick-start">
+      <div><strong>Разобрать отклики подряд</strong><p class="muted">Показываем по одному кандидату. После вашего решения — следующий, без возврата в общий список.</p></div>
+      <button type="button" class="btn btn-primary" data-v02-action="open-employer-applications" data-filter="attention" data-quick="true">Начать разбор откликов →</button>
+    </div>` : ''}
     ${total ? `
       <div class="employer-workqueue-tools">
         <div class="employer-workqueue-stage-filter" role="group" aria-label="Фильтр задач по этапу">${stageButtons}</div>
