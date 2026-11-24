@@ -193,7 +193,7 @@ def journal_article(
         '<section class="jr-opportunities" aria-label="Актуальные вакансии">'
         '<div class="jr-opportunities-heading"><div><span class="jr-kicker">СЛЕДУЮЩИЙ ШАГ</span>'
         '<h2>Актуальные вакансии</h2></div><a href="/#jobs" data-growth-action="jobs_click">Все вакансии →</a></div>'
-        '<p>Подбор строится только по содержанию этой статьи и открытых вакансий — без профиля и истории посетителя.</p>'
+        '<p>Порядок учитывает содержание статьи; если явного совпадения нет, показываются свежие открытые вакансии. Профиль и история посетителя не используются.</p>'
         f'<div class="jr-grid">{job_cards}</div></section>'
         if job_cards else ""
     )
