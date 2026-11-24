@@ -1947,7 +1947,7 @@ function candidateInteractionFeedMarkup(applications = [], invitations = []) {
     const last = timeline.length ? timeline[timeline.length - 1] : null;
     const rawDate = last?.created_at || item.updated_at || item.created_at || '';
     const iso = String(rawDate).trim().replace(' ', 'T');
-    const parsed = Date.parse(iso && /(?:Z|[+-]\\d{2}:?\\d{2})$/i.test(iso) ? iso : iso + 'Z');
+    const parsed = Date.parse(iso && /(?:Z|[+-]\d{2}:?\d{2})$/i.test(iso) ? iso : iso + 'Z');
     const activity = Number.isFinite(parsed) ? parsed : 0;
     const status = type === 'application'
       ? candidateWorkflowStatus(item,statusTitle[item.status] || item.status || 'В процессе')
