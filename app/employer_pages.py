@@ -53,14 +53,14 @@ def employer_page(data: dict) -> HTMLResponse:
     )
     cards = "".join(
         '<article class="public-employer-job">'
-        f'<h3><a href="/vacancies/{int(job["id"])}">{_e(job["title"])}</a></h3>'
+        f'<h3><a href="/vacancies/{int(job["id"])}" data-growth-action="vacancy_click">{_e(job["title"])}</a></h3>'
         '<dl class="employer-job-facts">'
         f'<div><dt>Оплата</dt><dd class="job-pay">{_e(_pay(job.get("salary_min"), job.get("salary_max")))}</dd></div>'
         f'<div><dt>Город</dt><dd>{_e(job.get("city") or "Не указан")}</dd></div>'
         f'<div><dt>График</dt><dd>{_e(job.get("schedule") or "Уточняется")}</dd></div>'
         f'<div><dt>Занятость</dt><dd>{_e(job.get("employment") or "Уточняется")}</dd></div>'
         '</dl>'
-        f'<a class="employer-job-link" href="/vacancies/{int(job["id"])}">Посмотреть вакансию</a>'
+        f'<a class="employer-job-link" href="/vacancies/{int(job["id"])}" data-growth-action="vacancy_click">Посмотреть вакансию</a>'
         '</article>'
         for job in jobs
     )
@@ -69,7 +69,7 @@ def employer_page(data: dict) -> HTMLResponse:
             '<div class="public-employer-empty"><h3>Пока нет открытых предложений</h3>'
             '<p>У этой компании сейчас нет опубликованных вакансий. '
             'Сравните предложения других работодателей или вернитесь на эту страницу позже.</p>'
-            '<a class="employer-button secondary" href="/#jobs">Все вакансии СТАЖНО</a>'
+            '<a class="employer-button secondary" href="/#jobs" data-growth-action="jobs_click">Все вакансии СТАЖНО</a>'
             '<a class="employer-job-link" href="/employers">Компании с открытыми вакансиями →</a></div>'
         )
     description = _e((str(company.get("about") or "").strip()[:150]) or
@@ -102,7 +102,7 @@ def employer_page(data: dict) -> HTMLResponse:
 {f'<div class="employer-badges" aria-label="Отметки компании">{badge_html}</div>' if badges else ''}
 <div class="employer-hero-actions">{primary_action}<a class="employer-about-link" href="#company-about">О компании и проверках</a></div>
 </section>
-<section class="employer-jobs" id="company-jobs" aria-labelledby="company-jobs-title"><div class="employer-section-heading"><h2 id="company-jobs-title">Открытые вакансии <span>{len(jobs)}</span></h2><a href="/#jobs">Все вакансии СТАЖНО →</a></div><p class="employer-section-note">Сравните основные условия. Обязанности и требования — на странице выбранной вакансии.</p><div class="employer-jobs-grid">{cards}</div></section>
+<section class="employer-jobs" id="company-jobs" aria-labelledby="company-jobs-title"><div class="employer-section-heading"><h2 id="company-jobs-title">Открытые вакансии <span>{len(jobs)}</span></h2><a href="/#jobs" data-growth-action="jobs_click">Все вакансии СТАЖНО →</a></div><p class="employer-section-note">Сравните основные условия. Обязанности и требования — на странице выбранной вакансии.</p><div class="employer-jobs-grid">{cards}</div></section>
 <section class="employer-body" id="company-about" aria-labelledby="company-about-title">
 <div><h2 id="company-about-title">О компании</h2><p class="employer-description">{about}</p></div>
 <aside class="employer-summary"><h3>Что означают отметки</h3>
