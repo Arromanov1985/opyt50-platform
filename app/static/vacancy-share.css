@@ -37,12 +37,19 @@ h2{font-size:22px;margin:0 0 12px}
 .button.primary:hover{background:#075433}
 .button.secondary{border:1px solid #B9D6C3;color:#184D38;background:#fff}
 .tips{margin:20px 0}
-.tips p{margin:0 0 8px;color:#4B6657}
+.tips p{margin:0 0 18px;color:#4B6657}
+.reading-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
+.reading-card{display:flex;flex-direction:column;gap:7px;min-width:0;padding:18px;border:1px solid #DCE9E2;border-radius:14px;background:#F7FBF8;text-decoration:none;color:#173D2E}
+.reading-card span{font-size:12px;font-weight:800;color:#0D8350;text-transform:uppercase;letter-spacing:.04em}
+.reading-card strong{font-size:17px;line-height:1.35}
+.reading-card small{margin-top:auto;color:#4B6657;font-size:13px;font-weight:700}
+.reading-card:hover{border-color:#A9D0B7;background:#F0F8F3}
 .share-footer{display:flex;justify-content:space-between;gap:16px;flex-wrap:wrap;color:#698073;padding:10px 0 38px;font-size:13px}
 @media(max-width:650px){
   .share-header .wrap{min-height:70px;align-items:flex-start;flex-direction:column;justify-content:center;padding:10px 0}
   .share-header .brand{font-size:22px}
   .facts{grid-template-columns:1fr}
+  .reading-grid{grid-template-columns:1fr}
   .facts>div{padding:11px 14px}
   .share-actions{display:grid}
   .button{width:100%}
