@@ -163,6 +163,7 @@ def test_public_funnel_sources_are_vetted_and_aggregated_without_identity(tmp_pa
         assert send(visitor, f"vacancy:{vacancy_id}", "apply_click").status_code == 204
         assert send(visitor, f"company:{employer_id}", "view").status_code == 204
         assert send(visitor, f"company:{employer_id}", "vacancy_click").status_code == 204
+        assert send(visitor, f"company:{employer_id}", "jobs_click").status_code == 204
         assert send(visitor, "vacancy:999999", "view").status_code == 422
         assert send(visitor, "company:999999", "view").status_code == 422
 
@@ -173,15 +174,19 @@ def test_public_funnel_sources_are_vetted_and_aggregated_without_identity(tmp_pa
         assert summary["journal_requests"] == 0
         assert summary["public_vacancy_views"] == 1
         assert summary["public_company_views"] == 1
+        assert summary["jobs_clicks"] == 0  # company browsing must not inflate journal → jobs
         assert summary["company_clicks"] == 1
         assert summary["vacancy_clicks"] == 1
         assert summary["apply_clicks"] == 1
         rows = {row["source"]: row for row in data["by_source"]}
         assert rows[f"vacancy:{vacancy_id}"]["kind"] == "vacancy"
         assert rows[f"company:{employer_id}"]["kind"] == "company"
+        assert rows[f"company:{employer_id}"]["jobs_click"] == 1
         assert "private-funnel@example.invalid" not in str(data)
 
         with database(app.state.db_path) as db:
             db.execute("UPDATE vacancies SET status='closed' WHERE id=?", (vacancy_id,))
         assert send(visitor, f"vacancy:{vacancy_id}", "view").status_code == 422
-        assert send(visitor, f"company:{employer_id}", "view").status_code == 422
+        # The public company page remains available as an empty state.
+        assert visitor.get(f"/companies/{employer_id}").status_code == 200
+        assert send(visitor, f"company:{employer_id}", "view").status_code == 204
