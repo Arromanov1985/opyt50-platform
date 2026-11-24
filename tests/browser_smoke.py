@@ -581,6 +581,13 @@ def run_browser(page, playwright):
                                       "email": "private-queue@example.invalid",
                                       "phone": "+7 999 000 00 01"}),
     ]
+    # Keep one task in another *existing* employer vacancy. Filters must
+    # distinguish tasks by vacancy without changing server-side records.
+    all_employer_jobs = page.request.get(URL + "/api/employer/vacancies").json()["jobs"]
+    second_vacancy_id = next(int(job["id"]) for job in all_employer_jobs
+                             if int(job["id"]) != sample_vacancy_id)
+    fictional_queue_apps[-1]["vacancy_id"] = second_vacancy_id
+    fictional_queue_apps[-1]["title"] = "Другая учебная вакансия"
 
     def fake_workqueue_applications(route):
         assert route.request.method == "GET"
@@ -609,6 +616,55 @@ def run_browser(page, playwright):
     expect(queue_items.nth(1)).to_have_attribute("data-workqueue-id", "97001")
     assert "PRIVATE_QUEUE_NAME" not in work_queue.inner_html()
     assert "private-queue@example.invalid" not in work_queue.inner_html()
+    # Stage buttons, vacancy selection and type-ahead search are local-only.
+    queue_reads = []
+    def watch_queue_reads(request):
+        if request.method == "GET" and (request.url.endswith("/api/employer/applications") or
+                                        request.url.endswith("/api/employer/invitations")):
+            queue_reads.append(request.url)
+    page.on("request", watch_queue_reads)
+    queue_filter = work_queue.locator("[data-action='employer-workqueue-filter']")
+    expect(queue_filter).to_have_count(4)
+    outcome_filter = work_queue.locator("[data-action='employer-workqueue-filter'][data-filter='outcome']")
+    consent_filter = work_queue.locator("[data-action='employer-workqueue-filter'][data-filter='consent']")
+    application_filter = work_queue.locator("[data-action='employer-workqueue-filter'][data-filter='applications']")
+    all_filter = work_queue.locator("[data-action='employer-workqueue-filter'][data-filter='all']")
+    outcome_filter.click()
+    expect(outcome_filter).to_have_attribute("aria-pressed", "true")
+    expect(work_queue.locator("[data-employer-workqueue-item]:visible")).to_have_count(1)
+    expect(work_queue.locator("[data-employer-workqueue-item]:visible")).to_have_attribute("data-workqueue-id","97002")
+    consent_filter.click()
+    expect(work_queue.locator("[data-employer-workqueue-item]:visible")).to_have_attribute("data-workqueue-id","97001")
+    application_filter.click()
+    expect(work_queue.locator("#employer-workqueue-matched")).to_have_text("25")
+    expect(work_queue.locator("[data-employer-workqueue-item]:visible")).to_have_count(10)
+    all_filter.click()
+    expect(work_queue.locator("#employer-workqueue-matched")).to_have_text("27")
+    vacancy_filter = work_queue.locator("[data-employer-workqueue-vacancy]")
+    vacancy_filter.select_option(str(second_vacancy_id))
+    expect(work_queue.locator("#employer-workqueue-matched")).to_have_text("1")
+    expect(work_queue.locator("[data-employer-workqueue-item]:visible")).to_have_attribute("data-workqueue-id","70024")
+    work_search = work_queue.locator("[data-employer-workqueue-search]")
+    work_search.fill("  ТЕСТОВЫЙ СПЕЦИАЛИСТ 24 ")
+    expect(work_queue.locator("[data-employer-workqueue-item]:visible")).to_have_count(1)
+    work_search.fill("нет-такого-кандидата")
+    expect(work_queue.locator("[data-employer-workqueue-empty]")).to_be_visible()
+    expect(work_queue.locator("#employer-workqueue-matched")).to_have_text("0")
+    expect(work_queue.locator("[data-action='employer-workqueue-more']")).to_be_hidden()
+    work_queue.locator("[data-action='employer-workqueue-reset']").click()
+    expect(work_search).to_be_focused()
+    expect(work_search).to_have_value("")
+    expect(vacancy_filter).to_have_value("all")
+    expect(all_filter).to_have_attribute("aria-pressed", "true")
+    expect(work_queue.locator("[data-employer-workqueue-empty]")).to_be_hidden()
+    work_search.fill("кЛаДоВщИк")
+    expect(work_queue.locator("#employer-workqueue-matched")).to_have_text("2")
+    expect(work_queue.locator("[data-employer-workqueue-item]:visible")).to_have_count(2)
+    work_search.fill("")
+    assert not queue_reads, "Overview queue controls must not reload employer applications or invitations"
+    assert not queue_writes, "Overview queue controls must not mutate candidates"
+    page.remove_listener("request", watch_queue_reads)
+    expect(work_queue.locator("[data-employer-workqueue-item]:visible")).to_have_count(10)
     work_queue.locator("[data-action='employer-workqueue-more']").click()
     expect(work_queue.locator("[data-employer-workqueue-item]:visible")).to_have_count(20)
     expect(work_queue.locator("#employer-workqueue-visible")).to_have_text("20")
@@ -619,11 +675,11 @@ def run_browser(page, playwright):
     page.set_viewport_size({"width": 390, "height": 844})
     assert page.evaluate("""() => {
       const queue = document.querySelector('#employer-workqueue');
-      const buttons = [...queue.querySelectorAll('button')].filter(button =>
-        button.getClientRects().length > 0);
+      const controls = [...queue.querySelectorAll('button,input,select')].filter(element =>
+        element.getClientRects().length > 0);
       return queue.scrollWidth <= queue.clientWidth + 3 &&
-        buttons.every(button => button.getBoundingClientRect().height >= 44);
-    }"""), "Employer queue must fit a mobile viewport and have touch targets"
+        controls.every(element => element.getBoundingClientRect().height >= 44);
+    }"""), "Employer queue and filters must fit a mobile viewport with touch targets"
     page.set_viewport_size({"width": 1280, "height": 800})
     # Last fictional application is beyond the first 20 in the target screen.
     work_queue.locator("[data-workqueue-kind='application'][data-workqueue-id='70000'] button").click()
