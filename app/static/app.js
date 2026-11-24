@@ -1902,6 +1902,38 @@ function candidateOverviewInvitationCard(item) {
     <button type="button" class="btn btn-primary btn-tiny" data-action="open-candidate-invitations" data-filter="decision" data-invitation-id="${Number(item.id)}">Ответить на приглашение →</button>
   </article>`;
 }
+function candidateApplicationStageOverview(applications = []) {
+  // Match the existing application list's buckets, counting each server record once.
+  const seen = new Set();
+  const counts = {all:0,reply:0,active:0,closed:0};
+  for (const item of applications) {
+    const id = Number(item.id);
+    if (!Number.isSafeInteger(id) || id <= 0 || seen.has(id)) continue;
+    seen.add(id);
+    let bucket = 'active';
+    if (item.invitation_status === 'sent' &&
+        !['withdrawn','rejected','hired'].includes(item.status)) bucket = 'reply';
+    else if (['withdrawn','rejected','hired'].includes(item.status) ||
+             item.invitation_status === 'declined') bucket = 'closed';
+    counts.all += 1;
+    counts[bucket] += 1;
+  }
+  const stages = [
+    ['reply','Требуют ответа','Проверьте запросы на знакомство'],
+    ['active','В работе','Работодатель рассматривает отклики'],
+    ['closed','Завершённые','Отказы, итоги и отозванные отклики']
+  ];
+  return `<section class="panel candidate-stage-overview" aria-label="Мои отклики по этапам">
+    <div class="split-header"><div><span class="section-kicker">МОЯ ВОРОНКА</span><h3>Отклики по этапам</h3>
+      <p class="muted">Текущее состояние ваших откликов. Прямые приглашения без отклика смотрите в разделе «Знакомства».</p></div>
+      <button type="button" class="btn btn-outline btn-tiny" data-v02-action="open-candidate-applications">Все отклики · ${counts.all}</button></div>
+    <div class="candidate-stage-grid">${stages.map(([key,label,hint]) =>
+      `<button type="button" class="candidate-stage-card" data-v02-action="open-candidate-applications" data-filter="${key}" aria-label="${label}: ${counts[key]}. Открыть список">
+        <strong>${counts[key]}</strong><span>${label}</span><small>${hint}</small>
+      </button>`).join('')}</div>
+    <p class="candidate-stage-note">Это не историческая статистика: этапы меняются вместе со статусами записей. Контактные данные здесь не отображаются.</p>
+  </section>`;
+}
 function overviewTaskListMarkup(title, items) {
   // Actions are markup assembled only from fixed, local buttons. Text from
   // user-owned content is always escaped before rendering.
@@ -2073,6 +2105,7 @@ async function renderCandidate() {
           <button type="button" class="overview-stat-card" data-tab="favorites"><strong>${favorites.length}</strong><span>Избранное</span><small>Сохранённые вакансии</small></button>
         </section>
         ${overviewTaskListMarkup('Что сделать дальше', candidateTasks)}
+        ${candidateApplicationStageOverview(applications)}
         ${pendingInvitationsList.length ? `<section class="panel candidate-overview-section candidate-invitations-preview"><div class="split-header"><div><span class="section-kicker">ТРЕБУЕТ ОТВЕТА</span><h3>Новые приглашения</h3><p class="muted">Решение за вами: контакты остаются закрытыми, пока вы не согласитесь.</p></div><button class="btn btn-outline btn-tiny" data-tab="invitations">Все знакомства</button></div><div class="candidate-overview-list">${pendingInvitationsList.slice(0,2).map(candidateOverviewInvitationCard).join('')}</div></section>` : ''}
         <section class="candidate-overview-grid">
           <div class="panel candidate-overview-section">
