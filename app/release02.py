@@ -1067,7 +1067,7 @@ def install_routes(app) -> None:
                LEFT JOIN vacancy_moderation vm ON vm.vacancy_id=v.id
                WHERE v.employer_id=? AND v.status='open'
                  AND COALESCE(vm.status,'approved')='approved'
-               ORDER BY v.id DESC LIMIT 20""",
+               ORDER BY v.id DESC LIMIT 50""",
             (employer_id,),
         ).fetchall()
         trust = employer_trust(db, employer_id)
