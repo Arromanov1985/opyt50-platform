@@ -49,6 +49,10 @@ def exercise_application_destinations(page, jobs):
         applications.append(response.json()["id"])
     target_id = applications[0]
     before = page.request.get(URL + "/api/candidate/applications").json()["applications"]
+    # API-created test records are not in the already-rendered overview.
+    # Reload the existing overview before asserting the current server snapshot.
+    page.locator("[data-dashboard-tab-select]").select_option("applications")
+    page.locator("[data-dashboard-tab-select]").select_option("overview")
     stages = page.locator("#dashboard-main .candidate-stage-overview")
     expect(stages).to_be_visible()
     assert sum(int(card.locator("strong").inner_text()) for card in
