@@ -26,8 +26,13 @@ document.addEventListener('DOMContentLoaded', () => {
     ? 'journal'
     : path.startsWith('/journal/paths/') ? 'path:' + path.slice('/journal/paths/'.length)
     : path === '/journal/paths' ? ''
-    : path.startsWith('/journal/') ? path.slice('/journal/'.length) : '';
-  if (!source || source.length > 90 || !/^(?:path:)?[a-z0-9]+(?:-[a-z0-9]+)*$/.test(source)) return;
+    : path.startsWith('/journal/') ? path.slice('/journal/'.length)
+    : /^\/vacancies\/[1-9][0-9]*$/.test(path) ? 'vacancy:' + path.slice('/vacancies/'.length)
+    : /^\/(?:companies|employers)\/[1-9][0-9]*$/.test(path)
+      ? 'company:' + path.split('/').pop()
+      : '';
+  if (!source || source.length > 90 ||
+      !/^(?:(?:path|vacancy|company):)?[a-z0-9]+(?:-[a-z0-9]+)*$/.test(source)) return;
   function sendGrowthEvent(action) {
     try {
       fetch('/api/growth/event', {
@@ -45,7 +50,7 @@ document.addEventListener('DOMContentLoaded', () => {
   document.querySelectorAll('a[data-growth-action]').forEach(link => {
     link.addEventListener('click', () => {
       const action = link.getAttribute('data-growth-action');
-      if (action === 'jobs_click' || action === 'profile_click' || action === 'community_click') {
+      if (['jobs_click','profile_click','community_click','company_click','vacancy_click','apply_click'].includes(action)) {
         sendGrowthEvent(action);
       }
     });
