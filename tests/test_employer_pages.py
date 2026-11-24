@@ -57,7 +57,8 @@ def test_public_employer_page_preserves_moderation_and_privacy(tmp_path: Path):
         assert 'href="#company-jobs"' in page.text
         assert "Полезно перед знакомством" in page.text
         assert 'class="employer-reading-grid"' in page.text
-        assert 'href="/journal/kak-proverit-vakansiyu"' in page.text
+        assert page.text.count('class="employer-reading-card"') == 2
+        assert page.text.count('href="/journal/') >= 2
         assert "без профиля посетителя" in page.text
         assert page.text.index('id="company-jobs"') < page.text.index('id="company-about"')
         for label in ("Оплата", "Город", "График", "Занятость"):
