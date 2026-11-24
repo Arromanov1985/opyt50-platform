@@ -49,9 +49,9 @@ def exercise_application_destinations(page, jobs):
         applications.append(response.json()["id"])
     target_id = applications[0]
     before = page.request.get(URL + "/api/candidate/applications").json()["applications"]
-    # API-created test records are not in the already-rendered overview.
-    # Reload the existing overview before asserting the current server snapshot.
-    page.locator("[data-dashboard-tab-select]").select_option("applications")
+    # API-created test records require a fresh dashboard load, not a tab switch.
+    page.reload()
+    expect(page.locator("[data-dashboard-tab-select]")).to_be_visible()
     page.locator("[data-dashboard-tab-select]").select_option("overview")
     stages = page.locator("#dashboard-main .candidate-stage-overview")
     expect(stages).to_be_visible()
