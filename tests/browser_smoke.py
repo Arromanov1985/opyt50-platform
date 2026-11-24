@@ -987,7 +987,7 @@ def run_browser(page, playwright):
     pause_button.click()
     expect(quick_cards).to_have_count(0)
     expect(pause_button).to_be_disabled()
-    expect(page.locator("#employer-application-quick-position")).to_contain_text("больше нет")
+    expect(page.locator("#employer-application-quick-position")).to_contain_text("вернуться к пропущенным")
     expect(replay_button).to_be_visible()
     expect(page.locator("#employer-application-quick-complete")).to_be_hidden()
     replay_button.click()
