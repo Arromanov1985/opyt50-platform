@@ -55,6 +55,10 @@ def test_public_employer_page_preserves_moderation_and_privacy(tmp_path: Path):
         assert "Отметка проверки СТАЖНО пока не получена" in page.text
         assert 'id="reading-mode-toggle"' in page.text
         assert 'href="#company-jobs"' in page.text
+        assert "Полезно перед знакомством" in page.text
+        assert 'class="employer-reading-grid"' in page.text
+        assert 'href="/journal/kak-proverit-vakansiyu"' in page.text
+        assert "без профиля посетителя" in page.text
         assert page.text.index('id="company-jobs"') < page.text.index('id="company-about"')
         for label in ("Оплата", "Город", "График", "Занятость"):
             assert f"<dt>{label}</dt>" in page.text
@@ -80,7 +84,10 @@ def test_public_employer_page_preserves_moderation_and_privacy(tmp_path: Path):
                 (job_id,),
             )
             db.execute("UPDATE vacancies SET status='closed' WHERE id=?", (job_id,))
-        assert "Кладовщик" not in visitor.get(f"/companies/{owner_id}").text
+        closed_page = visitor.get(f"/companies/{owner_id}")
+        assert "Кладовщик" not in closed_page.text
+        # Editorial recommendations remain useful on the company empty state.
+        assert "Полезно перед знакомством" in closed_page.text
 
         with database(app.state.db_path) as db:
             db.execute(
