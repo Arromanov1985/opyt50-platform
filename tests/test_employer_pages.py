@@ -45,7 +45,7 @@ def test_public_employer_page_preserves_moderation_and_privacy(tmp_path: Path):
         assert page.headers["content-type"].startswith("text/html")
         assert "Учебная &amp; Компания" in page.text
         assert "Кладовщик" in page.text
-        assert f'href="/vacancies/{job_id}"' in page.text
+        assert f'href="/vacancies/{job_id}" data-growth-action="vacancy_click"' in page.text
         assert f'https://stazhno.ru/companies/{owner_id}' in page.text
         assert "private-employer@example.invalid" not in page.text
         assert "SyntheticPassword2026!" not in page.text
