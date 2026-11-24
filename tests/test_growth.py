@@ -79,9 +79,14 @@ def test_admin_only_aggregate_report_counts_signups_independently(tmp_path):
         data = result.json()
         assert data["summary"] == {
             "journal_requests": 1,
+            "public_vacancy_views": 0,
+            "public_company_views": 0,
             "jobs_clicks": 1,
             "profile_clicks": 1,
             "community_clicks": 0,
+            "company_clicks": 0,
+            "vacancy_clicks": 0,
+            "apply_clicks": 0,
             "new_candidates": 1,
             "new_employers": 1,
         }
@@ -123,5 +128,60 @@ def test_growth_frontend_is_first_party_and_fails_open(tmp_path):
         assert 'data-growth-action="profile_click"' not in article.text
         assert 'href="/journal/paths/nayti-rabotu"' in article.text
         assert 'data-growth-action="jobs_click"' in article.text
-        assert '/static/journal.js?v=4' in article.text
+        assert '/static/journal.js?v=5' in article.text
         assert client.get("/static/growth-admin.css").status_code == 200
+
+
+
+def test_public_funnel_sources_are_vetted_and_aggregated_without_identity(tmp_path):
+    app = create_app(str(tmp_path / "public-funnel.sqlite"))
+    with TestClient(app) as employer, TestClient(app) as visitor:
+        registration = employer.post("/api/register", headers=HEADERS, json={
+            "role": "employer",
+            "name": "Вымышленный работодатель",
+            "company_name": "Учебная компания",
+            "email": "private-funnel@example.invalid",
+            "password": "SyntheticFunnelPassword2026!",
+        })
+        assert registration.status_code == 201, registration.text
+        employer_id = int(registration.json()["user"]["id"])
+        vacancy = employer.post("/api/employer/vacancies", headers=HEADERS, json={
+            "title": "Оператор склада",
+            "city": "Москва",
+            "skills": "Учёт",
+            "salary_min": 50000,
+            "salary_max": 70000,
+            "schedule": "Сменный",
+            "employment": "Полная",
+            "description": "Учебная вакансия.",
+        })
+        assert vacancy.status_code == 201, vacancy.text
+        vacancy_id = int(vacancy.json()["id"])
+
+        assert send(visitor, f"vacancy:{vacancy_id}", "view").status_code == 204
+        assert send(visitor, f"vacancy:{vacancy_id}", "company_click").status_code == 204
+        assert send(visitor, f"vacancy:{vacancy_id}", "apply_click").status_code == 204
+        assert send(visitor, f"company:{employer_id}", "view").status_code == 204
+        assert send(visitor, f"company:{employer_id}", "vacancy_click").status_code == 204
+        assert send(visitor, "vacancy:999999", "view").status_code == 422
+        assert send(visitor, "company:999999", "view").status_code == 422
+
+        app.dependency_overrides[active_user] = lambda: {"role": "admin"}
+        data = visitor.get("/api/admin/growth?days=30").json()
+        app.dependency_overrides.clear()
+        summary = data["summary"]
+        assert summary["journal_requests"] == 0
+        assert summary["public_vacancy_views"] == 1
+        assert summary["public_company_views"] == 1
+        assert summary["company_clicks"] == 1
+        assert summary["vacancy_clicks"] == 1
+        assert summary["apply_clicks"] == 1
+        rows = {row["source"]: row for row in data["by_source"]}
+        assert rows[f"vacancy:{vacancy_id}"]["kind"] == "vacancy"
+        assert rows[f"company:{employer_id}"]["kind"] == "company"
+        assert "private-funnel@example.invalid" not in str(data)
+
+        with database(app.state.db_path) as db:
+            db.execute("UPDATE vacancies SET status='closed' WHERE id=?", (vacancy_id,))
+        assert send(visitor, f"vacancy:{vacancy_id}", "view").status_code == 422
+        assert send(visitor, f"company:{employer_id}", "view").status_code == 422
