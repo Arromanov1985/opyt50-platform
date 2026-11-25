@@ -23,10 +23,13 @@ _VISIBLE_SQL = """
 WITH viewer AS (SELECT CAST(? AS INTEGER) AS viewer_id),
 visible AS (
     SELECT f.id,f.parent_id,f.kind,f.title,f.body,f.created_at,f.published_at,
-           p.public_id,p.public_name,p.headline,f.author_id,
+           p.public_id,p.public_name,p.headline,p.city,p.skills,f.author_id,
+           o.intent AS opportunity_intent,o.meeting_format AS opportunity_format,
+           o.commitment AS opportunity_commitment,
            CASE WHEN EXISTS (SELECT 1 FROM community_feed_follows ff
              WHERE ff.follower_id=v.viewer_id AND ff.target_id=f.author_id) THEN 1 ELSE 0 END AS followed
     FROM community_feed_entries f
+    LEFT JOIN community_opportunities o ON o.entry_id=f.id
     JOIN community_profiles p ON p.user_id=f.author_id
     JOIN users u ON u.id=p.user_id
     LEFT JOIN account_controls ac ON ac.user_id=p.user_id
@@ -50,6 +53,7 @@ visible AS (
 )
 SELECT v.id,v.parent_id,v.kind,v.title,v.body,v.created_at,v.published_at,
        v.public_id,v.public_name,v.headline,v.followed,
+       v.opportunity_intent,v.opportunity_format,v.opportunity_commitment,v.city AS opportunity_city,
        (SELECT root.title FROM visible root WHERE root.id=v.parent_id) AS root_title
 FROM visible v CROSS JOIN viewer actor
 WHERE (?<>0 OR COALESCE(v.parent_id,'')=?)
@@ -65,12 +69,31 @@ WHERE (?<>0 OR COALESCE(v.parent_id,'')=?)
   ))
   AND (?='' OR v.id=?)
   AND (?='' OR v.kind=?)
-  AND (?='' OR instr(unicode_fold(v.title),?)>0 OR instr(unicode_fold(v.body),?)>0)
+  AND (?=0 OR v.opportunity_intent IS NOT NULL)
+  AND (?='' OR v.opportunity_intent=?)
+  AND (?='' OR v.opportunity_format=?)
+  AND (?='' OR v.opportunity_commitment=?)
+  AND (?='' OR unicode_fold(v.city)=?)
+  AND (?='' OR instr(unicode_fold(v.title),?)>0 OR instr(unicode_fold(v.body),?)>0
+       OR (?=1 AND (instr(unicode_fold(v.headline),?)>0 OR instr(unicode_fold(v.skills),?)>0)))
   AND (v.parent_id IS NULL OR EXISTS (
     SELECT 1 FROM visible root WHERE root.id=v.parent_id AND root.parent_id IS NULL
   ))
 ORDER BY v.published_at DESC,v.id DESC LIMIT ? OFFSET ?
 """
+
+
+OpportunityKind = Literal["projects", "mentoring"]
+OpportunityIntent = Literal["offer", "seek", "organize", "join"]
+OpportunityFormat = Literal["online", "offline", "hybrid"]
+OpportunityCommitment = Literal["one_off", "regular", "flexible"]
+OPPORTUNITY_INTENTS = {"mentoring": {"offer", "seek"}, "projects": {"organize", "join"}}
+
+
+class OpportunityInput(CommunityModel):
+    intent: OpportunityIntent
+    meeting_format: OpportunityFormat
+    commitment: OpportunityCommitment
 
 
 class FeedInput(CommunityModel):
@@ -80,6 +103,7 @@ class FeedInput(CommunityModel):
     title: str = Field(default="", max_length=140)
     body: str = Field(min_length=1, max_length=2400)
     publish_consent: StrictBool = False
+    opportunity: OpportunityInput | None = None
 
     _safe = field_validator("title", "body")(_public_text)
 
@@ -90,6 +114,8 @@ class FeedInput(CommunityModel):
                 raise ValueError("Комментарий должен содержать только текст до 1000 символов")
         elif self.kind == "comment" or not self.title:
             raise ValueError("Для публикации укажите тему и заголовок")
+        if self.opportunity and (self.parent_id or self.opportunity.intent not in OPPORTUNITY_INTENTS.get(self.kind, set())):
+            raise ValueError("Выберите подходящую цель предложения")
         if not self.body:
             raise ValueError("Введите текст")
         return self
@@ -98,11 +124,30 @@ class FeedInput(CommunityModel):
 def _own_dto(row) -> dict:
     fields = ("id", "parent_id", "kind", "title", "body", "status", "version",
               "moderation_reason", "created_at", "published_at")
-    return {field: row[field] for field in fields}
+    result = {field: row[field] for field in fields}
+    opportunity = _opportunity_dto(dict(row))
+    if opportunity:
+        result["opportunity"] = opportunity
+    return result
+
+
+def _opportunity_dto(item: dict) -> dict | None:
+    if not item.get("opportunity_intent"):
+        return None
+    return {
+        "intent": item["opportunity_intent"],
+        "meeting_format": item["opportunity_format"],
+        "commitment": item["opportunity_commitment"],
+    }
 
 
 def _entry(db, entry_id: str):
-    row = db.execute("SELECT * FROM community_feed_entries WHERE id=?", (entry_id,)).fetchone()
+    row = db.execute(
+        """SELECT f.*,o.intent AS opportunity_intent,o.meeting_format AS opportunity_format,
+                  o.commitment AS opportunity_commitment
+           FROM community_feed_entries f LEFT JOIN community_opportunities o ON o.entry_id=f.id
+           WHERE f.id=?""", (entry_id,),
+    ).fetchone()
     if row is None:
         raise HTTPException(404, "Публикация недоступна")
     return row
@@ -110,10 +155,14 @@ def _entry(db, entry_id: str):
 
 def _visible(db, viewer: int, parent: str = "", entry_id: str = "",
              kind: str = "", q: str = "", page: int = 1,
-             following: bool = False, alerts: int = 0) -> dict:
+             following: bool = False, alerts: int = 0,
+             opportunity_only: bool = False, intent: str = "", meeting_format: str = "",
+             commitment: str = "", city: str = "") -> dict:
     rows = db.execute(_VISIBLE_SQL, (
         viewer, alerts, parent, int(following), alerts, alerts,
-        entry_id, entry_id, kind, kind, q, q, q,
+        entry_id, entry_id, kind, kind, int(opportunity_only),
+        intent, intent, meeting_format, meeting_format, commitment, commitment, city, city,
+        q, q, q, int(opportunity_only), q, q,
         PAGE_SIZE + 1, (page - 1) * PAGE_SIZE,
     )).fetchall()
     entries, followed = [], set()
@@ -121,6 +170,12 @@ def _visible(db, viewer: int, parent: str = "", entry_id: str = "",
         item = dict(row)
         if item.pop("followed"):
             followed.add(item["public_id"])
+        opportunity = _opportunity_dto(item)
+        opportunity_city = item.pop("opportunity_city")
+        for field in ("opportunity_intent", "opportunity_format", "opportunity_commitment"):
+            item.pop(field)
+        if opportunity:
+            item["opportunity"] = {**opportunity, "city": opportunity_city}
         root_title = item.pop("root_title")
         if alerts:
             item["root_title"] = root_title
@@ -167,15 +222,41 @@ def install_feed_routes(app, community_user, throttle, get_connection, allowed, 
         result["own_public_id"] = own["public_id"] if own else None
         return _private(result)
 
+    @app.get("/api/community/opportunities")
+    def opportunities(kind: OpportunityKind,
+                      intent: OpportunityIntent | None = None,
+                      meeting_format: OpportunityFormat | None = None,
+                      commitment: OpportunityCommitment | None = None,
+                      city: str = Query(default="", max_length=80),
+                      q: str = Query(default="", max_length=100),
+                      page: int = Query(default=1, ge=1, le=10000),
+                      user: dict = Depends(community_user), db=Depends(get_connection)):
+        reader(user, db)
+        if intent and intent not in OPPORTUNITY_INTENTS[kind]:
+            raise HTTPException(422, "Цель не соответствует разделу")
+        result = _visible(db, user["id"], kind=kind, q=q.strip().casefold(),
+                          page=page, opportunity_only=True, intent=intent or "",
+                          meeting_format=meeting_format or "", commitment=commitment or "",
+                          city=city.strip().casefold())
+        own = db.execute("SELECT public_id FROM community_profiles WHERE user_id=?",
+                         (user["id"],)).fetchone()
+        result["own_public_id"] = own["public_id"] if own else None
+        result["can_publish"] = can_publish(user, db)
+        return _private(result)
+
     @app.get("/api/community/feed/mine")
     def mine(page: int = Query(default=1, ge=1, le=10000),
+             opportunity_kind: OpportunityKind | None = None,
              user: dict = Depends(community_user), db=Depends(get_connection)):
         if user["role"] != "candidate":
             raise HTTPException(403, "Раздел доступен участникам с профессиональным профилем")
         rows = db.execute(
-            """SELECT * FROM community_feed_entries WHERE author_id=?
-               ORDER BY created_at DESC,id DESC LIMIT ? OFFSET ?""",
-            (user["id"], PAGE_SIZE + 1, (page - 1) * PAGE_SIZE),
+            """SELECT f.*,o.intent AS opportunity_intent,o.meeting_format AS opportunity_format,
+                      o.commitment AS opportunity_commitment
+               FROM community_feed_entries f LEFT JOIN community_opportunities o ON o.entry_id=f.id
+               WHERE f.author_id=? AND (?='' OR (o.entry_id IS NOT NULL AND f.kind=?))
+               ORDER BY f.created_at DESC,f.id DESC LIMIT ? OFFSET ?""",
+            (user["id"], opportunity_kind or "", opportunity_kind or "", PAGE_SIZE + 1, (page - 1) * PAGE_SIZE),
         ).fetchall()
         return _private({**_page(rows, page), "can_publish": can_publish(user, db)})
 
@@ -205,11 +286,16 @@ def install_feed_routes(app, community_user, throttle, get_connection, allowed, 
         if data.parent_id:
             _visible_root(db, owner, data.parent_id)
         previous = db.execute(
-            "SELECT * FROM community_feed_entries WHERE author_id=? AND client_key=?",
+            """SELECT f.*,o.intent AS opportunity_intent,o.meeting_format AS opportunity_format,
+                      o.commitment AS opportunity_commitment
+               FROM community_feed_entries f LEFT JOIN community_opportunities o ON o.entry_id=f.id
+               WHERE f.author_id=? AND f.client_key=?""",
             (owner, str(data.client_key)),
         ).fetchone()
         if previous is not None:
-            if any(previous[field] != getattr(data, field) for field in ("parent_id", "kind", "title", "body")):
+            expected_opportunity = data.opportunity.model_dump() if data.opportunity else None
+            if (any(previous[field] != getattr(data, field) for field in ("parent_id", "kind", "title", "body"))
+                    or _opportunity_dto(dict(previous)) != expected_opportunity):
                 raise HTTPException(409, "Идентификатор уже использован для другого текста")
             return _committed(db, {"entry": _own_dto(previous)})
         throttle(db, owner, "community-feed-submit", 12, 3600)
@@ -221,6 +307,12 @@ def install_feed_routes(app, community_user, throttle, get_connection, allowed, 
             (entry_id, owner, data.parent_id, str(data.client_key), data.kind, data.title,
              data.body, now, FEED_CONSENT_VERSION, now, now),
         )
+        if data.opportunity:
+            db.execute(
+                """INSERT INTO community_opportunities(entry_id,intent,meeting_format,commitment)
+                   VALUES(?,?,?,?)""",
+                (entry_id, data.opportunity.intent, data.opportunity.meeting_format, data.opportunity.commitment),
+            )
         return _committed(db, {"entry": _own_dto(_entry(db, entry_id))})
 
     @app.delete("/api/community/feed/{entry_id}")
@@ -250,8 +342,11 @@ def install_feed_routes(app, community_user, throttle, get_connection, allowed, 
         allowed(user, "admin")
         rows = db.execute(
             """SELECT f.*,p.public_id,p.public_name,p.headline,
-                      root.title AS parent_title,root.body AS parent_body
+                      root.title AS parent_title,root.body AS parent_body,
+                      o.intent AS opportunity_intent,o.meeting_format AS opportunity_format,
+                      o.commitment AS opportunity_commitment
                FROM community_feed_entries f
+               LEFT JOIN community_opportunities o ON o.entry_id=f.id
                LEFT JOIN community_profiles p ON p.user_id=f.author_id
                LEFT JOIN community_feed_entries root ON root.id=f.parent_id
                WHERE f.status=? ORDER BY f.created_at,f.id LIMIT ? OFFSET ?""",
