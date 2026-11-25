@@ -11,7 +11,7 @@ def test_postgres_schema_contains_core_and_release02_tables():
             "invitations", "sessions", "demo_transactions",
             "job_applications", "application_events", "candidate_favorites", "candidate_saved_searches",
             "account_controls", "email_tokens", "email_outbox",
-            "vacancy_updates", "vacancy_update_recipients", "community_read_state"}.issubset(names)
+            "vacancy_updates", "vacancy_update_recipients", "community_read_state", "community_feed_entries"}.issubset(names)
 
 
 def test_no_sqlite_only_ddl_is_emitted():
