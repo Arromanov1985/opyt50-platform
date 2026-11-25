@@ -273,6 +273,27 @@ def run_browser(browser, base, database):
         thread = checked(anna.request.get(base + "/api/community/connections/" + connection_id + "/messages"))
         assert [item["body"] for item in thread["messages"]].count(message_body) == 1
         assert_private_values_absent(str(thread))
+
+        # Account overview opens the actual actionable community inbox.
+        anna.set_viewport_size({"width": 390, "height": 844})
+        anna.goto(base + "/", wait_until="networkidle")
+        overview = anna.locator("#community-attention-overview")
+        expect(overview).to_be_visible()
+        expect(overview).to_contain_text("Непрочитанные сообщения: 1")
+        overview.locator("a").click()
+        expect(anna.locator("#connection-filter")).to_have_value("attention")
+        incoming = anna.locator(f'[data-connection-id="{connection_id}"]')
+        expect(incoming).to_contain_text("Непрочитанных: 1")
+        incoming.locator('[data-action="open-thread"]').click()
+        expect(anna.locator("#community-mark-read")).to_be_visible()
+        capture(anna, "community-attention-mobile.png")
+        with anna.expect_response(lambda r: r.url.endswith(connection_id + "/read") and r.request.method == "POST") as read:
+            anna.locator("#community-mark-read").click()
+        assert checked(read.value)["unread_count"] == 0
+        expect(anna.locator("#community-notice")).to_have_text("Разговор отмечен прочитанным.")
+        expect(anna.locator("#community-connections-list")).to_contain_text("Новых действий нет")
+        expect(anna.locator("#community-mark-read")).to_be_hidden()
+        anna.set_viewport_size({"width": 1366, "height": 900})
         boris.set_viewport_size({"width": 390, "height": 844})
         capture(boris, "community-chat-mobile.png")
 

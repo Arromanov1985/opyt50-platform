@@ -8,7 +8,7 @@
   const connectionStates = {pending:'Ожидает ответа', accepted:'Знакомство принято', declined:'Запрос отклонён', cancelled:'Запрос отозван', blocked:'Общение прекращено'};
   const reasons = {spam:'Спам или навязчивые предложения', fraud:'Подозрение на мошенничество', harassment:'Оскорбления или давление', personal_data:'Публикация личных данных', other:'Другая проблема'};
   const mode = document.body.dataset.communityPage;
-  const state = {user:null, profile:null, dirty:false, messageDirty:false, connections:[], connectionPage:1, connectionFilter:'', selected:null, messageKey:null, messageBody:null, nextBefore:null, directoryPage:1, directoryRequest:0, threadSelectionRequest:0, threadRequest:0, messageLoadRequest:0, moderationPage:1, reportPage:1, busy:new WeakSet()};
+  const state = {user:null, profile:null, dirty:false, messageDirty:false, connections:[], connectionPage:1, connectionFilter:'', connectionListRequest:0, readThrough:null, selected:null, messageKey:null, messageBody:null, nextBefore:null, directoryPage:1, directoryRequest:0, threadSelectionRequest:0, threadRequest:0, messageLoadRequest:0, moderationPage:1, reportPage:1, busy:new WeakSet()};
   const content = $('#community-content');
   const dialog = $('#community-dialog');
   let dialogBusy = false;
@@ -212,21 +212,44 @@
   function connectionCard(c) {
     const other=c.counterpart;
     const title=other.public_id ? `<a href="/people/${encodeURIComponent(other.public_id)}">${esc(other.public_name)}</a>` : esc(other.public_name);
-    return `<article class="panel connection-card${state.selected?.id===c.id?' selected':''}" data-connection-id="${esc(c.id)}"><span class="direction">${c.direction==='incoming'?'Вам предлагают знакомство':'Ваше предложение'}</span><h2>${title}</h2><p class="help">${esc(other.headline)}${other.role==='employer'?' · Работодатель':''}</p><div class="status-line">${statusBadge(c.status,connectionStates)}<span class="tag">${esc(goals[c.purpose])}</span></div>${c.note?`<p class="note">${esc(c.note)}</p>`:''}<div class="actions">${c.can_respond?`<button class="button primary" type="button" data-action="accept-connection" data-id="${esc(c.id)}">Принять знакомство</button><button class="button secondary" type="button" data-action="decline-connection" data-id="${esc(c.id)}">Отклонить</button>`:''}${c.can_cancel?`<button class="button secondary" type="button" data-action="cancel-connection" data-id="${esc(c.id)}">Отозвать запрос</button>`:''}<button class="button secondary" type="button" data-action="open-thread" data-id="${esc(c.id)}">${['accepted','blocked'].includes(c.status)?'Открыть переписку':'Подробности'}</button></div>${c.can_respond?'<p class="help">Принятие откроет переписку внутри СТАЖНО. Контакты из аккаунта останутся закрыты.</p>':''}</article>`;
+    return `<article class="panel connection-card${state.selected?.id===c.id?' selected':''}" data-connection-id="${esc(c.id)}"><span class="direction">${c.direction==='incoming'?'Вам предлагают знакомство':'Ваше предложение'}</span><h2>${title}</h2><p class="help">${esc(other.headline)}${other.role==='employer'?' · Работодатель':''}</p><div class="status-line">${statusBadge(c.status,connectionStates)}<span class="tag">${esc(goals[c.purpose])}</span>${Number(c.unread_count)>0?`<span class="community-unread">Непрочитанных: ${Number(c.unread_count)}</span>`:''}</div>${c.note?`<p class="note">${esc(c.note)}</p>`:''}<div class="actions">${c.can_respond?`<button class="button primary" type="button" data-action="accept-connection" data-id="${esc(c.id)}">Принять знакомство</button><button class="button secondary" type="button" data-action="decline-connection" data-id="${esc(c.id)}">Отклонить</button>`:''}${c.can_cancel?`<button class="button secondary" type="button" data-action="cancel-connection" data-id="${esc(c.id)}">Отозвать запрос</button>`:''}<button class="button secondary" type="button" data-action="open-thread" data-id="${esc(c.id)}">${['accepted','blocked'].includes(c.status)?'Открыть переписку':'Подробности'}</button></div>${c.can_respond?'<p class="help">Принятие откроет переписку внутри СТАЖНО. Контакты из аккаунта останутся закрыты.</p>':''}</article>`;
   }
   async function renderConnections() {
     if (!state.user) return accountGate('Мои профессиональные связи');
     if (state.user.role==='admin') {content.innerHTML=empty('Модерация сообщества','Управляйте публичными профилями и рассматривайте жалобы.','<a class="button primary" href="/community/moderation">Перейти к модерации</a>');return;}
-    content.innerHTML=`<div class="section-heading"><div><h1>Профессиональные связи</h1><p>Запросы на знакомство и ваши разговоры. Переписка доступна только участникам после принятия запроса.</p></div><a class="button secondary compact" href="/community">Найти коллег →</a></div><div class="connections-toolbar"><label class="help" for="connection-filter">Показать<select id="connection-filter">${options(connectionStates,state.connectionFilter,'Все знакомства')}</select></label><button class="button secondary compact" id="refresh-connections" type="button">Обновить</button></div><div class="connections-layout"><div><div class="connection-list" id="community-connections-list"></div><div id="connections-pager"></div></div><section id="community-thread" class="panel thread-panel"><div class="thread-empty"><p>Выберите знакомство слева,<br>чтобы увидеть подробности или переписку.</p></div></section></div>`;
+    if(new URLSearchParams(location.search).get('attention')==='1') state.connectionFilter='attention';
+    content.innerHTML=`<div class="section-heading"><div><h1>Профессиональные связи</h1><p>Запросы на знакомство и ваши разговоры. Переписка доступна только участникам после принятия запроса.</p></div><a class="button secondary compact" href="/community">Найти коллег →</a></div><section class="panel community-attention" id="community-attention" aria-label="Активность сообщества" role="status"><p class="help">Проверяем новые сообщения и запросы…</p></section><div class="connections-toolbar"><label class="help" for="connection-filter">Показать<select id="connection-filter">${options({attention:'Требуют внимания',...connectionStates},state.connectionFilter,'Все знакомства')}</select></label><button class="button secondary compact" id="refresh-connections" type="button">Обновить</button></div><div class="connections-layout"><div><div class="connection-list" id="community-connections-list"></div><div id="connections-pager"></div></div><section id="community-thread" class="panel thread-panel"><div class="thread-empty"><p>Выберите знакомство слева,<br>чтобы увидеть подробности или переписку.</p></div></section></div>`;
     $('#connection-filter').addEventListener('change',event=>{state.connectionFilter=event.target.value;state.connectionPage=1;loadConnections().catch(error=>notice(error.message,'error'));});
     $('#refresh-connections').addEventListener('click',async()=>{try{await loadConnections();if(state.selected)await openThread(state.selected.id,{preserve:true});notice('Список обновлён.');}catch(error){notice(error.message,'error');}});
     await loadConnections();
     const thread=new URLSearchParams(location.search).get('thread'); if(thread && /^[a-f0-9-]{20,64}$/i.test(thread)) await openThread(thread);
   }
   async function loadConnections() {
-    const params=new URLSearchParams({page:String(state.connectionPage)});if(state.connectionFilter)params.set('status',state.connectionFilter);
-    const result=await api('/api/community/connections?'+params);state.connections=result.connections;
-    $('#community-connections-list').innerHTML=result.connections.length?result.connections.map(connectionCard).join(''):empty('Здесь начнутся ваши знакомства','Выберите участника сообщества и предложите обсудить общий профессиональный интерес.','<a class="button primary" href="/community">Посмотреть участников</a>');
+    const request=++state.connectionListRequest;
+    const params=new URLSearchParams({page:String(state.connectionPage)});
+    if(state.connectionFilter==='attention')params.set('attention','true');
+    else if(state.connectionFilter)params.set('status',state.connectionFilter);
+    const [result,activity]=await Promise.all([
+      api('/api/community/connections?'+params),
+      api('/api/community/activity').catch(()=>null)
+    ]);
+    if(request!==state.connectionListRequest)return;
+    if(!result.connections.length && state.connectionPage>1 && result.total>0){
+      state.connectionPage=1;return loadConnections();
+    }
+    state.connections=result.connections;
+    $('#community-attention').innerHTML=activity
+      ? activity.restricted
+        ? '<p class="help">Новые действия приостановлены по обращению о персональных данных. История разговоров доступна.</p>'
+        : `<div class="community-attention-metrics"><div><strong>${Number(activity.pending_requests||0)}</strong><span>Запросы на знакомство</span></div><div><strong>${Number(activity.unread_messages||0)}</strong><span>Непрочитанные сообщения</span><small>В разговорах: ${Number(activity.unread_threads||0)}</small></div></div><button class="button secondary compact" type="button" data-action="attention-connections">Требуют внимания</button>`
+      : '<p class="help">Счётчики временно недоступны. Нажмите «Обновить».</p>';
+    $('#community-connections-list').innerHTML=result.connections.length
+      ? result.connections.map(connectionCard).join('')
+      : state.connectionFilter==='attention'
+        ? empty('Новых действий нет','Когда придёт запрос или новое сообщение, разговор появится здесь.','<button class="button secondary" type="button" data-action="all-connections">Все знакомства</button>')
+        : state.connectionFilter
+          ? empty('Нет знакомств с таким статусом','Выберите другой фильтр.','<button class="button secondary" type="button" data-action="all-connections">Все знакомства</button>')
+          : empty('Здесь начнутся ваши знакомства','Выберите участника сообщества и предложите обсудить общий профессиональный интерес.','<a class="button primary" href="/community">Посмотреть участников</a>');
     $('#connections-pager').innerHTML=result.connections.length?pager(result.page,result.has_more,'connections-page'):'';
   }
   function messageMarkup(message) {return `<article class="message${message.mine?' mine':''}" data-message-id="${esc(message.id)}"><span class="message-author">${message.mine?'Вы':esc(state.selected?.counterpart.public_name || 'Участник')}</span><p>${esc(message.body)}</p><time>${esc(date(message.created_at))}</time></article>`;}
@@ -246,10 +269,10 @@
     if (state.messageDirty && !preserve && !window.confirm('В сообщении есть несохранённый текст. Перейти к другому разговору?')) return;
     const draft=preserve?$('#community-message-form textarea')?.value:null;
     const request=++state.threadRequest;
-    state.selected=result.connection;const c=state.selected;
+    state.selected=result.connection;state.readThrough=null;const c=state.selected;
     if(!preserve){state.messageDirty=false;state.messageKey=null;state.messageBody=null;}
     history.replaceState(null,'','/community/connections?thread='+encodeURIComponent(id));
-    $('#community-thread').innerHTML=`<div class="thread-heading"><span class="eyebrow">${esc(goals[c.purpose])}</span><h2>${esc(c.counterpart.public_name)}</h2>${statusBadge(c.status,connectionStates)}<div class="actions"><button class="text-button" type="button" data-action="report-connection" data-id="${esc(id)}">Сообщить о проблеме</button>${c.can_block?`<button class="text-button" type="button" data-action="block-connection" data-id="${esc(id)}">Прекратить общение</button>`:''}<button class="text-button" type="button" data-action="refresh-thread" data-id="${esc(id)}">Обновить разговор</button></div></div>
+    $('#community-thread').innerHTML=`<div class="thread-heading"><span class="eyebrow">${esc(goals[c.purpose])}</span><h2>${esc(c.counterpart.public_name)}</h2>${statusBadge(c.status,connectionStates)}<div class="actions"><button class="text-button" type="button" data-action="report-connection" data-id="${esc(id)}">Сообщить о проблеме</button>${c.can_block?`<button class="text-button" type="button" data-action="block-connection" data-id="${esc(id)}">Прекратить общение</button>`:''}<button class="text-button" type="button" data-action="refresh-thread" data-id="${esc(id)}">Обновить разговор</button></div>${c.can_message?`<button class="button secondary compact community-mark-read" id="community-mark-read" type="button" data-action="mark-thread-read" data-id="${esc(id)}" hidden>Отметить разговор прочитанным</button><p class="help" id="community-read-hint" hidden>Отметка относится ко всей истории до последнего показанного сообщения. Она видна только вам.</p>`:''}</div>
     ${['accepted','blocked'].includes(c.status)?`<div class="thread-body"><div class="older-control"><button class="button secondary compact" id="load-older-messages" type="button" hidden>Более ранние сообщения</button></div><div id="thread-history" class="thread-history" role="log" aria-label="Переписка"><p class="help">Загружаем сообщения…</p></div></div>`:`<div class="thread-empty"><p>${c.status==='pending'?'Переписка откроется после принятия запроса.':'Этот запрос завершён. Переписка не открывалась.'}</p></div>`}
     ${c.can_message?`<form id="community-message-form" class="message-form" method="post"><label for="community-message">Ваше сообщение</label><textarea id="community-message" name="body" rows="4" maxlength="2000" required placeholder="Напишите о задаче или опыте, который хотите обсудить.">${esc(draft || '')}</textarea><div class="actions"><p class="help">Не отправляйте пароли, коды и платёжные данные.</p><button class="button primary" type="submit">Отправить</button></div></form>`:'<p class="help thread-heading">Отправка сообщений недоступна. Контакты из аккаунта не раскрываются.</p>'}`;
     document.querySelectorAll('[data-connection-id]').forEach(node=>node.classList.toggle('selected',node.dataset.connectionId===id));
@@ -290,8 +313,32 @@
       if(older)historyNode.insertAdjacentHTML('afterbegin',markup);else historyNode.innerHTML=markup||'<p class="help">Знакомство принято. Можно начать разговор.</p>';
       state.nextBefore=result.next_before;
       if(button){button.hidden=!result.has_more;button.disabled=false;}
-      if(!older){const body=$('.thread-body');body.scrollTop=body.scrollHeight;}
+      if(!older){
+        state.readThrough=result.messages.at(-1)?.id||null;
+        const body=$('.thread-body');body.scrollTop=body.scrollHeight;
+      }
+      const mark=$('#community-mark-read');
+      if(mark){
+        mark.hidden=!(state.readThrough && Number(result.unread_count)>0);
+        $('#community-read-hint').hidden=mark.hidden;
+      }
     }catch(error){if(request!==state.threadRequest || loadRequest!==state.messageLoadRequest)return;if(button)button.disabled=false;throw error;}
+  }
+  async function markThreadRead(button,id) {
+    const through=state.readThrough, request=state.threadRequest;
+    if(state.selected?.id!==id || !through)return;
+    button.disabled=true;
+    try {
+      const result=await api('/api/community/connections/'+encodeURIComponent(id)+'/read',
+        {method:'POST',body:{through_message_id:through}});
+      if(request!==state.threadRequest || state.selected?.id!==id)return;
+      state.selected.unread_count=Number(result.unread_count||0);
+      button.hidden=true;
+      const hint=$('#community-read-hint');if(hint)hint.hidden=true;
+      notice(result.unread_count?'История отмечена до последнего показанного сообщения. Есть новые сообщения — обновите разговор.':'Разговор отмечен прочитанным.');
+      try{await loadConnections();}
+      catch{if(request===state.threadRequest)notice('Отметка сохранена, но не удалось обновить список. Нажмите «Обновить».','warning');}
+    }finally{button.disabled=false;}
   }
   async function connectionAction(id,action) {
     const route=action==='accept-connection'||action==='decline-connection'?'respond':action==='cancel-connection'?'cancel':'block';
@@ -332,6 +379,11 @@
       if(action==='people-page'){state.directoryPage=Number(button.dataset.page);await loadPeople();}
       else if(action==='retry-people')await loadPeople();
       else if(action==='connections-page'){state.connectionPage=Number(button.dataset.page);await loadConnections();}
+      else if(action==='attention-connections'||action==='all-connections'){
+        state.connectionFilter=action==='attention-connections'?'attention':'';
+        state.connectionPage=1;$('#connection-filter').value=state.connectionFilter;await loadConnections();
+      }
+      else if(action==='mark-thread-read')await markThreadRead(button,id);
       else if(action==='open-thread')await openThread(id);
       else if(action==='refresh-thread')await openThread(id,{preserve:true});
       else if(action==='accept-connection')await busy(button.closest('article'),()=>connectionAction(id,action));

@@ -621,3 +621,114 @@ def test_privacy_request_hides_public_community_profile_and_stops_new_actions(co
                           (ids["first"],)).fetchone()[0] == 1
         assert db.execute("SELECT COUNT(*) FROM privacy_rights_requests WHERE user_id=?",
                           (ids["first"],)).fetchone()[0] == 1
+
+
+def test_community_attention_is_private_monotonic_and_explicit(community):
+    app, clients, ids = community
+    publish(clients, "first")
+    second = publish(clients, "second", public_name="Второй коллега")
+    connection = connect(clients, second["public_id"])
+    path = "/api/community/connections/" + connection["id"]
+    activity = "/api/community/activity"
+    inbox = "/api/community/connections?attention=true"
+    assert clients["visitor"].get(activity).status_code == 401
+    assert clients["admin"].get(activity).status_code == 403
+    assert clients["first"].get(activity).json()["pending_requests"] == 0
+    assert clients["second"].get(activity).json()["pending_requests"] == 1
+    assert clients["second"].get(inbox).json()["total"] == 1
+    assert clients["first"].get(inbox).json()["total"] == 0
+    assert mutate(clients["second"], "POST", path + "/respond",
+                  {"decision": "accept"}).status_code == 200
+    assert clients["second"].get(activity).json()["pending_requests"] == 0
+
+    def send(sender, body):
+        response = mutate(clients[sender], "POST", path + "/messages",
+                          {"body": body, "client_key": str(uuid4())})
+        assert response.status_code == 200, response.text
+        return response.json()["message"]
+
+    first_message = send("first", "Первое сообщение")
+    own_message = send("second", "Ответ получателя")
+    shown = clients["second"].get(path + "/messages").json()
+    assert shown["unread_count"] == 1
+    assert shown["messages"][-1]["id"] == own_message["id"]
+    assert clients["first"].get(activity).json()["unread_messages"] == 1
+    assert clients["second"].get(path).json()["connection"]["unread_count"] == 1
+    assert clients["outsider"].get(activity).json()["unread_messages"] == 0
+    assert clients["outsider"].get(path).status_code == 404
+    with database(app.state.db_path) as db:
+        assert db.execute("SELECT COUNT(*) FROM community_read_state").fetchone()[0] == 0
+
+    # A message arrives after the last successful history fetch. Marking that
+    # displayed cursor must not hide the message that the recipient has not seen.
+    new_message = send("first", "Новое сообщение")
+    mark = {"through_message_id": own_message["id"]}
+    assert mutate(clients["outsider"], "POST", path + "/read", mark).status_code == 404
+    assert mutate(clients["second"], "POST", path + "/read",
+                  {"through_message_id": "not-in-thread"}).status_code == 422
+    stale = clients["second"].post(path + "/read",
+        headers={**HEADERS, "X-Community-Actor": str(ids["first"])}, json=mark)
+    assert stale.status_code == 409
+    marked = mutate(clients["second"], "POST", path + "/read", mark)
+    assert marked.status_code == 200, marked.text
+    assert marked.json()["unread_count"] == 1
+    assert clients["second"].get(activity).json() == {
+        "pending_requests": 0, "unread_messages": 1, "unread_threads": 1, "restricted": False
+    }
+    assert clients["second"].get(inbox).json()["total"] == 1
+    assert clients["first"].get(activity).json()["unread_messages"] == 1
+    assert mutate(clients["second"], "POST", path + "/read",
+                  {"through_message_id": new_message["id"]}).json()["unread_count"] == 0
+    assert mutate(clients["second"], "POST", path + "/read",
+                  {"through_message_id": first_message["id"]}).json()["unread_count"] == 0
+    assert clients["second"].get(inbox).json()["total"] == 0
+    export = clients["second"].get("/api/account/data-export").json()["sections"]["my_community_read_state"]
+    assert export[0]["through_message_id"] == new_message["id"]
+    assert clients["first"].get("/api/account/data-export").json()["sections"]["my_community_read_state"] == []
+    assert "read_at" not in clients["first"].get(path + "/messages").text
+    assert "through_message_id" not in clients["first"].get(path).text
+    send("first", "До блокировки")
+    assert clients["second"].get(activity).json()["unread_messages"] == 1
+    assert mutate(clients["second"], "POST", path + "/block").status_code == 200
+    assert clients["second"].get(activity).json()["unread_messages"] == 0
+    assert clients["second"].get(inbox).json()["total"] == 0
+    assert clients["second"].get(path + "/messages").status_code == 200
+    assert mutate(clients["second"], "POST", path + "/read", mark).status_code == 409
+
+
+def test_attention_filter_precedes_pagination_and_respects_privacy(community):
+    app, clients, ids = community
+    owner = ids["second"]
+    pending_id = uuid4().hex
+    with database(app.state.db_path) as db:
+        db.execute(
+            """INSERT INTO community_connections(id,sender_id,recipient_id,pair_low,pair_high,
+               purpose,status,created_at,updated_at) VALUES(?,?,?,?,?,'exchange','pending',?,?)""",
+            (pending_id, ids["first"], owner, min(ids["first"], owner), max(ids["first"], owner),
+             "2026-01-01", "2026-01-01"),
+        )
+        for index in range(21):
+            peer = db.execute(
+                "INSERT INTO users(email,password_hash,role,name) VALUES(?,?,'candidate','Test')",
+                (f"attention-page-{index}@example.invalid", "test-hash"),
+            ).lastrowid
+            db.execute(
+                """INSERT INTO community_connections(id,sender_id,recipient_id,pair_low,pair_high,
+                   purpose,status,created_at,updated_at) VALUES(?,?,?,?,?,'exchange','accepted',?,?)""",
+                (uuid4().hex, owner, peer, min(owner, peer), max(owner, peer),
+                 "2026-02-01", "2026-02-01"),
+            )
+    ordinary = clients["second"].get("/api/community/connections").json()
+    assert ordinary["total"] == 22
+    assert pending_id not in {item["id"] for item in ordinary["connections"]}
+    filtered = clients["second"].get("/api/community/connections?attention=true").json()
+    assert filtered["total"] == 1
+    assert filtered["connections"][0]["id"] == pending_id
+
+    request = mutate(clients["first"], "POST", "/api/account/privacy-requests",
+                     {"kind": "stop_processing"})
+    assert request.status_code == 201
+    assert clients["second"].get("/api/community/activity").json()["pending_requests"] == 0
+    assert clients["second"].get("/api/community/connections?attention=true").json()["total"] == 0
+    assert clients["first"].get("/api/community/activity").json()["restricted"] is True
+    assert clients["first"].get("/api/community/connections").json()["total"] == 1

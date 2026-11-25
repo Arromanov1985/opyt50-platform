@@ -55,6 +55,19 @@ def sample(tmp_path):
                (candidate_id,search_key,slot,filter_key,q,alerts_enabled,reviewed_ids_json,created_at,updated_at)
                VALUES(1,'test-key',1,'test-filter','Кладовщик',1,'[3]','2026-11-25','2026-11-25')"""
         )
+        conn.execute(
+            """INSERT INTO community_connections(id,sender_id,recipient_id,pair_low,pair_high,
+               purpose,status,created_at,updated_at)
+               VALUES('test-thread',2,1,1,2,'exchange','accepted','2026-01-01','2026-01-01')"""
+        )
+        conn.execute(
+            """INSERT INTO community_messages(id,connection_id,sender_id,client_key,body,created_at)
+               VALUES('test-message','test-thread',2,'test-client','Test message','2026-01-02')"""
+        )
+        conn.execute(
+            """INSERT INTO community_read_state(user_id,connection_id,through_created_at,through_message_id)
+               VALUES(1,'test-thread','2026-01-02','test-message')"""
+        )
         conn.commit()
     return path
 
@@ -66,6 +79,9 @@ def test_import_preserves_ids_consents_and_relations(target, sample):
     assert counts["users"] == 2
     assert counts["job_applications"] == 1
     assert counts["candidate_saved_searches"] == 1
+    assert counts["community_connections"] == 1
+    assert counts["community_messages"] == 1
+    assert counts["community_read_state"] == 1
     with psycopg.connect(target) as conn:
         assert conn.execute("SELECT id,vacancy_id,candidate_id FROM job_applications").fetchone() == (4, 3, 1)
         assert conn.execute("SELECT share_consent, contact_shared FROM invitations WHERE id=5").fetchone() == (1, 1)
@@ -73,6 +89,9 @@ def test_import_preserves_ids_consents_and_relations(target, sample):
         assert conn.execute(
             "SELECT q,alerts_enabled,reviewed_ids_json FROM candidate_saved_searches WHERE candidate_id=1"
         ).fetchone() == ("Кладовщик", 1, "[3]")
+        assert conn.execute(
+            "SELECT user_id,connection_id,through_message_id FROM community_read_state"
+        ).fetchone() == (1, "test-thread", "test-message")
     assert sample.read_bytes() == before
 
 

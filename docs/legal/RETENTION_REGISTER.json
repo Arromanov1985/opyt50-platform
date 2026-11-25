@@ -29,7 +29,9 @@
         "candidate_profiles",
         "candidate_resume_details",
         "candidate_resume_qualifications",
-        "candidate_saved_searches"
+        "candidate_saved_searches",
+        "community_profiles",
+        "community_profile_events"
       ],
       "purpose": "Профессиональный профиль, резюме и сохранённые условия поиска с отметками просмотренных вакансий",
       "start_event": "account_termination_or_goal_achieved",
@@ -105,7 +107,8 @@
       "tables": [
         "invitations",
         "invitation_outcomes",
-        "demo_transactions"
+        "demo_transactions",
+        "community_connections"
       ],
       "purpose": "Знакомства и согласие на раскрытие контакта",
       "start_event": "introduction_closed",
@@ -124,13 +127,17 @@
       "tables": [
         "email_outbox",
         "email_delivery_jobs",
-        "email_delivery_recipients"
+        "email_delivery_recipients",
+        "community_messages",
+        "community_read_state"
       ],
-      "purpose": "Сервисные письма и очередь доставки",
+      "purpose": "Сервисные письма, очередь доставки, приватная переписка и отметки просмотра внутри сообщества",
       "start_event": "message_sent_or_suppressed",
       "systems": [
         "smtp_provider",
-        "mail_worker"
+        "mail_worker",
+        "primary_database",
+        "backup"
       ],
       "retention_days": null,
       "legal_basis": "NOT_APPROVED",
@@ -166,7 +173,8 @@
         "security_events",
         "admin_audit",
         "account_devices",
-        "security_rate_limits"
+        "security_rate_limits",
+        "community_actor_locks"
       ],
       "purpose": "Обнаружение злоупотреблений и доказательства событий",
       "start_event": "security_purpose_closed",
@@ -220,7 +228,8 @@
     {
       "code": "complaints",
       "tables": [
-        "content_reports"
+        "content_reports",
+        "community_reports"
       ],
       "purpose": "Жалобы на содержание и разрешение споров",
       "start_event": "complaint_resolved_and_reviewed",
