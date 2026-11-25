@@ -329,7 +329,7 @@ def run_browser(browser, base, database):
         offer_request = boris.locator("#connection-request-form")
         expect(offer_request.locator('[name="purpose"]')).to_have_value("mentoring")
         expect(offer_request.locator('[name="purpose"]')).to_be_disabled()
-        expect(offer_request.locator('[name="note"]')).to_contain_text("Обучение")
+        assert "Обучение" in offer_request.locator('[name="note"]').input_value()
         boris.keyboard.press("Escape")
         capture(boris, "community-mentoring-mobile.png")
         boris.goto(base + "/community/projects", wait_until="networkidle")
