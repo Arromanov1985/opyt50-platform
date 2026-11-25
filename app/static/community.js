@@ -8,6 +8,7 @@
   const connectionStates = {pending:'Ожидает ответа', accepted:'Знакомство принято', declined:'Запрос отклонён', cancelled:'Запрос отозван', blocked:'Общение прекращено'};
   const reasons = {spam:'Спам или навязчивые предложения', fraud:'Подозрение на мошенничество', harassment:'Оскорбления или давление', personal_data:'Публикация личных данных', other:'Другая проблема'};
   const mode = document.body.dataset.communityPage;
+  const opportunityMode=['mentoring','projects'].includes(mode);
   const state = {user:null, profile:null, dirty:false, messageDirty:false, connections:[], connectionPage:1, connectionFilter:'', connectionListRequest:0, readThrough:null, selected:null, messageKey:null, messageBody:null, nextBefore:null, directoryPage:1, directoryRequest:0, threadSelectionRequest:0, threadRequest:0, messageLoadRequest:0, moderationPage:1, reportPage:1, busy:new WeakSet(), feedPage:1, feedMinePage:1, feedReviewPage:1, feedRequest:0, feedThreadRequest:0, feedReviewRequest:0, feedThreadId:null, feedThreadPage:1, feedCanPublish:false, feedDirty:false, feedCommentDirty:false, feedFollowingIds:new Set(), feedOwnPublicId:null, feedFollowsPage:1, feedAlertsPage:1, feedReportsPage:1, feedFollowsRequest:0, feedAlertsRequest:0, feedReportsRequest:0};
   const content = $('#community-content');
   const dialog = $('#community-dialog');
@@ -184,19 +185,28 @@
     state.profile=(await api('/api/community/profile')).profile; renderProfileForm();
   }
 
-  async function requestConnection() {
-    if (!state.user) return loginDialog(requestConnection);
+  async function requestConnection(target=null) {
+    const publicId=target?.publicId||document.body.dataset.personId;
+    if (!state.user) return loginDialog(()=>requestConnection(target));
     if (state.user.role === 'admin') { notice('Администратор проверяет профили. Для знакомства используйте обычный аккаунт участника.','warning'); return; }
     if (state.user.role === 'candidate') {
       const own=(await api('/api/community/profile')).profile;
-      if (own.public_id === document.body.dataset.personId) { notice('Это ваша профессиональная страница.'); return; }
+      if (own.public_id === publicId) { notice('Это ваша профессиональная страница.'); return; }
       if (own.status !== 'published') { openDialog('Сначала представьтесь', '<p>Чтобы отправить запрос коллеге, опубликуйте свой профессиональный профиль. Так человек сможет понять, кто предлагает знакомство.</p><a class="button primary" href="/community/profile">Подготовить мой профиль</a>'); return; }
     }
-    openDialog('Предложить профессиональное знакомство', `<p class="help">Участник сам решит, начинать ли разговор. Контакты из аккаунта не передаются.</p><form id="connection-request-form" class="dialog-form"><div class="field"><label for="connection-purpose">О чём хотите поговорить</label><select id="connection-purpose" name="purpose">${options(goals,'exchange')}</select></div><div class="field"><label for="connection-note">Коротко о предложении</label><textarea id="connection-note" name="note" maxlength="500" rows="4" placeholder="Расскажите, что вас заинтересовало и чем можете быть полезны."></textarea><p class="help">Без телефона, email и ссылок. Личная переписка откроется после согласия.</p></div><button class="button primary" type="submit">Отправить запрос</button></form>`);
+    openDialog('Предложить профессиональное знакомство', `<p class="help">Участник сам решит, начинать ли разговор. Контакты из аккаунта не передаются.</p><form id="connection-request-form" class="dialog-form"><div class="field"><label for="connection-purpose">О чём хотите поговорить</label><select id="connection-purpose" name="purpose">${options(goals,target?.kind||'exchange')}</select></div><div class="field"><label for="connection-note">Коротко о предложении</label><textarea id="connection-note" name="note" maxlength="500" rows="4" placeholder="Расскажите, что вас заинтересовало и чем можете быть полезны."></textarea><p class="help">Без телефона, email и ссылок. Личная переписка откроется после согласия.</p></div><button class="button primary" type="submit">Отправить запрос</button></form>`);
+    if(target){
+      const form=$('#connection-request-form');
+      form.elements.purpose.value=target.kind;
+      form.elements.purpose.disabled=true;
+      form.elements.note.value='По предложению «'+target.title+'»: ';
+    }
     $('#connection-request-form').addEventListener('submit', event => {event.preventDefault(); const form=event.currentTarget; const data=Object.fromEntries(new FormData(form)); busy(form,async()=>{
-      const result=await api('/api/community/connections',{method:'POST',body:{...data,public_id:document.body.dataset.personId}});
+      const result=await api('/api/community/connections',{method:'POST',body:{...data,public_id:publicId,...(target?{purpose:target.kind,opportunity_id:target.entryId}:{})}});
       dialogBusy=false; closeDialog(); notice(result.connection.status==='accepted' ? 'Вы уже знакомы. Разговор доступен в «Моих связях».' : 'Запрос отправлен. Ответ появится в «Моих связях».');
-      $('#person-action-hint').innerHTML=`<a href="/community/connections?thread=${encodeURIComponent(result.connection.id)}">Открыть мои связи →</a>`;
+      const hint=$('#person-action-hint');
+      if(hint)hint.innerHTML=`<a href="/community/connections?thread=${encodeURIComponent(result.connection.id)}">Открыть мои связи →</a>`;
+      else {const link=document.createElement('a');link.href='/community/connections?thread='+encodeURIComponent(result.connection.id);link.textContent=' Открыть мои связи →';$('#community-notice').append(link);}
     });});
   }
   function report(target) {
@@ -379,6 +389,9 @@
 
   const feedKinds={experience:'Опыт и полезные советы',question:'Профессиональный вопрос',projects:'Совместные проекты',mentoring:'Наставничество',comment:'Комментарий'};
   const feedCategories=Object.fromEntries(Object.entries(feedKinds).filter(([key])=>key!=='comment'));
+  const opportunityIntents={mentoring:{offer:'Готов быть наставником',seek:'Ищу наставника'},projects:{organize:'Собираю команду',join:'Ищу проект для участия'}};
+  const opportunityFormats={online:'Онлайн',offline:'Личная встреча',hybrid:'Онлайн и лично'};
+  const opportunityCommitments={one_off:'Разовая помощь / задача',regular:'Регулярное участие',flexible:'По договорённости'};
   const feedStates={pending:'На проверке',published:'Одобрено',rejected:'Не опубликовано',hidden:'Скрыто'};
   function feedForm(comment=false) {
     const id=comment?'feed-comment-form':'feed-compose-form';
@@ -387,6 +400,11 @@
       '<div class="field"><label for="'+id+'-body">'+(comment?'Ваш ответ':'Текст публикации')+'</label><textarea name="body" id="'+id+'-body" rows="'+(comment?'4':'6')+'" maxlength="'+(comment?'1000':'2400')+'" required placeholder="Расскажите по делу, без контактов и ссылок"></textarea></div>'+
       '<label class="feed-consent"><input name="publish_consent" type="checkbox" required> Согласен на показ этого текста другим участникам после проверки модератором. Не размещаю чужие персональные данные.</label>'+
       '<p class="help">Текст не появится в ленте до одобрения. Его можно скрыть в разделе «Мои публикации и комментарии».</p><button class="button primary" type="submit">Отправить на проверку</button></form>';
+  }
+  function opportunityFacts(entry){
+    const o=entry.opportunity;if(!o)return '';
+    const values=[opportunityIntents[entry.kind]?.[o.intent],opportunityFormats[o.meeting_format],opportunityCommitments[o.commitment],o.city].filter(Boolean);
+    return '<div class="opportunity-facts">'+values.map(value=>'<span class="tag">'+esc(value)+'</span>').join('')+'</div>';
   }
   function feedCard(entry,{mine=false,admin=false,comment=false}={}) {
     const id=esc(entry.id), heading=entry.title?'<h2>'+esc(entry.title)+'</h2>':'';
@@ -398,10 +416,13 @@
     if(admin&&entry.status==='published')actions='<button class="button secondary compact" type="button" data-action="hide-feed" data-id="'+id+'" data-version="'+Number(entry.version)+'">Скрыть</button>';
     if(!mine&&!admin&&!comment)actions='<button class="button secondary" type="button" data-action="open-feed-thread" data-id="'+id+'">Читать обсуждение</button>';
     if(!mine&&!admin&&entry.public_id!==state.feedOwnPublicId){
-      if(!comment&&entry.public_id)actions+=' '+followButton(entry.public_id,state.feedFollowingIds.has(entry.public_id));
+      if(!comment&&entry.public_id){
+        if(entry.opportunity)actions='<button type="button" class="button primary" data-action="respond-opportunity" data-id="'+id+'" data-public-id="'+esc(entry.public_id)+'" data-kind="'+esc(entry.kind)+'" data-title="'+esc(entry.title)+'">Обсудить предложение</button> '+actions;
+        actions+=' '+followButton(entry.public_id,state.feedFollowingIds.has(entry.public_id));
+      }
       actions+=' <button class="text-button" type="button" data-action="report-feed" data-id="'+id+'">Пожаловаться</button>';
     }
-    return '<article class="panel feed-card" data-feed-id="'+id+'"><div class="feed-meta"><span class="tag">'+esc(feedKinds[entry.kind]||'Публикация')+'</span>'+((mine||admin)?statusBadge(entry.status,feedStates):'')+'<time>'+esc(date(entry.published_at||entry.created_at))+'</time></div>'+heading+(author?'<p class="feed-author">'+author+'</p>':'')+reviewContext+'<p class="multiline feed-body">'+esc(entry.body)+'</p>'+((mine||admin)&&entry.moderation_reason?'<p class="help">Причина: '+esc(entry.moderation_reason)+'</p>':'')+(actions?'<div class="actions">'+actions+'</div>':'')+'</article>';
+    return '<article class="panel feed-card" data-feed-id="'+id+'"><div class="feed-meta"><span class="tag">'+esc(feedKinds[entry.kind]||'Публикация')+'</span>'+((mine||admin)?statusBadge(entry.status,feedStates):'')+'<time>'+esc(date(entry.published_at||entry.created_at))+'</time></div>'+heading+(author?'<p class="feed-author">'+author+'</p>':'')+reviewContext+opportunityFacts(entry)+'<p class="multiline feed-body">'+esc(entry.body)+'</p>'+((mine||admin)&&entry.moderation_reason?'<p class="help">Причина: '+esc(entry.moderation_reason)+'</p>':'')+(actions?'<div class="actions">'+actions+'</div>':'')+'</article>';
   }
   function bindFeedForm(form,comment=false) {
     const dirtyKey=comment?'feedCommentDirty':'feedDirty';
@@ -410,6 +431,7 @@
       event.preventDefault();
       const fields=Object.fromEntries(new FormData(form));
       const body={kind:comment?'comment':fields.kind,title:comment?'':fields.title,body:fields.body,parent_id:comment?state.feedThreadId:null,publish_consent:fields.publish_consent==='on'};
+      if(!comment&&opportunityMode)body.opportunity={intent:fields.intent,meeting_format:fields.meeting_format,commitment:fields.commitment};
       const fingerprint=JSON.stringify(body);
       if(form.feedFingerprint!==fingerprint){form.feedFingerprint=fingerprint;form.feedKey=crypto.randomUUID();}
       body.client_key=form.feedKey;
@@ -427,18 +449,19 @@
   }
   async function loadFeedMine() {
     if(state.user?.role!=='candidate')return;
-    const result=await api('/api/community/feed/mine?page='+state.feedMinePage);
+    const result=await api('/api/community/feed/mine?page='+state.feedMinePage+(opportunityMode?'&opportunity_kind='+mode:''));
     drawFeedMine(result);
   }
   async function loadFeed() {
     const request=++state.feedRequest;
     const params=new URLSearchParams(new FormData($('#feed-filter')));
     params.set('page',String(state.feedPage));if(!params.get('kind'))params.delete('kind');
-    const result=await api('/api/community/feed?'+params);
+    if(opportunityMode){params.set('kind',mode);for(const key of ['intent','meeting_format','commitment'])if(!params.get(key))params.delete(key);}
+    const result=await api((opportunityMode?'/api/community/opportunities?':'/api/community/feed?')+params);
     if(request!==state.feedRequest)return;
     state.feedFollowingIds=new Set(result.following_public_ids||[]);
     state.feedOwnPublicId=result.own_public_id||null;
-    $('#feed-list').innerHTML=result.entries.length?result.entries.map(entry=>feedCard(entry)).join('')+pager(result.page,result.has_more,'feed-page'):empty('Пока нет публикаций','Попробуйте выбрать другую тему или поделитесь своим опытом.');
+    $('#feed-list').innerHTML=result.entries.length?result.entries.map(entry=>feedCard(entry)).join('')+pager(result.page,result.has_more,'feed-page'):empty(opportunityMode?'Пока нет подходящих предложений':'Пока нет публикаций',opportunityMode?'Измените условия поиска или создайте своё предложение.':'Попробуйте выбрать другую тему или поделитесь своим опытом.');
   }
   async function openFeedThread(id,page=1) {
     if(state.feedThreadId!==id&&state.feedCommentDirty){notice('Сначала отправьте или закройте текущий комментарий, чтобы не потерять текст.','error');return;}
@@ -501,7 +524,7 @@
       else await api('/api/community/feed/follows/'+encodeURIComponent(id),{method:'DELETE',body:{}});
       notice(follow?'Подписка оформлена.':'Подписка отменена.');
       if(mode==='person')await refreshPersonFollow();
-      else {state.feedPage=1;await Promise.all([loadFeed(),loadFeedFollows()]);}
+      else {state.feedPage=1;await Promise.all([loadFeed(),...($('#feed-follows-list')?[loadFeedFollows()]:[])]);}
     });
   }
   function paintFeedAlertBadge(result){
@@ -586,6 +609,33 @@
     ]);
   }
 
+
+  function opportunityForm(){
+    const title=mode==='mentoring'?'Предложить наставничество или найти наставника':'Предложить проект или найти команду';
+    return '<form class="feed-form" id="feed-compose-form"><h2>'+title+'</h2><input type="hidden" name="kind" value="'+mode+'"><div class="field"><label for="opp-intent">Ваша цель</label><select name="intent" id="opp-intent" required>'+options(opportunityIntents[mode],'')+'</select></div><div class="field"><label for="opp-format">Формат общения</label><select name="meeting_format" id="opp-format" required>'+options(opportunityFormats,'')+'</select></div><div class="field"><label for="opp-commitment">Продолжительность</label><select name="commitment" id="opp-commitment" required>'+options(opportunityCommitments,'flexible')+'</select></div><div class="field"><label for="opp-title">'+(mode==='mentoring'?'Тема наставничества':'Название или направление проекта')+'</label><input id="opp-title" name="title" maxlength="140" required placeholder="Например, обучение работе на складе"></div><div class="field"><label for="opp-body">Что предлагаете или ищете</label><textarea id="opp-body" name="body" rows="6" maxlength="2400" required placeholder="Опишите задачу, опыт, ожидания и доступное время."></textarea></div><p class="help">Город берётся из вашего опубликованного профессионального профиля. Не указывайте телефоны, ссылки, паспортные и чужие персональные данные.</p><label class="feed-consent"><input type="checkbox" name="publish_consent" required> Согласен на показ предложения другим участникам после проверки модератором.</label><button class="button primary" type="submit">Отправить на проверку</button></form>';
+  }
+  async function renderOpportunities(){
+    const mentoring=mode==='mentoring';
+    const title=mentoring?'Наставничество':'Совместные проекты';
+    const desc=mentoring?'Передавайте профессиональные знания или найдите коллегу, который поможет освоить новые навыки.':'Найдите партнёров для конкретной задачи, предложите свой опыт и сформируйте команду.';
+    if(!state.user){accountGate(title);return;}
+    if(state.user.role==='admin'){
+      content.innerHTML='<section class="panel"><h1>'+title+'</h1><p>Предложения проходят ту же проверку, что и публикации сообщества.</p><a class="button primary" href="/community/feed">Открыть модерацию ленты</a></section>';return;
+    }
+    let mine=null;
+    if(state.user.role==='candidate')mine=await api('/api/community/feed/mine?opportunity_kind='+mode);
+    state.feedCanPublish=Boolean(mine?.can_publish);
+    const composer=state.feedCanPublish?'<section class="panel" id="feed-compose-section">'+opportunityForm()+'</section>':'<section class="panel"><h2>Хотите разместить предложение?</h2><p>Для публикации нужен одобренный профессиональный профиль участника.</p>'+(state.user.role==='candidate'?'<a class="button primary" href="/community/profile">Мой профиль</a>':'<p class="help">Работодатели могут искать специалистов и предложить знакомство.</p>')+'</section>';
+    const own=mine?'<section class="panel"><h2>Мои предложения</h2><p class="help">Скрытие завершённого предложения убирает его из поиска и ленты. Уже принятые знакомства сохраняются.</p><button type="button" class="button secondary compact" data-action="refresh-feed-mine">Обновить статусы</button><div id="feed-mine-list" class="feed-list"></div></section>':'';
+    content.innerHTML='<div class="section-heading"><div><h1>'+title+'</h1><p>'+desc+'</p></div>'+(state.feedCanPublish?'<a href="#feed-compose-section" class="button primary">Создать предложение</a>':'')+'</div><div class="feed-layout"><div class="feed-primary"><form id="feed-filter" class="panel feed-filter opportunity-filter" role="search"><div class="field"><label for="opp-search">Профессия, навык или тема</label><input type="search" id="opp-search" name="q" maxlength="100" placeholder="Например, продажи или водоочистка"></div><div class="field"><label for="opp-filter-intent">Кого ищете</label><select name="intent" id="opp-filter-intent">'+options(opportunityIntents[mode],'','Все цели')+'</select></div><div class="field"><label for="opp-filter-format">Формат</label><select name="meeting_format" id="opp-filter-format">'+options(opportunityFormats,'','Любой формат')+'</select></div><div class="field"><label for="opp-filter-commitment">Продолжительность</label><select name="commitment" id="opp-filter-commitment">'+options(opportunityCommitments,'','Любая')+'</select></div><div class="field"><label for="opp-city">Город</label><input name="city" id="opp-city" maxlength="80" placeholder="Необязательно"></div><div class="actions"><button class="button primary" type="submit">Найти предложения</button><button class="button secondary" type="reset">Сбросить</button></div></form><p class="help">Обсудите условия лично в защищённой переписке после взаимного согласия. СТАЖНО не проверяет квалификацию и не гарантирует выполнение проектов.</p><div id="feed-list" class="feed-list" aria-live="polite"></div><section id="feed-discussion" class="panel feed-discussion" hidden></section></div><aside class="feed-side">'+composer+own+'</aside></div>';
+    const filter=$('#feed-filter');
+    filter.addEventListener('submit',event=>{event.preventDefault();state.feedPage=1;loadFeed().catch(error=>notice(error.message,'error'));});
+    filter.addEventListener('reset',()=>setTimeout(()=>{state.feedPage=1;loadFeed().catch(error=>notice(error.message,'error'));},0));
+    if(state.feedCanPublish)bindFeedForm($('#feed-compose-form'));
+    if(mine)drawFeedMine(mine);
+    await loadFeed().catch(error=>notice(error.message,'error'));
+  }
+
   async function handleAction(event) {
     const button=event.target.closest('[data-action]');if(!button||button.disabled)return;
     const {action,id}=button.dataset;
@@ -608,6 +658,7 @@
       else if(action==='moderation-page'){state.moderationPage=Number(button.dataset.page);await loadModeration();}
       else if(action==='reports-page'){state.reportPage=Number(button.dataset.page);await loadReports();}
       else if(['resolve-report','dismiss-report'].includes(action))await busy(button.closest('article'),async()=>{await api('/api/admin/community/reports/'+encodeURIComponent(id),{method:'PATCH',body:{status:action==='resolve-report'?'resolved':'dismissed'}});await loadReports();notice('Статус жалобы сохранён.');});
+      else if(action==='respond-opportunity')await requestConnection({entryId:id,publicId:button.dataset.publicId,kind:button.dataset.kind,title:button.dataset.title});
       else if(action==='feed-page'){state.feedPage=Number(button.dataset.page);await loadFeed();}
       else if(action==='feed-mine-page'){state.feedMinePage=Number(button.dataset.page);await loadFeedMine();}
       else if(action==='refresh-feed-mine'){state.feedMinePage=1;await loadFeedMine();}
@@ -622,7 +673,7 @@
           $('#feed-comments').innerHTML=empty('Обсуждение скрыто','Этот текст больше не отображается в ленте.');
           if(!state.feedCommentDirty){state.feedThreadId=null;$('#feed-discussion').hidden=true;$('#feed-discussion').innerHTML='';}
         }
-        await Promise.all([loadFeedMine(),loadFeed(),loadFeedAlerts()]);
+        await Promise.all([loadFeedMine(),loadFeed(),...($('#feed-alerts-list')?[loadFeedAlerts()]:[refreshFeedAlertBadge()])]);
       });
       else if(['follow-author','unfollow-author'].includes(action))await changeFollow(button);
       else if(action==='feed-follows-page'){state.feedFollowsPage=Number(button.dataset.page);await loadFeedFollows();}
@@ -641,6 +692,7 @@
     try{
       if(mode==='directory')await renderDirectory();
       else if(mode==='feed')await renderFeed();
+      else if(opportunityMode)await renderOpportunities();
       else if(mode==='profile')await renderProfile();
       else if(mode==='connections')await renderConnections();
       else if(mode==='moderation')await renderModeration();
