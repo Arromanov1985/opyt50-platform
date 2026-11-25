@@ -579,7 +579,8 @@ def test_feed_engagement_runtime_postgresql(runtime_db):
         url = "/api/community/feed"
         headers = {"X-Requested-With": "OPYT50"}
         post = client.post(url, headers=headers, json={
-            "kind": "experience", "title": "Опыт", "body": "Передача знаний",
+            "kind": "mentoring", "title": "Опыт", "body": "Передача знаний",
+            "opportunity": {"intent": "offer", "meeting_format": "online", "commitment": "regular"},
             "client_key": str(uuid4()), "publish_consent": True,
         })
         assert post.status_code == 200, post.text
@@ -592,6 +593,11 @@ def test_feed_engagement_runtime_postgresql(runtime_db):
         follow = client.post(url + "/follows", headers=headers, json={"public_id": "pg-author"})
         assert follow.status_code == 200, follow.text
         assert client.get(url + "?following=true").json()["entries"][0]["id"] == root["id"]
+        offers = client.get("/api/community/opportunities?kind=mentoring&intent=offer&meeting_format=online&commitment=regular")
+        assert offers.status_code == 200, offers.text
+        assert [row["id"] for row in offers.json()["entries"]] == [root["id"]]
+        assert offers.json()["entries"][0]["opportunity"]["intent"] == "offer"
+        assert client.get("/api/community/opportunities?kind=projects").json()["entries"] == []
         comment = client.post(url, headers=headers, json={
             "kind": "comment", "parent_id": root["id"], "body": "Ответ коллеги",
             "client_key": str(uuid4()), "publish_consent": True,

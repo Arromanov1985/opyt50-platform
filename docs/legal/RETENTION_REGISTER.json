@@ -131,6 +131,7 @@
         "community_messages",
         "community_read_state",
         "community_feed_entries",
+        "community_opportunities",
         "community_feed_follows",
         "community_feed_alert_reads"
       ],
