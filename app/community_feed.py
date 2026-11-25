@@ -26,6 +26,8 @@ visible AS (
            p.public_id,p.public_name,p.headline,p.city,p.skills,f.author_id,
            o.intent AS opportunity_intent,o.meeting_format AS opportunity_format,
            o.commitment AS opportunity_commitment,
+           CASE WHEN EXISTS (SELECT 1 FROM community_saved_entries se
+             WHERE se.user_id=v.viewer_id AND se.entry_id=f.id) THEN 1 ELSE 0 END AS saved,
            CASE WHEN EXISTS (SELECT 1 FROM community_feed_follows ff
              WHERE ff.follower_id=v.viewer_id AND ff.target_id=f.author_id) THEN 1 ELSE 0 END AS followed
     FROM community_feed_entries f
@@ -52,7 +54,7 @@ visible AS (
       )
 )
 SELECT v.id,v.parent_id,v.kind,v.title,v.body,v.created_at,v.published_at,
-       v.public_id,v.public_name,v.headline,v.followed,
+       v.public_id,v.public_name,v.headline,v.followed,v.saved,
        v.opportunity_intent,v.opportunity_format,v.opportunity_commitment,v.city AS opportunity_city,
        (SELECT root.title FROM visible root WHERE root.id=v.parent_id) AS root_title
 FROM visible v CROSS JOIN viewer actor
@@ -69,6 +71,11 @@ WHERE (?<>0 OR COALESCE(v.parent_id,'')=?)
   ))
   AND (?='' OR v.id=?)
   AND (?='' OR v.kind=?)
+  AND (?=0 OR v.author_id<>actor.viewer_id)
+  AND (?=0 OR v.id IN (
+      SELECT se.entry_id FROM community_saved_entries se WHERE se.user_id=actor.viewer_id
+      ORDER BY se.created_at DESC,se.entry_id LIMIT ? OFFSET ?
+  ))
   AND (?=0 OR v.opportunity_intent IS NOT NULL)
   AND (?='' OR v.opportunity_intent=?)
   AND (?='' OR v.opportunity_format=?)
@@ -157,17 +164,21 @@ def _visible(db, viewer: int, parent: str = "", entry_id: str = "",
              kind: str = "", q: str = "", page: int = 1,
              following: bool = False, alerts: int = 0,
              opportunity_only: bool = False, intent: str = "", meeting_format: str = "",
-             commitment: str = "", city: str = "") -> dict:
+             commitment: str = "", city: str = "", saved_page: int = 0,
+             exclude_self: bool = False, match_profile: bool = False) -> dict:
     rows = db.execute(_VISIBLE_SQL, (
         viewer, alerts, parent, int(following), alerts, alerts,
-        entry_id, entry_id, kind, kind, int(opportunity_only),
+        entry_id, entry_id, kind, kind, int(exclude_self), int(bool(saved_page)),
+        PAGE_SIZE, max(0, saved_page - 1) * PAGE_SIZE, int(opportunity_only),
         intent, intent, meeting_format, meeting_format, commitment, commitment, city, city,
-        q, q, q, int(opportunity_only), q, q,
+        q, q, q, int(opportunity_only or match_profile), q, q,
         PAGE_SIZE + 1, (page - 1) * PAGE_SIZE,
     )).fetchall()
-    entries, followed = [], set()
+    entries, followed, saved = [], set(), []
     for row in rows[:PAGE_SIZE]:
         item = dict(row)
+        if item.pop("saved"):
+            saved.append(item["id"])
         if item.pop("followed"):
             followed.add(item["public_id"])
         opportunity = _opportunity_dto(item)
@@ -180,7 +191,7 @@ def _visible(db, viewer: int, parent: str = "", entry_id: str = "",
         if alerts:
             item["root_title"] = root_title
         entries.append(item)
-    return {"entries": entries, "following_public_ids": sorted(followed),
+    return {"entries": entries, "following_public_ids": sorted(followed), "saved_entry_ids": saved,
             "page": page, "has_more": len(rows) > PAGE_SIZE}
 
 
@@ -400,3 +411,6 @@ def install_feed_routes(app, community_user, throttle, get_connection, allowed, 
     from .community_engagement import install_engagement_routes
     install_engagement_routes(app, community_user, throttle, get_connection, allowed,
                               record_security_event, reader)
+
+    from .community_discovery import install_discovery_routes
+    install_discovery_routes(app, community_user, throttle, get_connection, reader, can_publish)

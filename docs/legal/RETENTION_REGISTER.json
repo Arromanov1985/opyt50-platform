@@ -133,7 +133,9 @@
         "community_feed_entries",
         "community_opportunities",
         "community_feed_follows",
-        "community_feed_alert_reads"
+        "community_feed_alert_reads",
+        "community_saved_entries",
+        "community_discovery_preferences"
       ],
       "purpose": "Сервисные письма, очередь доставки, приватная переписка, отметки просмотра и модерируемые публикации внутри сообщества",
       "start_event": "message_sent_or_suppressed",
