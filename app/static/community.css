@@ -98,3 +98,11 @@
 .feed-alert-row .actions{margin-top:12px}
 .feed-card .text-button{min-height:44px;font-size:.92em}
 @media(max-width:480px){.feed-follow-row{flex-wrap:wrap}.feed-follow-row .button{width:100%}.feed-alert-row .actions{display:grid;grid-template-columns:1fr}.feed-alert-row .actions .button{width:100%}}
+
+/* Structured mentoring and project cards keep the same readable community layout. */
+.opportunity-facts{display:flex;flex-wrap:wrap;gap:8px;margin:10px 0 14px}
+.opportunity-facts .tag{max-width:100%;white-space:normal;overflow-wrap:anywhere}
+.opportunity-filter .actions{margin-top:2px}
+.opportunity-filter .field input,.opportunity-filter .field select{width:100%;min-width:0}
+@media(min-width:851px){.opportunity-filter{grid-template-columns:repeat(2,minmax(0,1fr))}.opportunity-filter .field:first-child,.opportunity-filter .actions{grid-column:1/-1}}
+@media(max-width:480px){.opportunity-filter .actions,.feed-card .actions{display:grid;grid-template-columns:1fr}.opportunity-filter .button,.feed-card .actions .button{width:100%}}
