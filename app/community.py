@@ -350,13 +350,8 @@ def _counterpart(db, user_id: int) -> dict:
 # All attention counts use the same visibility and private cursor semantics.
 # A message is unread for its recipient only; historical blocked/unavailable
 # conversations remain readable but are not surfaced as current work.
-_UNREAD_SQL = """SELECT COUNT(*) FROM community_messages m
-    LEFT JOIN community_read_state r ON r.connection_id=m.connection_id AND r.user_id={owner}
-    WHERE m.connection_id={thread} AND m.sender_id={peer}
-      AND (r.user_id IS NULL OR m.created_at>r.through_created_at
-           OR (m.created_at=r.through_created_at AND m.id>r.through_message_id))"""
-
-_ATTENTION_CTE = """
+# Keep complete static SQL statements so the security scanner can verify them.
+_ACTIVITY_SQL = """
 WITH viewer AS (
     SELECT CAST(? AS INTEGER) AS viewer_id, CAST(? AS INTEGER) AS viewer_active
 ), owned AS (
@@ -378,23 +373,88 @@ WITH viewer AS (
         CASE WHEN c.attention_enabled=1 AND c.status='pending' AND c.recipient_id=c.viewer_id
              THEN 1 ELSE 0 END AS pending_action,
         CASE WHEN c.attention_enabled=1 AND c.status='accepted' THEN (
-""" + _UNREAD_SQL.format(owner="c.viewer_id", thread="c.id", peer="c.peer_id") + """
+SELECT COUNT(*) FROM community_messages m
+    LEFT JOIN community_read_state r ON r.connection_id=m.connection_id AND r.user_id=c.viewer_id
+    WHERE m.connection_id=c.id AND m.sender_id=c.peer_id
+      AND (r.user_id IS NULL OR m.created_at>r.through_created_at
+           OR (m.created_at=r.through_created_at AND m.id>r.through_message_id))
         ) ELSE 0 END AS unread_count
     FROM eligible c
 )
-"""
-
-
-_ACTIVITY_SQL = _ATTENTION_CTE + """SELECT COALESCE(SUM(pending_action),0) AS pending_requests,
+SELECT COALESCE(SUM(pending_action),0) AS pending_requests,
     COALESCE(SUM(unread_count),0) AS unread_messages,
     COALESCE(SUM(CASE WHEN unread_count>0 THEN 1 ELSE 0 END),0) AS unread_threads
     FROM attention_rows"""
-_ATTENTION_WHERE = " WHERE (pending_action=1 OR unread_count>0) AND (?='' OR status=?)"
-_ATTENTION_COUNT_SQL = _ATTENTION_CTE + "SELECT COUNT(*) FROM attention_rows" + _ATTENTION_WHERE
-_ATTENTION_PAGE_SQL = _ATTENTION_CTE + "SELECT * FROM attention_rows" + _ATTENTION_WHERE + (
-    " ORDER BY pending_action DESC,updated_at DESC,id DESC LIMIT ? OFFSET ?"
+
+_ATTENTION_COUNT_SQL = """
+WITH viewer AS (
+    SELECT CAST(? AS INTEGER) AS viewer_id, CAST(? AS INTEGER) AS viewer_active
+), owned AS (
+    SELECT c.*,v.viewer_id,v.viewer_active,
+           CASE WHEN c.sender_id=v.viewer_id THEN c.recipient_id ELSE c.sender_id END AS peer_id
+    FROM community_connections c CROSS JOIN viewer v
+    WHERE c.sender_id=v.viewer_id OR c.recipient_id=v.viewer_id
+), eligible AS (
+    SELECT c.*,CASE WHEN c.viewer_active=1 AND COALESCE(ac.status,'active')='active'
+        AND NOT EXISTS (
+            SELECT 1 FROM privacy_rights_requests pr WHERE pr.user_id=c.peer_id
+              AND pr.kind IN ('deletion','stop_processing')
+              AND pr.status IN ('received','in_review','completed')
+        ) THEN 1 ELSE 0 END AS attention_enabled
+    FROM owned c JOIN users u ON u.id=c.peer_id
+    LEFT JOIN account_controls ac ON ac.user_id=c.peer_id
+), attention_rows AS (
+    SELECT c.*,
+        CASE WHEN c.attention_enabled=1 AND c.status='pending' AND c.recipient_id=c.viewer_id
+             THEN 1 ELSE 0 END AS pending_action,
+        CASE WHEN c.attention_enabled=1 AND c.status='accepted' THEN (
+SELECT COUNT(*) FROM community_messages m
+    LEFT JOIN community_read_state r ON r.connection_id=m.connection_id AND r.user_id=c.viewer_id
+    WHERE m.connection_id=c.id AND m.sender_id=c.peer_id
+      AND (r.user_id IS NULL OR m.created_at>r.through_created_at
+           OR (m.created_at=r.through_created_at AND m.id>r.through_message_id))
+        ) ELSE 0 END AS unread_count
+    FROM eligible c
 )
-_THREAD_UNREAD_SQL = _UNREAD_SQL.format(owner="?", thread="?", peer="?")
+SELECT COUNT(*) FROM attention_rows WHERE (pending_action=1 OR unread_count>0) AND (?='' OR status=?)"""
+
+_ATTENTION_PAGE_SQL = """
+WITH viewer AS (
+    SELECT CAST(? AS INTEGER) AS viewer_id, CAST(? AS INTEGER) AS viewer_active
+), owned AS (
+    SELECT c.*,v.viewer_id,v.viewer_active,
+           CASE WHEN c.sender_id=v.viewer_id THEN c.recipient_id ELSE c.sender_id END AS peer_id
+    FROM community_connections c CROSS JOIN viewer v
+    WHERE c.sender_id=v.viewer_id OR c.recipient_id=v.viewer_id
+), eligible AS (
+    SELECT c.*,CASE WHEN c.viewer_active=1 AND COALESCE(ac.status,'active')='active'
+        AND NOT EXISTS (
+            SELECT 1 FROM privacy_rights_requests pr WHERE pr.user_id=c.peer_id
+              AND pr.kind IN ('deletion','stop_processing')
+              AND pr.status IN ('received','in_review','completed')
+        ) THEN 1 ELSE 0 END AS attention_enabled
+    FROM owned c JOIN users u ON u.id=c.peer_id
+    LEFT JOIN account_controls ac ON ac.user_id=c.peer_id
+), attention_rows AS (
+    SELECT c.*,
+        CASE WHEN c.attention_enabled=1 AND c.status='pending' AND c.recipient_id=c.viewer_id
+             THEN 1 ELSE 0 END AS pending_action,
+        CASE WHEN c.attention_enabled=1 AND c.status='accepted' THEN (
+SELECT COUNT(*) FROM community_messages m
+    LEFT JOIN community_read_state r ON r.connection_id=m.connection_id AND r.user_id=c.viewer_id
+    WHERE m.connection_id=c.id AND m.sender_id=c.peer_id
+      AND (r.user_id IS NULL OR m.created_at>r.through_created_at
+           OR (m.created_at=r.through_created_at AND m.id>r.through_message_id))
+        ) ELSE 0 END AS unread_count
+    FROM eligible c
+)
+SELECT * FROM attention_rows WHERE (pending_action=1 OR unread_count>0) AND (?='' OR status=?) ORDER BY pending_action DESC,updated_at DESC,id DESC LIMIT ? OFFSET ?"""
+
+_THREAD_UNREAD_SQL = """SELECT COUNT(*) FROM community_messages m
+    LEFT JOIN community_read_state r ON r.connection_id=m.connection_id AND r.user_id=?
+    WHERE m.connection_id=? AND m.sender_id=?
+      AND (r.user_id IS NULL OR m.created_at>r.through_created_at
+           OR (m.created_at=r.through_created_at AND m.id>r.through_message_id))"""
 
 
 def community_activity(db, user_id: int) -> dict:
