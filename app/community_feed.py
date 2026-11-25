@@ -23,7 +23,9 @@ _VISIBLE_SQL = """
 WITH viewer AS (SELECT CAST(? AS INTEGER) AS viewer_id),
 visible AS (
     SELECT f.id,f.parent_id,f.kind,f.title,f.body,f.created_at,f.published_at,
-           p.public_id,p.public_name,p.headline
+           p.public_id,p.public_name,p.headline,f.author_id,
+           CASE WHEN EXISTS (SELECT 1 FROM community_feed_follows ff
+             WHERE ff.follower_id=v.viewer_id AND ff.target_id=f.author_id) THEN 1 ELSE 0 END AS followed
     FROM community_feed_entries f
     JOIN community_profiles p ON p.user_id=f.author_id
     JOIN users u ON u.id=p.user_id
@@ -46,8 +48,21 @@ visible AS (
            OR (c.recipient_id=v.viewer_id AND c.sender_id=f.author_id))
       )
 )
-SELECT v.* FROM visible v
-WHERE COALESCE(v.parent_id,'')=?
+SELECT v.id,v.parent_id,v.kind,v.title,v.body,v.created_at,v.published_at,
+       v.public_id,v.public_name,v.headline,v.followed,
+       (SELECT root.title FROM visible root WHERE root.id=v.parent_id) AS root_title
+FROM visible v CROSS JOIN viewer actor
+WHERE (?<>0 OR COALESCE(v.parent_id,'')=?)
+  AND (?=0 OR v.followed=1)
+  AND (?=0 OR (
+      v.parent_id IS NOT NULL AND v.author_id<>actor.viewer_id
+      AND EXISTS (SELECT 1 FROM visible root WHERE root.id=v.parent_id
+                  AND root.parent_id IS NULL AND root.author_id=actor.viewer_id)
+  ))
+  AND (?<>1 OR NOT EXISTS (
+      SELECT 1 FROM community_feed_alert_reads ar
+      WHERE ar.user_id=actor.viewer_id AND ar.entry_id=v.id
+  ))
   AND (?='' OR v.id=?)
   AND (?='' OR v.kind=?)
   AND (?='' OR instr(unicode_fold(v.title),?)>0 OR instr(unicode_fold(v.body),?)>0)
@@ -94,12 +109,23 @@ def _entry(db, entry_id: str):
 
 
 def _visible(db, viewer: int, parent: str = "", entry_id: str = "",
-             kind: str = "", q: str = "", page: int = 1) -> dict:
+             kind: str = "", q: str = "", page: int = 1,
+             following: bool = False, alerts: int = 0) -> dict:
     rows = db.execute(_VISIBLE_SQL, (
-        viewer, parent, entry_id, entry_id, kind, kind, q, q, q,
+        viewer, alerts, parent, int(following), alerts, alerts,
+        entry_id, entry_id, kind, kind, q, q, q,
         PAGE_SIZE + 1, (page - 1) * PAGE_SIZE,
     )).fetchall()
-    return {"entries": [dict(row) for row in rows[:PAGE_SIZE]],
+    entries, followed = [], set()
+    for row in rows[:PAGE_SIZE]:
+        item = dict(row)
+        if item.pop("followed"):
+            followed.add(item["public_id"])
+        root_title = item.pop("root_title")
+        if alerts:
+            item["root_title"] = root_title
+        entries.append(item)
+    return {"entries": entries, "following_public_ids": sorted(followed),
             "page": page, "has_more": len(rows) > PAGE_SIZE}
 
 
@@ -131,10 +157,15 @@ def install_feed_routes(app, community_user, throttle, get_connection, allowed, 
 
     @app.get("/api/community/feed")
     def feed(kind: FeedKind | None = None, q: str = Query(default="", max_length=100),
-             page: int = Query(default=1, ge=1, le=10000),
+             page: int = Query(default=1, ge=1, le=10000), following: bool = False,
              user: dict = Depends(community_user), db=Depends(get_connection)):
         reader(user, db)
-        return _private(_visible(db, user["id"], kind=kind or "", q=q.strip().casefold(), page=page))
+        result = _visible(db, user["id"], kind=kind or "", q=q.strip().casefold(),
+                          page=page, following=following)
+        own = db.execute("SELECT public_id FROM community_profiles WHERE user_id=?",
+                         (user["id"],)).fetchone()
+        result["own_public_id"] = own["public_id"] if own else None
+        return _private(result)
 
     @app.get("/api/community/feed/mine")
     def mine(page: int = Query(default=1, ge=1, le=10000),
@@ -270,3 +301,7 @@ def install_feed_routes(app, community_user, throttle, get_connection, allowed, 
         record_security_event(db, user["id"], "community_feed_reviewed",
                               "entry=" + entry_id + " status=" + status)
         return _committed(db, {"entry": _own_dto(_entry(db, entry_id))})
+
+    from .community_engagement import install_engagement_routes
+    install_engagement_routes(app, community_user, throttle, get_connection, allowed,
+                              record_security_event, reader)
