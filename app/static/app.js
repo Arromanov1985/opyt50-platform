@@ -2,7 +2,7 @@
 'use strict';
 const $ = (selector, root = document) => root.querySelector(selector);
 const $$ = (selector, root = document) => [...root.querySelectorAll(selector)];
-const state = { user: null, mode: 'register', role: 'candidate', tab: 'overview', activeVacancy: null, editVacancy: null, activeDraft: null, employerVacancyFilter: 'all', employerVacancySearch: '', employerApplicationsVacancyFilter: 'all', employerApplicationsStatusFilter: 'all', employerApplicationsQuery: '', employerInvitationsFilter: 'all', employerInvitationsVacancyFilter: 'all', employerInvitationsQuery: '', employerInvitationsData: null, candidateInvitationsFilter: 'all', candidateInvitationsQuery: '', candidateInvitationsData: null, pendingApplicationVacancyId: null, mfaChallenge: null, mfaMethod: null, mfaCodeLength: 8, mfaPublicKey: null, mfaTotpFallback: false, actionSummary: null, employerWorkQueueView: null };
+const state = { user: null, mode: 'register', role: 'candidate', tab: 'overview', activeVacancy: null, editVacancy: null, activeDraft: null, employerVacancyFilter: 'all', employerVacancySearch: '', employerApplicationsVacancyFilter: 'all', employerApplicationsStatusFilter: 'all', employerApplicationsQuery: '', employerInvitationsFilter: 'all', employerInvitationsVacancyFilter: 'all', employerInvitationsQuery: '', employerInvitationsData: null, candidateInvitationsFilter: 'all', candidateInvitationsQuery: '', candidateInvitationsData: null, pendingApplicationVacancyId: null, mfaChallenge: null, mfaMethod: null, mfaCodeLength: 8, mfaPublicKey: null, mfaTotpFallback: false, actionSummary: null, communityActivity: null, employerWorkQueueView: null };
 const esc = value => String(value ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const money = value => Number(value || 0).toLocaleString('ru-RU') + ' ₽';
 const candidateSalaryText = value => Number(value) > 0
@@ -1194,6 +1194,35 @@ async function submitAuth(event) {
   } finally { btn.disabled = false; }
 }
 let lastActionRefreshAt = 0;
+let actionSummaryRequest = 0;
+function currentCommunityActivity() {
+  const activity=state.communityActivity;
+  return activity && activity.ownerId===state.user?.id && !activity.restricted ? activity : null;
+}
+function communityAttentionCount() {
+  const activity=currentCommunityActivity();
+  return activity ? Number(activity.pending_requests||0)+Number(activity.unread_threads||0) : 0;
+}
+function updateCommunityDashboard() {
+  const activity=currentCommunityActivity();
+  const count=communityAttentionCount();
+  document.querySelectorAll('[data-community-attention-link]').forEach(link=>{
+    link.href=count ? '/community/connections?attention=1' : '/community/connections';
+    link.textContent='Мои профессиональные связи'+(count?' · '+count:'');
+  });
+  const existing=$('#community-attention-overview');
+  if(!count || state.tab!=='overview'){
+    existing?.remove();return;
+  }
+  const stack=$('#dashboard-main .overview-stack');
+  if(!stack)return;
+  if(!existing){
+    const hero=stack.querySelector('.dashboard-overview-hero');
+    hero?.insertAdjacentHTML('afterend','<section class="panel" id="community-attention-overview" aria-labelledby="community-attention-title"><span class="section-kicker">ПРОФЕССИОНАЛЬНОЕ СООБЩЕСТВО</span><div class="overview-priority"><div><h3 id="community-attention-title">В сообществе есть новые действия</h3><p class="muted" id="community-attention-description"></p></div><a class="btn btn-outline" href="/community/connections?attention=1">Открыть разговоры →</a></div></section>');
+  }
+  const description=$('#community-attention-description');
+  if(description)description.textContent='Запросы на знакомство: '+Number(activity.pending_requests||0)+' · Непрочитанные сообщения: '+Number(activity.unread_messages||0);
+}
 function actionCountForTab(tab) {
   const summary = state.actionSummary;
   if (!summary || summary.role !== state.user?.role) return 0;
@@ -1209,14 +1238,16 @@ function actionCountForTab(tab) {
   return 0;
 }
 function updateActionBadges() {
-  const total = state.user && state.actionSummary && state.user.role === state.actionSummary.role
+  const hiringTotal = state.user && state.actionSummary && state.user.role === state.actionSummary.role
     ? Number(state.actionSummary.action_count || 0) : 0;
+  const communityTotal=communityAttentionCount();
+  const total=hiringTotal+communityTotal;
   const account = $('#account-open');
   const badge = $('#account-action-count');
   if (account && badge) {
     badge.hidden = total <= 0;
     badge.textContent = total > 99 ? '99+' : String(total);
-    if (total > 0) account.setAttribute('aria-label', 'Мой кабинет, действий требуют внимания: ' + total);
+    if (total > 0) account.setAttribute('aria-label', 'Мой кабинет, действий требуют внимания: ' + total + (communityTotal ? ' (сообщество: '+communityTotal+')' : ''));
     else account.removeAttribute('aria-label');
   }
   document.querySelectorAll('[data-action-count-for]').forEach(badge => {
@@ -1229,21 +1260,31 @@ function updateActionBadges() {
     const count = actionCountForTab(option.value);
     option.textContent = option.dataset.baseLabel + (count ? ' · ' + count : '');
   });
+  updateCommunityDashboard();
 }
 async function refreshActionSummary() {
   const ownerId = state.user?.id;
+  const request=++actionSummaryRequest;
+  const current=()=>request===actionSummaryRequest && state.user?.id===ownerId;
   if (!ownerId) {
     state.actionSummary = null;
+    state.communityActivity = null;
     updateActionBadges();
     return;
   }
+  // The optional community inbox must not delay loading the hiring dashboard.
+  if(['candidate','employer'].includes(state.user.role)){
+    api('/api/community/activity',{headers:{'X-Community-Actor':String(ownerId)}})
+      .then(activity=>{if(current()){state.communityActivity={...activity,ownerId};updateActionBadges();}})
+      .catch(()=>{if(current()){state.communityActivity=null;updateActionBadges();}});
+  }else state.communityActivity=null;
   try {
     const summary = await api('/api/account/action-summary');
-    if (state.user?.id !== ownerId) return;
+    if (!current()) return;
     state.actionSummary = summary.role === state.user.role ? summary : null;
   } catch {
     // A notification-count error must not prevent using the account.
-    if (state.user?.id !== ownerId) return;
+    if (!current()) return;
     state.actionSummary = null;
   }
   lastActionRefreshAt = Date.now();
@@ -1281,6 +1322,7 @@ async function reloadUser() {
   }
   if (state.user?.id !== previousUserId) {
     state.actionSummary = null;
+    state.communityActivity = null;
     state.employerWorkQueueView = null;
   }
   syncEmployerMatchAccount();
@@ -1308,6 +1350,7 @@ async function showDashboard(scroll = false) {
   if (state.user.role === 'candidate') await renderCandidate();
   if (state.user.role === 'employer') await renderEmployer();
   if (state.user.role === 'admin') await renderAdmin();
+  updateCommunityDashboard();
   prepareEditorForms();
   const returningToQueue = state.user.role === 'employer' && state.tab === 'overview' &&
     state.employerWorkQueueView?.returnPending === true;
@@ -1342,7 +1385,7 @@ function tabsMarkup(items, heading, subtitle) {
     <span class="section-kicker dashboard-menu-kicker">${esc(heading)}</span>
     <label class="dashboard-mobile-switch"><span>Раздел кабинета</span><select data-dashboard-tab-select aria-label="Раздел личного кабинета">${items.map(t => `<option value="${esc(t.id)}" ${state.tab === t.id ? 'selected' : ''} data-base-label="${esc(t.label)}">${esc(t.label)}${actionCountForTab(t.id) ? ' · '+actionCountForTab(t.id) : ''}</option>`).join('')}</select></label>
     <nav class="dashboard-tabs" aria-label="Разделы личного кабинета">${items.map(t => `<button type="button" data-tab="${esc(t.id)}" class="${state.tab === t.id ? 'active' : ''}"><span class="dashboard-tab-icon" aria-hidden="true">${icons[t.id]||'•'}</span><span>${esc(t.label)}</span><span class="dashboard-action-count" data-action-count-for="${esc(t.id)}" ${actionCountForTab(t.id) ? '' : 'hidden'} aria-label="Требует действия: ${actionCountForTab(t.id)}">${actionCountForTab(t.id) || ''}</span></button>`).join('')}</nav>
-    <div class="dashboard-side-note"><span>Профессиональное сообщество</span><small><a href="/community">Участники и обмен опытом</a></small><small><a href="/community/connections">Мои профессиональные связи</a></small>${state.user?.role === 'candidate' ? '<small><a href="/community/profile">Мой публичный профиль</a></small>' : ''}</div><div class="dashboard-side-note"><span>Приватность</span><small>Контакты открываются только в сценарии знакомства.</small></div>
+    <div class="dashboard-side-note"><span>Профессиональное сообщество</span><small><a href="/community">Участники и обмен опытом</a></small><small><a href="/community/connections" data-community-attention-link>Мои профессиональные связи</a></small>${state.user?.role === 'candidate' ? '<small><a href="/community/profile">Мой публичный профиль</a></small>' : ''}</div><div class="dashboard-side-note"><span>Приватность</span><small>Контакты открываются только в сценарии знакомства.</small></div>
   </aside>`;
 }
 function candidateProfileHealth(profile = {}) {

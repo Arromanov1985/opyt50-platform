@@ -43,3 +43,15 @@
   .person-story h2{font-size:1.3em}
 }
 @media(prefers-reduced-motion:reduce){*{scroll-behavior:auto!important}}
+
+/* A small private inbox, separate from recruitment introductions. */
+.community-attention{display:flex;gap:18px;align-items:center;justify-content:space-between;flex-wrap:wrap;margin-bottom:18px;padding:20px}
+.community-attention-metrics{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px;flex:1 1 300px;min-width:0}
+.community-attention-metrics>div{display:grid;gap:4px;min-width:0}
+.community-attention-metrics strong{font-size:1.8em;line-height:1.1;color:var(--green)}
+.community-attention-metrics span,.community-attention-metrics small{overflow-wrap:anywhere}
+.community-attention-metrics small{color:var(--muted)}
+.community-unread{display:inline-flex;border-radius:8px;padding:4px 9px;background:#e0efe4;color:#174e32;font-size:.82em;font-weight:700}
+.community-mark-read:not([hidden]){margin-top:12px;white-space:normal}
+#community-read-hint{margin-top:8px;margin-bottom:0}
+@media(max-width:480px){.community-attention{padding:16px}.community-attention>.button{width:100%}.community-attention-metrics{gap:12px}.community-attention-metrics span{font-size:.9em}}
