@@ -32,6 +32,9 @@ ORDER = (
     "email_outbox", "admin_audit", "vacancy_updates",
     "vacancy_update_recipients",
 )
+# Later additive data is optional for old snapshots, but must never be
+# silently omitted when it exists in a newer source database.
+OPTIONAL_ORDER = ("candidate_saved_searches",)
 IDENTITY_TABLES = (
     "users", "vacancies", "invitations", "demo_transactions",
     "job_applications", "application_events", "email_outbox",
@@ -62,7 +65,7 @@ def inspect_sqlite(filename: str) -> dict[str, int]:
         if missing:
             raise ValueError("SQLite source is missing required tables: " + ", ".join(sorted(missing)))
         return {table: db.execute(f'SELECT COUNT(*) FROM "{table}"').fetchone()[0]
-                for table in ORDER}
+                for table in ORDER + OPTIONAL_ORDER if table in present}
 
 
 def migrate(snapshot: str, dsn: str) -> dict[str, int]:
@@ -83,7 +86,7 @@ def migrate(snapshot: str, dsn: str) -> dict[str, int]:
                     if cur.fetchone()[0] != 0:
                         raise ValueError("Target schema is not empty; refusing to overwrite any data")
                     cur.execute(postgres_schema())
-                    for table in ORDER:
+                    for table in source_counts:
                         columns = [row[1] for row in source.execute(f'PRAGMA table_info("{table}")')]
                         if not columns:
                             raise ValueError("No columns in " + table)

@@ -9,7 +9,7 @@ def test_postgres_schema_contains_core_and_release02_tables():
     names = set(re.findall(r"CREATE TABLE IF NOT EXISTS\s+(\w+)", sql))
     assert {"users", "candidate_profiles", "employer_profiles", "vacancies",
             "invitations", "sessions", "demo_transactions",
-            "job_applications", "application_events", "candidate_favorites",
+            "job_applications", "application_events", "candidate_favorites", "candidate_saved_searches",
             "account_controls", "email_tokens", "email_outbox",
             "vacancy_updates", "vacancy_update_recipients"}.issubset(names)
 
