@@ -8,7 +8,7 @@
   const connectionStates = {pending:'Ожидает ответа', accepted:'Знакомство принято', declined:'Запрос отклонён', cancelled:'Запрос отозван', blocked:'Общение прекращено'};
   const reasons = {spam:'Спам или навязчивые предложения', fraud:'Подозрение на мошенничество', harassment:'Оскорбления или давление', personal_data:'Публикация личных данных', other:'Другая проблема'};
   const mode = document.body.dataset.communityPage;
-  const state = {user:null, profile:null, dirty:false, messageDirty:false, connections:[], connectionPage:1, connectionFilter:'', connectionListRequest:0, readThrough:null, selected:null, messageKey:null, messageBody:null, nextBefore:null, directoryPage:1, directoryRequest:0, threadSelectionRequest:0, threadRequest:0, messageLoadRequest:0, moderationPage:1, reportPage:1, busy:new WeakSet(), feedPage:1, feedMinePage:1, feedReviewPage:1, feedRequest:0, feedThreadRequest:0, feedReviewRequest:0, feedThreadId:null, feedThreadPage:1, feedCanPublish:false, feedDirty:false, feedCommentDirty:false};
+  const state = {user:null, profile:null, dirty:false, messageDirty:false, connections:[], connectionPage:1, connectionFilter:'', connectionListRequest:0, readThrough:null, selected:null, messageKey:null, messageBody:null, nextBefore:null, directoryPage:1, directoryRequest:0, threadSelectionRequest:0, threadRequest:0, messageLoadRequest:0, moderationPage:1, reportPage:1, busy:new WeakSet(), feedPage:1, feedMinePage:1, feedReviewPage:1, feedRequest:0, feedThreadRequest:0, feedReviewRequest:0, feedThreadId:null, feedThreadPage:1, feedCanPublish:false, feedDirty:false, feedCommentDirty:false, feedFollowingIds:new Set(), feedOwnPublicId:null, feedFollowsPage:1, feedAlertsPage:1, feedReportsPage:1, feedFollowsRequest:0, feedAlertsRequest:0, feedReportsRequest:0};
   const content = $('#community-content');
   const dialog = $('#community-dialog');
   let dialogBusy = false;
@@ -207,6 +207,10 @@
   async function renderPerson() {
     $('#request-connection').addEventListener('click',()=>requestConnection().catch(error=>notice(error.message,'error')));
     $('#report-person').addEventListener('click',()=>report({public_id:document.body.dataset.personId}));
+    const slot=$('#person-follow-slot');
+    if(slot&&state.user&&['candidate','employer'].includes(state.user.role)){
+      try{await refreshPersonFollow();}catch(error){notice(error.message,'error');}
+    }
   }
 
   function connectionCard(c) {
@@ -393,6 +397,10 @@
     if(admin&&entry.status==='pending')actions='<button class="button primary compact" type="button" data-action="approve-feed" data-id="'+id+'" data-version="'+Number(entry.version)+'">Одобрить</button> <button class="button secondary compact" type="button" data-action="reject-feed" data-id="'+id+'" data-version="'+Number(entry.version)+'">Отклонить</button>';
     if(admin&&entry.status==='published')actions='<button class="button secondary compact" type="button" data-action="hide-feed" data-id="'+id+'" data-version="'+Number(entry.version)+'">Скрыть</button>';
     if(!mine&&!admin&&!comment)actions='<button class="button secondary" type="button" data-action="open-feed-thread" data-id="'+id+'">Читать обсуждение</button>';
+    if(!mine&&!admin&&entry.public_id!==state.feedOwnPublicId){
+      if(!comment&&entry.public_id)actions+=' '+followButton(entry.public_id,state.feedFollowingIds.has(entry.public_id));
+      actions+=' <button class="text-button" type="button" data-action="report-feed" data-id="'+id+'">Пожаловаться</button>';
+    }
     return '<article class="panel feed-card" data-feed-id="'+id+'"><div class="feed-meta"><span class="tag">'+esc(feedKinds[entry.kind]||'Публикация')+'</span>'+((mine||admin)?statusBadge(entry.status,feedStates):'')+'<time>'+esc(date(entry.published_at||entry.created_at))+'</time></div>'+heading+(author?'<p class="feed-author">'+author+'</p>':'')+reviewContext+'<p class="multiline feed-body">'+esc(entry.body)+'</p>'+((mine||admin)&&entry.moderation_reason?'<p class="help">Причина: '+esc(entry.moderation_reason)+'</p>':'')+(actions?'<div class="actions">'+actions+'</div>':'')+'</article>';
   }
   function bindFeedForm(form,comment=false) {
@@ -428,6 +436,8 @@
     params.set('page',String(state.feedPage));if(!params.get('kind'))params.delete('kind');
     const result=await api('/api/community/feed?'+params);
     if(request!==state.feedRequest)return;
+    state.feedFollowingIds=new Set(result.following_public_ids||[]);
+    state.feedOwnPublicId=result.own_public_id||null;
     $('#feed-list').innerHTML=result.entries.length?result.entries.map(entry=>feedCard(entry)).join('')+pager(result.page,result.has_more,'feed-page'):empty('Пока нет публикаций','Попробуйте выбрать другую тему или поделитесь своим опытом.');
   }
   async function openFeedThread(id,page=1) {
@@ -466,22 +476,114 @@
       dialogBusy=false;closeDialog();notice('Решение сохранено.');await loadFeedReview();
     });});
   }
+
+  function followButton(publicId,following){
+    return '<button class="button secondary compact" type="button" data-action="'+(following?'unfollow-author':'follow-author')+'" data-id="'+esc(publicId)+'" aria-pressed="'+String(following)+'">'+(following?'Отписаться':'Подписаться')+'</button>';
+  }
+  async function refreshPersonFollow(){
+    const id=document.body.dataset.personId;
+    const result=await api('/api/community/feed/follows/'+encodeURIComponent(id));
+    $('#person-follow-slot').innerHTML=result.can_follow?followButton(id,result.following)+'<p class="help">Подписка видна только вам. Она не открывает личные контакты.</p>':'';
+  }
+  async function loadFeedFollows(){
+    const request=++state.feedFollowsRequest;
+    const result=await api('/api/community/feed/follows?page='+state.feedFollowsPage);
+    if(request!==state.feedFollowsRequest)return;
+    if(!result.follows.length&&state.feedFollowsPage>1){state.feedFollowsPage=1;return loadFeedFollows();}
+    $('#feed-follows-list').innerHTML=result.follows.length?result.follows.map(item=>'<article class="feed-follow-row"><div>'+(item.available?'<a href="/people/'+encodeURIComponent(item.public_id)+'">'+esc(item.public_name)+'</a><p class="help">'+esc(item.headline||'')+'</p>':'<strong>Недоступный участник</strong><p class="help">Публикации сейчас не отображаются.</p>')+'</div>'+followButton(item.public_id,true)+'</article>').join('')+pager(result.page,result.has_more,'feed-follows-page'): '<p class="help">Подпишитесь на интересного автора, чтобы находить его публикации в своей ленте.</p>';
+  }
+  async function changeFollow(button){
+    const {id,action}=button.dataset;
+    const root=button.closest('article')||$('#person-follow-slot');
+    await busy(root,async()=>{
+      const follow=action==='follow-author';
+      if(follow)await api('/api/community/feed/follows',{method:'POST',body:{public_id:id}});
+      else await api('/api/community/feed/follows/'+encodeURIComponent(id),{method:'DELETE',body:{}});
+      notice(follow?'Подписка оформлена.':'Подписка отменена.');
+      if(mode==='person')await refreshPersonFollow();
+      else {state.feedPage=1;await Promise.all([loadFeed(),loadFeedFollows()]);}
+    });
+  }
+  function paintFeedAlertBadge(result){
+    const badge=$('#feed-alert-badge');
+    if(!badge)return;
+    const count=result.entries.length;
+    badge.hidden=!count;
+    badge.textContent=count?(result.has_more?String(count)+'+':String(count)):'';
+    if(count)badge.setAttribute('aria-label','Есть новые комментарии');
+    else badge.removeAttribute('aria-label');
+  }
+  async function refreshFeedAlertBadge(){
+    if(!state.user||!['candidate','employer'].includes(state.user.role))return;
+    try{paintFeedAlertBadge(await api('/api/community/feed/alerts'));}catch{/* The rest of the community remains usable. */}
+  }
+  async function loadFeedAlerts(){
+    const request=++state.feedAlertsRequest;
+    const result=await api('/api/community/feed/alerts?page='+state.feedAlertsPage);
+    if(request!==state.feedAlertsRequest)return;
+    if(!result.entries.length&&state.feedAlertsPage>1){state.feedAlertsPage=1;return loadFeedAlerts();}
+    if(state.feedAlertsPage===1)paintFeedAlertBadge(result);
+    else refreshFeedAlertBadge();
+    $('#feed-alerts-list').innerHTML=result.entries.length?result.entries.map(entry=>'<article class="feed-alert-row"><p class="help">Новый комментарий к вашей публикации</p><h3>'+esc(entry.root_title||'Обсуждение')+'</h3><p><strong>'+esc(entry.public_name)+'</strong> · '+esc(date(entry.published_at))+'</p><p class="multiline">'+esc(entry.body)+'</p><div class="actions"><button type="button" class="button primary compact" data-action="open-feed-thread" data-id="'+esc(entry.parent_id)+'">Открыть обсуждение</button><button type="button" class="button secondary compact" data-action="read-feed-alert" data-id="'+esc(entry.id)+'">Отметить прочитанным</button></div></article>').join('')+pager(result.page,result.has_more,'feed-alerts-page'):'<p class="help">Новых комментариев пока нет. Здесь появятся одобренные ответы других участников к вашим публикациям.</p>';
+  }
+  function reportFeed(id){
+    openDialog('Пожаловаться на текст','<form id="feed-report-form" class="dialog-form"><p>Жалоба будет доступна модератору, но не автору текста. Укажите, что следует проверить.</p><div class="field"><label for="feed-report-reason">Причина</label><select name="reason" id="feed-report-reason">'+options(reasons,'spam')+'</select></div><div class="field"><label for="feed-report-details">Подробности (необязательно)</label><textarea name="details" id="feed-report-details" maxlength="1000" rows="4"></textarea></div><div class="actions"><button type="submit" class="button primary">Отправить жалобу</button><button type="button" class="button secondary" data-close-dialog>Отмена</button></div></form>');
+    const form=$('#feed-report-form');
+    form.addEventListener('submit',event=>{event.preventDefault();const body=Object.fromEntries(new FormData(form));busy(form,async()=>{
+      await api('/api/community/feed/'+encodeURIComponent(id)+'/reports',{method:'POST',body});
+      dialogBusy=false;closeDialog();notice('Жалоба передана модератору.');
+    });});
+  }
+  const feedReportStates={new:'Новые',resolved:'Рассмотренные',dismissed:'Отклонённые'};
+  function feedReportCard(report){
+    const item=report.entry,id=esc(report.id);
+    return '<article class="panel feed-card" data-feed-report-id="'+id+'"><div class="feed-meta"><span class="tag">'+esc(reasons[report.reason]||report.reason)+'</span><time>'+esc(date(report.created_at))+'</time></div><h2>'+esc(item.title||item.parent_title||'Комментарий')+'</h2><p class="help">Статус текста: '+esc(feedStates[item.entry_status]||item.entry_status)+'</p><p class="multiline feed-body">'+esc(item.body)+'</p>'+(report.details?'<p><strong>Объяснение заявителя:</strong></p><p class="multiline">'+esc(report.details)+'</p>':'')+(report.status==='new'?'<div class="actions"><button type="button" class="button secondary compact" data-action="resolve-feed-report" data-id="'+id+'">Рассмотрено</button><button type="button" class="button secondary compact" data-action="dismiss-feed-report" data-id="'+id+'">Отклонить жалобу</button><button type="button" class="button danger compact" data-action="hide-feed-report" data-id="'+id+'">Скрыть текст</button></div>':'<p class="help">'+esc(feedReportStates[report.status]||report.status)+'</p>')+'</article>';
+  }
+  async function loadFeedReports(){
+    const request=++state.feedReportsRequest;
+    const status=$('#feed-reports-status').value;
+    const result=await api('/api/admin/community/feed/reports?'+new URLSearchParams({status,page:String(state.feedReportsPage)}));
+    if(request!==state.feedReportsRequest)return;
+    if(!result.reports.length&&state.feedReportsPage>1){state.feedReportsPage=1;return loadFeedReports();}
+    $('#feed-reports-list').innerHTML=result.reports.length?result.reports.map(feedReportCard).join('')+pager(result.page,result.has_more,'feed-reports-page'):empty('Нет жалоб в этом статусе','Можно обновить очередь или выбрать другой статус.');
+  }
+  function reviewFeedReport(button){
+    const {id,action}=button.dataset,decision=action.replace('-feed-report','');
+    const titles={resolve:'Отметить жалобу рассмотренной?',dismiss:'Отклонить жалобу?',hide:'Скрыть текст по жалобе?'};
+    openDialog(titles[decision],'<form id="feed-report-review-form" class="dialog-form"><p>'+(decision==='hide'?'Текст исчезнет из ленты; скрытие исходной публикации также скроет её обсуждение.':'Это изменит статус жалобы, но не будет скрывать текст.')+'</p>'+(decision==='hide'?'<div class="field"><label for="feed-report-review-reason">Причина для автора текста</label><textarea name="reason" id="feed-report-review-reason" maxlength="500" required></textarea></div>':'')+'<div class="actions"><button type="submit" class="button primary">Подтвердить</button><button type="button" class="button secondary" data-close-dialog>Отмена</button></div></form>');
+    const form=$('#feed-report-review-form');
+    form.addEventListener('submit',event=>{event.preventDefault();const reason=form.elements.reason?.value||'';busy(form,async()=>{
+      await api('/api/admin/community/feed/reports/'+encodeURIComponent(id),{method:'PATCH',body:{decision,reason}});
+      dialogBusy=false;closeDialog();notice('Решение по жалобе сохранено.');
+      await Promise.all([loadFeedReports(),loadFeedReview()]);
+    });});
+  }
+
   async function renderFeed(){
     if(!state.user){accountGate('Профессиональная лента');return;}
     if(state.user.role==='admin'){
-      content.innerHTML='<div class="section-heading"><div><h1>Модерация профессиональной ленты</h1><p>Проверяйте публикации и комментарии до показа участникам.</p></div></div><form id="feed-review-filter" class="panel feed-form"><div class="field"><label for="feed-review-status">Статус</label><select id="feed-review-status">'+options(feedStates,'pending')+'</select></div><button type="submit" class="button secondary">Обновить</button></form><div id="feed-review-list" class="feed-list"></div>';
+      content.innerHTML='<div class="section-heading"><div><h1>Модерация профессиональной ленты</h1><p>Проверяйте публикации и комментарии до показа участникам.</p></div></div><form id="feed-review-filter" class="panel feed-form"><div class="field"><label for="feed-review-status">Статус</label><select id="feed-review-status">'+options(feedStates,'pending')+'</select></div><button type="submit" class="button secondary">Обновить</button></form><div id="feed-review-list" class="feed-list"></div><section class="section-divider"><div class="section-heading"><h2>Жалобы на публикации и комментарии</h2></div><form id="feed-reports-filter" class="panel feed-form"><div class="field"><label for="feed-reports-status">Статус жалобы</label><select id="feed-reports-status">'+options(feedReportStates,'new')+'</select></div><button type="submit" class="button secondary">Обновить жалобы</button></form><div id="feed-reports-list" class="feed-list"></div></section>';
       $('#feed-review-filter').addEventListener('submit',event=>{event.preventDefault();state.feedReviewPage=1;loadFeedReview().catch(error=>notice(error.message,'error'));});
       $('#feed-review-status').addEventListener('change',()=>{state.feedReviewPage=1;loadFeedReview().catch(error=>notice(error.message,'error'));});
-      await loadFeedReview();return;
+      $('#feed-reports-filter').addEventListener('submit',event=>{event.preventDefault();state.feedReportsPage=1;loadFeedReports().catch(error=>notice(error.message,'error'));});
+      $('#feed-reports-status').addEventListener('change',()=>{state.feedReportsPage=1;loadFeedReports().catch(error=>notice(error.message,'error'));});
+      await Promise.all([loadFeedReview(),loadFeedReports()]);return;
     }
     let mine=null;
     if(state.user.role==='candidate')mine=await api('/api/community/feed/mine');
     state.feedCanPublish=Boolean(mine?.can_publish);
-    content.innerHTML='<div class="section-heading"><div><h1>Профессиональная лента</h1><p>Делитесь опытом, задавайте вопросы, ищите партнёров и наставников.</p></div>'+(state.feedCanPublish?'<a class="button primary" href="#feed-compose-section">Написать публикацию</a>':'')+'</div><div class="feed-layout"><div class="feed-primary"><form id="feed-filter" class="panel feed-filter" role="search"><div class="field"><label for="feed-search">Поиск</label><input id="feed-search" name="q" maxlength="100" type="search" placeholder="Тема или ключевое слово"></div><div class="field"><label for="feed-category">Направление</label><select name="kind" id="feed-category">'+options(feedCategories,'','Все темы')+'</select></div><button class="button primary" type="submit">Найти</button></form><div id="feed-list" class="feed-list" aria-live="polite"><p role="status">Загружаем публикации…</p></div><section id="feed-discussion" class="panel feed-discussion" hidden></section></div><aside class="feed-side">'+(state.feedCanPublish?'<section class="panel" id="feed-compose-section">'+feedForm()+'</section>':'<section class="panel"><h2>Участвуйте в обсуждениях</h2><p>Публикации доступны участникам с одобренным профессиональным профилем.</p>'+(state.user.role==='candidate'?'<a class="button primary" href="/community/profile">Мой профиль</a>':'<p class="help">Работодатели могут читать ленту.</p>')+'</section>')+(mine?'<section class="panel"><h2>Мои публикации и комментарии</h2><p class="help">Одобренные тексты видны при действующем профессиональном профиле; скрытие публикации скрывает её обсуждение.</p><button type="button" class="button secondary compact" data-action="refresh-feed-mine">Обновить статусы</button><div id="feed-mine-list" class="feed-list"></div></section>':'')+'</aside></div>';
+    content.innerHTML='<div class="section-heading"><div><h1>Профессиональная лента</h1><p>Делитесь опытом, задавайте вопросы, ищите партнёров и наставников.</p></div>'+(state.feedCanPublish?'<a class="button primary" href="#feed-compose-section">Написать публикацию</a>':'')+'</div><div class="feed-layout"><div class="feed-primary"><section class="panel" id="feed-alerts"><div class="section-heading"><h2>Новые комментарии</h2><button type="button" class="button secondary compact" data-action="refresh-feed-alerts">Обновить</button></div><div id="feed-alerts-list" aria-live="polite"></div></section><form id="feed-filter" class="panel feed-filter" role="search"><div class="field"><label for="feed-search">Поиск</label><input id="feed-search" name="q" maxlength="100" type="search" placeholder="Тема или ключевое слово"></div><div class="field"><label for="feed-category">Направление</label><select name="kind" id="feed-category">'+options(feedCategories,'','Все темы')+'</select></div><div class="field"><label for="feed-following">Авторы</label><select name="following" id="feed-following"><option value="false">Все участники</option><option value="true">Мои подписки</option></select></div><button class="button primary" type="submit">Найти</button></form><div id="feed-list" class="feed-list" aria-live="polite"><p role="status">Загружаем публикации…</p></div><section id="feed-discussion" class="panel feed-discussion" hidden></section></div><aside class="feed-side"><section class="panel"><h2>Мои подписки</h2><p class="help">Список виден только вам.</p><div id="feed-follows-list"></div></section>'+(state.feedCanPublish?'<section class="panel" id="feed-compose-section">'+feedForm()+'</section>':'<section class="panel"><h2>Участвуйте в обсуждениях</h2><p>Публикации доступны участникам с одобренным профессиональным профилем.</p>'+(state.user.role==='candidate'?'<a class="button primary" href="/community/profile">Мой профиль</a>':'<p class="help">Работодатели могут читать ленту.</p>')+'</section>')+(mine?'<section class="panel"><h2>Мои публикации и комментарии</h2><p class="help">Одобренные тексты видны при действующем профессиональном профиле; скрытие публикации скрывает её обсуждение.</p><button type="button" class="button secondary compact" data-action="refresh-feed-mine">Обновить статусы</button><div id="feed-mine-list" class="feed-list"></div></section>':'')+'</aside></div>';
     $('#feed-filter').addEventListener('submit',event=>{event.preventDefault();state.feedPage=1;loadFeed().catch(error=>notice(error.message,'error'));});
     if(state.feedCanPublish)bindFeedForm($('#feed-compose-form'));
     if(mine)drawFeedMine(mine);
-    await loadFeed();
+    const params=new URLSearchParams(location.search);
+    if(params.get('following')==='true')$('#feed-following').value='true';
+    // Failure in a secondary panel must never replace the composer.
+    await Promise.all([
+      loadFeed().catch(error=>notice(error.message,'error')),
+      loadFeedFollows().catch(error=>{$('#feed-follows-list').textContent=error.message;}),
+      loadFeedAlerts().catch(error=>{$('#feed-alerts-list').textContent=error.message;})
+    ]);
   }
 
   async function handleAction(event) {
@@ -520,8 +622,16 @@
           $('#feed-comments').innerHTML=empty('Обсуждение скрыто','Этот текст больше не отображается в ленте.');
           if(!state.feedCommentDirty){state.feedThreadId=null;$('#feed-discussion').hidden=true;$('#feed-discussion').innerHTML='';}
         }
-        await Promise.all([loadFeedMine(),loadFeed()]);
+        await Promise.all([loadFeedMine(),loadFeed(),loadFeedAlerts()]);
       });
+      else if(['follow-author','unfollow-author'].includes(action))await changeFollow(button);
+      else if(action==='feed-follows-page'){state.feedFollowsPage=Number(button.dataset.page);await loadFeedFollows();}
+      else if(action==='feed-alerts-page'){state.feedAlertsPage=Number(button.dataset.page);await loadFeedAlerts();}
+      else if(action==='refresh-feed-alerts'){state.feedAlertsPage=1;await loadFeedAlerts();}
+      else if(action==='read-feed-alert')await busy(button.closest('article'),async()=>{await api('/api/community/feed/alerts/'+encodeURIComponent(id)+'/read',{method:'POST',body:{}});await loadFeedAlerts();});
+      else if(action==='report-feed')reportFeed(id);
+      else if(action==='feed-reports-page'){state.feedReportsPage=Number(button.dataset.page);await loadFeedReports();}
+      else if(['resolve-feed-report','dismiss-feed-report','hide-feed-report'].includes(action))reviewFeedReport(button);
       else if(action==='feed-review-page'){state.feedReviewPage=Number(button.dataset.page);await loadFeedReview();}
       else if(['approve-feed','reject-feed','hide-feed'].includes(action))moderateFeed(button);
       else if(action==='retry-community')await renderMode();
@@ -550,7 +660,7 @@
     dialog.addEventListener('cancel',event=>{if(dialogBusy)event.preventDefault();});
     window.addEventListener('beforeunload',event=>{if(state.dirty||state.messageDirty||state.feedDirty||state.feedCommentDirty){event.preventDefault();event.returnValue='';}});
     try{state.user=(await api('/api/me')).user;}catch(error){if(error.status!==401){notice(error.message,'error');if(!['directory','person'].includes(mode)){content.innerHTML='<section class="panel"><h1>Аккаунт временно недоступен</h1><p>Обновите страницу, когда соединение восстановится.</p><button class="button secondary" type="button" id="retry-account">Повторить</button></section>';$('#retry-account').addEventListener('click',()=>location.reload());return;}}}
-    updateIdentity();await renderMode();
+    updateIdentity();await renderMode();if(mode!=='feed')refreshFeedAlertBadge();
   }
   document.addEventListener('DOMContentLoaded',boot);
 })();
