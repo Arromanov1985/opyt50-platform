@@ -39,6 +39,11 @@ COMMON_COUNTS = (
     ("security_events", "SELECT COUNT(*) FROM security_events WHERE user_id=?", "id"),
     ("service_emails", "SELECT COUNT(*) FROM email_outbox WHERE to_email=?", "email"),
     ("delivery_links", "SELECT COUNT(*) FROM email_delivery_recipients WHERE user_id=?", "id"),
+    ("community_read_state", "SELECT COUNT(*) FROM community_read_state WHERE user_id=?", "id"),
+    ("community_connections", "SELECT COUNT(*) FROM community_connections WHERE ? IN (sender_id,recipient_id)", "id"),
+    ("community_messages_authored", "SELECT COUNT(*) FROM community_messages WHERE sender_id=?", "id"),
+    ("community_reports_submitted", "SELECT COUNT(*) FROM community_reports WHERE reporter_id=?", "id"),
+    ("community_professional_profile", "SELECT COUNT(*) FROM community_profiles WHERE user_id=?", "id"),
     ("workflow_mail_awaiting", """SELECT COUNT(*) FROM email_delivery_jobs q
         JOIN email_delivery_recipients r ON r.outbox_id=q.outbox_id
         WHERE r.user_id=? AND q.state IN ('pending','leased')""", "id"),

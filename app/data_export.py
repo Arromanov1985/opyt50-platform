@@ -80,6 +80,12 @@ def build_personal_data_snapshot(db, user_id: int) -> dict:
            FROM privacy_rights_requests WHERE user_id=?
            ORDER BY submitted_at DESC""",
     )
+    if role in {"candidate", "employer"}:
+        section(
+            "my_community_read_state",
+            """SELECT connection_id,through_message_id,through_created_at
+               FROM community_read_state WHERE user_id=? ORDER BY through_created_at DESC,connection_id""",
+        )
     if role == "candidate":
         data["candidate_profile"] = _single(
             db,

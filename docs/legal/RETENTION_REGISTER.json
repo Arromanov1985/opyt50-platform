@@ -124,13 +124,17 @@
       "tables": [
         "email_outbox",
         "email_delivery_jobs",
-        "email_delivery_recipients"
+        "email_delivery_recipients",
+        "community_messages",
+        "community_read_state"
       ],
-      "purpose": "Сервисные письма и очередь доставки",
+      "purpose": "Сервисные письма, очередь доставки, приватная переписка и отметки просмотра внутри сообщества",
       "start_event": "message_sent_or_suppressed",
       "systems": [
         "smtp_provider",
-        "mail_worker"
+        "mail_worker",
+        "primary_database",
+        "backup"
       ],
       "retention_days": null,
       "legal_basis": "NOT_APPROVED",

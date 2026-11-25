@@ -90,6 +90,14 @@ COMMUNITY_DDL = (
         created_at TEXT NOT NULL,
         UNIQUE(connection_id,sender_id,client_key)
     )""",
+    # A private cursor per participant, not a sender-visible read receipt.
+    """CREATE TABLE IF NOT EXISTS community_read_state (
+        user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        connection_id TEXT NOT NULL REFERENCES community_connections(id) ON DELETE CASCADE,
+        through_created_at TEXT NOT NULL,
+        through_message_id TEXT NOT NULL,
+        PRIMARY KEY(user_id,connection_id)
+    )""",
     """CREATE TABLE IF NOT EXISTS community_reports (
         id TEXT PRIMARY KEY,
         reporter_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -112,6 +120,7 @@ COMMUNITY_DDL = (
     "CREATE INDEX IF NOT EXISTS idx_community_connections_recipient ON community_connections(recipient_id,updated_at)",
     "CREATE INDEX IF NOT EXISTS idx_community_messages_thread ON community_messages(connection_id,created_at,id)",
     "CREATE INDEX IF NOT EXISTS idx_community_reports_status ON community_reports(status,created_at)",
+    "CREATE INDEX IF NOT EXISTS idx_community_read_state_thread ON community_read_state(connection_id)",
 )
 
 PUBLIC_FIELDS = ("public_id", "public_name", "headline", "city", "skills", "about", "goal")
@@ -202,6 +211,10 @@ class ConnectionResponseInput(CommunityModel):
 class MessageInput(CommunityModel):
     body: str = Field(min_length=1, max_length=2000)
     client_key: UUID
+
+
+class ReadThreadInput(CommunityModel):
+    through_message_id: str = Field(min_length=1, max_length=64)
 
 
 class ReportInput(CommunityModel):
@@ -334,18 +347,88 @@ def _counterpart(db, user_id: int) -> dict:
     return result
 
 
+# All attention counts use the same visibility and private cursor semantics.
+# A message is unread for its recipient only; historical blocked/unavailable
+# conversations remain readable but are not surfaced as current work.
+_UNREAD_SQL = """SELECT COUNT(*) FROM community_messages m
+    LEFT JOIN community_read_state r ON r.connection_id=m.connection_id AND r.user_id={owner}
+    WHERE m.connection_id={thread} AND m.sender_id={peer}
+      AND (r.user_id IS NULL OR m.created_at>r.through_created_at
+           OR (m.created_at=r.through_created_at AND m.id>r.through_message_id))"""
+
+_ATTENTION_CTE = """
+WITH viewer AS (
+    SELECT CAST(? AS INTEGER) AS viewer_id, CAST(? AS INTEGER) AS viewer_active
+), owned AS (
+    SELECT c.*,v.viewer_id,v.viewer_active,
+           CASE WHEN c.sender_id=v.viewer_id THEN c.recipient_id ELSE c.sender_id END AS peer_id
+    FROM community_connections c CROSS JOIN viewer v
+    WHERE c.sender_id=v.viewer_id OR c.recipient_id=v.viewer_id
+), eligible AS (
+    SELECT c.*,CASE WHEN c.viewer_active=1 AND COALESCE(ac.status,'active')='active'
+        AND NOT EXISTS (
+            SELECT 1 FROM privacy_rights_requests pr WHERE pr.user_id=c.peer_id
+              AND pr.kind IN ('deletion','stop_processing')
+              AND pr.status IN ('received','in_review','completed')
+        ) THEN 1 ELSE 0 END AS attention_enabled
+    FROM owned c JOIN users u ON u.id=c.peer_id
+    LEFT JOIN account_controls ac ON ac.user_id=c.peer_id
+), attention_rows AS (
+    SELECT c.*,
+        CASE WHEN c.attention_enabled=1 AND c.status='pending' AND c.recipient_id=c.viewer_id
+             THEN 1 ELSE 0 END AS pending_action,
+        CASE WHEN c.attention_enabled=1 AND c.status='accepted' THEN (
+""" + _UNREAD_SQL.format(owner="c.viewer_id", thread="c.id", peer="c.peer_id") + """
+        ) ELSE 0 END AS unread_count
+    FROM eligible c
+)
+"""
+
+
+def community_activity(db, user_id: int) -> dict:
+    """Return only the current account's aggregate attention counts."""
+    active = _active_account(db, user_id)
+    row = db.execute(
+        _ATTENTION_CTE + """SELECT COALESCE(SUM(pending_action),0) AS pending_requests,
+            COALESCE(SUM(unread_count),0) AS unread_messages,
+            COALESCE(SUM(CASE WHEN unread_count>0 THEN 1 ELSE 0 END),0) AS unread_threads
+            FROM attention_rows""",
+        (user_id, int(active)),
+    ).fetchone()
+    return {
+        "pending_requests": int(row["pending_requests"]),
+        "unread_messages": int(row["unread_messages"]),
+        "unread_threads": int(row["unread_threads"]),
+        "restricted": not active,
+    }
+
+
+def _thread_unread(db, row, user_id: int) -> int:
+    if row["status"] != "accepted" or not _active_account(db, user_id):
+        return 0
+    peer_id = int(row["recipient_id"] if row["sender_id"] == user_id else row["sender_id"])
+    if not _active_account(db, peer_id):
+        return 0
+    return int(db.execute(
+        _UNREAD_SQL.format(owner="?", thread="?", peer="?"),
+        (user_id, row["id"], peer_id),
+    ).fetchone()[0])
+
+
 def _connection_dto(db, row, user_id: int) -> dict:
     incoming = int(row["recipient_id"]) == user_id
     counterpart_id = int(row["sender_id"] if incoming else row["recipient_id"])
     active = _active_account(db, counterpart_id)
+    own_active = _active_account(db, user_id)
     result = {field: row[field] for field in ("id", "status", "purpose", "note", "created_at", "updated_at")}
     result.update(
         direction="incoming" if incoming else "outgoing",
         counterpart=_counterpart(db, counterpart_id),
-        can_respond=bool(incoming and row["status"] == "pending" and active),
+        can_respond=bool(incoming and row["status"] == "pending" and active and own_active),
         can_cancel=bool(not incoming and row["status"] == "pending"),
         can_block=row["status"] != "blocked",
-        can_message=bool(row["status"] == "accepted" and active),
+        can_message=bool(row["status"] == "accepted" and active and own_active),
+        unread_count=_thread_unread(db, row, user_id),
     )
     return result
 
@@ -615,21 +698,40 @@ def install_community_routes(app) -> None:
         )
         return _committed(db, {"connection": _connection_dto(db, _connection(db, connection_id, user["id"]), user["id"])})
 
+    @app.get("/api/community/activity")
+    def activity(user: dict = Depends(community_user), db=Depends(get_connection)):
+        if user["role"] not in {"candidate", "employer"}:
+            raise HTTPException(403, "Раздел доступен участникам сообщества")
+        return community_activity(db, user["id"])
+
     @app.get("/api/community/connections")
     def connections(status: ConnectionStatus | None = None, page: int = Query(default=1, ge=1, le=10000),
-                    user: dict = Depends(community_user), db=Depends(get_connection)):
-        args = (user["id"], user["id"], status or "", status or "")
-        total = db.execute(
-            """SELECT COUNT(*) FROM community_connections
-               WHERE (sender_id=? OR recipient_id=?) AND (?='' OR status=?)""", args,
-        ).fetchone()[0]
-        rows = db.execute(
-            """SELECT * FROM community_connections
-               WHERE (sender_id=? OR recipient_id=?) AND (?='' OR status=?)
-               ORDER BY updated_at DESC,id DESC LIMIT ? OFFSET ?""",
-            (*args, PAGE_SIZE, (page - 1) * PAGE_SIZE),
-        ).fetchall()
-        return {"connections": [_connection_dto(db, row, user["id"]) for row in rows], **_page_info(page, total)}
+                    attention: bool = False, user: dict = Depends(community_user), db=Depends(get_connection)):
+        owner = user["id"]
+        if attention:
+            # Apply attention before counting or paginating. An unread thread
+            # on page 3 must not disappear because the browser filters page 1.
+            args = (owner, int(_active_account(db, owner)), status or "", status or "")
+            where = " WHERE (pending_action=1 OR unread_count>0) AND (?='' OR status=?)"
+            total = db.execute(_ATTENTION_CTE + "SELECT COUNT(*) FROM attention_rows" + where, args).fetchone()[0]
+            rows = db.execute(
+                _ATTENTION_CTE + "SELECT * FROM attention_rows" + where +
+                " ORDER BY pending_action DESC,updated_at DESC,id DESC LIMIT ? OFFSET ?",
+                (*args, PAGE_SIZE, (page - 1) * PAGE_SIZE),
+            ).fetchall()
+        else:
+            args = (owner, owner, status or "", status or "")
+            total = db.execute(
+                """SELECT COUNT(*) FROM community_connections
+                   WHERE (sender_id=? OR recipient_id=?) AND (?='' OR status=?)""", args,
+            ).fetchone()[0]
+            rows = db.execute(
+                """SELECT * FROM community_connections
+                   WHERE (sender_id=? OR recipient_id=?) AND (?='' OR status=?)
+                   ORDER BY updated_at DESC,id DESC LIMIT ? OFFSET ?""",
+                (*args, PAGE_SIZE, (page - 1) * PAGE_SIZE),
+            ).fetchall()
+        return {"connections": [_connection_dto(db, row, owner) for row in rows], **_page_info(page, total)}
 
     @app.get("/api/community/connections/{connection_id}")
     def get_connection_details(connection_id: str, user: dict = Depends(community_user), db=Depends(get_connection)):
@@ -682,7 +784,7 @@ def install_community_routes(app) -> None:
     @app.get("/api/community/connections/{connection_id}/messages")
     def messages(connection_id: str, before: str | None = Query(default=None, max_length=64),
                  user: dict = Depends(community_user), db=Depends(get_connection)):
-        readable_thread(db, connection_id, user["id"])
+        thread = readable_thread(db, connection_id, user["id"])
         before_time, before_id = "", ""
         if before:
             cursor = db.execute("SELECT created_at,id FROM community_messages WHERE connection_id=? AND id=?",
@@ -699,7 +801,36 @@ def install_community_routes(app) -> None:
         has_more = len(rows) > 50
         rows = rows[:50]
         return {"messages": [_message_dto(row, user["id"]) for row in reversed(rows)],
-                "has_more": has_more, "next_before": rows[-1]["id"] if has_more else None}
+                "has_more": has_more, "next_before": rows[-1]["id"] if has_more else None,
+                "unread_count": _thread_unread(db, thread, user["id"])}
+
+    @app.post("/api/community/connections/{connection_id}/read")
+    def mark_read(connection_id: str, data: ReadThreadInput,
+                  user: dict = Depends(community_user), db=Depends(get_connection)):
+        owner = user["id"]
+        thread = _locked_connection(db, connection_id, owner)
+        peer = int(thread["recipient_id"] if thread["sender_id"] == owner else thread["sender_id"])
+        if thread["status"] != "accepted" or not _active_account(db, owner) or not _active_account(db, peer):
+            raise HTTPException(409, "Разговор больше не требует отметки о прочтении")
+        cursor = db.execute(
+            "SELECT id,created_at FROM community_messages WHERE connection_id=? AND id=?",
+            (connection_id, data.through_message_id),
+        ).fetchone()
+        if cursor is None:
+            raise HTTPException(422, "Сообщение недоступно в этом разговоре")
+        # An older tab must never move the cursor backwards. New messages
+        # arriving after the displayed cursor retain their unread status.
+        db.execute(
+            """INSERT INTO community_read_state(user_id,connection_id,through_created_at,through_message_id)
+               VALUES(?,?,?,?) ON CONFLICT(user_id,connection_id) DO UPDATE SET
+                 through_created_at=excluded.through_created_at,
+                 through_message_id=excluded.through_message_id
+               WHERE community_read_state.through_created_at<excluded.through_created_at
+                  OR (community_read_state.through_created_at=excluded.through_created_at
+                      AND community_read_state.through_message_id<excluded.through_message_id)""",
+            (owner, connection_id, cursor["created_at"], cursor["id"]),
+        )
+        return _committed(db, {"unread_count": _thread_unread(db, thread, owner)})
 
     @app.post("/api/community/connections/{connection_id}/messages")
     def send_message(connection_id: str, data: MessageInput,
