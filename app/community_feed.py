@@ -215,11 +215,20 @@ def install_feed_routes(app, community_user, throttle, get_connection, allowed, 
                      user: dict = Depends(community_user), db=Depends(get_connection)):
         allowed(user, "admin")
         rows = db.execute(
-            """SELECT * FROM community_feed_entries WHERE status=?
-               ORDER BY created_at,id LIMIT ? OFFSET ?""",
+            """SELECT f.*,p.public_id,p.public_name,p.headline,
+                      root.title AS parent_title,root.body AS parent_body
+               FROM community_feed_entries f
+               LEFT JOIN community_profiles p ON p.user_id=f.author_id
+               LEFT JOIN community_feed_entries root ON root.id=f.parent_id
+               WHERE f.status=? ORDER BY f.created_at,f.id LIMIT ? OFFSET ?""",
             (status, PAGE_SIZE + 1, (page - 1) * PAGE_SIZE),
         ).fetchall()
-        return _private(_page(rows, page))
+        entries = [
+            {**_own_dto(row), **{key: row[key] for key in
+             ("public_id", "public_name", "headline", "parent_title", "parent_body")}}
+            for row in rows[:PAGE_SIZE]
+        ]
+        return _private({"entries": entries, "page": page, "has_more": len(rows) > PAGE_SIZE})
 
     @app.patch("/api/admin/community/feed/{entry_id}")
     def moderate(entry_id: str, data: ModerationInput,
