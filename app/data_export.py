@@ -86,6 +86,24 @@ def build_personal_data_snapshot(db, user_id: int) -> dict:
             """SELECT connection_id,through_message_id,through_created_at
                FROM community_read_state WHERE user_id=? ORDER BY through_created_at DESC,connection_id""",
         )
+    if role in {"candidate", "employer"}:
+        section(
+            "my_community_follows",
+            """SELECT p.public_id,f.created_at FROM community_feed_follows f
+               JOIN community_profiles p ON p.user_id=f.target_id
+               WHERE f.follower_id=? ORDER BY f.created_at DESC,p.public_id""",
+        )
+        section(
+            "my_community_feed_alert_reads",
+            """SELECT entry_id,read_at FROM community_feed_alert_reads
+               WHERE user_id=? ORDER BY read_at DESC,entry_id""",
+        )
+        section(
+            "my_community_feed_reports",
+            """SELECT id,entry_id,reason,details,status,created_at,reviewed_at
+               FROM community_feed_reports WHERE reporter_id=?
+               ORDER BY created_at DESC,id DESC""",
+        )
     if role == "candidate":
         section(
             "my_community_feed",
