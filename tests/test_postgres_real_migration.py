@@ -68,6 +68,18 @@ def sample(tmp_path):
             """INSERT INTO community_read_state(user_id,connection_id,through_created_at,through_message_id)
                VALUES(1,'test-thread','2026-01-02','test-message')"""
         )
+        conn.execute(
+            """INSERT INTO community_feed_entries(id,author_id,client_key,kind,title,body,
+               consent_at,consent_version,created_at,updated_at)
+               VALUES('z-parent',1,'post-key','experience','Test title','Test body',
+               '2026-01-01','test','2026-01-01','2026-01-01')"""
+        )
+        conn.execute(
+            """INSERT INTO community_feed_entries(id,author_id,parent_id,client_key,kind,body,
+               consent_at,consent_version,created_at,updated_at)
+               VALUES('a-reply',1,'z-parent','reply-key','comment','Test reply',
+               '2026-01-02','test','2026-01-02','2026-01-02')"""
+        )
         conn.commit()
     return path
 
@@ -82,6 +94,7 @@ def test_import_preserves_ids_consents_and_relations(target, sample):
     assert counts["community_connections"] == 1
     assert counts["community_messages"] == 1
     assert counts["community_read_state"] == 1
+    assert counts["community_feed_entries"] == 2
     with psycopg.connect(target) as conn:
         assert conn.execute("SELECT id,vacancy_id,candidate_id FROM job_applications").fetchone() == (4, 3, 1)
         assert conn.execute("SELECT share_consent, contact_shared FROM invitations WHERE id=5").fetchone() == (1, 1)
@@ -92,6 +105,9 @@ def test_import_preserves_ids_consents_and_relations(target, sample):
         assert conn.execute(
             "SELECT user_id,connection_id,through_message_id FROM community_read_state"
         ).fetchone() == (1, "test-thread", "test-message")
+        assert conn.execute(
+            "SELECT parent_id FROM community_feed_entries WHERE id='a-reply'"
+        ).fetchone() == ("z-parent",)
     assert sample.read_bytes() == before
 
 
