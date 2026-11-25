@@ -2038,6 +2038,9 @@ def create_app(db_path: str | None = None) -> FastAPI:
         sql += " LIMIT 100"
         return {"jobs": [dict(row) for row in db.execute(sql, params).fetchall()]}
 
+    from .saved_searches import install_saved_search_routes
+    install_saved_search_routes(app, jobs, active_user, get_connection, allowed)
+
     @app.get("/api/candidate/jobs")
     def matching_jobs(user: dict = Depends(active_user), db: sqlite3.Connection = Depends(get_connection)):
         allowed(user, "candidate")

@@ -28,9 +28,10 @@
       "tables": [
         "candidate_profiles",
         "candidate_resume_details",
-        "candidate_resume_qualifications"
+        "candidate_resume_qualifications",
+        "candidate_saved_searches"
       ],
-      "purpose": "Профессиональный профиль и резюме",
+      "purpose": "Профессиональный профиль, резюме и сохранённые условия поиска с отметками просмотренных вакансий",
       "start_event": "account_termination_or_goal_achieved",
       "systems": [
         "primary_database",

@@ -54,6 +54,7 @@ CANDIDATE_COUNTS = (
     ("application_events", """SELECT COUNT(*) FROM application_events ev
         JOIN job_applications a ON a.id=ev.application_id WHERE a.candidate_id=?""", "id"),
     ("favorite_vacancies", "SELECT COUNT(*) FROM candidate_favorites WHERE candidate_id=?", "id"),
+    ("saved_searches", "SELECT COUNT(*) FROM candidate_saved_searches WHERE candidate_id=?", "id"),
     ("invitations", "SELECT COUNT(*) FROM invitations WHERE candidate_id=?", "id"),
     ("contacts_already_shared", """SELECT COUNT(*) FROM invitations
         WHERE candidate_id=? AND contact_shared=1""", "id"),
