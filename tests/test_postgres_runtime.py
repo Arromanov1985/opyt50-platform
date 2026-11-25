@@ -571,9 +571,9 @@ def test_feed_engagement_runtime_postgresql(runtime_db):
             ).lastrowid
             for uid, public_id in ((1, "pg-author"), (other_id, "pg-reader")):
                 db.execute(
-                    """INSERT INTO community_profiles(user_id,public_id,public_name,headline,
+                    """INSERT INTO community_profiles(user_id,public_id,public_name,headline,goal,
                        status,consent_at,consent_content_version,reviewed_content_version,created_at,updated_at)
-                       VALUES(?,?,'Коллега','Наставник','published','2026-01-01',1,1,'2026-01-01','2026-01-01')""",
+                       VALUES(?,?,'Коллега','Наставник','mentoring','published','2026-01-01',1,1,'2026-01-01','2026-01-01')""",
                     (uid, public_id),
                 )
         url = "/api/community/feed"
