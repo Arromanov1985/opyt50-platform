@@ -87,6 +87,9 @@ def test_admin_only_aggregate_report_counts_signups_independently(tmp_path):
             "company_clicks": 0,
             "vacancy_clicks": 0,
             "apply_clicks": 0,
+            "journal_vacancy_clicks": 0,
+            "vacancy_article_clicks": 0,
+            "company_article_clicks": 0,
             "new_candidates": 1,
             "new_employers": 1,
         }
@@ -128,7 +131,7 @@ def test_growth_frontend_is_first_party_and_fails_open(tmp_path):
         assert 'data-growth-action="profile_click"' not in article.text
         assert 'href="/journal/paths/nayti-rabotu"' in article.text
         assert 'data-growth-action="jobs_click"' in article.text
-        assert '/static/journal.js?v=5' in article.text
+        assert '/static/journal.js?v=6' in article.text
         assert client.get("/static/growth-admin.css").status_code == 200
 
 
