@@ -1111,3 +1111,127 @@ def test_opportunities_follow_profile_privacy_and_pagination(community):
     }).status_code == 404
     assert mutate(second, "POST", "/api/account/privacy-requests", {"kind": "stop_processing"}).status_code == 201
     assert clients["outsider"].get(search).json()["entries"] == []
+
+
+def test_saved_entries_are_private_and_hidden_content_never_reappears(community):
+    app, clients, ids = community
+    first, second, admin = clients["first"], clients["second"], clients["admin"]
+    profile = publish(clients, "first")
+    publish(clients, "second")
+    pending = submit_feed(first, title="Закрытая тема")
+    root = moderate_feed(admin, submit_feed(first, title="Полезный материал"))
+    comment = moderate_feed(admin, submit_feed(first, kind="comment", parent_id=root["id"], title=""))
+    saved = "/api/community/feed/saved"
+    assert clients["visitor"].get(saved).status_code == 401
+    assert admin.get(saved).status_code == 403
+    assert mutate(second, "PUT", saved + "/" + pending["id"]).status_code == 404
+    assert mutate(second, "PUT", saved + "/" + comment["id"]).status_code == 404
+    target = saved + "/" + root["id"]
+    assert mutate(second, "PUT", target).json() == {"entry_id": root["id"], "saved": True}
+    assert mutate(second, "PUT", target).status_code == 200
+    record = second.get(saved).json()["records"][0]
+    assert record["entry"]["title"] == root["title"]
+    assert second.get("/api/community/feed").json()["saved_entry_ids"] == [root["id"]]
+    assert first.get(saved).json()["records"] == []
+    assert clients["outsider"].get(saved).json()["records"] == []
+    assert first.get("/api/community/feed").json()["saved_entry_ids"] == []
+    assert len(second.get("/api/account/data-export").json()["sections"]["my_community_saved_entries"]) == 1
+    assert first.get("/api/account/data-export").json()["sections"]["my_community_saved_entries"] == []
+    assert mutate(clients["outsider"], "DELETE", target).status_code == 200
+    assert len(second.get(saved).json()["records"]) == 1
+    assert mutate(first, "DELETE", "/api/community/feed/" + root["id"], {
+        "expected_version": root["version"]
+    }).status_code == 200
+    unavailable = second.get(saved).json()["records"][0]
+    assert unavailable == {"entry_id": root["id"], "created_at": record["created_at"], "entry": None}
+    assert mutate(second, "PUT", target).status_code == 404
+    assert mutate(second, "DELETE", target).status_code == 200
+    assert mutate(second, "DELETE", target).status_code == 200
+    assert second.get(saved).json()["records"] == []
+    assert profile["public_id"]
+
+
+def test_explicit_discovery_preferences_and_matches_respect_privacy(community):
+    app, clients, ids = community
+    first, second, outsider, admin = (clients[key] for key in
+        ("first", "second", "outsider", "admin"))
+    profile = publish(clients, "first", headline="Наставник по складскому учёту",
+                      city="Подольск", goal="mentoring")
+    publish(clients, "second", city="Подольск", headline="Наставник склада")
+    publish(clients, "outsider", headline="Специалист по бухгалтерии", skills="Бухгалтерский учёт",
+            city="Москва", goal="projects")
+    offer = {"intent": "offer", "meeting_format": "online", "commitment": "regular"}
+    root = moderate_feed(admin, submit_feed(first, kind="mentoring", opportunity=offer,
+                                            title="Передача опыта", body="Практическое обучение"))
+    moderate_feed(admin, submit_feed(first, kind="mentoring"))
+    moderate_feed(admin, submit_feed(second, kind="mentoring", opportunity=offer))
+    url = "/api/community/recommendations"
+    prefs = url + "/preferences"
+    assert clients["visitor"].get(url).status_code == 401
+    assert admin.get(url).status_code == 403
+    initial = second.get(url).json()
+    assert initial["settings"]["revision"] is None and initial["people"]["people"] == []
+    assert initial["feed"]["entries"] == []
+    assert mutate(second, "PUT", prefs, {}).status_code == 422
+    assert mutate(second, "PUT", prefs, {"keyword": "test@example.invalid"}).status_code == 422
+    saved = mutate(second, "PUT", prefs, {"keyword": "СКЛАД", "city": "подольск", "focus": "mentoring"})
+    assert saved.status_code == 200, saved.text
+    revision = saved.json()["settings"]["revision"]
+    result = second.get(url).json()
+    assert [row["public_id"] for row in result["people"]["people"]] == [profile["public_id"]]
+    assert set(result["people"]["people"][0]) == set(PUBLIC_FIELDS)
+    assert [row["id"] for row in result["feed"]["entries"]] == [root["id"]]
+    assert result["settings"]["revision"] == revision
+    assert first.get(url).json()["settings"]["revision"] is None
+    assert outsider.get(url).json()["settings"]["revision"] is None
+    assert mutate(second, "PUT", prefs, {"keyword": "другая тема"}).status_code == 409
+    assert mutate(second, "DELETE", prefs, {"expected_revision": "stale"}).status_code == 409
+    assert second.get("/api/account/data-export").json()["sections"]["my_community_discovery_preferences"][0]["keyword"] == "СКЛАД"
+    assert first.get("/api/account/data-export").json()["sections"]["my_community_discovery_preferences"] == []
+    saved_path = "/api/community/feed/saved/" + root["id"]
+    assert mutate(second, "PUT", saved_path).status_code == 200
+    connection = connect(clients, profile["public_id"], sender="second")
+    assert mutate(second, "POST", "/api/community/connections/" + connection["id"] + "/block").status_code == 200
+    hidden = second.get(url).json()
+    assert hidden["people"]["people"] == [] and hidden["feed"]["entries"] == []
+    assert second.get("/api/community/feed/saved").json()["records"][0]["entry"] is None
+    cleared = mutate(second, "DELETE", prefs, {"expected_revision": revision})
+    assert cleared.status_code == 200, cleared.text
+    assert cleared.json()["settings"]["revision"] is None
+    assert second.get(url).json()["feed"]["entries"] == []
+    assert len(second.get("/api/community/feed/saved").json()["records"]) == 1
+
+
+def test_saved_pagination_and_linked_privacy_impact(community):
+    from app.privacy_disposal import impact_preview
+
+    app, clients, ids = community
+    first, second, admin = clients["first"], clients["second"], clients["admin"]
+    publish(clients, "first")
+    with database(app.state.db_path) as db:
+        for index in range(21):
+            entry = uuid4().hex
+            db.execute(
+                """INSERT INTO community_feed_entries(
+                   id,author_id,client_key,kind,title,body,status,consent_at,consent_version,
+                   published_at,created_at,updated_at) VALUES(?,?,?,'experience',?,?,'published',
+                   '2026-01-01','test','2026-01-02','2026-01-01','2026-01-02')""",
+                (entry, ids["first"], uuid4().hex, "Совет", "Профессиональный опыт"),
+            )
+            db.execute("INSERT INTO community_saved_entries VALUES(?,?,?)",
+                       (ids["second"], entry, f"2026-01-{index+1:02d}"))
+    url = "/api/community/feed/saved"
+    page1 = second.get(url).json()
+    page2 = second.get(url + "?page=2").json()
+    assert len(page1["records"]) == 20 and page1["has_more"]
+    assert len(page2["records"]) == 1 and not page2["has_more"]
+    assert all(row["entry"] is not None for row in page1["records"] + page2["records"])
+    assert not ({row["entry_id"] for row in page1["records"]} & {row["entry_id"] for row in page2["records"]})
+    request = mutate(first, "POST", "/api/account/privacy-requests", {"kind": "deletion"})
+    assert request.status_code == 201, request.text
+    assert all(row["entry"] is None for row in second.get(url).json()["records"])
+    with database(app.state.db_path) as db:
+        row = db.execute("SELECT request_key FROM privacy_rights_requests WHERE user_id=?", (ids["first"],)).fetchone()
+        preview = impact_preview(db, row["request_key"])
+        assert preview["counts"]["community_saved_entries_affected"] == 21
+        assert preview["automatic_deletion"] is False
