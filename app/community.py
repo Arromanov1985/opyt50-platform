@@ -136,6 +136,13 @@ COMMUNITY_DDL = (
         CHECK((parent_id IS NULL AND kind<>'comment') OR (parent_id IS NOT NULL AND kind='comment')),
         CHECK(parent_id IS NULL OR parent_id<>id)
     )""",
+    """CREATE TABLE IF NOT EXISTS community_opportunities (
+        entry_id TEXT PRIMARY KEY REFERENCES community_feed_entries(id) ON DELETE CASCADE,
+        intent TEXT NOT NULL CHECK(intent IN ('offer','seek','organize','join')),
+        meeting_format TEXT NOT NULL CHECK(meeting_format IN ('online','offline','hybrid')),
+        commitment TEXT NOT NULL CHECK(commitment IN ('one_off','regular','flexible'))
+    )""",
+    "CREATE INDEX IF NOT EXISTS idx_community_opportunities_filters ON community_opportunities(intent,meeting_format,commitment)",
     """CREATE TABLE IF NOT EXISTS community_feed_follows (
         follower_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
         target_id INTEGER NOT NULL REFERENCES community_profiles(user_id) ON DELETE CASCADE,
@@ -251,6 +258,7 @@ class ModerationInput(VersionInput):
 
 
 class ConnectionInput(CommunityModel):
+    opportunity_id: str | None = Field(default=None, min_length=1, max_length=64)
     public_id: str = Field(min_length=1, max_length=64)
     purpose: Goal
     note: str = Field(default="", max_length=500)
@@ -798,6 +806,14 @@ def install_community_routes(app) -> None:
             raise HTTPException(400, "Нельзя отправить запрос самому себе")
         _lock_actors(db, user["id"], recipient_id)
         public_person(db, data.public_id)
+        if data.opportunity_id:
+            from .community_feed import _visible
+            entries = _visible(db, user["id"], entry_id=data.opportunity_id,
+                               opportunity_only=True)["entries"]
+            if (not entries or entries[0]["public_id"] != data.public_id
+                    or entries[0]["kind"] != data.purpose
+                    or not _active_account(db, user["id"])):
+                raise HTTPException(404, "Предложение больше недоступно")
         low, high = sorted((user["id"], recipient_id))
         existing = db.execute(
             "SELECT * FROM community_connections WHERE pair_low=? AND pair_high=?", (low, high),
