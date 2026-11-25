@@ -67,3 +67,12 @@ def test_all_identity_tables_are_in_migration_order():
     assert set(IDENTITY_TABLES).issubset(ORDER)
     assert ORDER.index("users") < ORDER.index("vacancies") < ORDER.index("job_applications")
     assert ORDER.index("invitations") < ORDER.index("demo_transactions")
+
+
+def test_optional_saved_search_table_supports_older_snapshots(tmp_path):
+    dbfile = tmp_path / "legacy.db"
+    _sample_db(dbfile)
+    assert inspect_sqlite(str(dbfile))["candidate_saved_searches"] == 0
+    with sqlite3.connect(dbfile) as db:
+        db.execute("DROP TABLE candidate_saved_searches")
+    assert "candidate_saved_searches" not in inspect_sqlite(str(dbfile))

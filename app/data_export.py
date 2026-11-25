@@ -127,6 +127,16 @@ def build_personal_data_snapshot(db, user_id: int) -> dict:
                ORDER BY created_at DESC""",
         )
         section(
+            "my_saved_searches",
+            """SELECT search_key,q,city,salary_min,schedule,employment,
+                      alerts_enabled,reviewed_ids_json,created_at,updated_at
+               FROM candidate_saved_searches WHERE candidate_id=?
+               ORDER BY created_at DESC,search_key""",
+        )
+        for item in data["sections"]["my_saved_searches"]:
+            item["alerts_enabled"] = bool(item["alerts_enabled"])
+            item["reviewed_vacancy_ids"] = _safe_json_list(item.pop("reviewed_ids_json"))
+        section(
             "my_invitations",
             """SELECT id,vacancy_id,status,share_consent,contact_shared,
                       created_at,responded_at

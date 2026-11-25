@@ -186,6 +186,43 @@ def login(page, email, password="DemoPass2026!"):
     page.goto(URL, wait_until="networkidle")
 
 
+def exercise_saved_searches(page):
+    assert page.request.post(URL + "/api/logout", headers=HEADERS).status == 200
+    login(page, "kladovshik@demo.example")
+    mobile_section = page.locator("[data-dashboard-tab-select]")
+    expect(mobile_section).to_be_visible()
+    mobile_section.select_option("favorites")
+    panel = page.locator("#candidate-saved-searches")
+    expect(panel).to_be_visible()
+    form = panel.locator("#saved-search-form")
+    expect(form).to_be_visible()
+    form.locator("[name='q']").fill("Кладовщик")
+    form.locator("[name='city']").fill("Подольск")
+    form.locator("[name='alerts_enabled']").check()
+    form.locator("button[type='submit']").click()
+    row = panel.locator(".saved-search-row")
+    expect(row).to_have_count(1)
+    expect(row).to_contain_text("Кладовщик")
+    expect(row).to_contain_text("Новых совпадений нет")
+    row.locator("[data-saved-search-action='open']").click()
+    expect(panel.locator("#saved-search-results .job-card").first).to_be_visible()
+    assert page.evaluate("""() => {
+      const element = document.querySelector('#candidate-saved-searches');
+      return element && element.scrollWidth <= element.clientWidth + 3;
+    }"""), "Saved searches must fit the mobile cabinet"
+    mobile_section.select_option("overview")
+    expect(page.locator("#saved-search-overview")).to_contain_text("Сохранённых поисков: 1")
+    mobile_section.select_option("favorites")
+    row = panel.locator(".saved-search-row")
+    expect(row).to_have_count(1)
+    row.locator("[data-saved-search-action='toggle']").click()
+    expect(row).to_contain_text("Подписка выключена")
+    page.once("dialog", lambda dialog: dialog.accept())
+    row.locator("[data-saved-search-action='delete']").click()
+    expect(panel.locator(".saved-search-row")).to_have_count(0)
+    expect(panel.locator("#saved-search-message")).to_have_text("Поиск удалён.")
+
+
 def run_overview(page):
     browser_errors = []
     page.on("pageerror", lambda error: browser_errors.append(str(error)))
@@ -318,6 +355,7 @@ def run_overview(page):
     exercise_profile_readiness(page)
     assert not navigation_writes, "Overview navigation must not mutate account or application state: " + str(navigation_writes)
 
+    exercise_saved_searches(page)
     if browser_errors:
         raise AssertionError("Uncaught browser errors: " + " | ".join(browser_errors))
 

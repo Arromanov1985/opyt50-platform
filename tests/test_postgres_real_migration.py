@@ -50,6 +50,11 @@ def sample(tmp_path):
         conn.execute(
             "INSERT INTO invitations(id,vacancy_id,candidate_id,employer_id,status,share_consent,contact_shared,price_rub) VALUES(5,3,1,2,'accepted',1,1,1490)"
         )
+        conn.execute(
+            """INSERT INTO candidate_saved_searches
+               (candidate_id,search_key,slot,filter_key,q,alerts_enabled,reviewed_ids_json,created_at,updated_at)
+               VALUES(1,'test-key',1,'test-filter','Кладовщик',1,'[3]','2026-11-25','2026-11-25')"""
+        )
         conn.commit()
     return path
 
@@ -60,10 +65,14 @@ def test_import_preserves_ids_consents_and_relations(target, sample):
     counts = migrate(str(sample), target)
     assert counts["users"] == 2
     assert counts["job_applications"] == 1
+    assert counts["candidate_saved_searches"] == 1
     with psycopg.connect(target) as conn:
         assert conn.execute("SELECT id,vacancy_id,candidate_id FROM job_applications").fetchone() == (4, 3, 1)
         assert conn.execute("SELECT share_consent, contact_shared FROM invitations WHERE id=5").fetchone() == (1, 1)
         assert conn.execute("SELECT password_hash FROM users WHERE id=1").fetchone()[0] == "test-hash"
+        assert conn.execute(
+            "SELECT q,alerts_enabled,reviewed_ids_json FROM candidate_saved_searches WHERE candidate_id=1"
+        ).fetchone() == ("Кладовщик", 1, "[3]")
     assert sample.read_bytes() == before
 
 

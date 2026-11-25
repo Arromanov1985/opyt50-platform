@@ -429,3 +429,34 @@ def test_postgres_disposal_impact_and_manual_gate_are_non_destructive(runtime_db
         assert db.execute(
             "SELECT COUNT(*) FROM privacy_external_review_events"
         ).fetchone()[0] == len(SYSTEMS)
+
+
+def test_saved_search_api_in_postgresql(runtime_db):
+    from fastapi.testclient import TestClient
+    from app.main import create_app, active_user
+
+    app = create_app("ignored-with-DATABASE_URL")
+    app.dependency_overrides[active_user] = lambda: {"id": 1, "role": "candidate"}
+    root = "/api/candidate/saved-searches"
+    headers = {"X-Requested-With": "OPYT50"}
+    with TestClient(app) as client:
+        created = client.post(root, headers=headers, json={
+            "q": "КЛАДОВЩИК", "city": "Москва", "alerts_enabled": True,
+        })
+        assert created.status_code == 201, created.text
+        search = created.json()["search"]
+        assert search["new_count"] == 0
+        url = root + "/" + search["key"]
+        assert [job["id"] for job in client.get(url + "/results").json()["jobs"]] == [3]
+        with postgres_database(runtime_db) as db:
+            new = db.execute(
+                """INSERT INTO vacancies(employer_id,title,city,salary_min,salary_max)
+                   VALUES(2,'Кладовщик смены','Москва',60000,90000)"""
+            ).lastrowid
+        assert client.get(url + "/results").json()["new_ids"] == [new]
+        acknowledged = client.post(url + "/review", headers=headers,
+                                   json={"revision": search["revision"], "vacancy_ids": [3, new]})
+        assert acknowledged.status_code == 200, acknowledged.text
+        assert acknowledged.json()["search"]["new_count"] == 0
+        assert client.delete(url, headers=headers).status_code == 200
+        assert client.get(root).json()["searches"] == []
