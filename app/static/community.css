@@ -83,3 +83,18 @@
 .comfortable-view .feed-layout{grid-template-columns:1fr}
 @media(max-width:480px){.feed-form .button,.feed-filter .button{width:100%}.feed-card .feed-meta time{margin-left:0}.feed-card{padding:16px}.feed-layout{gap:16px}}
 #feed-compose-section{scroll-margin-top:20px}
+/* Private following and comment notifications: no public counters. */
+#person-follow-slot:not(:empty){margin-top:16px;padding-top:14px;border-top:1px solid var(--line)}
+#person-follow-slot .button{width:100%;min-height:44px}
+.feed-follow-row{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;padding:14px 0;border-top:1px solid var(--line);overflow-wrap:anywhere}
+.feed-follow-row>div{min-width:0;flex:1}
+.feed-follow-row .help{margin:4px 0 0}
+.feed-follow-row .button{flex-shrink:0}
+#feed-alerts .section-heading{margin-bottom:10px;align-items:center}
+#feed-alerts .section-heading h2{font-size:1.28em;margin:0}
+.feed-alert-row{padding:16px 0;border-top:1px solid var(--line);overflow-wrap:anywhere}
+.feed-alert-row h3{font-size:1.12em;margin:6px 0 10px}
+.feed-alert-row p{margin:6px 0 10px}
+.feed-alert-row .actions{margin-top:12px}
+.feed-card .text-button{min-height:44px;font-size:.92em}
+@media(max-width:480px){.feed-follow-row{flex-wrap:wrap}.feed-follow-row .button{width:100%}.feed-alert-row .actions{display:grid;grid-template-columns:1fr}.feed-alert-row .actions .button{width:100%}}
