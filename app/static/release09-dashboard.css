@@ -4133,3 +4133,30 @@ body.comfortable-view .candidate-favorite-compare-facts dd,
 body.comfortable-view .saved-job-actions .btn{font-size:1rem}
 @media(max-width:900px){.candidate-favorite-compare-grid{grid-template-columns:minmax(0,1fr)}}
 @media(max-width:700px){.saved-job-actions .btn{flex:1 1 150px}.candidate-favorite-compare-facts>div{grid-template-columns:minmax(0,1fr)}}
+
+
+/* Private saved-search presets and explicit in-app discovery subscriptions. */
+.saved-search-panel{margin-top:20px;min-width:0}
+.saved-search-panel h4{margin:0 0 6px;overflow-wrap:anywhere}
+#saved-search-message:not(:empty){padding:12px;margin:10px 0;background:#f0f7f2;border-radius:10px;overflow-wrap:anywhere}
+#saved-search-list{display:grid;gap:12px;margin-top:16px}
+.saved-search-row,.saved-search-form{border:1px solid #d7e5dc;border-radius:14px;padding:16px;min-width:0}
+.saved-search-row p{margin:0;overflow-wrap:anywhere}
+.saved-search-row-head,.saved-search-result-head{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;flex-wrap:wrap}
+.saved-search-row-head>div,.saved-search-result-head>div{min-width:0;flex:1 1 220px}
+.saved-search-actions{display:flex;flex-wrap:wrap;gap:8px;margin-top:14px}
+.saved-search-actions .btn{white-space:normal;text-align:center}
+.saved-search-fields{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;margin:14px 0}
+.saved-search-fields label{display:grid;gap:6px;min-width:0}
+.saved-search-fields input,.saved-search-fields select{width:100%;min-width:0}
+.saved-search-optin{display:flex;align-items:flex-start;gap:10px;margin:14px 0;cursor:pointer;line-height:1.5}
+.saved-search-optin input{flex:0 0 auto;width:20px;height:20px;margin-top:2px}
+#saved-search-results:not(:empty){border-top:1px solid #d7e5dc;margin-top:24px;padding-top:20px}
+.saved-search-job-list{display:grid;gap:12px;margin-top:12px}
+.saved-search-job{min-width:0}
+.saved-search-new{display:inline-block;background:#e3f3e9;color:#164f36;border-radius:8px;padding:6px 12px;margin-bottom:6px;font-weight:600}
+@media(max-width:700px){
+  .saved-search-fields{grid-template-columns:1fr}
+  .saved-search-row,.saved-search-form{padding:12px}
+  .saved-search-actions .btn{width:100%}
+}

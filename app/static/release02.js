@@ -288,6 +288,12 @@
         const sortLabels={salary_desc:'Сначала выше зарплата',salary_asc:'Сначала ниже зарплата'};
         if(sortLabels[sort]) active.push(['Сортировка',sortLabels[sort],'sort-filter']);
         $('#job-filter-summary').innerHTML = active.map(([label,value,input])=>`<button type="button" class="filter-chip filter-chip-action" data-v02-action="remove-public-job-filter" data-filter-id="${input}" aria-label="Убрать фильтр: ${esc(label)}, ${esc(value)}">${esc(label)}: ${esc(value)} <span aria-hidden="true">×</span></button>`).join('');
+        if (state.user?.role === 'candidate') {
+          const preset = Object.fromEntries(['q','city','schedule','employment'].map(key=>[key,qs.get(key)||'']));
+          preset.salary_min = Number(qs.get('salary_min')||0);
+          $('#job-filter-summary').insertAdjacentHTML('beforeend',
+            `<button type="button" class="btn btn-outline btn-tiny" data-save-public-search="${esc(JSON.stringify(preset))}">Сохранить условия поиска</button>`);
+        }
         const hasFilters = active.length > 0;
         $('#public-jobs').innerHTML = jobs.length
           ? jobs.map(j=>jobMarkup(j)).join('')
@@ -614,9 +620,155 @@
       apply();
     }
 
+    // Saved searches are account-owned, never persisted in browser storage.
+    const savedSearchEndpoint = '/api/candidate/saved-searches';
+    function savedSearchTitle(search) {
+      return search.filters.q || 'Все профессии';
+    }
+    function savedSearchFacts(search) {
+      const f=search.filters;
+      return [f.city||'Любой город', f.salary_min ? 'От '+money(f.salary_min) : 'Любая оплата',
+        f.schedule||'Любой график', f.employment||'Любая занятость'].join(' · ');
+    }
+    function savedSearchListMarkup(data) {
+      if(data.restricted) return '<p class="muted" role="status">Подбор приостановлен по обращению о персональных данных. Сохранённые условия доступны для ознакомления; новые совпадения не рассчитываются.</p>'
+        + data.searches.map(search=>`<article class="saved-search-row"><h4>${esc(savedSearchTitle(search))}</h4><p>${esc(savedSearchFacts(search))}</p></article>`).join('');
+      const form = data.searches.length < data.limit ? `<form id="saved-search-form" class="saved-search-form">
+        <h4>Сохранить новый поиск</h4>
+        <p class="muted">Укажите профессию, город и условия. Не вводите контактные данные.</p>
+        <div class="saved-search-fields">
+          <label>Профессия или навык<input name="q" maxlength="120" placeholder="Например, кладовщик"></label>
+          <label>Город<input name="city" maxlength="100" placeholder="Москва"></label>
+          <label>Зарплата от, ₽<input name="salary_min" type="number" min="0" max="10000000" step="1" placeholder="60000"></label>
+          <label>График<select name="schedule"><option value="">Любой график</option>${optList(schedules.filter(x=>x!=='Любой'))}</select></label>
+          <label>Занятость<select name="employment"><option value="">Любая занятость</option>${optList(employment.filter(x=>x!=='Любая'))}</select></label>
+        </div>
+        <label class="saved-search-optin"><input name="alerts_enabled" type="checkbox"> Показывать новые совпадения в моём кабинете</label>
+        <button class="btn btn-primary" type="submit">Сохранить поиск</button>
+      </form>` : '<p class="muted">Сохранено 10 из 10 поисков. Удалите ненужный, чтобы добавить новый.</p>';
+      const rows = data.searches.map(search=>`<article class="saved-search-row" data-search-key="${esc(search.key)}">
+        <div class="saved-search-row-head"><div><h4>${esc(savedSearchTitle(search))}</h4><p>${esc(savedSearchFacts(search))}</p></div>
+          <span class="mini-badge">${search.alerts_enabled ? (search.new_count ? 'Новых: '+Number(search.new_count) : 'Новых совпадений нет') : 'Подписка выключена'}</span></div>
+        <div class="saved-search-actions">
+          <button class="btn btn-primary btn-tiny" type="button" data-saved-search-action="open">Посмотреть вакансии</button>
+          <button class="btn btn-outline btn-tiny" type="button" data-saved-search-action="toggle">${search.alerts_enabled ? 'Выключить подписку' : 'Включить подписку'}</button>
+          <button class="btn btn-outline btn-tiny" type="button" data-saved-search-action="delete">Удалить поиск</button>
+        </div>
+      </article>`).join('');
+      return (rows || '<p class="muted">Пока нет сохранённых поисков. Сохраните условия один раз, чтобы возвращаться к ним.</p>') + form;
+    }
+    async function mountSavedSearches(target, ownerId) {
+      target.insertAdjacentHTML('beforeend', `<section class="panel saved-search-panel" id="candidate-saved-searches" aria-labelledby="saved-search-heading">
+        <span class="section-kicker">ВОЗВРАЩАЙТЕСЬ К ПОИСКУ</span><h3 id="saved-search-heading">Сохранённые поиски</h3>
+        <p class="muted">До 10 поисков. Подписка показывает новые совпадения в первых 100 актуальных вакансиях по каждому поиску. Письма не отправляются.</p>
+        <div id="saved-search-message" role="status" aria-live="polite"></div>
+        <button class="btn btn-outline btn-tiny" type="button" data-saved-search-action="refresh">Обновить список</button>
+        <div id="saved-search-list"><p class="muted">Загрузка поисков…</p></div>
+        <div id="saved-search-results"></div></section>`);
+      const root=target.querySelector('#candidate-saved-searches');
+      const list=root.querySelector('#saved-search-list');
+      const result=root.querySelector('#saved-search-results');
+      const message=root.querySelector('#saved-search-message');
+      const stillHere=()=>root.isConnected && state.user?.role==='candidate' &&
+        state.user?.id===ownerId && state.tab==='favorites';
+      let data=null, current=null, busy=false;
+      const notify=(text)=>{ if(stillHere()) message.textContent=text; };
+      async function refresh() {
+        const next=await api(savedSearchEndpoint);
+        if(!stillHere()) return;
+        data=next;
+        list.innerHTML=savedSearchListMarkup(data);
+        if(data.restricted) {current=null;result.innerHTML='';}
+      }
+      async function open(key) {
+        const next=await api(savedSearchEndpoint+'/'+encodeURIComponent(key)+'/results');
+        if(!stillHere()) return;
+        current=next;
+        const newIds=new Set(next.new_ids.map(Number));
+        result.innerHTML=`<div class="saved-search-result-head">
+          <div><h4>Вакансии: ${esc(savedSearchTitle(next.search))}</h4><p class="muted">${next.jobs.length} показано · ${esc(savedSearchFacts(next.search))}</p></div>
+          <button type="button" class="btn btn-outline btn-tiny" data-saved-search-action="close">Закрыть результаты</button></div>
+          ${next.new_ids.length ? '<p class="muted">Новые в этой выдаче с последней отметки. Вакансия могла быть обновлена или снова открыта.</p><button class="btn btn-primary btn-tiny" type="button" data-saved-search-action="review">Отметить показанные просмотренными</button>' : ''}
+          <div class="saved-search-job-list">${next.jobs.length ? next.jobs.map(job=>`<div class="saved-search-job">${newIds.has(Number(job.id))?'<span class="saved-search-new">Новое совпадение</span>':''}${jobMarkup(job)}</div>`).join('') : '<p class="muted">По этим условиям пока нет открытых вакансий.</p>'}</div>`;
+      }
+      root.addEventListener('submit',async event=>{
+        const form=event.target.closest('#saved-search-form');
+        if(!form) return;
+        event.preventDefault();
+        if(busy || !stillHere()) return;
+        const values=new FormData(form);
+        const payload={q:String(values.get('q')||'').trim(),city:String(values.get('city')||'').trim(),
+          salary_min:Number(values.get('salary_min')||0),schedule:String(values.get('schedule')||''),
+          employment:String(values.get('employment')||''),alerts_enabled:values.has('alerts_enabled')};
+        busy=true;
+        const button=form.querySelector('button[type="submit"]');
+        button.disabled=true;
+        try {
+          const saved=await req('POST',savedSearchEndpoint,payload);
+          notify(saved.created?'Поиск сохранён.':'Такой поиск уже сохранён. Настройки подписки не изменены.');
+          await refresh();
+        } catch(error) { notify(error.message); }
+        finally {busy=false;button.disabled=false;}
+      });
+      root.addEventListener('click',async event=>{
+        const button=event.target.closest('[data-saved-search-action]');
+        if(!button||busy||!stillHere()) return;
+        const action=button.dataset.savedSearchAction;
+        const key=button.closest('[data-search-key]')?.dataset.searchKey;
+        const search=data?.searches.find(item=>item.key===key);
+        if(action==='close'){current=null;result.innerHTML='';return;}
+        if(action==='delete' && !window.confirm('Удалить сохранённый поиск и его подписку?')) return;
+        busy=true;button.disabled=true;
+        try {
+          if(action==='refresh'){await refresh();if(current&&!data?.restricted) await open(current.search.key);}
+          else if(action==='open' && search){await open(key);}
+          else if(action==='toggle' && search){
+            await req('PATCH',savedSearchEndpoint+'/'+encodeURIComponent(key)+'/alerts',
+                      {enabled:!search.alerts_enabled,revision:search.revision});
+            notify(search.alerts_enabled?'Подписка выключена.':'Подписка включена. Новые совпадения появятся при изменении выдачи.');
+            await refresh();if(current?.search.key===key) await open(key);
+          }else if(action==='delete' && search){
+            await req('DELETE',savedSearchEndpoint+'/'+encodeURIComponent(key));
+            if(current?.search.key===key){current=null;result.innerHTML='';}
+            notify('Поиск удалён.');await refresh();
+          }else if(action==='review' && current){
+            const shown=current;
+            await req('POST',savedSearchEndpoint+'/'+encodeURIComponent(shown.search.key)+'/review',
+                      {revision:shown.search.revision,vacancy_ids:shown.jobs.map(job=>Number(job.id))});
+            notify('Показанные вакансии отмечены просмотренными.');await refresh();await open(shown.search.key);
+          }
+        }catch(error){notify(error.message+' Используйте «Обновить список», если данные изменились.');}
+        finally{busy=false;button.disabled=false;}
+      });
+      try { await refresh(); } catch(error) {notify(error.message);list.innerHTML='<p class="muted">Не удалось загрузить поиски. Попробуйте обновить список.</p>';}
+    }
+    async function showSavedSearchOverview(target,ownerId) {
+      try {
+        const data=await api(savedSearchEndpoint);
+        if(!target.isConnected||state.user?.id!==ownerId||state.tab!=='overview'||data.restricted) return;
+        const searches=data.searches||[];
+        const withNew=searches.filter(search=>Number(search.new_count)>0).length;
+        target.querySelector('.overview-stack')?.insertAdjacentHTML('beforeend',
+          `<section class="candidate-saved-strip" id="saved-search-overview"><div><span class="section-kicker">СОХРАНЁННЫЕ ПОИСКИ</span><strong>${withNew ? 'Новые вакансии в '+withNew+' сохранённых поисках' : searches.length ? 'Сохранённых поисков: '+searches.length : 'Сохраните условия поиска'}</strong><small>${withNew?'Проверьте новые совпадения в кабинете.':'Возвращайтесь к тем же условиям без повторного заполнения фильтров.'}</small></div><button class="btn btn-outline btn-tiny" type="button" data-tab="favorites">Открыть поиски →</button></section>`);
+      } catch { /* Optional discovery must not hide the core dashboard. */ }
+    }
+    document.addEventListener('click',async event=>{
+      const button=event.target.closest('[data-save-public-search]');
+      if(!button||button.disabled||state.user?.role!=='candidate') return;
+      button.disabled=true;
+      try {
+        const filters=JSON.parse(button.dataset.savePublicSearch);
+        const saved=await req('POST',savedSearchEndpoint,{...filters,alerts_enabled:false});
+        toast(saved.created?'Поиск сохранён. Подписку можно включить в разделе «Сохранённые».':'Такой поиск уже сохранён.');
+      }catch(error){toast(error.message,true);}
+      finally{button.disabled=false;}
+    });
+
     const employerExtra = [{id:'applications',label:'Отклики'}];
 
     renderCandidate = async function() {
+      const ownerId = state.user?.id;
+      const originalTab = state.tab;
       if (!candidateExtra.some(t=>t.id===state.tab)) {
         if (state.tab === 'offers' || state.tab === 'overview') {
           try { await Promise.all([refreshMyApplications(), refreshFavorites()]); }
@@ -628,6 +780,10 @@
           }
         }
         await oldCandidate();
+        if (originalTab==='overview' && state.tab==='overview' && state.user?.id===ownerId) {
+          const dashboard=document.getElementById('dashboard-main');
+          if(dashboard) await showSavedSearchOverview(dashboard,ownerId);
+        }
         if (state.tab === 'offers' && candidateSearchReadiness(state.user?.profile || {}).ready) {
           const target = document.getElementById('dashboard-main');
           if (target) {
@@ -666,6 +822,7 @@
           candidateFavoriteCompareSelection(jobs);
           const savedMarkup = jobs.length ? jobs.map(candidateSavedFavoriteMarkup).join('') : '<div class="empty-state empty-state-action"><span class="empty-state-icon" aria-hidden="true">♡</span><strong>Вы ещё не сохранили вакансий.</strong><p>Нажимайте ♡ на интересных вакансиях, чтобы вернуться к ним позже.</p><a class="btn btn-primary" href="#jobs">Посмотреть вакансии →</a></div>';
           $('#dashboard-main').innerHTML=`<div class="panel"><div class="panel-title-row"><div><span class="section-kicker">СОХРАНЕНО</span><h3>Избранные вакансии</h3><p class="muted">Здесь собраны сохранённые варианты. Выберите 2–3 вакансии, чтобы сравнить основные условия.</p></div></div>${jobs.length ? candidateFavoriteCompareMarkup(jobs) : ''}<div class="dashboard-list">${savedMarkup}</div></div>`;
+          await mountSavedSearches($('#dashboard-main'),favoriteOwnerId);
         }
         if(state.tab==='applications'){
           const {applications}=await api('/api/candidate/applications');
