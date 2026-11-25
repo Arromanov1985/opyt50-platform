@@ -106,3 +106,17 @@
 .opportunity-filter .field input,.opportunity-filter .field select{width:100%;min-width:0}
 @media(min-width:851px){.opportunity-filter{grid-template-columns:repeat(2,minmax(0,1fr))}.opportunity-filter .field:first-child,.opportunity-filter .actions{grid-column:1/-1}}
 @media(max-width:480px){.opportunity-filter .actions,.feed-card .actions{display:grid;grid-template-columns:1fr}.opportunity-filter .button,.feed-card .actions .button{width:100%}}
+/* Private discovery and bookmarks share the community's large-text defaults. */
+.discovery-nav{display:flex;gap:10px;flex-wrap:wrap;margin:0 0 24px}
+.discovery-nav .button{min-height:44px}
+.discovery-form{grid-template-columns:repeat(2,minmax(0,1fr))}
+.discovery-form h2,.discovery-form>.help,.discovery-form .actions{grid-column:1/-1}
+.discovery-form .field:first-of-type{grid-column:1/-1}
+.discovery-people-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px}
+.discovery-saved{max-width:960px}
+#discovery-explanation{margin:20px 0}
+#discovery-results .section-heading h2{margin-top:12px}
+[data-action="remove-saved"][aria-pressed="true"]{border-color:var(--green);color:var(--forest)}
+@media(max-width:760px){.discovery-form,.discovery-people-grid{grid-template-columns:1fr}}
+@media(max-width:480px){.discovery-nav{display:grid;grid-template-columns:1fr}.discovery-form .actions{display:grid;grid-template-columns:1fr}.discovery-form .button{width:100%}}
+.comfortable-view .discovery-form,.comfortable-view .discovery-people-grid{grid-template-columns:1fr}

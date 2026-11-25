@@ -9,7 +9,7 @@
   const reasons = {spam:'Спам или навязчивые предложения', fraud:'Подозрение на мошенничество', harassment:'Оскорбления или давление', personal_data:'Публикация личных данных', other:'Другая проблема'};
   const mode = document.body.dataset.communityPage;
   const opportunityMode=['mentoring','projects'].includes(mode);
-  const state = {user:null, profile:null, dirty:false, messageDirty:false, connections:[], connectionPage:1, connectionFilter:'', connectionListRequest:0, readThrough:null, selected:null, messageKey:null, messageBody:null, nextBefore:null, directoryPage:1, directoryRequest:0, threadSelectionRequest:0, threadRequest:0, messageLoadRequest:0, moderationPage:1, reportPage:1, busy:new WeakSet(), feedPage:1, feedMinePage:1, feedReviewPage:1, feedRequest:0, feedThreadRequest:0, feedReviewRequest:0, feedThreadId:null, feedThreadPage:1, feedCanPublish:false, feedDirty:false, feedCommentDirty:false, feedFollowingIds:new Set(), feedOwnPublicId:null, feedFollowsPage:1, feedAlertsPage:1, feedReportsPage:1, feedFollowsRequest:0, feedAlertsRequest:0, feedReportsRequest:0};
+  const state = {user:null, profile:null, dirty:false, messageDirty:false, connections:[], connectionPage:1, connectionFilter:'', connectionListRequest:0, readThrough:null, selected:null, messageKey:null, messageBody:null, nextBefore:null, directoryPage:1, directoryRequest:0, threadSelectionRequest:0, threadRequest:0, messageLoadRequest:0, moderationPage:1, reportPage:1, busy:new WeakSet(), feedPage:1, feedMinePage:1, feedReviewPage:1, feedRequest:0, feedThreadRequest:0, feedReviewRequest:0, feedThreadId:null, feedThreadPage:1, feedCanPublish:false, feedDirty:false, feedCommentDirty:false, feedFollowingIds:new Set(), feedOwnPublicId:null, feedFollowsPage:1, feedAlertsPage:1, feedReportsPage:1, feedFollowsRequest:0, feedAlertsRequest:0, feedReportsRequest:0, feedSavedIds:new Set(), savedPage:1, savedRequest:0, discoveryPeoplePage:1, discoveryFeedPage:1, discoveryRequest:0, discoveryRevision:null, discoveryDirty:false};
   const content = $('#community-content');
   const dialog = $('#community-dialog');
   let dialogBusy = false;
@@ -414,7 +414,7 @@
     if(mine&&entry.status!=='hidden')actions='<button class="button secondary compact" type="button" data-action="withdraw-feed" data-id="'+id+'" data-version="'+Number(entry.version)+'">Скрыть</button>';
     if(admin&&entry.status==='pending')actions='<button class="button primary compact" type="button" data-action="approve-feed" data-id="'+id+'" data-version="'+Number(entry.version)+'">Одобрить</button> <button class="button secondary compact" type="button" data-action="reject-feed" data-id="'+id+'" data-version="'+Number(entry.version)+'">Отклонить</button>';
     if(admin&&entry.status==='published')actions='<button class="button secondary compact" type="button" data-action="hide-feed" data-id="'+id+'" data-version="'+Number(entry.version)+'">Скрыть</button>';
-    if(!mine&&!admin&&!comment)actions='<button class="button secondary" type="button" data-action="open-feed-thread" data-id="'+id+'">Читать обсуждение</button>';
+    if(!mine&&!admin&&!comment)actions='<button class="button secondary" type="button" data-action="open-feed-thread" data-id="'+id+'">Читать обсуждение</button> '+savedButton(entry.id,state.feedSavedIds.has(entry.id));
     if(!mine&&!admin&&entry.public_id!==state.feedOwnPublicId){
       if(!comment&&entry.public_id){
         if(entry.opportunity)actions='<button type="button" class="button primary" data-action="respond-opportunity" data-id="'+id+'" data-public-id="'+esc(entry.public_id)+'" data-kind="'+esc(entry.kind)+'" data-title="'+esc(entry.title)+'">Обсудить предложение</button> '+actions;
@@ -448,7 +448,7 @@
     $('#feed-mine-list').innerHTML=result.entries.length?result.entries.map(entry=>feedCard(entry,{mine:true})).join('')+pager(result.page,result.has_more,'feed-mine-page'):empty('Пока нет ваших публикаций','Отправьте первый текст на проверку.');
   }
   async function loadFeedMine() {
-    if(state.user?.role!=='candidate')return;
+    if(state.user?.role!=='candidate'||!$('#feed-mine-list'))return;
     const result=await api('/api/community/feed/mine?page='+state.feedMinePage+(opportunityMode?'&opportunity_kind='+mode:''));
     drawFeedMine(result);
   }
@@ -460,6 +460,7 @@
     const result=await api((opportunityMode?'/api/community/opportunities?':'/api/community/feed?')+params);
     if(request!==state.feedRequest)return;
     state.feedFollowingIds=new Set(result.following_public_ids||[]);
+    state.feedSavedIds=new Set(result.saved_entry_ids||[]);
     state.feedOwnPublicId=result.own_public_id||null;
     $('#feed-list').innerHTML=result.entries.length?result.entries.map(entry=>feedCard(entry)).join('')+pager(result.page,result.has_more,'feed-page'):empty(opportunityMode?'Пока нет подходящих предложений':'Пока нет публикаций',opportunityMode?'Измените условия поиска или создайте своё предложение.':'Попробуйте выбрать другую тему или поделитесь своим опытом.');
   }
@@ -524,7 +525,7 @@
       else await api('/api/community/feed/follows/'+encodeURIComponent(id),{method:'DELETE',body:{}});
       notice(follow?'Подписка оформлена.':'Подписка отменена.');
       if(mode==='person')await refreshPersonFollow();
-      else {state.feedPage=1;await Promise.all([loadFeed(),...($('#feed-follows-list')?[loadFeedFollows()]:[])]);}
+      else {await refreshFeedSurface();if($('#feed-follows-list'))await loadFeedFollows();}
     });
   }
   function paintFeedAlertBadge(result){
@@ -636,6 +637,122 @@
     await loadFeed().catch(error=>notice(error.message,'error'));
   }
 
+
+  function savedButton(id,saved){
+    return '<button type="button" class="button secondary compact" data-action="'+(saved?'remove-saved':'save-entry')+'" data-id="'+esc(id)+'" aria-pressed="'+String(saved)+'">'+(saved?'Убрать из сохранённого':'Сохранить')+'</button>';
+  }
+  function discoveryNav(){
+    return '<nav class="discovery-nav" aria-label="Моё профессиональное пространство"><a class="button '+(mode==='discovery'?'primary':'secondary')+'" href="/community/recommendations"'+(mode==='discovery'?' aria-current="page"':'')+'>Рекомендации</a><a class="button '+(mode==='saved'?'primary':'secondary')+'" href="/community/saved"'+(mode==='saved'?' aria-current="page"':'')+'>Сохранённое</a></nav>';
+  }
+  function discoveryAllowed(title){
+    if(!state.user){accountGate(title);return false;}
+    if(!['candidate','employer'].includes(state.user.role)){
+      content.innerHTML=empty('Личное пространство участника','Для сохранения и рекомендаций войдите как участник или работодатель.','<a class="button primary" href="/community/feed">К ленте</a>');return false;
+    }
+    return true;
+  }
+  async function refreshFeedSurface(){
+    if(mode==='saved')return loadSaved();
+    if(mode==='discovery')return loadDiscovery();
+    state.feedPage=1;return loadFeed();
+  }
+  async function changeSaved(button){
+    const id=button.dataset.id,save=button.dataset.action==='save-entry';
+    const root=button.closest('article');
+    await busy(root,async()=>{
+      await api('/api/community/feed/saved/'+encodeURIComponent(id),{method:save?'PUT':'DELETE',body:{}});
+      if(save)state.feedSavedIds.add(id);else state.feedSavedIds.delete(id);
+      const message=save?'Добавлено в сохранённое.':'Удалено из сохранённого.';
+      notice(message);
+      if(mode==='saved'){
+        try{await loadSaved();}catch(error){notice(message+' Не удалось обновить список: '+error.message,'error');}
+      }else{
+        for(const node of document.querySelectorAll('button[data-action="save-entry"],button[data-action="remove-saved"]')){
+          if(node.dataset.id===id){
+            node.dataset.action=save?'remove-saved':'save-entry';
+            node.setAttribute('aria-pressed',String(save));
+            node.textContent=save?'Убрать из сохранённого':'Сохранить';
+          }
+        }
+      }
+    });
+  }
+  async function loadSaved(){
+    const request=++state.savedRequest;
+    const result=await api('/api/community/feed/saved?page='+state.savedPage);
+    if(request!==state.savedRequest)return;
+    if(!result.records.length&&state.savedPage>1){state.savedPage=1;return loadSaved();}
+    state.feedSavedIds=new Set(result.saved_entry_ids);
+    state.feedFollowingIds=new Set(result.following_public_ids);
+    state.feedOwnPublicId=result.own_public_id;
+    state.feedCanPublish=result.can_publish;
+    $('#saved-list').innerHTML=result.records.length?result.records.map(record=>record.entry?feedCard(record.entry):
+      '<article class="panel feed-card" data-saved-id="'+esc(record.entry_id)+'"><h2>Запись сейчас недоступна</h2><p class="help">Автор мог скрыть публикацию или изменить настройки доступа. Мы не показываем её содержимое.</p><div class="actions">'+savedButton(record.entry_id,true)+'</div></article>'
+    ).join('')+pager(result.page,result.has_more,'saved-page'):empty('Пока ничего не сохранено','Добавляйте интересные публикации и предложения, чтобы вернуться к ним позже.','<a class="button primary" href="/community/feed">Открыть ленту</a>');
+  }
+  async function renderSaved(){
+    if(!discoveryAllowed('Сохранённое'))return;
+    content.innerHTML='<div class="section-heading"><div><h1>Сохранённое</h1><p>Ваш личный список интересных материалов и предложений. Другие участники его не видят.</p></div></div>'+discoveryNav()+'<div id="saved-list" class="feed-list discovery-saved" aria-live="polite"></div><section id="feed-discussion" class="panel feed-discussion" hidden></section>';
+    await loadSaved();
+  }
+  function applyDiscoveryForm(settings){
+    const form=$('#discovery-preferences');
+    state.discoveryRevision=settings.revision;
+    form.elements.keyword.value=settings.keyword;
+    form.elements.city.value=settings.city;
+    form.elements.focus.value=settings.focus;
+    $('#discovery-clear').hidden=!settings.revision;
+    state.discoveryDirty=false;
+  }
+  function drawDiscovery(result){
+    const {settings,people,feed}=result;
+    state.feedFollowingIds=new Set(feed.following_public_ids);
+    state.feedSavedIds=new Set(feed.saved_entry_ids);
+    state.feedOwnPublicId=result.own_public_id;
+    state.feedCanPublish=result.can_publish;
+    const criteria=[settings.keyword?'Тема: '+settings.keyword:'',settings.city?'Город: '+settings.city:'',settings.focus?feedKinds[settings.focus]:''].filter(Boolean);
+    $('#discovery-explanation').textContent=settings.revision?'Подбор по сохранённым интересам: '+criteria.join(' · ')+'. Учитываются только опубликованные материалы.':'Задайте интересы и нажмите «Сохранить интересы и подобрать». Без ваших настроек персональная подборка не создаётся.';
+    $('#discovery-people').innerHTML=settings.revision?(people.people.length?'<div class="discovery-people-grid">'+people.people.map(person=>personCard(person)).join('')+'</div>'+pager(people.page,people.has_more,'discovery-people-page'):empty('Нет подходящих специалистов','Попробуйте более короткую тему, другой город или направление.')):'';
+    $('#discovery-feed').innerHTML=settings.revision?(feed.entries.length?feed.entries.map(entry=>feedCard(entry)).join('')+pager(feed.page,feed.has_more,'discovery-feed-page'):empty('Нет подходящих материалов','Измените интересы или вернитесь позже.')):'';
+    $('#discovery-results').hidden=!settings.revision;
+  }
+  async function loadDiscovery(){
+    const request=++state.discoveryRequest;
+    const result=await api('/api/community/recommendations?'+new URLSearchParams({people_page:String(state.discoveryPeoplePage),feed_page:String(state.discoveryFeedPage)}));
+    if(request!==state.discoveryRequest)return;
+    drawDiscovery(result);
+  }
+  function saveDiscovery(form){
+    const fields=Object.fromEntries(new FormData(form));
+    const body={keyword:fields.keyword,city:fields.city,focus:fields.focus,expected_revision:state.discoveryRevision};
+    return busy(form,async()=>{
+      const result=await api('/api/community/recommendations/preferences',{method:'PUT',body});
+      applyDiscoveryForm(result.settings);
+      state.discoveryPeoplePage=state.discoveryFeedPage=1;
+      notice('Профессиональные интересы сохранены.');
+      try{await loadDiscovery();}catch(error){notice('Интересы сохранены. Не удалось обновить подборку: '+error.message,'error');}
+    });
+  }
+  function clearDiscovery(){
+    confirmAction('Очистить интересы?','Сохранённые настройки рекомендаций будут удалены. Ваши сохранённые публикации и подписки останутся.','Очистить',async()=>{
+      const result=await api('/api/community/recommendations/preferences',{method:'DELETE',body:{expected_revision:state.discoveryRevision}});
+      applyDiscoveryForm(result.settings);
+      state.discoveryPeoplePage=state.discoveryFeedPage=1;
+      notice('Интересы очищены.');
+      await loadDiscovery();
+    });
+  }
+  async function renderDiscovery(){
+    if(!discoveryAllowed('Рекомендации для меня'))return;
+    const initial=await api('/api/community/recommendations');
+    content.innerHTML='<div class="section-heading"><div><h1>Рекомендации для меня</h1><p>Найдите коллег, материалы, наставников и проекты по темам, которые интересны именно вам.</p></div></div>'+discoveryNav()+'<section class="panel"><form id="discovery-preferences" class="feed-form discovery-form"><h2>Мои профессиональные интересы</h2><p class="help">Настройки приватны. Мы не используем закрытые резюме, личную переписку или историю поведения.</p><div class="field"><label for="discovery-keyword">Профессия, навык или тема</label><input id="discovery-keyword" name="keyword" maxlength="100" placeholder="Например, водоочистка"></div><div class="field"><label for="discovery-city">Город (необязательно)</label><input id="discovery-city" name="city" maxlength="80" placeholder="Например, Подольск"></div><div class="field"><label for="discovery-focus">Направление</label><select id="discovery-focus" name="focus">'+options(feedCategories,'','Любое направление')+'</select></div><div class="actions"><button type="submit" class="button primary">Сохранить интересы и подобрать</button><button type="button" id="discovery-clear" class="button secondary" data-action="clear-discovery" hidden>Очистить настройки</button></div></form></section><p id="discovery-explanation" class="help" aria-live="polite"></p><section id="discovery-results" hidden><div class="section-heading"><h2>Специалисты</h2></div><div id="discovery-people" aria-live="polite"></div><section class="section-divider"><h2>Публикации и предложения</h2><p class="help">Предложения по наставничеству и проектам подбираются по выбранному направлению и указанной теме.</p><div id="discovery-feed" class="feed-list" aria-live="polite"></div></section></section><section id="feed-discussion" class="panel feed-discussion" hidden></section>';
+    const form=$('#discovery-preferences');
+    applyDiscoveryForm(initial.settings);
+    drawDiscovery(initial);
+    form.addEventListener('input',()=>{state.discoveryDirty=true;});
+    form.addEventListener('submit',event=>{event.preventDefault();saveDiscovery(form);});
+  }
+
   async function handleAction(event) {
     const button=event.target.closest('[data-action]');if(!button||button.disabled)return;
     const {action,id}=button.dataset;
@@ -659,6 +776,11 @@
       else if(action==='reports-page'){state.reportPage=Number(button.dataset.page);await loadReports();}
       else if(['resolve-report','dismiss-report'].includes(action))await busy(button.closest('article'),async()=>{await api('/api/admin/community/reports/'+encodeURIComponent(id),{method:'PATCH',body:{status:action==='resolve-report'?'resolved':'dismissed'}});await loadReports();notice('Статус жалобы сохранён.');});
       else if(action==='respond-opportunity')await requestConnection({entryId:id,publicId:button.dataset.publicId,kind:button.dataset.kind,title:button.dataset.title});
+      else if(action==='save-entry'||action==='remove-saved')await changeSaved(button);
+      else if(action==='saved-page'){state.savedPage=Number(button.dataset.page);await loadSaved();}
+      else if(action==='discovery-people-page'){state.discoveryPeoplePage=Number(button.dataset.page);await loadDiscovery();}
+      else if(action==='discovery-feed-page'){state.discoveryFeedPage=Number(button.dataset.page);await loadDiscovery();}
+      else if(action==='clear-discovery')clearDiscovery();
       else if(action==='feed-page'){state.feedPage=Number(button.dataset.page);await loadFeed();}
       else if(action==='feed-mine-page'){state.feedMinePage=Number(button.dataset.page);await loadFeedMine();}
       else if(action==='refresh-feed-mine'){state.feedMinePage=1;await loadFeedMine();}
@@ -693,6 +815,8 @@
       if(mode==='directory')await renderDirectory();
       else if(mode==='feed')await renderFeed();
       else if(opportunityMode)await renderOpportunities();
+      else if(mode==='discovery')await renderDiscovery();
+      else if(mode==='saved')await renderSaved();
       else if(mode==='profile')await renderProfile();
       else if(mode==='connections')await renderConnections();
       else if(mode==='moderation')await renderModeration();
@@ -710,7 +834,7 @@
     $('#close-community-dialog').addEventListener('click',closeDialog);
     dialog.addEventListener('click',event=>{if(event.target.closest('[data-close-dialog]'))closeDialog();});
     dialog.addEventListener('cancel',event=>{if(dialogBusy)event.preventDefault();});
-    window.addEventListener('beforeunload',event=>{if(state.dirty||state.messageDirty||state.feedDirty||state.feedCommentDirty){event.preventDefault();event.returnValue='';}});
+    window.addEventListener('beforeunload',event=>{if(state.dirty||state.messageDirty||state.feedDirty||state.feedCommentDirty||state.discoveryDirty){event.preventDefault();event.returnValue='';}});
     try{state.user=(await api('/api/me')).user;}catch(error){if(error.status!==401){notice(error.message,'error');if(!['directory','person'].includes(mode)){content.innerHTML='<section class="panel"><h1>Аккаунт временно недоступен</h1><p>Обновите страницу, когда соединение восстановится.</p><button class="button secondary" type="button" id="retry-account">Повторить</button></section>';$('#retry-account').addEventListener('click',()=>location.reload());return;}}}
     updateIdentity();await renderMode();if(mode!=='feed')refreshFeedAlertBadge();
   }
