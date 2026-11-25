@@ -47,6 +47,18 @@ COMMON_COUNTS = (
     ("community_feed_linked_comments", """SELECT COUNT(*) FROM community_feed_entries reply
         JOIN community_feed_entries root ON root.id=reply.parent_id
         WHERE root.author_id=? AND reply.author_id<>root.author_id""", "id"),
+    ("community_feed_follows", "SELECT COUNT(*) FROM community_feed_follows WHERE follower_id=?", "id"),
+    ("community_feed_followers_affected", "SELECT COUNT(*) FROM community_feed_follows WHERE target_id=?", "id"),
+    ("community_feed_alert_reads", "SELECT COUNT(*) FROM community_feed_alert_reads WHERE user_id=?", "id"),
+    ("community_feed_reports_submitted", "SELECT COUNT(*) FROM community_feed_reports WHERE reporter_id=?", "id"),
+    ("community_feed_linked_alert_reads", """SELECT COUNT(*) FROM community_feed_alert_reads a
+        JOIN community_feed_entries f ON f.id=a.entry_id
+        LEFT JOIN community_feed_entries root ON root.id=f.parent_id
+        WHERE ? IN (f.author_id,root.author_id)""", "id"),
+    ("community_feed_linked_reports", """SELECT COUNT(*) FROM community_feed_reports r
+        JOIN community_feed_entries f ON f.id=r.entry_id
+        LEFT JOIN community_feed_entries root ON root.id=f.parent_id
+        WHERE ? IN (f.author_id,root.author_id)""", "id"),
     ("community_professional_profile", "SELECT COUNT(*) FROM community_profiles WHERE user_id=?", "id"),
     ("workflow_mail_awaiting", """SELECT COUNT(*) FROM email_delivery_jobs q
         JOIN email_delivery_recipients r ON r.outbox_id=q.outbox_id
@@ -117,6 +129,8 @@ def impact_preview(db, request_key: str) -> dict | None:
         risks.append("Контакты ранее раскрывались: оценить уведомление конкретных получателей")
     if counts.get("candidate_applications_affected", 0):
         risks.append("Вакансии содержат отклики третьих лиц: удалить их вместе с работодателем нельзя без оценки")
+    if any(counts.get(key, 0) for key in ("community_feed_followers_affected", "community_feed_linked_alert_reads", "community_feed_linked_reports")):
+        risks.append("Проверить связанные подписки, отметки уведомлений и жалобы других участников")
     if counts.get("community_feed_linked_comments", 0):
         risks.append("Удаление публикаций затронет комментарии других участников: отдельно оцените их права и сохранность")
     if counts.get("applications", 0):
