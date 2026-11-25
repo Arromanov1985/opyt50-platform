@@ -87,6 +87,12 @@ def build_personal_data_snapshot(db, user_id: int) -> dict:
                FROM community_read_state WHERE user_id=? ORDER BY through_created_at DESC,connection_id""",
         )
     if role == "candidate":
+        section(
+            "my_community_feed",
+            """SELECT id,parent_id,kind,title,body,status,consent_at,consent_version,
+                      moderation_reason,created_at,updated_at,published_at
+               FROM community_feed_entries WHERE author_id=? ORDER BY created_at DESC,id DESC""",
+        )
         data["candidate_profile"] = _single(
             db,
             """SELECT profession,city,skills,salary_min,schedule,employment,

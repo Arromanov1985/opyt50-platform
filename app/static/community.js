@@ -8,7 +8,7 @@
   const connectionStates = {pending:'Ожидает ответа', accepted:'Знакомство принято', declined:'Запрос отклонён', cancelled:'Запрос отозван', blocked:'Общение прекращено'};
   const reasons = {spam:'Спам или навязчивые предложения', fraud:'Подозрение на мошенничество', harassment:'Оскорбления или давление', personal_data:'Публикация личных данных', other:'Другая проблема'};
   const mode = document.body.dataset.communityPage;
-  const state = {user:null, profile:null, dirty:false, messageDirty:false, connections:[], connectionPage:1, connectionFilter:'', connectionListRequest:0, readThrough:null, selected:null, messageKey:null, messageBody:null, nextBefore:null, directoryPage:1, directoryRequest:0, threadSelectionRequest:0, threadRequest:0, messageLoadRequest:0, moderationPage:1, reportPage:1, busy:new WeakSet()};
+  const state = {user:null, profile:null, dirty:false, messageDirty:false, connections:[], connectionPage:1, connectionFilter:'', connectionListRequest:0, readThrough:null, selected:null, messageKey:null, messageBody:null, nextBefore:null, directoryPage:1, directoryRequest:0, threadSelectionRequest:0, threadRequest:0, messageLoadRequest:0, moderationPage:1, reportPage:1, busy:new WeakSet(), feedPage:1, feedMinePage:1, feedReviewPage:1, feedRequest:0, feedThreadRequest:0, feedReviewRequest:0, feedThreadId:null, feedThreadPage:1, feedCanPublish:false, feedDirty:false, feedCommentDirty:false};
   const content = $('#community-content');
   const dialog = $('#community-dialog');
   let dialogBusy = false;
@@ -372,6 +372,118 @@
     $('#moderation-decision-form').addEventListener('submit',event=>{event.preventDefault();const form=event.currentTarget;const reason=form.elements.reason.value;busy(form,async()=>{await perform(reason);dialogBusy=false;closeDialog();});});
   }
 
+
+  const feedKinds={experience:'Опыт и полезные советы',question:'Профессиональный вопрос',projects:'Совместные проекты',mentoring:'Наставничество',comment:'Комментарий'};
+  const feedCategories=Object.fromEntries(Object.entries(feedKinds).filter(([key])=>key!=='comment'));
+  const feedStates={pending:'На проверке',published:'Одобрено',rejected:'Не опубликовано',hidden:'Скрыто'};
+  function feedForm(comment=false) {
+    const id=comment?'feed-comment-form':'feed-compose-form';
+    return '<form class="feed-form" id="'+id+'"><h2>'+(comment?'Добавить комментарий':'Поделиться опытом')+'</h2>'+
+      (comment?'':'<div class="field"><label for="feed-kind">Тема</label><select name="kind" id="feed-kind">'+options(feedCategories,'experience')+'</select></div><div class="field"><label for="feed-title">Заголовок</label><input name="title" id="feed-title" maxlength="140" required placeholder="О чём хотите рассказать?"></div>')+
+      '<div class="field"><label for="'+id+'-body">'+(comment?'Ваш ответ':'Текст публикации')+'</label><textarea name="body" id="'+id+'-body" rows="'+(comment?'4':'6')+'" maxlength="'+(comment?'1000':'2400')+'" required placeholder="Расскажите по делу, без контактов и ссылок"></textarea></div>'+
+      '<label class="feed-consent"><input name="publish_consent" type="checkbox" required> Согласен на показ этого текста другим участникам после проверки модератором. Не размещаю чужие персональные данные.</label>'+
+      '<p class="help">Текст не появится в ленте до одобрения. Его можно скрыть в разделе «Мои публикации и комментарии».</p><button class="button primary" type="submit">Отправить на проверку</button></form>';
+  }
+  function feedCard(entry,{mine=false,admin=false,comment=false}={}) {
+    const id=esc(entry.id), heading=entry.title?'<h2>'+esc(entry.title)+'</h2>':'';
+    const author=entry.public_id?'<a href="/people/'+encodeURIComponent(entry.public_id)+'">'+esc(entry.public_name)+'</a> <span class="help">'+esc(entry.headline||'')+'</span>':'';
+    const reviewContext=admin&&entry.parent_id?'<p class="help">Обсуждение: '+esc(entry.parent_title||'Недоступно')+'</p><details><summary>Текст исходной публикации</summary><p class="multiline">'+esc(entry.parent_body||'')+'</p></details>':'';
+    let actions='';
+    if(mine&&entry.status!=='hidden')actions='<button class="button secondary compact" type="button" data-action="withdraw-feed" data-id="'+id+'" data-version="'+Number(entry.version)+'">Скрыть</button>';
+    if(admin&&entry.status==='pending')actions='<button class="button primary compact" type="button" data-action="approve-feed" data-id="'+id+'" data-version="'+Number(entry.version)+'">Одобрить</button> <button class="button secondary compact" type="button" data-action="reject-feed" data-id="'+id+'" data-version="'+Number(entry.version)+'">Отклонить</button>';
+    if(admin&&entry.status==='published')actions='<button class="button secondary compact" type="button" data-action="hide-feed" data-id="'+id+'" data-version="'+Number(entry.version)+'">Скрыть</button>';
+    if(!mine&&!admin&&!comment)actions='<button class="button secondary" type="button" data-action="open-feed-thread" data-id="'+id+'">Читать обсуждение</button>';
+    return '<article class="panel feed-card" data-feed-id="'+id+'"><div class="feed-meta"><span class="tag">'+esc(feedKinds[entry.kind]||'Публикация')+'</span>'+((mine||admin)?statusBadge(entry.status,feedStates):'')+'<time>'+esc(date(entry.published_at||entry.created_at))+'</time></div>'+heading+(author?'<p class="feed-author">'+author+'</p>':'')+reviewContext+'<p class="multiline feed-body">'+esc(entry.body)+'</p>'+((mine||admin)&&entry.moderation_reason?'<p class="help">Причина: '+esc(entry.moderation_reason)+'</p>':'')+(actions?'<div class="actions">'+actions+'</div>':'')+'</article>';
+  }
+  function bindFeedForm(form,comment=false) {
+    const dirtyKey=comment?'feedCommentDirty':'feedDirty';
+    form.addEventListener('input',()=>{state[dirtyKey]=Boolean(form.elements.body.value.trim()||(!comment&&form.elements.title.value.trim()));});
+    form.addEventListener('submit',event=>{
+      event.preventDefault();
+      const fields=Object.fromEntries(new FormData(form));
+      const body={kind:comment?'comment':fields.kind,title:comment?'':fields.title,body:fields.body,parent_id:comment?state.feedThreadId:null,publish_consent:fields.publish_consent==='on'};
+      const fingerprint=JSON.stringify(body);
+      if(form.feedFingerprint!==fingerprint){form.feedFingerprint=fingerprint;form.feedKey=crypto.randomUUID();}
+      body.client_key=form.feedKey;
+      busy(form,async()=>{
+        await api('/api/community/feed',{method:'POST',body});
+        form.reset();form.feedFingerprint=null;form.feedKey=null;state[dirtyKey]=false;
+        notice('Текст принят на проверку. Он ещё не опубликован.');
+        state.feedMinePage=1;
+        try{await loadFeedMine();}catch(error){notice('Текст принят на проверку. Список пока не обновился: '+error.message,'error');}
+      });
+    });
+  }
+  function drawFeedMine(result) {
+    $('#feed-mine-list').innerHTML=result.entries.length?result.entries.map(entry=>feedCard(entry,{mine:true})).join('')+pager(result.page,result.has_more,'feed-mine-page'):empty('Пока нет ваших публикаций','Отправьте первый текст на проверку.');
+  }
+  async function loadFeedMine() {
+    if(state.user?.role!=='candidate')return;
+    const result=await api('/api/community/feed/mine?page='+state.feedMinePage);
+    drawFeedMine(result);
+  }
+  async function loadFeed() {
+    const request=++state.feedRequest;
+    const params=new URLSearchParams(new FormData($('#feed-filter')));
+    params.set('page',String(state.feedPage));if(!params.get('kind'))params.delete('kind');
+    const result=await api('/api/community/feed?'+params);
+    if(request!==state.feedRequest)return;
+    $('#feed-list').innerHTML=result.entries.length?result.entries.map(entry=>feedCard(entry)).join('')+pager(result.page,result.has_more,'feed-page'):empty('Пока нет публикаций','Попробуйте выбрать другую тему или поделитесь своим опытом.');
+  }
+  async function openFeedThread(id,page=1) {
+    if(state.feedThreadId!==id&&state.feedCommentDirty){notice('Сначала отправьте или закройте текущий комментарий, чтобы не потерять текст.','error');return;}
+    const request=++state.feedThreadRequest;
+    const result=await api('/api/community/feed/'+encodeURIComponent(id)+'/comments?page='+page);
+    if(request!==state.feedThreadRequest)return;
+    const section=$('#feed-discussion');
+    if(state.feedThreadId!==id||section.hidden){
+      state.feedThreadId=id;section.hidden=false;
+      section.innerHTML='<div class="section-heading"><div><h2>Обсуждение</h2><p>'+esc(result.post.title)+'</p></div><button type="button" class="button secondary compact" data-action="close-feed-thread">Закрыть</button></div><div id="feed-comments"></div>'+(state.feedCanPublish?feedForm(true):'<p class="help">Комментировать могут участники с опубликованным профессиональным профилем.</p>');
+      if(state.feedCanPublish)bindFeedForm($('#feed-comment-form'),true);
+      section.scrollIntoView({block:'start'});
+    }
+    state.feedThreadPage=page;
+    $('#feed-comments').innerHTML=result.entries.length?result.entries.map(entry=>feedCard(entry,{comment:true})).join('')+pager(result.page,result.has_more,'feed-comment-page'):empty('Пока нет комментариев','Начните профессиональное обсуждение.');
+  }
+  function closeFeedThread(){
+    const close=()=>{++state.feedThreadRequest;state.feedThreadId=null;state.feedCommentDirty=false;$('#feed-discussion').hidden=true;$('#feed-discussion').innerHTML='';};
+    if(state.feedCommentDirty)confirmAction('Закрыть обсуждение?','Неотправленный комментарий будет потерян.','Закрыть',async()=>close());
+    else close();
+  }
+  async function loadFeedReview(){
+    const status=$('#feed-review-status').value;
+    const request=++state.feedReviewRequest;
+    const result=await api('/api/admin/community/feed?'+new URLSearchParams({status,page:String(state.feedReviewPage)}));
+    if(request!==state.feedReviewRequest)return;
+    $('#feed-review-list').innerHTML=result.entries.length?result.entries.map(entry=>feedCard(entry,{admin:true})).join('')+pager(result.page,result.has_more,'feed-review-page'):empty('Нет текстов в этом статусе','Выберите другой статус или обновите список.');
+  }
+  function moderateFeed(button){
+    const {id,version,action}=button.dataset,decision=action.replace('-feed','');
+    openDialog(decision==='approve'?'Одобрить текст?':decision==='reject'?'Отклонить текст?':'Скрыть текст?', '<form id="feed-review-form" class="dialog-form"><p>Одобрение делает текст видимым в сообществе. Проверьте содержание и отсутствие персональных данных.</p>'+(decision==='approve'?'':'<div class="field"><label for="feed-review-reason">Причина для автора</label><textarea name="reason" id="feed-review-reason" maxlength="500" required></textarea></div>')+'<div class="actions"><button class="button primary" type="submit">Подтвердить</button><button class="button secondary" type="button" data-close-dialog>Отмена</button></div></form>');
+    const form=$('#feed-review-form');
+    form.addEventListener('submit',event=>{event.preventDefault();const reason=form.elements.reason?.value||'';busy(form,async()=>{
+      await api('/api/admin/community/feed/'+encodeURIComponent(id),{method:'PATCH',body:{expected_version:Number(version),decision,reason}});
+      dialogBusy=false;closeDialog();notice('Решение сохранено.');await loadFeedReview();
+    });});
+  }
+  async function renderFeed(){
+    if(!state.user){accountGate('Профессиональная лента');return;}
+    if(state.user.role==='admin'){
+      content.innerHTML='<div class="section-heading"><div><h1>Модерация профессиональной ленты</h1><p>Проверяйте публикации и комментарии до показа участникам.</p></div></div><form id="feed-review-filter" class="panel feed-form"><div class="field"><label for="feed-review-status">Статус</label><select id="feed-review-status">'+options(feedStates,'pending')+'</select></div><button type="submit" class="button secondary">Обновить</button></form><div id="feed-review-list" class="feed-list"></div>';
+      $('#feed-review-filter').addEventListener('submit',event=>{event.preventDefault();state.feedReviewPage=1;loadFeedReview().catch(error=>notice(error.message,'error'));});
+      $('#feed-review-status').addEventListener('change',()=>{state.feedReviewPage=1;loadFeedReview().catch(error=>notice(error.message,'error'));});
+      await loadFeedReview();return;
+    }
+    let mine=null;
+    if(state.user.role==='candidate')mine=await api('/api/community/feed/mine');
+    state.feedCanPublish=Boolean(mine?.can_publish);
+    content.innerHTML='<div class="section-heading"><div><h1>Профессиональная лента</h1><p>Делитесь опытом, задавайте вопросы, ищите партнёров и наставников.</p></div>'+(state.feedCanPublish?'<a class="button primary" href="#feed-compose-section">Написать публикацию</a>':'')+'</div><div class="feed-layout"><div class="feed-primary"><form id="feed-filter" class="panel feed-filter" role="search"><div class="field"><label for="feed-search">Поиск</label><input id="feed-search" name="q" maxlength="100" type="search" placeholder="Тема или ключевое слово"></div><div class="field"><label for="feed-category">Направление</label><select name="kind" id="feed-category">'+options(feedCategories,'','Все темы')+'</select></div><button class="button primary" type="submit">Найти</button></form><div id="feed-list" class="feed-list" aria-live="polite"><p role="status">Загружаем публикации…</p></div><section id="feed-discussion" class="panel feed-discussion" hidden></section></div><aside class="feed-side">'+(state.feedCanPublish?'<section class="panel" id="feed-compose-section">'+feedForm()+'</section>':'<section class="panel"><h2>Участвуйте в обсуждениях</h2><p>Публикации доступны участникам с одобренным профессиональным профилем.</p>'+(state.user.role==='candidate'?'<a class="button primary" href="/community/profile">Мой профиль</a>':'<p class="help">Работодатели могут читать ленту.</p>')+'</section>')+(mine?'<section class="panel"><h2>Мои публикации и комментарии</h2><p class="help">Одобренные тексты видны при действующем профессиональном профиле; скрытие публикации скрывает её обсуждение.</p><button type="button" class="button secondary compact" data-action="refresh-feed-mine">Обновить статусы</button><div id="feed-mine-list" class="feed-list"></div></section>':'')+'</aside></div>';
+    $('#feed-filter').addEventListener('submit',event=>{event.preventDefault();state.feedPage=1;loadFeed().catch(error=>notice(error.message,'error'));});
+    if(state.feedCanPublish)bindFeedForm($('#feed-compose-form'));
+    if(mine)drawFeedMine(mine);
+    await loadFeed();
+  }
+
   async function handleAction(event) {
     const button=event.target.closest('[data-action]');if(!button||button.disabled)return;
     const {action,id}=button.dataset;
@@ -394,12 +506,31 @@
       else if(action==='moderation-page'){state.moderationPage=Number(button.dataset.page);await loadModeration();}
       else if(action==='reports-page'){state.reportPage=Number(button.dataset.page);await loadReports();}
       else if(['resolve-report','dismiss-report'].includes(action))await busy(button.closest('article'),async()=>{await api('/api/admin/community/reports/'+encodeURIComponent(id),{method:'PATCH',body:{status:action==='resolve-report'?'resolved':'dismissed'}});await loadReports();notice('Статус жалобы сохранён.');});
+      else if(action==='feed-page'){state.feedPage=Number(button.dataset.page);await loadFeed();}
+      else if(action==='feed-mine-page'){state.feedMinePage=Number(button.dataset.page);await loadFeedMine();}
+      else if(action==='refresh-feed-mine'){state.feedMinePage=1;await loadFeedMine();}
+      else if(action==='open-feed-thread')await openFeedThread(id);
+      else if(action==='close-feed-thread')closeFeedThread();
+      else if(action==='feed-comment-page')await openFeedThread(state.feedThreadId,Number(button.dataset.page));
+      else if(action==='withdraw-feed')confirmAction('Скрыть текст?','Текст перестанет отображаться в ленте. Если это публикация, обсуждение также будет скрыто.','Скрыть',async()=>{
+        await api('/api/community/feed/'+encodeURIComponent(id),{method:'DELETE',body:{expected_version:Number(button.dataset.version)}});
+        notice('Текст скрыт.');
+        if(state.feedThreadId===id){
+          ++state.feedThreadRequest;
+          $('#feed-comments').innerHTML=empty('Обсуждение скрыто','Этот текст больше не отображается в ленте.');
+          if(!state.feedCommentDirty){state.feedThreadId=null;$('#feed-discussion').hidden=true;$('#feed-discussion').innerHTML='';}
+        }
+        await Promise.all([loadFeedMine(),loadFeed()]);
+      });
+      else if(action==='feed-review-page'){state.feedReviewPage=Number(button.dataset.page);await loadFeedReview();}
+      else if(['approve-feed','reject-feed','hide-feed'].includes(action))moderateFeed(button);
       else if(action==='retry-community')await renderMode();
     }catch(error){notice(error.message,'error');}
   }
   async function renderMode() {
     try{
       if(mode==='directory')await renderDirectory();
+      else if(mode==='feed')await renderFeed();
       else if(mode==='profile')await renderProfile();
       else if(mode==='connections')await renderConnections();
       else if(mode==='moderation')await renderModeration();
@@ -417,7 +548,7 @@
     $('#close-community-dialog').addEventListener('click',closeDialog);
     dialog.addEventListener('click',event=>{if(event.target.closest('[data-close-dialog]'))closeDialog();});
     dialog.addEventListener('cancel',event=>{if(dialogBusy)event.preventDefault();});
-    window.addEventListener('beforeunload',event=>{if(state.dirty||state.messageDirty){event.preventDefault();event.returnValue='';}});
+    window.addEventListener('beforeunload',event=>{if(state.dirty||state.messageDirty||state.feedDirty||state.feedCommentDirty){event.preventDefault();event.returnValue='';}});
     try{state.user=(await api('/api/me')).user;}catch(error){if(error.status!==401){notice(error.message,'error');if(!['directory','person'].includes(mode)){content.innerHTML='<section class="panel"><h1>Аккаунт временно недоступен</h1><p>Обновите страницу, когда соединение восстановится.</p><button class="button secondary" type="button" id="retry-account">Повторить</button></section>';$('#retry-account').addEventListener('click',()=>location.reload());return;}}}
     updateIdentity();await renderMode();
   }

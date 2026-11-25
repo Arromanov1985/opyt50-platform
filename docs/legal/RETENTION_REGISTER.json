@@ -129,9 +129,10 @@
         "email_delivery_jobs",
         "email_delivery_recipients",
         "community_messages",
-        "community_read_state"
+        "community_read_state",
+        "community_feed_entries"
       ],
-      "purpose": "Сервисные письма, очередь доставки, приватная переписка и отметки просмотра внутри сообщества",
+      "purpose": "Сервисные письма, очередь доставки, приватная переписка, отметки просмотра и модерируемые публикации внутри сообщества",
       "start_event": "message_sent_or_suppressed",
       "systems": [
         "smtp_provider",

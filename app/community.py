@@ -114,6 +114,31 @@ COMMUNITY_DDL = (
         CHECK((public_id IS NULL AND connection_id IS NOT NULL) OR
               (public_id IS NOT NULL AND connection_id IS NULL))
     )""",
+    """CREATE TABLE IF NOT EXISTS community_feed_entries (
+        id TEXT PRIMARY KEY,
+        author_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        parent_id TEXT REFERENCES community_feed_entries(id) ON DELETE CASCADE,
+        client_key TEXT NOT NULL,
+        kind TEXT NOT NULL CHECK(kind IN ('experience','question','projects','mentoring','comment')),
+        title TEXT NOT NULL DEFAULT '',
+        body TEXT NOT NULL,
+        status TEXT NOT NULL DEFAULT 'pending' CHECK(status IN ('pending','published','rejected','hidden')),
+        version INTEGER NOT NULL DEFAULT 1 CHECK(version>=1),
+        consent_at TEXT,
+        consent_version TEXT,
+        moderation_reason TEXT NOT NULL DEFAULT '',
+        reviewed_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+        reviewed_at TEXT,
+        published_at TEXT,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        UNIQUE(author_id,client_key),
+        CHECK((parent_id IS NULL AND kind<>'comment') OR (parent_id IS NOT NULL AND kind='comment')),
+        CHECK(parent_id IS NULL OR parent_id<>id)
+    )""",
+    "CREATE INDEX IF NOT EXISTS idx_community_feed_public ON community_feed_entries(parent_id,status,published_at,id)",
+    "CREATE INDEX IF NOT EXISTS idx_community_feed_author ON community_feed_entries(author_id,created_at,id)",
+    "CREATE INDEX IF NOT EXISTS idx_community_feed_moderation ON community_feed_entries(status,created_at,id)",
     "CREATE INDEX IF NOT EXISTS idx_community_profiles_public ON community_profiles(status,published_at,public_id)",
     "CREATE INDEX IF NOT EXISTS idx_community_profile_events_owner ON community_profile_events(user_id,created_at)",
     "CREATE INDEX IF NOT EXISTS idx_community_connections_sender ON community_connections(sender_id,updated_at)",
@@ -970,3 +995,6 @@ def install_community_routes(app) -> None:
             raise HTTPException(404, "Жалоба не найдена")
         record_security_event(db, user["id"], "community_report_reviewed", "report=" + report_id + " status=" + data.status)
         return _committed(db, {"report": _report_dto(db.execute("SELECT * FROM community_reports WHERE id=?", (report_id,)).fetchone())})
+
+    from .community_feed import install_feed_routes
+    install_feed_routes(app, community_user, throttle, get_connection, allowed, record_security_event)

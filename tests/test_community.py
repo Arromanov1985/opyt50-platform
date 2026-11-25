@@ -732,3 +732,144 @@ def test_attention_filter_precedes_pagination_and_respects_privacy(community):
     assert clients["second"].get("/api/community/connections?attention=true").json()["total"] == 0
     assert clients["first"].get("/api/community/activity").json()["restricted"] is True
     assert clients["first"].get("/api/community/connections").json()["total"] == 1
+
+def feed_payload(**changes):
+    return {"client_key": str(uuid4()), "kind": "experience",
+            "title": "Передача опыта на складе", "body": "Полезно начать с плана обучения.",
+            "publish_consent": True, **changes}
+
+
+def submit_feed(client, **changes):
+    response = mutate(client, "POST", "/api/community/feed", feed_payload(**changes))
+    assert response.status_code == 200, response.text
+    return response.json()["entry"]
+
+
+def moderate_feed(admin, entry, decision="approve", reason=""):
+    response = mutate(admin, "PATCH", "/api/admin/community/feed/" + entry["id"],
+                      {"expected_version": entry["version"], "decision": decision, "reason": reason})
+    assert response.status_code == 200, response.text
+    return response.json()["entry"]
+
+
+def test_feed_consent_moderation_ownership_and_discussion(community):
+    app, clients, ids = community
+    first, second, admin = clients["first"], clients["second"], clients["admin"]
+    url = "/api/community/feed"
+    assert clients["visitor"].get(url).status_code == 401
+    assert clients["outsider"].get("/api/admin/community/feed").status_code == 403
+    assert mutate(first, "POST", url, feed_payload()).status_code == 403
+    publish(clients, "first", public_name="Автор опыта")
+    publish(clients, "second", public_name="Автор ответа")
+    assert mutate(first, "POST", url, feed_payload(publish_consent=False)).status_code == 422
+    assert mutate(first, "POST", url, feed_payload(body="Пишите на test@example.invalid")).status_code == 422
+    assert mutate(clients["employer"], "POST", url, feed_payload()).status_code == 403
+    payload = feed_payload()
+    response = mutate(first, "POST", url, payload)
+    assert response.status_code == 200, response.text
+    entry = response.json()["entry"]
+    assert entry["status"] == "pending"
+    assert mutate(first, "POST", url, payload).json()["entry"] == entry
+    assert mutate(first, "POST", url, {**payload, "body": "Другой текст"}).status_code == 409
+    assert second.get(url).json()["entries"] == []
+    assert second.get(url + "/mine").json()["entries"] == []
+    assert second.get(url + "/" + entry["id"] + "/comments").status_code == 404
+    assert mutate(second, "DELETE", url + "/" + entry["id"], {"expected_version": entry["version"]}).status_code == 404
+    assert first.get(url + "/mine").json()["entries"] == [entry]
+    assert admin.get("/api/admin/community/feed").json()["entries"][0]["id"] == entry["id"]
+    approved = moderate_feed(admin, entry)
+    assert approved["status"] == "published"
+    assert mutate(admin, "PATCH", "/api/admin/community/feed/" + entry["id"],
+                  {"expected_version": entry["version"], "decision": "approve"}).status_code == 409
+    visible = second.get(url + "?kind=experience&q=ОБУЧЕНИЯ")
+    assert visible.status_code == 200
+    item = visible.json()["entries"][0]
+    assert item["id"] == entry["id"] and item["public_name"] == "Автор опыта"
+    assert set(item) == {"id", "parent_id", "kind", "title", "body", "created_at", "published_at",
+                         "public_id", "public_name", "headline"}
+    assert "no-store" in visible.headers["cache-control"]
+    assert clients["employer"].get(url).json()["entries"][0]["id"] == entry["id"]
+    assert second.get(url + "?kind=projects").json()["entries"] == []
+
+    comment = submit_feed(second, parent_id=entry["id"], kind="comment", title="", body="Согласен с этим подходом.")
+    discussion = url + "/" + entry["id"] + "/comments"
+    assert first.get(discussion).json()["entries"] == []
+    assert mutate(second, "POST", url, feed_payload(parent_id=comment["id"], kind="comment", title="")).status_code == 404
+    queued = admin.get("/api/admin/community/feed").json()["entries"][0]
+    assert queued["parent_title"] == entry["title"]
+    assert queued["parent_body"] == entry["body"]
+    moderate_feed(admin, comment)
+    assert first.get(discussion).json()["entries"][0]["id"] == comment["id"]
+    assert first.get(url).json()["entries"][0]["id"] == entry["id"]
+    assert len(first.get(url).json()["entries"]) == 1
+    export = second.get("/api/account/data-export").json()["sections"]["my_community_feed"]
+    assert [item["id"] for item in export] == [comment["id"]]
+
+    hidden = mutate(first, "DELETE", url + "/" + entry["id"], {"expected_version": approved["version"]})
+    assert hidden.status_code == 200, hidden.text
+    assert second.get(discussion).status_code == 404
+    assert second.get(url).json()["entries"] == []
+    assert mutate(second, "POST", url, feed_payload(parent_id=entry["id"], kind="comment", title="")).status_code == 404
+    assert second.get(url + "/mine").json()["entries"][0]["id"] == comment["id"]
+    with database(app.state.db_path) as db:
+        assert db.execute("SELECT COUNT(*) FROM community_feed_entries").fetchone()[0] == 2
+
+
+def test_feed_filters_blocks_and_privacy_before_pagination(community):
+    app, clients, ids = community
+    first, second, admin = clients["first"], clients["second"], clients["admin"]
+    first_profile = publish(clients, "first", public_name="Автор проектов")
+    second_profile = publish(clients, "second", public_name="Автор советов")
+    first_post = moderate_feed(admin, submit_feed(first, kind="projects"))
+    second_post = moderate_feed(admin, submit_feed(second, kind="mentoring"))
+    url = "/api/community/feed"
+    assert len(clients["outsider"].get(url).json()["entries"]) == 2
+    connection = connect(clients, second_profile["public_id"])
+    assert mutate(first, "POST", "/api/community/connections/" + connection["id"] + "/block").status_code == 200
+    assert [item["id"] for item in first.get(url).json()["entries"]] == [first_post["id"]]
+    assert [item["id"] for item in second.get(url).json()["entries"]] == [second_post["id"]]
+    assert first.get(url + "/" + second_post["id"] + "/comments").status_code == 404
+    assert mutate(first, "POST", url, feed_payload(parent_id=second_post["id"], kind="comment", title="")).status_code == 404
+    request = mutate(first, "POST", "/api/account/privacy-requests", {"kind": "stop_processing"})
+    assert request.status_code == 201, request.text
+    assert [item["id"] for item in clients["outsider"].get(url).json()["entries"]] == [second_post["id"]]
+    assert first.get(url).status_code == 403
+    assert clients["visitor"].get("/people/" + first_profile["public_id"]).status_code == 404
+
+    with database(app.state.db_path) as db:
+        for index in range(21):
+            db.execute(
+                """INSERT INTO community_feed_entries(
+                   id,author_id,client_key,kind,title,body,status,consent_at,consent_version,
+                   published_at,created_at,updated_at) VALUES(?,?,?,'experience',?,?,'published',
+                   '2026-01-01','test','2026-01-02','2026-01-01','2026-01-02')""",
+                (uuid4().hex, ids["second"], str(uuid4()), "Совет", "Профессиональный опыт"),
+            )
+    page1 = clients["outsider"].get(url + "?kind=experience").json()
+    page2 = clients["outsider"].get(url + "?kind=experience&page=2").json()
+    assert len(page1["entries"]) == 20 and page1["has_more"]
+    assert len(page2["entries"]) == 1 and not page2["has_more"]
+    assert page2["entries"][0]["id"] not in {item["id"] for item in page1["entries"]}
+
+
+def test_feed_privacy_impact_includes_other_authors_comments(community):
+    from app.privacy_disposal import impact_preview
+
+    app, clients, ids = community
+    first, second, admin = clients["first"], clients["second"], clients["admin"]
+    publish(clients, "first")
+    publish(clients, "second")
+    root = moderate_feed(admin, submit_feed(first))
+    moderate_feed(admin, submit_feed(second, parent_id=root["id"], kind="comment", title=""))
+    submit_feed(first, parent_id=root["id"], kind="comment", title="")
+    response = mutate(first, "POST", "/api/account/privacy-requests", {"kind": "deletion"})
+    assert response.status_code == 201, response.text
+    with database(app.state.db_path) as db:
+        request = db.execute("SELECT request_key FROM privacy_rights_requests WHERE user_id=?",
+                             (ids["first"],)).fetchone()
+        preview = impact_preview(db, request["request_key"])
+        assert preview["counts"]["community_feed_entries"] == 2
+        assert preview["counts"]["community_feed_linked_comments"] == 1
+        assert any("комментарии других участников" in risk for risk in preview["risk_flags"])
+        assert preview["automatic_deletion"] is False
+

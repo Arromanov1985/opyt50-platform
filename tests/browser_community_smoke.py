@@ -212,6 +212,60 @@ def run_browser(browser, base, database):
 
         boris_profile = api_profile(boris, base, admin, "Борис Проекты", "Координатор проектов")
         outsider_profile = api_profile(outsider, base, admin, "Виктор Мастер", "Мастер производственного обучения")
+        # Professional feed: an explicit, moderated submission and discussion.
+        anna.set_viewport_size({"width": 390, "height": 844})
+        anna.goto(base + "/community/feed", wait_until="networkidle")
+        composer = anna.locator("#feed-compose-form")
+        expect(composer).to_be_visible()
+        composer.locator('[name="kind"]').select_option("mentoring")
+        composer.locator('[name="title"]').fill("Как передавать опыт")
+        feed_body = "Начинаю с учебного плана. <img src=x onerror=window.communityXss=1>"
+        composer.locator('[name="body"]').fill(feed_body)
+        composer.locator('[name="publish_consent"]').check()
+        anna.context.set_offline(True)
+        composer.locator('[type="submit"]').click()
+        expect(composer.locator(".form-error")).to_be_visible()
+        expect(composer.locator('[name="body"]')).to_have_value(feed_body)
+        anna.context.set_offline(False)
+        with anna.expect_response(lambda r: r.url.endswith("/api/community/feed") and r.request.method == "POST") as feed_sent:
+            composer.locator('[type="submit"]').click()
+        feed_entry = checked(feed_sent.value)["entry"]
+        feed_id = feed_entry["id"]
+        expect(anna.locator(f'#feed-mine-list [data-feed-id="{feed_id}"]')).to_contain_text("На проверке")
+        assert checked(boris.request.get(base + "/api/community/feed"))["entries"] == []
+        admin.goto(base + "/community/feed", wait_until="networkidle")
+        admin.locator(f'#feed-review-list [data-feed-id="{feed_id}"] [data-action="approve-feed"]').click()
+        with admin.expect_response(lambda r: r.url.endswith("/api/admin/community/feed/" + feed_id) and r.request.method == "PATCH") as feed_approved:
+            admin.locator('#feed-review-form [type="submit"]').click()
+        assert checked(feed_approved.value)["entry"]["status"] == "published"
+        boris.set_viewport_size({"width": 390, "height": 844})
+        boris.goto(base + "/community/feed", wait_until="networkidle")
+        post = boris.locator(f'#feed-list [data-feed-id="{feed_id}"]')
+        expect(post).to_contain_text(feed_body)
+        assert boris.evaluate("window.communityXss || 0") == 0
+        post.locator('[data-action="open-feed-thread"]').click()
+        reply_form = boris.locator("#feed-comment-form")
+        expect(reply_form).to_be_visible()
+        reply_form.locator('[name="body"]').fill("Полезный подход к обучению.")
+        reply_form.locator('[name="publish_consent"]').check()
+        with boris.expect_response(lambda r: r.url.endswith("/api/community/feed") and r.request.method == "POST") as reply_sent:
+            reply_form.locator('[type="submit"]').click()
+        reply = checked(reply_sent.value)["entry"]
+        expect(boris.locator(f'#feed-mine-list [data-feed-id="{reply["id"]}"]')).to_contain_text("На проверке")
+        assert checked(anna.request.get(base + "/api/community/feed/" + feed_id + "/comments"))["entries"] == []
+        admin.reload(wait_until="networkidle")
+        admin.locator(f'#feed-review-list [data-feed-id="{reply["id"]}"] [data-action="approve-feed"]').click()
+        with admin.expect_response(lambda r: r.url.endswith("/api/admin/community/feed/" + reply["id"]) and r.request.method == "PATCH") as reply_approved:
+            admin.locator('#feed-review-form [type="submit"]').click()
+        assert checked(reply_approved.value)["entry"]["status"] == "published"
+        boris.reload(wait_until="networkidle")
+        boris.locator(f'#feed-list [data-feed-id="{feed_id}"] [data-action="open-feed-thread"]').click()
+        expect(boris.locator("#feed-comments")).to_contain_text("Полезный подход к обучению.")
+        capture(boris, "community-feed-mobile.png")
+        boris.set_viewport_size({"width": 1366, "height": 900})
+        capture(boris, "community-feed-desktop.png")
+        anna.set_viewport_size({"width": 1366, "height": 900})
+
         visitor.goto(base + "/community", wait_until="networkidle")
         expect(visitor.locator("#community-people [data-person-id]")).to_have_count(3)
         capture(visitor, "community-directory-mobile.png")

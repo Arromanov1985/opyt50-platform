@@ -37,7 +37,7 @@ ORDER = (
 OPTIONAL_ORDER = (
     "candidate_saved_searches", "community_actor_locks", "community_profiles",
     "community_profile_events", "community_connections", "community_messages",
-    "community_read_state", "community_reports",
+    "community_read_state", "community_reports", "community_feed_entries",
 )
 IDENTITY_TABLES = (
     "users", "vacancies", "invitations", "demo_transactions",
@@ -99,7 +99,12 @@ def migrate(snapshot: str, dsn: str) -> dict[str, int]:
                             sql.Identifier(table), identifiers,
                             sql.SQL(", ").join(sql.Placeholder() for _ in columns),
                         )
-                        rows = source.execute(f'SELECT * FROM "{table}"').fetchall()
+                        if table == "community_feed_entries":
+                            rows = source.execute(
+                                "SELECT * FROM community_feed_entries ORDER BY CASE WHEN parent_id IS NULL THEN 0 ELSE 1 END, id"
+                            ).fetchall()
+                        else:
+                            rows = source.execute(f'SELECT * FROM "{table}"').fetchall()
                         if rows:
                             cur.executemany(statement, rows)
                     for table in IDENTITY_TABLES:

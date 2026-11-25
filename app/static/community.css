@@ -55,3 +55,31 @@
 .community-mark-read:not([hidden]){margin-top:12px;white-space:normal}
 #community-read-hint{margin-top:8px;margin-bottom:0}
 @media(max-width:480px){.community-attention{padding:16px}.community-attention>.button{width:100%}.community-attention-metrics{gap:12px}.community-attention-metrics span{font-size:.9em}}
+
+/* Professional feed: a readable column and a separate author workspace. */
+.feed-layout{display:grid;grid-template-columns:minmax(0,1.6fr) minmax(0,1fr);gap:24px;align-items:start}
+.feed-primary,.feed-side,.feed-list{display:grid;gap:18px;min-width:0}
+.feed-list{margin-top:16px}
+.feed-form,.feed-filter{display:grid;gap:14px;min-width:0}
+.feed-form h2{margin:0 0 4px}
+.feed-form .field,.feed-filter .field{min-width:0}
+.feed-form textarea{min-height:120px;resize:vertical}
+.feed-form .help{margin:0}
+.feed-consent{display:flex;align-items:flex-start;gap:12px;line-height:1.5;font-size:.9em}
+.feed-consent input{flex:0 0 auto;width:22px;height:22px;margin-top:3px}
+.feed-card{min-width:0;padding:20px;overflow-wrap:anywhere}
+.feed-card h2{font-size:1.28em;line-height:1.35;margin:12px 0 8px}
+.feed-card .feed-body{white-space:pre-wrap;line-height:1.65}
+.feed-card .feed-author{margin:8px 0 14px}
+.feed-card .feed-meta{display:flex;flex-wrap:wrap;align-items:center;gap:8px 12px}
+.feed-meta time{font-size:.8em;color:var(--muted);margin-left:auto}
+.feed-card .actions{margin-top:14px}
+.feed-discussion{scroll-margin-top:16px}
+.feed-discussion .feed-form{margin-top:22px;padding-top:18px;border-top:1px solid var(--line)}
+.feed-side .feed-card{padding:14px}
+.feed-side .feed-card h2{font-size:1.05em}
+.feed-side .feed-card .feed-meta time{margin-left:0}
+@media(max-width:850px){.feed-layout{grid-template-columns:1fr}.feed-card{padding:18px}}
+.comfortable-view .feed-layout{grid-template-columns:1fr}
+@media(max-width:480px){.feed-form .button,.feed-filter .button{width:100%}.feed-card .feed-meta time{margin-left:0}.feed-card{padding:16px}.feed-layout{gap:16px}}
+#feed-compose-section{scroll-margin-top:20px}
