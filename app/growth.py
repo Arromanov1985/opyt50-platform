@@ -20,6 +20,7 @@ PATH_SOURCES = {"path:" + item["slug"]: item for item in PATHS}
 VALID_ACTIONS = frozenset({
     "view", "jobs_click", "profile_click", "community_click",
     "company_click", "vacancy_click", "apply_click",
+    "article_click", "recommended_vacancy_click",
 })
 PUBLIC_SOURCE_RE = re.compile(r"^(vacancy|company):([1-9][0-9]{0,9})$")
 
@@ -31,6 +32,13 @@ def record_event(db_path: str, source: str, action: str) -> None:
     Keep at most 180 UTC days of aggregate counters, even on long-running apps.
     """
     if action not in VALID_ACTIONS:
+        raise ValueError("Unsupported aggregate event")
+    public_match = PUBLIC_SOURCE_RE.fullmatch(source)
+    if action == "article_click" and not public_match:
+        raise ValueError("Unsupported aggregate event")
+    if action == "recommended_vacancy_click" and (
+        public_match or source == "journal" or source in PATH_SOURCES
+    ):
         raise ValueError("Unsupported aggregate event")
     today = datetime.now(timezone.utc).date()
     cutoff = (today - timedelta(days=179)).isoformat()
@@ -44,7 +52,6 @@ def record_event(db_path: str, source: str, action: str) -> None:
             if not any(slug in published for slug, _ in PATH_SOURCES[source]["steps"]):
                 raise ValueError("Unsupported aggregate event")
         elif source != "journal":
-            public_match = PUBLIC_SOURCE_RE.fullmatch(source)
             if public_match:
                 kind, raw_id = public_match.groups()
                 resource_id = int(raw_id)
@@ -251,6 +258,18 @@ def aggregate_snapshot(db: Any, days: int) -> dict:
         "company_clicks": sum(item["total"] for item in counters if item["action"] == "company_click"),
         "vacancy_clicks": sum(item["total"] for item in counters if item["action"] == "vacancy_click"),
         "apply_clicks": sum(item["total"] for item in counters if item["action"] == "apply_click"),
+        "journal_vacancy_clicks": sum(
+            item["total"] for item in counters
+            if item["action"] == "recommended_vacancy_click"
+        ),
+        "vacancy_article_clicks": sum(
+            item["total"] for item in counters
+            if item["action"] == "article_click" and item["source"].startswith("vacancy:")
+        ),
+        "company_article_clicks": sum(
+            item["total"] for item in counters
+            if item["action"] == "article_click" and item["source"].startswith("company:")
+        ),
         "new_candidates": sum(item["total"] for item in registrations if item["role"] == "candidate"),
         "new_employers": sum(item["total"] for item in registrations if item["role"] == "employer"),
     }

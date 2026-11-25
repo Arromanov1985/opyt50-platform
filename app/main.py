@@ -83,6 +83,7 @@ class GrowthEventIn(BaseModel):
     action: Literal[
         "view", "jobs_click", "profile_click", "community_click",
         "company_click", "vacancy_click", "apply_click",
+        "article_click", "recommended_vacancy_click",
     ]
 
 

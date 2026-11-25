@@ -39,7 +39,7 @@ def _layout(title: str, description: str, path: str, body: str) -> str:
         f"<meta property=\"og:description\" content=\"{_e(description)}\">"
         f"<meta property=\"og:url\" content=\"{_e(canonical)}\">"
         "<link rel=\"stylesheet\" href=\"/static/journal.css?v=6\">"
-        "<script src=\"/static/journal.js?v=5\" defer></script>"
+        "<script src=\"/static/journal.js?v=6\" defer></script>"
         "</head><body class=\"jr-page\">"
         "<a class=\"jr-skip\" href=\"#jr-content\">К основному содержанию</a>"
         "<header class=\"jr-header\"><div class=\"jr-wrap jr-top\">"
@@ -95,7 +95,7 @@ def _job_card(job: dict) -> str:
     from .vacancy_pages import _pay
     return (
         f'<a class="jr-card jr-job-card" href="/vacancies/{int(job["id"])}" '
-        'data-growth-action="jobs_click">'
+        'data-growth-action="recommended_vacancy_click">'
         f'<span class="jr-tag">Вакансия · {_e(job.get("city") or "город не указан")}</span>'
         f'<h2>{_e(job.get("title") or "Вакансия")}</h2>'
         f'<p>{_e(job.get("company_name") or "Работодатель")}</p>'
@@ -274,12 +274,21 @@ def journal_manifest(request: Request) -> dict:
         pages[path] = hashlib.sha256(
             journal_article(article["slug"], articles, jobs).body
         ).hexdigest()
-    pages["/sitemap.xml"] = hashlib.sha256(journal_sitemap(articles).body).hexdigest()
+    paths = _public_sitemap_paths(request)
+    pages["/sitemap.xml"] = hashlib.sha256(journal_sitemap(articles, paths).body).hexdigest()
     return {"pages": pages, "count": len(articles), "renderer_sha256": journal_renderer_sha256()}
 
 
-def journal_sitemap(articles: list[dict] | None = None) -> Response:
-    """Only published editorial pages when a live catalog is supplied."""
+def _public_sitemap_paths(request: Request) -> list[str]:
+    from .public_discovery import public_sitemap_paths
+    with database(request.app.state.db_path) as db:
+        return public_sitemap_paths(db)
+
+
+def journal_sitemap(
+    articles: list[dict] | None = None, public_paths: list[str] | None = None,
+) -> Response:
+    """Canonical published editorial pages and currently discoverable jobs/companies."""
     if articles is None:
         articles = ARTICLES
     from .journal_paths import visible_paths
@@ -288,17 +297,17 @@ def journal_sitemap(articles: list[dict] | None = None) -> Response:
         + ["/journal/" + article["slug"] for article in articles]
         + ["/journal/paths"]
         + ["/journal/paths/" + path["slug"] for path in visible_paths(articles)]
+        + (public_paths or [])
     )
-    urls = "".join(
-        "<url><loc>" + _e(ORIGIN + path) + "</loc>"
-        "<lastmod>" + PUBLISHED + "</lastmod></url>"
-        for path in paths
-    )
+    # Seed publication dates are not real modification dates for CMS edits or
+    # vacancies. Omit lastmod instead of inventing a timestamp.
+    urls = "".join("<url><loc>" + _e(ORIGIN + path) + "</loc></url>"
+                   for path in paths)
     xml = '<?xml version="1.0" encoding="UTF-8"?>' + (
         '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">' + urls + "</urlset>"
     )
     return Response(content=xml, media_type="application/xml",
-                    headers={"Cache-Control": "public, max-age=300"})
+                    headers={"Cache-Control": "no-store"})
 
 
 def journal_robots(request: Request) -> PlainTextResponse:
@@ -320,7 +329,7 @@ def install_journal_routes(app: FastAPI) -> None:
     # The pure renderers still accept a default seed catalog for deterministic
     # unit/probe rendering. Public HTTP routes use current published DB rows.
     def sitemap_http(request: Request):
-        return journal_sitemap(_catalog(request))
+        return journal_sitemap(_catalog(request), _public_sitemap_paths(request))
 
     def index_http(request: Request):
         return journal_index(_catalog(request))

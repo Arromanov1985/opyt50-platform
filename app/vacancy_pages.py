@@ -77,7 +77,7 @@ def vacancy_page(job: dict, articles: list[dict] | None = None) -> HTMLResponse:
             fallback_slugs=("kak-proverit-vakansiyu", "sobesedovanie-posle-50"),
         )
         reading_cards = "".join(
-            '<a class="reading-card" href="/journal/' + _e(item["slug"]) + '">'
+            '<a class="reading-card" href="/journal/' + _e(item["slug"]) + '" data-growth-action="article_click">'
             '<span>' + _e(item["category"]) + '</span>'
             '<strong>' + _e(item["title"]) + '</strong>'
             '<small>' + _e(item["read"]) + ' чтения →</small></a>'
@@ -85,7 +85,7 @@ def vacancy_page(job: dict, articles: list[dict] | None = None) -> HTMLResponse:
         )
     if not reading_cards and articles is None:
         reading_cards = (
-            '<a class="reading-card" href="/journal/kak-proverit-vakansiyu">'
+            '<a class="reading-card" href="/journal/kak-proverit-vakansiyu" data-growth-action="article_click">'
             '<span>Безопасность</span><strong>Как проверить вакансию и сохранить свои данные</strong>'
             '<small>Практический чек-лист →</small></a>'
         )

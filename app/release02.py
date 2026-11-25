@@ -400,7 +400,7 @@ GROWTH_ANALYTICS_DDL = (
         source TEXT NOT NULL,
         action TEXT NOT NULL CHECK(action IN (
             'view','jobs_click','profile_click','community_click',
-            'company_click','vacancy_click','apply_click'
+            'company_click','vacancy_click','apply_click','article_click','recommended_vacancy_click'
         )),
         total INTEGER NOT NULL DEFAULT 0 CHECK(total>=0),
         PRIMARY KEY (event_date,source,action)
@@ -427,7 +427,10 @@ def _upgrade_growth_action_constraint(db, *, postgres: bool) -> None:
                WHERE conrelid='growth_daily_counts'::regclass
                AND conname='growth_daily_counts_action_check' AND contype='c'"""
         ).fetchone()
-        if constraint and "'apply_click'" in constraint["definition"]:
+        if constraint and all(
+            f"'{action}'" in constraint["definition"]
+            for action in ("apply_click", "article_click", "recommended_vacancy_click")
+        ):
             return
         db.execute(
             """ALTER TABLE growth_daily_counts
@@ -435,7 +438,7 @@ def _upgrade_growth_action_constraint(db, *, postgres: bool) -> None:
                ADD CONSTRAINT growth_daily_counts_action_check
                CHECK(action IN (
                  'view','jobs_click','profile_click','community_click',
-                 'company_click','vacancy_click','apply_click'
+                 'company_click','vacancy_click','apply_click','article_click','recommended_vacancy_click'
                ))"""
         )
         return
@@ -447,7 +450,8 @@ def _upgrade_growth_action_constraint(db, *, postgres: bool) -> None:
     definition = db.execute(
         "SELECT sql FROM sqlite_master WHERE type='table' AND name='growth_daily_counts'"
     ).fetchone()
-    if "'apply_click'" in definition["sql"]:
+    if all(f"'{action}'" in definition["sql"]
+           for action in ("apply_click", "article_click", "recommended_vacancy_click")):
         return
     db.execute(GROWTH_ANALYTICS_DDL[0].replace(
         "CREATE TABLE IF NOT EXISTS growth_daily_counts",
@@ -1071,11 +1075,14 @@ def install_routes(app) -> None:
             (employer_id,),
         ).fetchall()
         trust = employer_trust(db, employer_id)
+        about = str(company["about"] or "").strip()
+        if CONTACT_EMAIL_PATTERN.search(about) or CONTACT_PHONE_PATTERN.search(about):
+            about = ""
         return {
             "company": {
                 "id": employer_id,
                 "company_name": company["company_name"],
-                "about": company["about"],
+                "about": about,
                 "created_at": normalize_event_time(company["created_at"]),
                 "trust": trust,
                 "open_vacancies": len(jobs),

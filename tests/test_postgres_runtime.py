@@ -244,12 +244,13 @@ def test_growth_aggregate_is_atomic_and_private_in_postgresql(runtime_db):
 def test_existing_growth_check_upgrades_without_losing_postgres_counts(runtime_db):
     from app.release02 import init_release02
 
-    # Simulate the schema already deployed before community_click existed.
+    # Simulate the most recent deployed CHECK, including apply_click.
     with postgres_database(runtime_db) as db:
         db.execute("""ALTER TABLE growth_daily_counts
             DROP CONSTRAINT growth_daily_counts_action_check,
             ADD CONSTRAINT growth_daily_counts_action_check
-            CHECK(action IN ('view','jobs_click','profile_click'))""")
+            CHECK(action IN ('view','jobs_click','profile_click','community_click',
+                             'company_click','vacancy_click','apply_click'))""")
         db.execute("INSERT INTO growth_daily_counts VALUES(?,?,?,?)",
                    ("2026-11-01", "journal", "view", 17))
         db.execute("INSERT INTO growth_daily_counts VALUES(?,?,?,?)",
@@ -270,8 +271,9 @@ def test_existing_growth_check_upgrades_without_losing_postgres_counts(runtime_d
                WHERE table_schema=current_schema() AND table_name='growth_daily_counts'
                ORDER BY ordinal_position"""
         ).fetchall()] == ["event_date", "source", "action", "total"]
-        db.execute("INSERT INTO growth_daily_counts VALUES(?,?,?,?)",
-                   ("2026-11-03", "journal", "community_click", 2))
+        for action in ("community_click", "article_click", "recommended_vacancy_click"):
+            db.execute("INSERT INTO growth_daily_counts VALUES(?,?,?,?)",
+                       ("2026-11-03", "journal", action, 2))
 
     for action, total in (("unknown", 1), ("community_click", -1)):
         with pytest.raises(sqlite3.IntegrityError):

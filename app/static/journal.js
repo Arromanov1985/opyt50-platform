@@ -50,7 +50,7 @@ document.addEventListener('DOMContentLoaded', () => {
   document.querySelectorAll('a[data-growth-action]').forEach(link => {
     link.addEventListener('click', () => {
       const action = link.getAttribute('data-growth-action');
-      if (['jobs_click','profile_click','community_click','company_click','vacancy_click','apply_click'].includes(action)) {
+      if (['jobs_click','profile_click','community_click','company_click','vacancy_click','apply_click','article_click','recommended_vacancy_click'].includes(action)) {
         sendGrowthEvent(action);
       }
     });

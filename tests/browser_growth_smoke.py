@@ -193,6 +193,56 @@ def exercise(browser, base, receipts_path):
         # the document that emitted a keepalive request.
         wait_for_browser_receipts(receipts_path)
 
+        # Exercise all three recommendation directions through actual links.
+        article_slug = "cifrovye-navyki-dlya-raboty"
+        page.goto(base + "/journal/" + article_slug, wait_until="networkidle")
+        job_card = page.locator(".jr-job-card").first
+        expect(job_card).to_be_visible()
+        job_path = job_card.get_attribute("href")
+        job_source = "vacancy:" + job_path.rsplit("/", 1)[1]
+        with page.expect_request(lambda request: matches_event(
+                request, article_slug, "recommended_vacancy_click")):
+            job_card.click()
+        assert_destination(page, base, job_path)
+        reading = page.locator(".reading-card").first
+        expect(reading).to_be_visible()
+        article_path = reading.get_attribute("href")
+        with page.expect_request(lambda request: matches_event(
+                request, job_source, "article_click")):
+            reading.click()
+        assert_destination(page, base, article_path)
+        page.goto(base + job_path, wait_until="networkidle")
+        company_path = page.locator('a[data-growth-action="company_click"]').first.get_attribute("href")
+        page.goto(base + company_path, wait_until="networkidle")
+        company_source = "company:" + company_path.rsplit("/", 1)[1]
+        company_reading = page.locator(".employer-reading-card").first
+        expect(company_reading).to_be_visible()
+        company_article_path = company_reading.get_attribute("href")
+        with page.expect_request(lambda request: matches_event(
+                request, company_source, "article_click")):
+            company_reading.click()
+        assert_destination(page, base, company_article_path)
+        page.wait_for_load_state("networkidle")
+        expected_discovery = {
+            (article_slug, "recommended_vacancy_click"),
+            (job_source, "article_click"), (company_source, "article_click"),
+        }
+        deadline = time.monotonic() + 5
+        while time.monotonic() < deadline:
+            received = [
+                json.loads(line) for line in receipts_path.read_text(encoding="utf-8").splitlines()
+            ]
+            discovery_receipts = [
+                item for item in received if (item["source"], item["action"]) in expected_discovery
+            ]
+            if len(discovery_receipts) >= 3:
+                break
+            time.sleep(.05)
+        assert len(discovery_receipts) == 3, discovery_receipts
+        assert {(item["source"], item["action"]) for item in discovery_receipts} == expected_discovery
+        assert all(item["status"] == 204 and not item["has_cookie"] and not item["has_referer"]
+                   for item in discovery_receipts)
+
         # A blocked analytics service must never interfere with ordinary links.
         def block_analytics(route):
             route.abort("failed")
@@ -224,12 +274,22 @@ def exercise(browser, base, receipts_path):
                                    headers=HEADERS, data={"version": created["version"]}))
         # A click without a view is possible when requests are blocked or retried.
         send(admin, base, dynamic_slug, "profile_click")
-        ratio_slug = "sobesedovanie-posle-50"
+        # The discovery flow may already have opened one of the seed articles.
+        # Keep the 200% ratio fixture independent of recommendation ranking.
+        visited_articles = {"/journal/" + article_slug, article_path, company_article_path}
+        ratio_slug = next(
+            slug for slug in ("sobesedovanie-posle-50", "kak-proverit-vakansiyu",
+                              "proektnaya-rabota-posle-50", "rabotodatelyu-ocenit-opyt")
+            if "/journal/" + slug not in visited_articles
+        )
         send(admin, base, ratio_slug, "view")
         send(admin, base, ratio_slug, "jobs_click")
         send(admin, base, ratio_slug, "jobs_click")
         report = checked(admin.request.get(base + "/api/admin/growth?days=30"))
         assert report["summary"]["community_clicks"] == 1
+        assert report["summary"]["journal_vacancy_clicks"] == 1
+        assert report["summary"]["vacancy_article_clicks"] == 1
+        assert report["summary"]["company_article_clicks"] == 1
         for slug, action, _ in PATHS:
             row = next(item for item in report["by_source"] if item["source"] == "path:" + slug)
             assert row["view"] == 1 and row[action] == 1, row
@@ -240,6 +300,8 @@ def exercise(browser, base, receipts_path):
 
         admin.goto(base, wait_until="networkidle")
         expect(admin.locator("#admin-growth-stats")).to_contain_text("Переходы в сообщество")
+        for label in ("Статья → карточка вакансии", "Вакансия → статья", "Компания → статья"):
+            expect(admin.locator("#admin-growth-stats")).to_contain_text(label)
         rows = admin.locator("#admin-growth-articles tbody tr")
         expect(rows).to_have_count(len(report["by_source"]))
         for slug, _, _ in PATHS:

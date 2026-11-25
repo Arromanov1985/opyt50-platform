@@ -70,8 +70,13 @@ def test_directory_only_contains_active_employers_with_approved_open_jobs(tmp_pa
         assert "director2@example.invalid" not in index.text
         assert "/employers" in viewer.get("/journal").text
         assert viewer.get(f"/employers/{employer2}").status_code == 404
+        alias = viewer.get(f"/employers/{employer1}", follow_redirects=False)
+        assert alias.status_code == 301
+        assert alias.headers["location"] == f"/companies/{employer1}"
+        assert alias.headers["cache-control"] == "no-store"
         profile = viewer.get(f"/employers/{employer1}")
         assert profile.status_code == 200
+        assert profile.url.path == f"/companies/{employer1}"
         assert "Мастер склада" in profile.text
         assert f'href="/vacancies/{open_job_id}" data-growth-action="vacancy_click"' in profile.text
         assert "Инвентаризация" not in index.text  # No applicant or job descriptions
@@ -80,7 +85,7 @@ def test_directory_only_contains_active_employers_with_approved_open_jobs(tmp_pa
         assert 'id="reading-mode-toggle"' in profile.text
         assert 'href="#company-jobs"' in profile.text
         assert profile.text.index('id="company-jobs"') < profile.text.index('id="company-about"')
-        assert "Нет отметки проверки СТАЖНО" in profile.text
+        assert "Отметка проверки СТАЖНО пока не получена" in profile.text
         for label in ("Оплата", "Город", "График", "Занятость"):
             assert f"<dt>{label}</dt>" in profile.text
 
@@ -130,9 +135,9 @@ def test_employer_public_description_is_escaped_and_legacy_contacts_suppressed(t
                 "UPDATE employer_public_profiles SET about=? WHERE employer_id=?",
                 ("Пишите напрямую personal@example.invalid", employer_id),
             )
-        assert "personal@example.invalid" not in client.get(
-            f"/employers/{employer_id}"
-        ).text
+        for path in (f"/employers/{employer_id}", f"/companies/{employer_id}",
+                     f"/api/companies/{employer_id}"):
+            assert "personal@example.invalid" not in client.get(path).text
 
 
 def test_employer_directory_preview_noindex_and_canonical(tmp_path: Path):
