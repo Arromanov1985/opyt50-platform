@@ -110,6 +110,20 @@ def install_engagement_routes(app, community_user, throttle, get_connection,
         return _private({"follows": [dict(row) for row in rows[:PAGE_SIZE]],
                          "page": page, "has_more": len(rows) > PAGE_SIZE})
 
+    @app.get("/api/community/feed/follows/{public_id}")
+    def follow_status(public_id: str, user: dict = Depends(community_user),
+                      db=Depends(get_connection)):
+        reader(user, db)
+        owner = user["id"]
+        target = _follow_target(db, owner, public_id)
+        if target is None or int(target["user_id"]) == owner:
+            return _private({"can_follow": False, "following": False})
+        previous = db.execute(
+            "SELECT 1 FROM community_feed_follows WHERE follower_id=? AND target_id=?",
+            (owner, target["user_id"]),
+        ).fetchone()
+        return _private({"can_follow": True, "following": previous is not None})
+
     @app.post("/api/community/feed/follows")
     def follow(data: FollowInput, user: dict = Depends(community_user),
                db=Depends(get_connection)):
