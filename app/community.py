@@ -385,14 +385,23 @@ WITH viewer AS (
 """
 
 
+_ACTIVITY_SQL = _ATTENTION_CTE + """SELECT COALESCE(SUM(pending_action),0) AS pending_requests,
+    COALESCE(SUM(unread_count),0) AS unread_messages,
+    COALESCE(SUM(CASE WHEN unread_count>0 THEN 1 ELSE 0 END),0) AS unread_threads
+    FROM attention_rows"""
+_ATTENTION_WHERE = " WHERE (pending_action=1 OR unread_count>0) AND (?='' OR status=?)"
+_ATTENTION_COUNT_SQL = _ATTENTION_CTE + "SELECT COUNT(*) FROM attention_rows" + _ATTENTION_WHERE
+_ATTENTION_PAGE_SQL = _ATTENTION_CTE + "SELECT * FROM attention_rows" + _ATTENTION_WHERE + (
+    " ORDER BY pending_action DESC,updated_at DESC,id DESC LIMIT ? OFFSET ?"
+)
+_THREAD_UNREAD_SQL = _UNREAD_SQL.format(owner="?", thread="?", peer="?")
+
+
 def community_activity(db, user_id: int) -> dict:
     """Return only the current account's aggregate attention counts."""
     active = _active_account(db, user_id)
     row = db.execute(
-        _ATTENTION_CTE + """SELECT COALESCE(SUM(pending_action),0) AS pending_requests,
-            COALESCE(SUM(unread_count),0) AS unread_messages,
-            COALESCE(SUM(CASE WHEN unread_count>0 THEN 1 ELSE 0 END),0) AS unread_threads
-            FROM attention_rows""",
+        _ACTIVITY_SQL,
         (user_id, int(active)),
     ).fetchone()
     return {
@@ -410,7 +419,7 @@ def _thread_unread(db, row, user_id: int) -> int:
     if not _active_account(db, peer_id):
         return 0
     return int(db.execute(
-        _UNREAD_SQL.format(owner="?", thread="?", peer="?"),
+        _THREAD_UNREAD_SQL,
         (user_id, row["id"], peer_id),
     ).fetchone()[0])
 
@@ -712,11 +721,9 @@ def install_community_routes(app) -> None:
             # Apply attention before counting or paginating. An unread thread
             # on page 3 must not disappear because the browser filters page 1.
             args = (owner, int(_active_account(db, owner)), status or "", status or "")
-            where = " WHERE (pending_action=1 OR unread_count>0) AND (?='' OR status=?)"
-            total = db.execute(_ATTENTION_CTE + "SELECT COUNT(*) FROM attention_rows" + where, args).fetchone()[0]
+            total = db.execute(_ATTENTION_COUNT_SQL, args).fetchone()[0]
             rows = db.execute(
-                _ATTENTION_CTE + "SELECT * FROM attention_rows" + where +
-                " ORDER BY pending_action DESC,updated_at DESC,id DESC LIMIT ? OFFSET ?",
+                _ATTENTION_PAGE_SQL,
                 (*args, PAGE_SIZE, (page - 1) * PAGE_SIZE),
             ).fetchall()
         else:

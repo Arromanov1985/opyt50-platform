@@ -460,3 +460,38 @@ def test_saved_search_api_in_postgresql(runtime_db):
         assert acknowledged.json()["search"]["new_count"] == 0
         assert client.delete(url, headers=headers).status_code == 200
         assert client.get(root).json()["searches"] == []
+
+
+def test_community_attention_and_read_cursor_in_postgresql(runtime_db):
+    from fastapi.testclient import TestClient
+    from app.main import create_app, active_user
+
+    app = create_app("unused-with-DATABASE_URL")
+    app.dependency_overrides[active_user] = lambda: {"id": 1, "role": "candidate"}
+    with TestClient(app) as client:
+        with postgres_database(runtime_db) as db:
+            db.execute(
+                """INSERT INTO community_connections(id,sender_id,recipient_id,pair_low,pair_high,
+                   purpose,status,created_at,updated_at)
+                   VALUES('pg-thread',2,1,1,2,'exchange','accepted','2026-01-01','2026-01-01')"""
+            )
+            for mid in ("pg-a", "pg-b"):
+                db.execute(
+                    """INSERT INTO community_messages(id,connection_id,sender_id,client_key,body,created_at)
+                       VALUES(?,'pg-thread',2,?,'Fictional message','2026-01-02')""",
+                    (mid, mid),
+                )
+        assert client.get("/api/community/activity").json()["unread_messages"] == 2
+        assert client.get("/api/community/connections?attention=true").json()["total"] == 1
+        path = "/api/community/connections/pg-thread/read"
+        headers = {"X-Requested-With": "OPYT50"}
+        first = client.post(path, headers=headers, json={"through_message_id": "pg-b"})
+        assert first.status_code == 200, first.text
+        assert first.json()["unread_count"] == 0
+        older = client.post(path, headers=headers, json={"through_message_id": "pg-a"})
+        assert older.status_code == 200, older.text
+        assert older.json()["unread_count"] == 0
+        assert client.get("/api/community/connections?attention=true").json()["total"] == 0
+        with postgres_database(runtime_db) as db:
+            row = db.execute("SELECT through_message_id FROM community_read_state WHERE user_id=1").fetchone()
+            assert row["through_message_id"] == "pg-b"

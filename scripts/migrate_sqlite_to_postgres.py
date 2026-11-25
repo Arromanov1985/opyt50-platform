@@ -34,7 +34,11 @@ ORDER = (
 )
 # Later additive data is optional for old snapshots, but must never be
 # silently omitted when it exists in a newer source database.
-OPTIONAL_ORDER = ("candidate_saved_searches",)
+OPTIONAL_ORDER = (
+    "candidate_saved_searches", "community_actor_locks", "community_profiles",
+    "community_profile_events", "community_connections", "community_messages",
+    "community_read_state", "community_reports",
+)
 IDENTITY_TABLES = (
     "users", "vacancies", "invitations", "demo_transactions",
     "job_applications", "application_events", "email_outbox",
