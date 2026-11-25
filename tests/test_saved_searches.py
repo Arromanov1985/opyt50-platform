@@ -65,7 +65,7 @@ def test_subscription_counts_current_matches_without_marking_on_read(tmp_path):
         second = vacancy(app, eid, title="Кладовщик смены")
         hidden = vacancy(app, eid, title="Кладовщик на проверке")
         with database(app.state.db_path) as db:
-            db.execute("INSERT INTO vacancy_moderation(vacancy_id,status) VALUES(?,'pending')", (hidden,))
+            db.execute("INSERT INTO vacancy_moderation(vacancy_id,status,updated_at) VALUES(?,'pending',datetime('now'))", (hidden,))
         result = owner.get(url + "/results")
         assert result.status_code == 200, result.text
         assert "no-store" in result.headers["cache-control"]

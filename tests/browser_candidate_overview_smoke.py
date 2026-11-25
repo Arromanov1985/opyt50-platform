@@ -197,7 +197,7 @@ def exercise_saved_searches(page):
     form = panel.locator("#saved-search-form")
     expect(form).to_be_visible()
     form.locator("[name='q']").fill("Кладовщик")
-    form.locator("[name='city']").fill("Москва")
+    form.locator("[name='city']").fill("Подольск")
     form.locator("[name='alerts_enabled']").check()
     form.locator("button[type='submit']").click()
     row = panel.locator(".saved-search-row")
