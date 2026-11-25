@@ -495,3 +495,58 @@ def test_community_attention_and_read_cursor_in_postgresql(runtime_db):
         with postgres_database(runtime_db) as db:
             row = db.execute("SELECT through_message_id FROM community_read_state WHERE user_id=1").fetchone()
             assert row["through_message_id"] == "pg-b"
+
+
+def test_moderated_feed_runtime_postgresql(runtime_db):
+    from fastapi.testclient import TestClient
+    from app.main import create_app, active_user
+    from uuid import uuid4
+
+    app = create_app("unused-with-DATABASE_URL")
+    actor = {"id": 1, "role": "candidate"}
+    app.dependency_overrides[active_user] = lambda: actor
+    with TestClient(app) as client:
+        with postgres_database(runtime_db) as db:
+            db.execute(
+                """INSERT INTO community_profiles(user_id,public_id,public_name,headline,
+                   status,consent_at,consent_content_version,reviewed_content_version,created_at,updated_at)
+                   VALUES(1,'feed-public','Опытный коллега','Наставник','published',
+                   '2026-01-01',1,1,'2026-01-01','2026-01-01')"""
+            )
+            admin_id = db.execute(
+                "INSERT INTO users(email,password_hash,role,name) VALUES(?,?,'admin','Admin')",
+                ("feed-admin@example.invalid", "test-hash"),
+            ).lastrowid
+        url = "/api/community/feed"
+        headers = {"X-Requested-With": "OPYT50"}
+        response = client.post(url, headers=headers, json={
+            "kind": "projects", "title": "Проект", "body": "Обмен опытом",
+            "client_key": str(uuid4()), "publish_consent": True,
+        })
+        assert response.status_code == 200, response.text
+        pending = response.json()["entry"]
+        assert client.get(url).json()["entries"] == []
+        actor.update(id=admin_id, role="admin")
+        approved = client.patch("/api/admin/community/feed/" + pending["id"], headers=headers,
+                                json={"decision": "approve", "expected_version": pending["version"]})
+        assert approved.status_code == 200, approved.text
+        actor.update(id=2, role="employer")
+        visible = client.get(url + "?q=ПРОЕКТ&kind=projects")
+        assert visible.status_code == 200, visible.text
+        assert visible.json()["entries"][0]["id"] == pending["id"]
+        assert "author_id" not in visible.json()["entries"][0]
+        actor.update(id=1, role="candidate")
+        comment = client.post(url, headers=headers, json={
+            "kind": "comment", "parent_id": pending["id"], "body": "Полезная тема",
+            "client_key": str(uuid4()), "publish_consent": True,
+        })
+        assert comment.status_code == 200, comment.text
+        assert client.get(url + "/" + pending["id"] + "/comments").json()["entries"] == []
+        reply = comment.json()["entry"]
+        actor.update(id=admin_id, role="admin")
+        approved_reply = client.patch("/api/admin/community/feed/" + reply["id"], headers=headers,
+                                      json={"decision": "approve", "expected_version": reply["version"]})
+        assert approved_reply.status_code == 200, approved_reply.text
+        actor.update(id=2, role="employer")
+        assert client.get(url + "/" + pending["id"] + "/comments").json()["entries"][0]["id"] == reply["id"]
+
