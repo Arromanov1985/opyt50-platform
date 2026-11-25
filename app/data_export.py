@@ -88,6 +88,16 @@ def build_personal_data_snapshot(db, user_id: int) -> dict:
         )
     if role in {"candidate", "employer"}:
         section(
+            "my_community_saved_entries",
+            """SELECT entry_id,created_at FROM community_saved_entries WHERE user_id=?
+               ORDER BY created_at DESC,entry_id""",
+        )
+        section(
+            "my_community_discovery_preferences",
+            """SELECT keyword,city,focus,updated_at FROM community_discovery_preferences
+               WHERE user_id=?""",
+        )
+        section(
             "my_community_follows",
             """SELECT p.public_id,f.created_at FROM community_feed_follows f
                JOIN community_profiles p ON p.user_id=f.target_id

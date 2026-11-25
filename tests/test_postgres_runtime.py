@@ -571,9 +571,9 @@ def test_feed_engagement_runtime_postgresql(runtime_db):
             ).lastrowid
             for uid, public_id in ((1, "pg-author"), (other_id, "pg-reader")):
                 db.execute(
-                    """INSERT INTO community_profiles(user_id,public_id,public_name,headline,
+                    """INSERT INTO community_profiles(user_id,public_id,public_name,headline,goal,
                        status,consent_at,consent_content_version,reviewed_content_version,created_at,updated_at)
-                       VALUES(?,?,'Коллега','Наставник','published','2026-01-01',1,1,'2026-01-01','2026-01-01')""",
+                       VALUES(?,?,'Коллега','Наставник','mentoring','published','2026-01-01',1,1,'2026-01-01','2026-01-01')""",
                     (uid, public_id),
                 )
         url = "/api/community/feed"
@@ -598,6 +598,18 @@ def test_feed_engagement_runtime_postgresql(runtime_db):
         assert [row["id"] for row in offers.json()["entries"]] == [root["id"]]
         assert offers.json()["entries"][0]["opportunity"]["intent"] == "offer"
         assert client.get("/api/community/opportunities?kind=projects").json()["entries"] == []
+        saved_url = url + "/saved/" + root["id"]
+        saved = client.put(saved_url, headers=headers, json={})
+        assert saved.status_code == 200, saved.text
+        assert client.get(url + "/saved").json()["records"][0]["entry"]["id"] == root["id"]
+        rec_url = "/api/community/recommendations"
+        preferences = client.put(rec_url + "/preferences", headers=headers,
+                                 json={"keyword": "Наставник", "focus": "mentoring"})
+        assert preferences.status_code == 200, preferences.text
+        rec = client.get(rec_url)
+        assert rec.status_code == 200, rec.text
+        assert rec.json()["feed"]["saved_entry_ids"] == [root["id"]]
+        assert rec.json()["people"]["people"][0]["public_id"] == "pg-author"
         comment = client.post(url, headers=headers, json={
             "kind": "comment", "parent_id": root["id"], "body": "Ответ коллеги",
             "client_key": str(uuid4()), "publish_consent": True,

@@ -332,6 +332,28 @@ def run_browser(browser, base, database):
         assert "Обучение" in offer_request.locator('[name="note"]').input_value()
         boris.keyboard.press("Escape")
         capture(boris, "community-mentoring-mobile.png")
+        with boris.expect_response(lambda r: r.url.endswith("/saved/" + offer_id) and r.request.method == "PUT") as bookmark:
+            offer_card.locator('[data-action="save-entry"]').click()
+        assert checked(bookmark.value)["saved"] is True
+        expect(offer_card.locator('[data-action="remove-saved"]')).to_have_attribute("aria-pressed", "true")
+        boris.goto(base + "/community/saved", wait_until="networkidle")
+        expect(boris.locator(f'#saved-list [data-feed-id="{offer_id}"]')).to_contain_text("Обучение учёту")
+        capture(boris, "community-saved-mobile.png")
+        boris.goto(base + "/community/recommendations", wait_until="networkidle")
+        expect(boris.locator("#discovery-results")).to_be_hidden()
+        preferences = boris.locator("#discovery-preferences")
+        preferences.locator('[name="keyword"]').fill("склад")
+        preferences.locator('[name="focus"]').select_option("mentoring")
+        with boris.expect_response(lambda r: r.url.endswith("/recommendations/preferences") and r.request.method == "PUT") as discovery_saved:
+            preferences.locator('[type="submit"]').click()
+        assert checked(discovery_saved.value)["settings"]["focus"] == "mentoring"
+        expect(boris.locator("#discovery-people")).to_contain_text("Анна")
+        expect(boris.locator(f'#discovery-feed [data-feed-id="{offer_id}"]')).to_contain_text("Обучение учёту")
+        expect(boris.locator(f'#discovery-feed [data-feed-id="{offer_id}"] [data-action="remove-saved"]')).to_be_visible()
+        capture(boris, "community-recommendations-mobile.png")
+        boris.reload(wait_until="networkidle")
+        expect(boris.locator("#discovery-keyword")).to_have_value("склад")
+        expect(boris.locator(f'#discovery-feed [data-feed-id="{offer_id}"]')).to_be_visible()
         boris.goto(base + "/community/projects", wait_until="networkidle")
         expect(boris.locator("h1")).to_have_text("Совместные проекты")
         expect(boris.locator("#opp-intent")).to_contain_text("Собираю команду")

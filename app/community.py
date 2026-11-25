@@ -143,6 +143,22 @@ COMMUNITY_DDL = (
         commitment TEXT NOT NULL CHECK(commitment IN ('one_off','regular','flexible'))
     )""",
     "CREATE INDEX IF NOT EXISTS idx_community_opportunities_filters ON community_opportunities(intent,meeting_format,commitment)",
+    """CREATE TABLE IF NOT EXISTS community_saved_entries (
+        user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        entry_id TEXT NOT NULL REFERENCES community_feed_entries(id) ON DELETE CASCADE,
+        created_at TEXT NOT NULL,
+        PRIMARY KEY(user_id,entry_id)
+    )""",
+    "CREATE INDEX IF NOT EXISTS idx_community_saved_owner ON community_saved_entries(user_id,created_at,entry_id)",
+    "CREATE INDEX IF NOT EXISTS idx_community_saved_entry ON community_saved_entries(entry_id)",
+    """CREATE TABLE IF NOT EXISTS community_discovery_preferences (
+        user_id INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+        keyword TEXT NOT NULL DEFAULT '',
+        city TEXT NOT NULL DEFAULT '',
+        focus TEXT NOT NULL DEFAULT '' CHECK(focus IN ('','experience','question','projects','mentoring')),
+        revision TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+    )""",
     """CREATE TABLE IF NOT EXISTS community_feed_follows (
         follower_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
         target_id INTEGER NOT NULL REFERENCES community_profiles(user_id) ON DELETE CASCADE,
