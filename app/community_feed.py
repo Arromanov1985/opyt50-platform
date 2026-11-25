@@ -161,8 +161,11 @@ def install_feed_routes(app, community_user, throttle, get_connection, allowed, 
         reader(user, db)
         if not data.publish_consent:
             raise HTTPException(422, "Подтвердите согласие на показ текста другим участникам после проверки")
+        if not can_publish(user, db):
+            raise HTTPException(403, "Сначала опубликуйте профессиональный профиль")
         parent_owner = owner
         if data.parent_id:
+            _visible_root(db, owner, data.parent_id)
             parent = _entry(db, data.parent_id)
             parent_owner = int(parent["author_id"])
         _lock_actors(db, owner, parent_owner)
