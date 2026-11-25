@@ -851,3 +851,25 @@ def test_feed_filters_blocks_and_privacy_before_pagination(community):
     assert len(page2["entries"]) == 1 and not page2["has_more"]
     assert page2["entries"][0]["id"] not in {item["id"] for item in page1["entries"]}
 
+
+def test_feed_privacy_impact_includes_other_authors_comments(community):
+    from app.privacy_disposal import impact_preview
+
+    app, clients, ids = community
+    first, second, admin = clients["first"], clients["second"], clients["admin"]
+    publish(clients, "first")
+    publish(clients, "second")
+    root = moderate_feed(admin, submit_feed(first))
+    moderate_feed(admin, submit_feed(second, parent_id=root["id"], kind="comment", title=""))
+    submit_feed(first, parent_id=root["id"], kind="comment", title="")
+    response = mutate(first, "POST", "/api/account/privacy-requests", {"kind": "deletion"})
+    assert response.status_code == 201, response.text
+    with database(app.state.db_path) as db:
+        request = db.execute("SELECT request_key FROM privacy_rights_requests WHERE user_id=?",
+                             (ids["first"],)).fetchone()
+        preview = impact_preview(db, request["request_key"])
+        assert preview["counts"]["community_feed_entries"] == 2
+        assert preview["counts"]["community_feed_linked_comments"] == 1
+        assert any("комментарии других участников" in risk for risk in preview["risk_flags"])
+        assert preview["automatic_deletion"] is False
+
