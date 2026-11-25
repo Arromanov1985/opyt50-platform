@@ -38,6 +38,7 @@ OPTIONAL_ORDER = (
     "candidate_saved_searches", "community_actor_locks", "community_profiles",
     "community_profile_events", "community_connections", "community_messages",
     "community_read_state", "community_reports", "community_feed_entries",
+    "community_feed_follows", "community_feed_alert_reads", "community_feed_reports",
 )
 IDENTITY_TABLES = (
     "users", "vacancies", "invitations", "demo_transactions",

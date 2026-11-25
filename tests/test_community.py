@@ -873,3 +873,133 @@ def test_feed_privacy_impact_includes_other_authors_comments(community):
         assert any("комментарии других участников" in risk for risk in preview["risk_flags"])
         assert preview["automatic_deletion"] is False
 
+
+def test_feed_following_is_private_and_filters_before_pagination(community):
+    app, clients, ids = community
+    first, second, outsider, employer, admin = (clients[key] for key in
+        ("first", "second", "outsider", "employer", "admin"))
+    p1 = publish(clients, "first", public_name="Первый автор")
+    p2 = publish(clients, "second", public_name="Второй автор")
+    a = moderate_feed(admin, submit_feed(first, kind="projects"))
+    b = moderate_feed(admin, submit_feed(second, kind="mentoring"))
+    url = "/api/community/feed"
+    follows = url + "/follows"
+    assert clients["visitor"].get(follows).status_code == 401
+    assert admin.get(follows).status_code == 403
+    assert mutate(first, "POST", follows, {"public_id": p1["public_id"]}).status_code == 422
+    assert mutate(first, "POST", follows, {"public_id": "unknown"}).status_code == 404
+    payload = {"public_id": p2["public_id"]}
+    created = mutate(first, "POST", follows, payload)
+    assert created.status_code == 200, created.text
+    assert mutate(first, "POST", follows, payload).json() == created.json()
+    own = first.get(follows).json()["follows"]
+    assert len(own) == 1 and own[0]["public_name"] == "Второй автор"
+    assert set(own[0]) == {"public_id", "public_name", "headline", "available", "created_at"}
+    assert second.get(follows).json()["follows"] == []
+    assert outsider.get(follows + "/" + p2["public_id"]).json()["following"] is False
+    assert first.get(follows + "/" + p2["public_id"]).json()["following"] is True
+    assert mutate(employer, "POST", follows, payload).status_code == 200
+    assert [item["id"] for item in first.get(url + "?following=true").json()["entries"]] == [b["id"]]
+    assert [item["id"] for item in first.get(url + "?following=true&kind=projects").json()["entries"]] == []
+    assert outsider.get(url + "?following=true").json()["entries"] == []
+    assert first.get(url).json()["following_public_ids"] == [p2["public_id"]]
+    assert second.get(url).json()["following_public_ids"] == []
+    export = first.get("/api/account/data-export").json()["sections"]["my_community_follows"]
+    assert len(export) == 1 and export[0]["public_id"] == p2["public_id"]
+
+    # A block makes the subscription inactive in the personalized feed, not public.
+    connection = connect(clients, p2["public_id"])
+    assert mutate(first, "POST", "/api/community/connections/" + connection["id"] + "/block").status_code == 200
+    assert first.get(url + "?following=true").json()["entries"] == []
+    inactive = first.get(follows).json()["follows"][0]
+    assert not inactive["available"] and inactive["public_name"] is None
+    assert mutate(first, "POST", follows, payload).status_code == 404
+    assert mutate(first, "DELETE", follows + "/" + p2["public_id"]).status_code == 200
+    assert mutate(first, "DELETE", follows + "/" + p2["public_id"]).status_code == 200
+    assert first.get(follows).json()["follows"] == []
+    assert employer.get(follows).json()["follows"][0]["public_id"] == p2["public_id"]
+    assert a["id"] in {entry["id"] for entry in first.get(url).json()["entries"]}
+
+
+def test_feed_alerts_are_explicit_private_and_visibility_aware(community):
+    app, clients, ids = community
+    first, second, outsider, admin = (clients[key] for key in
+        ("first", "second", "outsider", "admin"))
+    publish(clients, "first")
+    publish(clients, "second")
+    root = moderate_feed(admin, submit_feed(first))
+    reply = submit_feed(second, parent_id=root["id"], kind="comment", title="")
+    url = "/api/community/feed/alerts"
+    assert first.get(url).json()["entries"] == []
+    moderate_feed(admin, reply)
+    assert second.get(url).json()["entries"] == []
+    assert outsider.get(url).json()["entries"] == []
+    assert mutate(outsider, "POST", url + "/" + reply["id"] + "/read").status_code == 404
+    first_alert = first.get(url).json()["entries"][0]
+    assert first_alert["id"] == reply["id"] and first_alert["root_title"] == root["title"]
+    assert first_alert["parent_id"] == root["id"]
+    first.get("/api/community/feed/" + root["id"] + "/comments")
+    assert first.get(url).json()["entries"][0]["id"] == reply["id"]
+    with database(app.state.db_path) as db:
+        assert db.execute("SELECT COUNT(*) FROM community_feed_alert_reads").fetchone()[0] == 0
+    assert mutate(first, "POST", url + "/" + reply["id"] + "/read").status_code == 200
+    assert mutate(first, "POST", url + "/" + reply["id"] + "/read").status_code == 200
+    assert first.get(url).json()["entries"] == []
+    own_reply = moderate_feed(admin, submit_feed(first, parent_id=root["id"], kind="comment", title=""))
+    assert first.get(url).json()["entries"] == []
+    assert mutate(first, "POST", url + "/" + own_reply["id"] + "/read").status_code == 404
+    another = moderate_feed(admin, submit_feed(second, parent_id=root["id"], kind="comment", title=""))
+    assert first.get(url).json()["entries"][0]["id"] == another["id"]
+    assert first.get("/api/account/data-export").json()["sections"]["my_community_feed_alert_reads"][0]["entry_id"] == reply["id"]
+    assert second.get("/api/account/data-export").json()["sections"]["my_community_feed_alert_reads"] == []
+    assert mutate(first, "DELETE", "/api/community/feed/" + root["id"],
+                  {"expected_version": root["version"]}).status_code == 200
+    assert first.get(url).json()["entries"] == []
+
+
+def test_feed_reports_are_private_and_require_explicit_moderation(community):
+    app, clients, ids = community
+    first, second, outsider, admin = (clients[key] for key in
+        ("first", "second", "outsider", "admin"))
+    publish(clients, "first")
+    publish(clients, "second")
+    pending = submit_feed(first)
+    base = "/api/community/feed"
+    review = "/api/admin/community/feed/reports"
+    report_url = base + "/" + pending["id"] + "/reports"
+    payload = {"reason": "spam", "details": "Проверьте контекст."}
+    assert mutate(second, "POST", report_url, payload).status_code == 404
+    root = moderate_feed(admin, pending)
+    assert mutate(first, "POST", report_url, payload).status_code == 422
+    response = mutate(second, "POST", report_url, payload)
+    assert response.status_code == 200, response.text
+    report = response.json()["report"]
+    assert mutate(second, "POST", report_url, payload).json()["report"] == report
+    assert outsider.get(base).json()["entries"][0]["id"] == root["id"]
+    assert first.get(review).status_code == 403
+    queued = admin.get(review).json()["reports"][0]
+    assert queued["id"] == report["id"] and queued["entry"]["body"] == root["body"]
+    assert "reporter_id" not in queued
+    assert first.get("/api/account/data-export").json()["sections"]["my_community_feed_reports"] == []
+    assert second.get("/api/account/data-export").json()["sections"]["my_community_feed_reports"][0]["id"] == report["id"]
+    assert mutate(admin, "PATCH", review + "/" + report["id"], {"decision": "hide"}).status_code == 422
+    result = mutate(admin, "PATCH", review + "/" + report["id"],
+                    {"decision": "hide", "reason": "Нарушение правил сообщества"})
+    assert result.status_code == 200, result.text
+    assert result.json()["report"]["status"] == "resolved"
+    assert outsider.get(base).json()["entries"] == []
+    assert first.get(base + "/mine").json()["entries"][0]["status"] == "hidden"
+    assert mutate(admin, "PATCH", review + "/" + report["id"], {"decision": "dismiss"}).status_code == 409
+    assert admin.get(review).json()["reports"] == []
+    assert admin.get(review + "?status=resolved").json()["reports"][0]["id"] == report["id"]
+
+    # Individual comments can also be reported; hiding one leaves its root intact.
+    root2 = moderate_feed(admin, submit_feed(first))
+    reply = moderate_feed(admin, submit_feed(second, parent_id=root2["id"], kind="comment", title=""))
+    reported = mutate(first, "POST", base + "/" + reply["id"] + "/reports",
+                      {"reason": "other"}).json()["report"]
+    assert mutate(admin, "PATCH", review + "/" + reported["id"],
+                  {"decision": "dismiss"}).status_code == 200
+    assert first.get(base + "/" + root2["id"] + "/comments").json()["entries"][0]["id"] == reply["id"]
+    assert first.get(base + "/alerts").json()["entries"][0]["id"] == reply["id"]
+

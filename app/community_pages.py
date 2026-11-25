@@ -42,7 +42,7 @@ def _public_content(person: dict) -> str:
   </article>
   <aside class="panel person-action" id="person-next-step" aria-labelledby="person-next-step-title">
     <span class="eyebrow">СЛЕДУЮЩИЙ ШАГ</span><h2 id="person-next-step-title">Начните с общего интереса</h2><p>Предложите обсудить проект, работу или обменяться опытом. В запросе коротко расскажите о задаче и о том, чем можете быть полезны.</p>
-    <button class="button primary full" id="request-connection" type="button">Предложить знакомство</button><p id="person-action-hint" class="help" role="status"></p>
+    <button class="button primary full" id="request-connection" type="button">Предложить знакомство</button><p id="person-action-hint" class="help" role="status"></p><div id="person-follow-slot"></div>
     <p class="help">Для запроса нужно войти в аккаунт. Переписка откроется только после принятия запроса участником.</p>
     <p class="help person-contact-note">Имя и контакты из аккаунта не передаются. Здесь показаны только сведения, выбранные самим участником.</p>
   </aside>
@@ -77,7 +77,7 @@ def community_page(mode: str = "directory", person: dict | None = None) -> HTMLR
 <nav aria-label="Основное меню"><a href="/#jobs">Вакансии</a><a href="/community" aria-current="page">Сообщество</a><a href="/journal">Журнал</a></nav>
 <div class="header-actions"><button id="reading-mode-toggle" class="text-button reading-toggle" type="button" aria-pressed="false" aria-label="Включить крупный текст">Аа <span>Крупный текст</span></button><a class="button secondary compact" href="/#account">Мой кабинет</a></div></div></header>
 <main id="community-main" class="wrap">{intro}
-<nav class="community-tabs" aria-label="Разделы сообщества"><a href="/community"{' aria-current="page"' if mode == 'directory' else ''}>Участники</a><a href="/community/feed"{' aria-current="page"' if mode == 'feed' else ''}>Лента</a><a href="/community/profile"{' aria-current="page"' if mode == 'profile' else ''}>Мой профиль</a><a href="/community/connections"{' aria-current="page"' if mode == 'connections' else ''}>Мои связи <span id="community-unread" class="count" hidden></span></a><a href="/community/moderation" id="moderation-nav" hidden>Модерация</a></nav>
+<nav class="community-tabs" aria-label="Разделы сообщества"><a href="/community"{' aria-current="page"' if mode == 'directory' else ''}>Участники</a><a href="/community/feed"{' aria-current="page"' if mode == 'feed' else ''}>Лента <span id="feed-alert-badge" class="count" hidden></span></a><a href="/community/profile"{' aria-current="page"' if mode == 'profile' else ''}>Мой профиль</a><a href="/community/connections"{' aria-current="page"' if mode == 'connections' else ''}>Мои связи <span id="community-unread" class="count" hidden></span></a><a href="/community/moderation" id="moderation-nav" hidden>Модерация</a></nav>
 <p id="community-notice" class="notice" role="status" aria-live="polite" hidden></p>
 <div id="community-content">{content}</div>
 <noscript><div class="panel"><p>Для поиска участников и работы с профилем включите JavaScript. Публичный профиль можно прочитать без него.</p><a href="/journal">Перейти в журнал</a></div></noscript>

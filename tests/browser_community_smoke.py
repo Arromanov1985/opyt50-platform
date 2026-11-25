@@ -243,6 +243,13 @@ def run_browser(browser, base, database):
         post = boris.locator(f'#feed-list [data-feed-id="{feed_id}"]')
         expect(post).to_contain_text(feed_body)
         assert boris.evaluate("window.communityXss || 0") == 0
+        with boris.expect_response(lambda r: r.url.endswith("/api/community/feed/follows") and r.request.method == "POST") as followed:
+            post.locator('[data-action="follow-author"]').click()
+        assert checked(followed.value)["following"] is True
+        expect(boris.locator("#feed-follows-list")).to_contain_text("Анна")
+        boris.locator("#feed-following").select_option("true")
+        boris.locator('#feed-filter [type="submit"]').click()
+        expect(post.locator('[data-action="unfollow-author"]')).to_be_visible()
         post.locator('[data-action="open-feed-thread"]').click()
         reply_form = boris.locator("#feed-comment-form")
         expect(reply_form).to_be_visible()
@@ -261,6 +268,30 @@ def run_browser(browser, base, database):
         boris.reload(wait_until="networkidle")
         boris.locator(f'#feed-list [data-feed-id="{feed_id}"] [data-action="open-feed-thread"]').click()
         expect(boris.locator("#feed-comments")).to_contain_text("Полезный подход к обучению.")
+        anna.reload(wait_until="networkidle")
+        expect(anna.locator("#feed-alert-badge")).to_have_text("1")
+        expect(anna.locator("#feed-alerts-list")).to_contain_text("Полезный подход к обучению.")
+        anna.locator('#feed-alerts-list [data-action="open-feed-thread"]').click()
+        expect(anna.locator("#feed-comments")).to_contain_text("Полезный подход к обучению.")
+        expect(anna.locator("#feed-alert-badge")).to_have_text("1")
+        with anna.expect_response(lambda r: r.url.endswith("/alerts/" + reply["id"] + "/read")) as read_alert:
+            anna.locator('#feed-alerts-list [data-action="read-feed-alert"]').click()
+        assert checked(read_alert.value)["read"] is True
+        expect(anna.locator("#feed-alert-badge")).to_be_hidden()
+        capture(anna, "community-feed-notifications-mobile.png")
+
+        anna.locator(f'#feed-comments [data-feed-id="{reply["id"]}"] [data-action="report-feed"]').click()
+        anna.locator('#feed-report-form [name="details"]').fill("Проверка обработки жалобы")
+        with anna.expect_response(lambda r: r.url.endswith("/" + reply["id"] + "/reports") and r.request.method == "POST") as reported:
+            anna.locator('#feed-report-form [type="submit"]').click()
+        report_id = checked(reported.value)["report"]["id"]
+        admin.reload(wait_until="networkidle")
+        report_card = admin.locator(f'[data-feed-report-id="{report_id}"]')
+        expect(report_card).to_contain_text("Проверка обработки жалобы")
+        report_card.locator('[data-action="dismiss-feed-report"]').click()
+        with admin.expect_response(lambda r: r.url.endswith("/reports/" + report_id) and r.request.method == "PATCH") as decided:
+            admin.locator('#feed-report-review-form [type="submit"]').click()
+        assert checked(decided.value)["report"]["status"] == "dismissed"
         capture(boris, "community-feed-mobile.png")
         boris.set_viewport_size({"width": 1366, "height": 900})
         capture(boris, "community-feed-desktop.png")

@@ -550,3 +550,72 @@ def test_moderated_feed_runtime_postgresql(runtime_db):
         actor.update(id=2, role="employer")
         assert client.get(url + "/" + pending["id"] + "/comments").json()["entries"][0]["id"] == reply["id"]
 
+
+def test_feed_engagement_runtime_postgresql(runtime_db):
+    from fastapi.testclient import TestClient
+    from app.main import create_app, active_user
+    from uuid import uuid4
+
+    app = create_app("unused-with-DATABASE_URL")
+    actor = {"id": 1, "role": "candidate"}
+    app.dependency_overrides[active_user] = lambda: actor
+    with TestClient(app) as client:
+        with postgres_database(runtime_db) as db:
+            other_id = db.execute(
+                "INSERT INTO users(email,password_hash,role,name) VALUES(?,?,'candidate','Other')",
+                ("feed-other@example.invalid", "test-hash"),
+            ).lastrowid
+            admin_id = db.execute(
+                "INSERT INTO users(email,password_hash,role,name) VALUES(?,?,'admin','Admin')",
+                ("feed-moderator@example.invalid", "test-hash"),
+            ).lastrowid
+            for uid, public_id in ((1, "pg-author"), (other_id, "pg-reader")):
+                db.execute(
+                    """INSERT INTO community_profiles(user_id,public_id,public_name,headline,
+                       status,consent_at,consent_content_version,reviewed_content_version,created_at,updated_at)
+                       VALUES(?,?,'Коллега','Наставник','published','2026-01-01',1,1,'2026-01-01','2026-01-01')""",
+                    (uid, public_id),
+                )
+        url = "/api/community/feed"
+        headers = {"X-Requested-With": "OPYT50"}
+        post = client.post(url, headers=headers, json={
+            "kind": "experience", "title": "Опыт", "body": "Передача знаний",
+            "client_key": str(uuid4()), "publish_consent": True,
+        })
+        assert post.status_code == 200, post.text
+        root = post.json()["entry"]
+        actor.update(id=admin_id, role="admin")
+        approval = client.patch("/api/admin/community/feed/" + root["id"], headers=headers,
+                                json={"decision": "approve", "expected_version": root["version"]})
+        assert approval.status_code == 200, approval.text
+        actor.update(id=other_id, role="candidate")
+        follow = client.post(url + "/follows", headers=headers, json={"public_id": "pg-author"})
+        assert follow.status_code == 200, follow.text
+        assert client.get(url + "?following=true").json()["entries"][0]["id"] == root["id"]
+        comment = client.post(url, headers=headers, json={
+            "kind": "comment", "parent_id": root["id"], "body": "Ответ коллеги",
+            "client_key": str(uuid4()), "publish_consent": True,
+        })
+        assert comment.status_code == 200, comment.text
+        reply = comment.json()["entry"]
+        actor.update(id=admin_id, role="admin")
+        approval = client.patch("/api/admin/community/feed/" + reply["id"], headers=headers,
+                                json={"decision": "approve", "expected_version": reply["version"]})
+        assert approval.status_code == 200, approval.text
+        actor.update(id=1, role="candidate")
+        assert client.get(url + "/alerts").json()["entries"][0]["id"] == reply["id"]
+        read = client.post(url + "/alerts/" + reply["id"] + "/read", headers=headers, json={})
+        assert read.status_code == 200, read.text
+        assert client.get(url + "/alerts").json()["entries"] == []
+        report = client.post(url + "/" + reply["id"] + "/reports", headers=headers,
+                             json={"reason": "spam"})
+        assert report.status_code == 200, report.text
+        report_id = report.json()["report"]["id"]
+        actor.update(id=admin_id, role="admin")
+        decision = client.patch("/api/admin/community/feed/reports/" + report_id, headers=headers,
+                                json={"decision": "hide", "reason": "Проверка жалобы"})
+        assert decision.status_code == 200, decision.text
+        actor.update(id=other_id, role="candidate")
+        assert client.get(url + "/" + root["id"] + "/comments").json()["entries"] == []
+        assert client.get(url + "?following=true").json()["entries"][0]["id"] == root["id"]
+

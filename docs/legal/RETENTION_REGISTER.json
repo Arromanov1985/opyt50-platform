@@ -130,7 +130,9 @@
         "email_delivery_recipients",
         "community_messages",
         "community_read_state",
-        "community_feed_entries"
+        "community_feed_entries",
+        "community_feed_follows",
+        "community_feed_alert_reads"
       ],
       "purpose": "Сервисные письма, очередь доставки, приватная переписка, отметки просмотра и модерируемые публикации внутри сообщества",
       "start_event": "message_sent_or_suppressed",
@@ -230,7 +232,8 @@
       "code": "complaints",
       "tables": [
         "content_reports",
-        "community_reports"
+        "community_reports",
+        "community_feed_reports"
       ],
       "purpose": "Жалобы на содержание и разрешение споров",
       "start_event": "complaint_resolved_and_reviewed",

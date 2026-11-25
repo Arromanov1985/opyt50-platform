@@ -80,6 +80,16 @@ def sample(tmp_path):
                VALUES('a-reply',1,'z-parent','reply-key','comment','Test reply',
                '2026-01-02','test','2026-01-02','2026-01-02')"""
         )
+        conn.execute(
+            """INSERT INTO community_profiles(user_id,public_id,public_name,headline,created_at,updated_at)
+               VALUES(1,'feed-profile','Test name','Test headline','2026-01-01','2026-01-01')"""
+        )
+        conn.execute("INSERT INTO community_feed_follows VALUES(2,1,'2026-01-01')")
+        conn.execute("INSERT INTO community_feed_alert_reads VALUES(1,'a-reply','2026-01-03')")
+        conn.execute(
+            """INSERT INTO community_feed_reports(id,reporter_id,entry_id,reason,created_at)
+               VALUES('feed-report',2,'z-parent','spam','2026-01-03')"""
+        )
         conn.commit()
     return path
 
@@ -95,6 +105,7 @@ def test_import_preserves_ids_consents_and_relations(target, sample):
     assert counts["community_messages"] == 1
     assert counts["community_read_state"] == 1
     assert counts["community_feed_entries"] == 2
+    assert counts["community_feed_follows"] == counts["community_feed_alert_reads"] == counts["community_feed_reports"] == 1
     with psycopg.connect(target) as conn:
         assert conn.execute("SELECT id,vacancy_id,candidate_id FROM job_applications").fetchone() == (4, 3, 1)
         assert conn.execute("SELECT share_consent, contact_shared FROM invitations WHERE id=5").fetchone() == (1, 1)
@@ -108,6 +119,9 @@ def test_import_preserves_ids_consents_and_relations(target, sample):
         assert conn.execute(
             "SELECT parent_id FROM community_feed_entries WHERE id='a-reply'"
         ).fetchone() == ("z-parent",)
+        assert conn.execute("SELECT follower_id,target_id FROM community_feed_follows").fetchone() == (2, 1)
+        assert conn.execute("SELECT user_id,entry_id FROM community_feed_alert_reads").fetchone() == (1, "a-reply")
+        assert conn.execute("SELECT reporter_id,entry_id FROM community_feed_reports").fetchone() == (2, "z-parent")
     assert sample.read_bytes() == before
 
 
