@@ -1071,11 +1071,14 @@ def install_routes(app) -> None:
             (employer_id,),
         ).fetchall()
         trust = employer_trust(db, employer_id)
+        about = str(company["about"] or "").strip()
+        if CONTACT_EMAIL_PATTERN.search(about) or CONTACT_PHONE_PATTERN.search(about):
+            about = ""
         return {
             "company": {
                 "id": employer_id,
                 "company_name": company["company_name"],
-                "about": company["about"],
+                "about": about,
                 "created_at": normalize_event_time(company["created_at"]),
                 "trust": trust,
                 "open_vacancies": len(jobs),

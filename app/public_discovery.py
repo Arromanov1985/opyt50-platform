@@ -135,13 +135,7 @@ def related_jobs(article: dict, jobs: list[dict], *, limit: int = 3) -> list[dic
     return jobs[:limit]
 
 
-def public_jobs(db, *, limit: int = 80) -> list[dict]:
-    """Return only vacancies already eligible for unauthenticated public pages."""
-    rows = db.execute(
-        """SELECT v.id,v.employer_id,v.title,v.city,v.salary_min,v.salary_max,
-                  v.schedule,v.employment,v.skills,v.description,
-                  e.company_name
-           FROM vacancies v
+_PUBLIC_JOBS_FROM = """           FROM vacancies v
            JOIN employer_profiles e ON e.user_id=v.employer_id
            JOIN users u ON u.id=e.user_id AND u.role='employer'
            LEFT JOIN account_controls c ON c.user_id=v.employer_id
@@ -154,9 +148,36 @@ def public_jobs(db, *, limit: int = 80) -> list[dict]:
                WHERE pr.user_id=v.employer_id
                  AND pr.kind IN ('deletion','stop_processing')
                  AND pr.status IN ('received','in_review','completed')
-             )
+             )"""
+
+
+def public_jobs(db, *, limit: int = 80) -> list[dict]:
+    """Return only vacancies already eligible for unauthenticated public pages."""
+    rows = db.execute(
+        """SELECT v.id,v.employer_id,v.title,v.city,v.salary_min,v.salary_max,
+                  v.schedule,v.employment,v.skills,v.description,
+                  e.company_name
+""" + _PUBLIC_JOBS_FROM + """
            ORDER BY v.id DESC
            LIMIT ?""",
         (max(1, min(int(limit), 100)),),
     ).fetchall()
     return [dict(row) for row in rows]
+
+
+# A single bounded XML document also fits the existing 250 KB release probe.
+# Split into sitemap shards before the launch-stage window is outgrown.
+PUBLIC_SITEMAP_JOB_LIMIT = 1000
+
+
+def public_sitemap_paths(db) -> list[str]:
+    """Return only canonical IDs of the currently discoverable public entities."""
+    rows = db.execute(
+        "SELECT v.id,v.employer_id " + _PUBLIC_JOBS_FROM +
+        " ORDER BY v.id DESC LIMIT ?",
+        (PUBLIC_SITEMAP_JOB_LIMIT,),
+    ).fetchall()
+    companies = sorted({int(row["employer_id"]) for row in rows})
+    return [f"/companies/{company_id}" for company_id in companies] + [
+        f"/vacancies/{int(row['id'])}" for row in rows
+    ]

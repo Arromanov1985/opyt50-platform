@@ -10,9 +10,7 @@ from html import escape
 from pathlib import Path
 
 from fastapi import Depends, FastAPI, HTTPException
-from fastapi.responses import HTMLResponse
-
-from .vacancy_pages import _pay
+from fastapi.responses import HTMLResponse, RedirectResponse
 
 ORIGIN = "https://stazhno.ru"
 
@@ -138,24 +136,25 @@ def employer_directory(query: str, city: str, db) -> HTMLResponse:
         'Она не гарантирует условия работы: оплату, обязанности и оформление нужно уточнить.'
         ' Личные контакты кандидатов остаются защищены правилами знакомства на СТАЖНО.</p></aside>'
     )
-    # Directory query pages are noindexed by template, but the main directory
-    # is canonical. Do not put arbitrary user search strings in canonical URLs.
-    return _layout(
+    # Filtered combinations are not separate search-engine landing pages.
+    response = _layout(
         "Работодатели и открытые вакансии",
         "Компании с опубликованными вакансиями на СТАЖНО: поиск по названию и городу.",
         "/employers", body,
     )
+    if query or city:
+        response.headers["X-Robots-Tag"] = "noindex, follow"
+    return response
 
 
-def employer_profile(employer_id: int, db, email_pattern, phone_pattern) -> HTMLResponse:
+def employer_profile(employer_id: int, db) -> RedirectResponse:
+    """Retain legacy eligibility but redirect to the sole public company page."""
     if employer_id <= 0:
         raise HTTPException(404, "Компания не найдена")
     company = db.execute(
-        """SELECT e.user_id AS id,e.company_name,e.verified,
-                  COALESCE(p.about,'') AS about
+        """SELECT 1
            FROM employer_profiles e
            JOIN users u ON u.id=e.user_id AND u.role='employer'
-           LEFT JOIN employer_public_profiles p ON p.employer_id=e.user_id
            LEFT JOIN account_controls c ON c.user_id=e.user_id
            WHERE e.user_id=? AND COALESCE(c.status,'active')='active'
              AND NOT EXISTS (
@@ -174,75 +173,15 @@ def employer_profile(employer_id: int, db, email_pattern, phone_pattern) -> HTML
     ).fetchone()
     if company is None:
         raise HTTPException(404, "Компания не найдена")
-    rows = db.execute(
-        """SELECT v.id,v.title,v.city,v.salary_min,v.salary_max,
-                  v.schedule,v.employment
-           FROM vacancies v
-           LEFT JOIN vacancy_moderation vm ON vm.vacancy_id=v.id
-           WHERE v.employer_id=? AND v.status='open'
-             AND COALESCE(vm.status,'approved')='approved'
-           ORDER BY v.id DESC LIMIT 50""",
-        (employer_id,),
-    ).fetchall()
-    # Old free-text descriptions can predate current account-side validation.
-    # Don't amplify accidentally embedded email/phone information in directory.
-    about = str(company["about"] or "").strip()
-    if email_pattern.search(about) or phone_pattern.search(about):
-        about = ""
-    about_markup = (
-        f'<p class="company-about">{_e(about)}</p>' if about
-        else '<p class="company-about">Компания пока не добавила публичное описание.</p>'
-    )
-    jobs = "".join(
-        f'<article class="company-job"><div class="company-job-content"><h3><a href="/vacancies/{int(job["id"])}" data-growth-action="vacancy_click">{_e(job["title"])}</a></h3>'
-        '<dl class="company-job-facts">'
-        f'<div><dt>Оплата</dt><dd class="company-job-pay">{_e(_pay(job["salary_min"],job["salary_max"]))}</dd></div>'
-        f'<div><dt>Город</dt><dd>{_e(job["city"] or "Не указан")}</dd></div>'
-        f'<div><dt>График</dt><dd>{_e(job["schedule"] or "Уточняется")}</dd></div>'
-        f'<div><dt>Занятость</dt><dd>{_e(job["employment"] or "Уточняется")}</dd></div>'
-        '</dl></div>'
-        f'<a class="button secondary" href="/vacancies/{int(job["id"])}" data-growth-action="vacancy_click">Посмотреть условия</a></article>'
-        for job in rows
-    )
-    locations = list(dict.fromkeys(str(job["city"] or "Город не указан") for job in rows))
-    locations_text = ", ".join(locations[:3])
-    if len(locations) > 3:
-        locations_text += f" и ещё {len(locations) - 3}"
-    body = (
-        '<nav class="breadcrumbs" aria-label="Навигация"><a href="/">Главная</a>'
-        '<span aria-hidden="true">/</span><a href="/employers">Работодатели</a>'
-        '<span aria-hidden="true">/</span>Компания</nav>'
-        '<section class="intro company-hero"><span class="kicker">ПРОФИЛЬ РАБОТОДАТЕЛЯ</span>'
-        f'<h1>{_e(company["company_name"])}</h1>'
-        f'<p class="company-summary">Открытых вакансий на странице: <strong>{len(rows)}</strong>.</p>'
-        f'<p class="company-locations"><span>Где есть предложения:</span> {_e(locations_text)}</p>'
-        f'<p class="verification">{("Проверена администрацией СТАЖНО" if company["verified"] else "Нет отметки проверки СТАЖНО")}</p>'
-        '<div class="company-hero-actions"><a class="button light" href="#company-jobs">Смотреть вакансии компании ↓</a>'
-        '<a href="#company-about">О компании и проверке</a></div></section>'
-        '<section class="company-vacancies" id="company-jobs" aria-labelledby="company-jobs-title">'
-        f'<h2 id="company-jobs-title">Открытые вакансии <span>{len(rows)}</span></h2>'
-        '<p class="company-section-note">Основные условия — в карточках. Полное описание и доступные действия — на странице вакансии.</p>'
-        f'{jobs}</section>'
-        '<section class="company-description" id="company-about" aria-labelledby="company-about-title">'
-        f'<h2 id="company-about-title">О компании</h2>{about_markup}'
-        '<details class="company-check-explanation"><summary>Что означает статус проверки</summary>'
-        '<p>Отметка «Проверена администрацией СТАЖНО» относится к проверке данных компании на платформе. '
-        'Отсутствие отметки означает, что такой статус пока не подтверждён. '
-        'Оплату, обязанности и оформление обсудите с работодателем: отметка не гарантирует условия работы.</p></details></section>'
-        '<aside class="disclaimer"><strong>Что важно знать о контактах</strong>'
-        '<p>Условия вакансии доступны без регистрации. Доступные действия указаны на её странице. '
-        'Личные контакты соискателя не публикуются автоматически: для знакомства предусмотрено отдельное согласие.</p></aside>'
-        '<p class="back-link"><a href="/employers">← Все работодатели</a></p>'
-    )
-    return _layout(
-        str(company["company_name"]),
-        f"Открытые вакансии компании {company['company_name']} на СТАЖНО.",
-        f"/employers/{int(employer_id)}", body,
+    return RedirectResponse(
+        url=f"/companies/{int(employer_id)}",
+        status_code=301,
+        headers={"Cache-Control": "no-store"},
     )
 
 
 def install_employer_directory(app: FastAPI) -> None:
-    from .main import CONTACT_EMAIL_PATTERN, CONTACT_PHONE_PATTERN, get_connection
+    from .main import get_connection
 
     @app.get("/employers", include_in_schema=False)
     def employer_directory_route(
@@ -252,4 +191,4 @@ def install_employer_directory(app: FastAPI) -> None:
 
     @app.get("/employers/{employer_id}", include_in_schema=False)
     def employer_profile_route(employer_id: int, db=Depends(get_connection)):
-        return employer_profile(employer_id, db, CONTACT_EMAIL_PATTERN, CONTACT_PHONE_PATTERN)
+        return employer_profile(employer_id, db)

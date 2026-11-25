@@ -274,12 +274,21 @@ def journal_manifest(request: Request) -> dict:
         pages[path] = hashlib.sha256(
             journal_article(article["slug"], articles, jobs).body
         ).hexdigest()
-    pages["/sitemap.xml"] = hashlib.sha256(journal_sitemap(articles).body).hexdigest()
+    paths = _public_sitemap_paths(request)
+    pages["/sitemap.xml"] = hashlib.sha256(journal_sitemap(articles, paths).body).hexdigest()
     return {"pages": pages, "count": len(articles), "renderer_sha256": journal_renderer_sha256()}
 
 
-def journal_sitemap(articles: list[dict] | None = None) -> Response:
-    """Only published editorial pages when a live catalog is supplied."""
+def _public_sitemap_paths(request: Request) -> list[str]:
+    from .public_discovery import public_sitemap_paths
+    with database(request.app.state.db_path) as db:
+        return public_sitemap_paths(db)
+
+
+def journal_sitemap(
+    articles: list[dict] | None = None, public_paths: list[str] | None = None,
+) -> Response:
+    """Canonical published editorial pages and currently discoverable jobs/companies."""
     if articles is None:
         articles = ARTICLES
     from .journal_paths import visible_paths
@@ -288,17 +297,17 @@ def journal_sitemap(articles: list[dict] | None = None) -> Response:
         + ["/journal/" + article["slug"] for article in articles]
         + ["/journal/paths"]
         + ["/journal/paths/" + path["slug"] for path in visible_paths(articles)]
+        + (public_paths or [])
     )
-    urls = "".join(
-        "<url><loc>" + _e(ORIGIN + path) + "</loc>"
-        "<lastmod>" + PUBLISHED + "</lastmod></url>"
-        for path in paths
-    )
+    # Seed publication dates are not real modification dates for CMS edits or
+    # vacancies. Omit lastmod instead of inventing a timestamp.
+    urls = "".join("<url><loc>" + _e(ORIGIN + path) + "</loc></url>"
+                   for path in paths)
     xml = '<?xml version="1.0" encoding="UTF-8"?>' + (
         '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">' + urls + "</urlset>"
     )
     return Response(content=xml, media_type="application/xml",
-                    headers={"Cache-Control": "public, max-age=300"})
+                    headers={"Cache-Control": "no-store"})
 
 
 def journal_robots(request: Request) -> PlainTextResponse:
@@ -320,7 +329,7 @@ def install_journal_routes(app: FastAPI) -> None:
     # The pure renderers still accept a default seed catalog for deterministic
     # unit/probe rendering. Public HTTP routes use current published DB rows.
     def sitemap_http(request: Request):
-        return journal_sitemap(_catalog(request))
+        return journal_sitemap(_catalog(request), _public_sitemap_paths(request))
 
     def index_http(request: Request):
         return journal_index(_catalog(request))

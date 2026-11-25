@@ -93,6 +93,11 @@ def employer_page(data: dict, articles: list[dict] | None = None) -> HTMLRespons
             '<small>' + _e(item["read"]) + ' чтения →</small></a>'
             for item in selected
         )
+    safety_link = (
+        '<a href="/journal/kak-proverit-vakansiyu">Как проверить работодателя и вакансию</a>'
+        if articles is None or any(item["slug"] == "kak-proverit-vakansiyu" for item in articles)
+        else '<a href="/journal">Все материалы журнала</a>'
+    )
     reading_section = (
         '<section class="employer-reading" aria-labelledby="employer-reading-title">'
         '<div class="employer-section-heading"><h2 id="employer-reading-title">Полезно перед знакомством</h2>'
@@ -140,8 +145,11 @@ def employer_page(data: dict, articles: list[dict] | None = None) -> HTMLRespons
 <p class="employer-trust-note">Подтверждение email означает доступ к почте, а указание реквизитов — их наличие в профиле. Эти отметки не гарантируют условия работы. Обязанности, оплату и оформление обсудите с работодателем.</p></aside>
 </section>
 {reading_section}
-<aside class="employer-bottom"><h2>Следующий шаг — изучить вакансию</h2><p>Условия можно прочитать без регистрации. Доступные действия показаны на странице вакансии. Контакты соискателя не раскрываются автоматически: для знакомства предусмотрено отдельное согласие.</p><a href="/journal/kak-proverit-vakansiyu">Как проверить работодателя и вакансию</a></aside>
+<aside class="employer-bottom"><h2>Следующий шаг — изучить вакансию</h2><p>Условия можно прочитать без регистрации. Доступные действия показаны на странице вакансии. Контакты соискателя не раскрываются автоматически: для знакомства предусмотрено отдельное согласие.</p>{safety_link}</aside>
 </main><footer class="employer-wrap employer-footer">СТАЖНО · Ваш опыт работает на вас</footer>
 </body></html>"""
     cache_control = "no-store" if articles is not None else "public, max-age=60"
-    return HTMLResponse(html, headers={"Cache-Control": cache_control})
+    headers = {"Cache-Control": cache_control}
+    if not jobs:
+        headers["X-Robots-Tag"] = "noindex, follow"
+    return HTMLResponse(html, headers=headers)
