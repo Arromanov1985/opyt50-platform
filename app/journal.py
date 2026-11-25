@@ -39,7 +39,7 @@ def _layout(title: str, description: str, path: str, body: str) -> str:
         f"<meta property=\"og:description\" content=\"{_e(description)}\">"
         f"<meta property=\"og:url\" content=\"{_e(canonical)}\">"
         "<link rel=\"stylesheet\" href=\"/static/journal.css?v=6\">"
-        "<script src=\"/static/journal.js?v=5\" defer></script>"
+        "<script src=\"/static/journal.js?v=6\" defer></script>"
         "</head><body class=\"jr-page\">"
         "<a class=\"jr-skip\" href=\"#jr-content\">К основному содержанию</a>"
         "<header class=\"jr-header\"><div class=\"jr-wrap jr-top\">"
@@ -95,7 +95,7 @@ def _job_card(job: dict) -> str:
     from .vacancy_pages import _pay
     return (
         f'<a class="jr-card jr-job-card" href="/vacancies/{int(job["id"])}" '
-        'data-growth-action="jobs_click">'
+        'data-growth-action="recommended_vacancy_click">'
         f'<span class="jr-tag">Вакансия · {_e(job.get("city") or "город не указан")}</span>'
         f'<h2>{_e(job.get("title") or "Вакансия")}</h2>'
         f'<p>{_e(job.get("company_name") or "Работодатель")}</p>'

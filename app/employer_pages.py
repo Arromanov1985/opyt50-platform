@@ -87,14 +87,14 @@ def employer_page(data: dict, articles: list[dict] | None = None) -> HTMLRespons
             fallback_slugs=("kak-proverit-vakansiyu", "sobesedovanie-posle-50"),
         )
         reading_cards = "".join(
-            '<a class="employer-reading-card" href="/journal/' + _e(item["slug"]) + '">'
+            '<a class="employer-reading-card" href="/journal/' + _e(item["slug"]) + '" data-growth-action="article_click">'
             '<span>' + _e(item["category"]) + '</span>'
             '<strong>' + _e(item["title"]) + '</strong>'
             '<small>' + _e(item["read"]) + ' чтения →</small></a>'
             for item in selected
         )
     safety_link = (
-        '<a href="/journal/kak-proverit-vakansiyu">Как проверить работодателя и вакансию</a>'
+        '<a href="/journal/kak-proverit-vakansiyu" data-growth-action="article_click">Как проверить работодателя и вакансию</a>'
         if articles is None or any(item["slug"] == "kak-proverit-vakansiyu" for item in articles)
         else '<a href="/journal">Все материалы журнала</a>'
     )
