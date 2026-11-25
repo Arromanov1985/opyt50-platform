@@ -136,6 +136,35 @@ COMMUNITY_DDL = (
         CHECK((parent_id IS NULL AND kind<>'comment') OR (parent_id IS NOT NULL AND kind='comment')),
         CHECK(parent_id IS NULL OR parent_id<>id)
     )""",
+    """CREATE TABLE IF NOT EXISTS community_feed_follows (
+        follower_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        target_id INTEGER NOT NULL REFERENCES community_profiles(user_id) ON DELETE CASCADE,
+        created_at TEXT NOT NULL,
+        PRIMARY KEY(follower_id,target_id),
+        CHECK(follower_id<>target_id)
+    )""",
+    """CREATE TABLE IF NOT EXISTS community_feed_alert_reads (
+        user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        entry_id TEXT NOT NULL REFERENCES community_feed_entries(id) ON DELETE CASCADE,
+        read_at TEXT NOT NULL,
+        PRIMARY KEY(user_id,entry_id)
+    )""",
+    """CREATE TABLE IF NOT EXISTS community_feed_reports (
+        id TEXT PRIMARY KEY,
+        reporter_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        entry_id TEXT NOT NULL REFERENCES community_feed_entries(id) ON DELETE CASCADE,
+        reason TEXT NOT NULL CHECK(reason IN ('spam','fraud','harassment','personal_data','other')),
+        details TEXT NOT NULL DEFAULT '',
+        status TEXT NOT NULL DEFAULT 'new' CHECK(status IN ('new','resolved','dismissed')),
+        reviewed_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+        reviewed_at TEXT,
+        created_at TEXT NOT NULL,
+        UNIQUE(reporter_id,entry_id)
+    )""",
+    "CREATE INDEX IF NOT EXISTS idx_community_follows_target ON community_feed_follows(target_id)",
+    "CREATE INDEX IF NOT EXISTS idx_community_alert_reads_entry ON community_feed_alert_reads(entry_id)",
+    "CREATE INDEX IF NOT EXISTS idx_community_feed_reports_entry ON community_feed_reports(entry_id)",
+    "CREATE INDEX IF NOT EXISTS idx_community_feed_reports_status ON community_feed_reports(status,created_at,id)",
     "CREATE INDEX IF NOT EXISTS idx_community_feed_public ON community_feed_entries(parent_id,status,published_at,id)",
     "CREATE INDEX IF NOT EXISTS idx_community_feed_author ON community_feed_entries(author_id,created_at,id)",
     "CREATE INDEX IF NOT EXISTS idx_community_feed_moderation ON community_feed_entries(status,created_at,id)",
