@@ -79,6 +79,7 @@
 .feed-side .feed-card{padding:14px}
 .feed-side .feed-card h2{font-size:1.05em}
 .feed-side .feed-card .feed-meta time{margin-left:0}
-@media(max-width:850px){.feed-layout{grid-template-columns:1fr}.feed-side{order:-1}.feed-side .feed-list{max-height:32rem;overflow:auto}.feed-card{padding:18px}}
+@media(max-width:850px){.feed-layout{grid-template-columns:1fr}.feed-card{padding:18px}}
 .comfortable-view .feed-layout{grid-template-columns:1fr}
 @media(max-width:480px){.feed-form .button,.feed-filter .button{width:100%}.feed-card .feed-meta time{margin-left:0}.feed-card{padding:16px}.feed-layout{gap:16px}}
+#feed-compose-section{scroll-margin-top:20px}
