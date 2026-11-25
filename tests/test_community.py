@@ -1003,3 +1003,111 @@ def test_feed_reports_are_private_and_require_explicit_moderation(community):
     assert first.get(base + "/" + root2["id"] + "/comments").json()["entries"][0]["id"] == reply["id"]
     assert first.get(base + "/alerts").json()["entries"][0]["id"] == reply["id"]
 
+
+def test_structured_opportunities_moderation_filtering_and_safe_connection(community):
+    app, clients, ids = community
+    first, second, admin = clients["first"], clients["second"], clients["admin"]
+    profile = publish(clients, "first", public_name="Опытный наставник")
+    peer = publish(clients, "second", public_name="Участник проекта", city="Москва")
+    offer = {"intent": "offer", "meeting_format": "online", "commitment": "regular"}
+    search = "/api/community/opportunities?kind=mentoring"
+    assert clients["visitor"].get(search).status_code == 401
+    assert admin.get(search).status_code == 403
+    assert first.get(search).json()["can_publish"] is True
+    assert clients["employer"].get(search).json()["can_publish"] is False
+    assert mutate(first, "POST", "/api/community/feed", feed_payload(
+        kind="projects", opportunity=offer)).status_code == 422
+    assert mutate(first, "POST", "/api/community/feed", feed_payload(
+        kind="mentoring", opportunity=offer, publish_consent=False)).status_code == 422
+    payload = feed_payload(kind="mentoring", opportunity=offer,
+                           title="Помогу освоить учёт", body="Передача практического опыта")
+    response = mutate(first, "POST", "/api/community/feed", payload)
+    assert response.status_code == 200, response.text
+    pending = response.json()["entry"]
+    assert pending["opportunity"] == offer
+    assert mutate(first, "POST", "/api/community/feed", payload).json()["entry"] == pending
+    assert mutate(first, "POST", "/api/community/feed", {
+        **payload, "opportunity": {**offer, "meeting_format": "offline"}
+    }).status_code == 409
+    assert second.get(search).json()["entries"] == []
+    connection_payload = {"public_id": profile["public_id"], "purpose": "mentoring",
+                          "opportunity_id": pending["id"], "note": "Хочу обсудить обучение"}
+    assert mutate(second, "POST", "/api/community/connections", connection_payload).status_code == 404
+    queue = admin.get("/api/admin/community/feed").json()["entries"]
+    assert next(row for row in queue if row["id"] == pending["id"])["opportunity"] == offer
+    approved = moderate_feed(admin, pending)
+    plain = moderate_feed(admin, submit_feed(first, kind="mentoring"))
+    project = moderate_feed(admin, submit_feed(second, kind="projects", opportunity={
+        "intent": "organize", "meeting_format": "hybrid", "commitment": "flexible"
+    }))
+    assert second.get(search + "&intent=organize").status_code == 422
+    result = second.get(search + "&intent=offer&meeting_format=online&commitment=regular&city=Подольск&q=склад")
+    assert result.status_code == 200, result.text
+    assert [row["id"] for row in result.json()["entries"]] == [approved["id"]]
+    item = result.json()["entries"][0]
+    assert item["opportunity"] == {**offer, "city": "Подольск"}
+    assert "author_id" not in item and "email" not in item and "phone" not in item
+    assert second.get(search + "&city=Москва").json()["entries"] == []
+    assert second.get(search + "&meeting_format=offline").json()["entries"] == []
+    assert [row["id"] for row in second.get("/api/community/opportunities?kind=projects").json()["entries"]] == [project["id"]]
+    assert [row["id"] for row in first.get("/api/community/feed/mine?opportunity_kind=mentoring").json()["entries"]] == [approved["id"]]
+    feed = second.get("/api/community/feed?kind=mentoring").json()["entries"]
+    assert {row["id"] for row in feed} == {approved["id"], plain["id"]}
+    assert "opportunity" not in next(row for row in feed if row["id"] == plain["id"])
+    assert mutate(second, "POST", "/api/community/connections", {
+        **connection_payload, "purpose": "projects"
+    }).status_code == 404
+    assert mutate(second, "POST", "/api/community/connections", {
+        **connection_payload, "opportunity_id": plain["id"]
+    }).status_code == 404
+    assert mutate(clients["employer"], "POST", "/api/community/connections", {
+        **connection_payload, "public_id": peer["public_id"]
+    }).status_code == 404
+    connected = mutate(second, "POST", "/api/community/connections", connection_payload)
+    assert connected.status_code == 200, connected.text
+    connection = connected.json()["connection"]
+    assert connection["status"] == "pending" and connection["purpose"] == "mentoring"
+    assert mutate(second, "POST", "/api/community/connections", connection_payload).json()["connection"]["id"] == connection["id"]
+    assert mutate(first, "DELETE", "/api/community/feed/" + approved["id"],
+                  {"expected_version": approved["version"]}).status_code == 200
+    assert second.get(search).json()["entries"] == []
+    assert mutate(second, "POST", "/api/community/connections", connection_payload).status_code == 404
+    assert second.get("/api/community/connections/" + connection["id"]).status_code == 200
+    exported = first.get("/api/account/data-export").json()["sections"]["my_community_opportunities"]
+    assert exported == [{"entry_id": approved["id"], **offer}]
+    with database(app.state.db_path) as db:
+        assert db.execute("SELECT COUNT(*) FROM community_opportunities").fetchone()[0] == 2
+
+
+def test_opportunities_follow_profile_privacy_and_pagination(community):
+    app, clients, ids = community
+    first, second, admin = clients["first"], clients["second"], clients["admin"]
+    publish(clients, "first")
+    profile = publish(clients, "second", city="Москва")
+    project = {"intent": "join", "meeting_format": "offline", "commitment": "one_off"}
+    approved = moderate_feed(admin, submit_feed(second, kind="projects", opportunity=project))
+    search = "/api/community/opportunities?kind=projects&intent=join"
+    with database(app.state.db_path) as db:
+        for index in range(21):
+            entry = uuid4().hex
+            db.execute(
+                """INSERT INTO community_feed_entries(
+                   id,author_id,client_key,kind,title,body,status,consent_at,consent_version,
+                   published_at,created_at,updated_at) VALUES(?,?,?,'projects',?,?,'published',
+                   '2026-01-01','test','2026-01-02','2026-01-01','2026-01-02')""",
+                (entry, ids["second"], uuid4().hex, "Проект", "Совместная работа"),
+            )
+            db.execute("INSERT INTO community_opportunities VALUES(?,'join','offline','one_off')", (entry,))
+    page1 = first.get(search).json()
+    page2 = first.get(search + "&page=2").json()
+    assert len(page1["entries"]) == 20 and page1["has_more"]
+    assert len(page2["entries"]) == 2 and not page2["has_more"]
+    assert not ({row["id"] for row in page1["entries"]} & {row["id"] for row in page2["entries"]})
+    connection = connect(clients, profile["public_id"])
+    assert mutate(first, "POST", "/api/community/connections/" + connection["id"] + "/block").status_code == 200
+    assert first.get(search).json()["entries"] == []
+    assert mutate(first, "POST", "/api/community/connections", {
+        "public_id": profile["public_id"], "purpose": "projects", "opportunity_id": approved["id"]
+    }).status_code == 404
+    assert mutate(second, "POST", "/api/account/privacy-requests", {"kind": "stop_processing"}).status_code == 201
+    assert clients["outsider"].get(search).json()["entries"] == []
