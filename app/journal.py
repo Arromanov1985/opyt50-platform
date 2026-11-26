@@ -39,7 +39,7 @@ def _layout(title: str, description: str, path: str, body: str) -> str:
         f"<meta property=\"og:description\" content=\"{_e(description)}\">"
         f"<meta property=\"og:url\" content=\"{_e(canonical)}\">"
         "<link rel=\"stylesheet\" href=\"/static/journal.css?v=7\">"
-        "<script src=\"/static/journal.js?v=7\" defer></script>"
+        "<script src=\"/static/journal.js?v=8\" defer></script>"
         "</head><body class=\"jr-page\">"
         "<a class=\"jr-skip\" href=\"#jr-content\">К основному содержанию</a>"
         "<header class=\"jr-header\"><div class=\"jr-wrap jr-top\">"
@@ -144,7 +144,7 @@ def journal_index(articles: list[dict] | None = None) -> HTMLResponse:
         '<p>Попробуйте другую тему или уберите слова из поиска.</p>'
         '<button type="button" id="jr-reset-search">Показать все материалы</button></div>'
         '</section>'
-        '<aside class="jr-path-promo"><h2>Профессиональный навигатор</h2><p>Отраслевые новости, обучение и анонсы мероприятий — в отдельных разделах.</p><a class="jr-primary" href="/journal/guide/overview">Открыть навигатор →</a><a class="jr-secondary" href="/journal/guide/personal">Моя подборка и закладки →</a></aside>'
+        '<aside class="jr-path-promo"><h2>Профессиональный навигатор</h2><p>Отраслевые новости, обучение и анонсы мероприятий — в отдельных разделах.</p><a class="jr-primary" href="/journal/guide/overview">Открыть навигатор →</a><a class="jr-secondary" href="/journal/guide/personal">Моя подборка и закладки →</a><a class="jr-secondary" href="/community/author-articles">Стать автором журнала →</a></aside>'
         '<aside class="jr-path-promo" aria-labelledby="jr-path-promo-heading">'
         '<span class="jr-kicker">НЕ ЗНАЕТЕ, С ЧЕГО НАЧАТЬ?</span>'
         '<h2 id="jr-path-promo-heading">Выберите цель — материалы уже собраны по шагам</h2>'
@@ -162,7 +162,7 @@ def journal_index(articles: list[dict] | None = None) -> HTMLResponse:
     )
     return HTMLResponse(_layout("Журнал: работа и новые возможности после 50",
                                "Практические статьи СТАЖНО о профессиональном опыте, работе, проектах и безопасности.",
-                               "/journal", body), headers={"Cache-Control": "public, max-age=300"})
+                               "/journal", body), headers={"Cache-Control": "no-store"})
 
 
 def journal_article(

@@ -145,3 +145,5 @@
 @media(max-width:760px){.group-grid{grid-template-columns:1fr}.group-card .actions{gap:10px}}
 @media(max-width:480px){.group-card .actions{display:grid;grid-template-columns:1fr}.group-card .button{width:100%}}
 .comfortable-view .group-grid{grid-template-columns:1fr}
+/* Author workspace, large readable inputs and explicit consent. */
+.author-topics{min-width:0;border:1px solid var(--line);border-radius:12px;padding:14px}.author-topics legend{font-weight:750}.author-topic-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}.author-topic-grid .consent-label{min-width:0;overflow-wrap:anywhere}.author-full-text{margin:12px 0;overflow-wrap:anywhere}.author-full-text summary{cursor:pointer;font-weight:700}.author-full-text p{max-height:45vh;overflow:auto;white-space:pre-wrap}.comfortable-view .author-topic-grid{grid-template-columns:1fr}@media(max-width:620px){.author-topic-grid{grid-template-columns:1fr}}

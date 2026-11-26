@@ -10,7 +10,7 @@
   const mode = document.body.dataset.communityPage;
   const opportunityMode=['mentoring','projects'].includes(mode);
   const groupSlug=mode==='feed'?new URLSearchParams(location.search).get('group')||'':'';
-  const state = {user:null, profile:null, profileVisible:false, dirty:false, messageDirty:false, connections:[], connectionPage:1, connectionFilter:'', connectionListRequest:0, readThrough:null, selected:null, messageKey:null, messageBody:null, nextBefore:null, directoryPage:1, directoryRequest:0, threadSelectionRequest:0, threadRequest:0, messageLoadRequest:0, moderationPage:1, reportPage:1, busy:new WeakSet(), feedPage:1, feedMinePage:1, feedReviewPage:1, feedRequest:0, feedThreadRequest:0, feedReviewRequest:0, feedThreadId:null, feedThreadPage:1, feedCanPublish:false, feedDirty:false, feedCommentDirty:false, feedFollowingIds:new Set(), feedOwnPublicId:null, feedFollowsPage:1, feedAlertsPage:1, feedReportsPage:1, feedFollowsRequest:0, feedAlertsRequest:0, feedReportsRequest:0, feedSavedIds:new Set(), savedPage:1, savedRequest:0, discoveryPeoplePage:1, discoveryFeedPage:1, discoveryRequest:0, discoveryRevision:null, discoveryDirty:false, portfolioEntries:[], portfolioCanPublish:false, portfolioEdit:null, portfolioDirty:false, portfolioRequest:0, portfolioReviewRequest:0, portfolioReviewPage:1,reputationDirection:'incoming',reputationPage:1,reputationRequest:0,reputationDirty:false,reputationRestricted:false,portfolioRestricted:false,group:null,groupsRequest:0,groupsMine:false};
+  const state = {user:null, profile:null, profileVisible:false, dirty:false, messageDirty:false, connections:[], connectionPage:1, connectionFilter:'', connectionListRequest:0, readThrough:null, selected:null, messageKey:null, messageBody:null, nextBefore:null, directoryPage:1, directoryRequest:0, threadSelectionRequest:0, threadRequest:0, messageLoadRequest:0, moderationPage:1, reportPage:1, busy:new WeakSet(), feedPage:1, feedMinePage:1, feedReviewPage:1, feedRequest:0, feedThreadRequest:0, feedReviewRequest:0, feedThreadId:null, feedThreadPage:1, feedCanPublish:false, feedDirty:false, feedCommentDirty:false, feedFollowingIds:new Set(), feedOwnPublicId:null, feedFollowsPage:1, feedAlertsPage:1, feedReportsPage:1, feedFollowsRequest:0, feedAlertsRequest:0, feedReportsRequest:0, feedSavedIds:new Set(), savedPage:1, savedRequest:0, discoveryPeoplePage:1, discoveryFeedPage:1, discoveryRequest:0, discoveryRevision:null, discoveryDirty:false, portfolioEntries:[], portfolioCanPublish:false, portfolioEdit:null, portfolioDirty:false, portfolioRequest:0, portfolioReviewRequest:0, portfolioReviewPage:1,reputationDirection:'incoming',reputationPage:1,reputationRequest:0,reputationDirty:false,reputationRestricted:false,portfolioRestricted:false,group:null,groupsRequest:0,groupsMine:false,authorEntries:[],authorTopics:{},authorRestricted:false,authorCanSubmit:false,authorDirty:false,authorEdit:null,authorPage:1,authorRequest:0};
   const content = $('#community-content');
   const dialog = $('#community-dialog');
   let dialogBusy = false;
@@ -139,7 +139,7 @@
   function renderProfileForm(preserved = null) {
     const p = state.profile, values = preserved || p;
     const canSubmit = p.version > 0 && !['published','pending'].includes(p.status) && !preserved;
-    content.innerHTML = `<div class="section-heading"><div><h1>Ваш опыт — вашими словами</h1><p>Создайте отдельную страницу для коллег, проектов и наставничества. Вы сами выбираете, что рассказывать о себе.</p></div><div class="actions"><a class="button secondary compact" href="/community/portfolio">Моё портфолио →</a><a class="button secondary compact" href="/community/reputation">Рекомендации коллег</a><button class="button secondary compact" type="button" data-action="invite-colleague">Пригласить коллегу</button><a class="button secondary compact" href="/community/connections">Мои связи →</a></div></div>
+    content.innerHTML = `<div class="section-heading"><div><h1>Ваш опыт — вашими словами</h1><p>Создайте отдельную страницу для коллег, проектов и наставничества. Вы сами выбираете, что рассказывать о себе.</p></div><div class="actions"><a class="button secondary compact" href="/community/portfolio">Моё портфолио →</a><a class="button secondary compact" href="/community/author-articles">Мои статьи</a><a class="button secondary compact" href="/community/reputation">Рекомендации коллег</a><button class="button secondary compact" type="button" data-action="invite-colleague">Пригласить коллегу</button><a class="button secondary compact" href="/community/connections">Мои связи →</a></div></div>
     <div class="profile-layout"><div class="panel"><div class="status-line" id="profile-status">${statusBadge(p.status,profileStates)}</div>${p.moderation_reason ? `<p class="notice warning">Комментарий модератора: ${esc(p.moderation_reason)}</p>` : ''}
     <form id="professional-profile-form" class="profile-form"><div class="form-grid"><div class="field"><label for="public-name">Публичное имя *</label><input id="public-name" name="public_name" maxlength="60" value="${esc(values.public_name)}" placeholder="Имя или профессиональный псевдоним"><p class="help">Не обязательно указывать полное имя.</p></div><div class="field"><label for="public-city">Город</label><input id="public-city" name="city" maxlength="80" value="${esc(values.city)}" placeholder="Например, Москва"></div></div>
     <div class="field"><label for="public-headline">Профессия и направление *</label><input id="public-headline" name="headline" maxlength="120" value="${esc(values.headline)}" placeholder="Бухгалтер · помогаю малому бизнесу"></div>
@@ -167,7 +167,7 @@
         state.profile = result.profile; state.dirty=false; renderProfileForm(); notice('Черновик сохранён. Для публикации проверьте текст и отдельно отправьте профиль на проверку.');
       };
       if (p.status === 'published' || p.status === 'pending') {
-        confirmAction('Сохранить новую версию?', 'Если текст изменился, текущая публикация или заявка на проверку будет снята. Новую версию можно отправить на проверку после сохранения.', 'Сохранить новую версию', () => busy(form.closest('.panel'),save));
+        confirmAction('Сохранить новую версию?', 'Если текст изменился, текущая публикация или заявка на проверку будет снята. Новую версию можно отправить на проверку после сохранения. Авторские статьи также потребуют нового согласия.', 'Сохранить новую версию', () => busy(form.closest('.panel'),save));
       } else busy(form.closest('.panel'),save);
     });
     $('#submit-profile-review').addEventListener('click', () => {
@@ -175,7 +175,7 @@
       const panel = $('#professional-profile-form').closest('.panel');
       busy(panel,async () => { const result=await api('/api/community/profile/submit',{method:'POST',body:{expected_version:p.version,publish_consent:true}}); state.profile=result.profile; renderProfileForm(); notice('Профиль отправлен на проверку. До решения модератора он доступен только вам.'); });
     });
-    $('#withdraw-profile')?.addEventListener('click', () => confirmAction('Скрыть профессиональный профиль?', 'Страница и карточка исчезнут из сообщества, новые запросы станут недоступны. Разрешения на публикацию портфолио и рекомендаций коллег также будут отозваны. Уже начатые разговоры сохранятся. Введённые изменения останутся в форме.', 'Скрыть профиль', async () => {
+    $('#withdraw-profile')?.addEventListener('click', () => confirmAction('Скрыть профессиональный профиль?', 'Страница и карточка исчезнут из сообщества, новые запросы станут недоступны. Разрешения на публикацию портфолио, рекомендаций коллег и авторских материалов также будут отозваны. Уже начатые разговоры сохранятся. Введённые изменения останутся в форме.', 'Скрыть профиль', async () => {
       const draft = state.dirty ? profileValues() : null;
       const result=await api('/api/community/profile/publication',{method:'DELETE',body:{expected_version:p.version}}); state.profile=result.profile; renderProfileForm(draft); notice('Профиль скрыт. Разрешение на публикацию отозвано.');
     }));
@@ -368,7 +368,7 @@
     content.innerHTML=`<div class="section-heading"><div><h1>Модерация сообщества</h1><p>Перед публикацией проверьте отсутствие контактов, личных данных других людей, спама и недостоверных обещаний. Одобрение относится только к текущей версии профиля.</p></div></div><div class="connections-toolbar"><label for="moderation-filter">Профили<select id="moderation-filter">${options({pending:'Ожидают проверки',published:'Опубликованы',rejected:'Отклонены',hidden:'Скрыты'},'pending')}</select></label><button class="button secondary compact" type="button" data-action="reload-moderation">Обновить очередь</button></div><div id="moderation-list" class="moderation-grid"></div><div id="moderation-pager"></div><section class="section-divider"><h2>Жалобы участников</h2><div id="moderation-reports" class="moderation-grid"></div><div id="reports-pager"></div><p class="help">Жалобы содержат только отправленные участниками сведения. Доступ ко всей переписке здесь не открывается. При необходимости профиль можно скрыть в разделе опубликованных профилей.</p></section>`;
     $('#moderation-filter').addEventListener('change',()=>{state.moderationPage=1;loadModeration().catch(error=>notice(error.message,'error'));});
     const portfolioSection=document.createElement('section');portfolioSection.className='section-divider';
-    portfolioSection.innerHTML='<div class="section-heading"><div><h2>Портфолио и достижения</h2><p>Проверяйте только записи, отправленные с отдельным согласием на публикацию.</p></div><a href="/community/portfolio" class="button secondary">Модерация портфолио</a><a href="/community/reputation" class="button secondary">Модерация рекомендаций</a></div>';
+    portfolioSection.innerHTML='<div class="section-heading"><div><h2>Портфолио и достижения</h2><p>Проверяйте только записи, отправленные с отдельным согласием на публикацию.</p></div><a href="/community/portfolio" class="button secondary">Модерация портфолио</a><a href="/community/reputation" class="button secondary">Модерация рекомендаций</a><a href="/community/author-articles" class="button secondary">Авторские материалы</a></div>';
     content.append(portfolioSection);
     await Promise.all([loadModeration(),loadReports()]);
   }
@@ -990,6 +990,118 @@
     }
   }
 
+  const authorKinds={article:'Экспертная статья',case:'Профессиональный кейс',learning:'Учебный материал'};
+  const authorStates={draft:'Черновик',pending:'На редакционной проверке',published:'Опубликован',rejected:'На доработке',hidden:'Скрыт'};
+  const authorApi='/api/community/author-articles';
+  const authorAdminApi='/api/admin/community/author-articles';
+  function authorCard(entry,admin){
+    const id=esc(entry.id),version=Number(entry.version);
+    const btn=(action,label,kind='secondary')=>'<button type="button" class="button '+kind+' compact" data-action="'+action+'" data-id="'+id+'" data-version="'+version+'">'+label+'</button>';
+    let actions='',byline='';
+    if(admin){
+      byline='<p class="help">Автор: <a href="/people/'+encodeURIComponent(entry.author_public_id)+'">'+esc(entry.author_public_name)+'</a></p>';
+      if(entry.status==='pending')actions=btn('author-approve','Одобрить и опубликовать','primary')+btn('author-reject','Вернуть автору');
+      else if(entry.status==='published')actions=btn('author-hide','Скрыть','danger');
+    }else{
+      if(!state.authorRestricted){
+        actions=btn('author-edit','Редактировать');
+        if(state.authorCanSubmit&&['draft','hidden','rejected'].includes(entry.status))actions+=btn('author-submit','Отправить в редакцию','primary');
+      }
+      if(['pending','published','rejected'].includes(entry.status))actions+=btn('author-withdraw','Отозвать согласие');
+    }
+    if(entry.public_path)actions+='<a class="button secondary compact" href="/journal/author-'+encodeURIComponent(entry.id)+'">Читать в журнале</a>';
+    return '<article class="panel portfolio-card" data-author-id="'+id+'"><div class="status-line">'+statusBadge(entry.status,authorStates)+'<span class="tag">'+esc(authorKinds[entry.kind])+'</span></div>'+byline+
+      '<h2>'+esc(entry.title)+'</h2><p class="multiline">'+esc(entry.description)+'</p>'+
+      (entry.status==='published'&&!entry.public_path?'<p class="notice warning">Материал временно недоступен публично.</p>':'')+
+      (entry.moderation_reason?'<p class="notice warning">Комментарий редакции: '+esc(entry.moderation_reason)+'</p>':'')+
+      '<details class="author-full-text"><summary>Полный текст материала</summary><p class="multiline">'+esc(entry.body_text)+'</p></details>'+
+      (actions?'<div class="actions">'+actions+'</div>':'')+'</article>';
+  }
+  async function loadAuthors(){
+    const req=++state.authorRequest,admin=state.user.role==='admin';
+    const result=await api(admin?authorAdminApi+'?status='+encodeURIComponent($('#author-filter').value)+'&page='+state.authorPage:authorApi);
+    if(req!==state.authorRequest)return;
+    state.authorEntries=result.entries;
+    if(!admin){
+      state.authorTopics=result.topics;state.authorCanSubmit=Boolean(result.can_submit);state.authorRestricted=Boolean(result.restricted);
+      $('#author-add').disabled=state.authorRestricted||!result.has_profile||result.entries.length>=result.limit;
+      $('#author-hint').textContent=state.authorRestricted?'Обработка данных ограничена. Доступны история и отзыв согласия.':
+        !result.has_profile?'Сначала сохраните профессиональный профиль.':
+        !result.can_submit?'Черновики доступны. Для передачи в редакцию опубликуйте профессиональный профиль.':
+        'Материал появится в журнале только после вашего отдельного согласия и решения редактора.';
+      $('#author-count').textContent='Материалы: '+result.entries.length+' из '+result.limit;
+    }
+    $('#author-list').innerHTML=result.entries.length?result.entries.map(entry=>authorCard(entry,admin)).join('')+(admin?pager(result.page,result.has_more,'author-page'):''):empty('Пока нет материалов',admin?'В этой очереди нет материалов.':'Подготовьте первую экспертную статью или профессиональный кейс.');
+  }
+  function showAuthorEditor(entry=null){
+    const slot=$('#author-editor');state.authorEdit=entry;state.authorDirty=false;slot.hidden=false;
+    const topics=Object.entries(state.authorTopics).map(([key,label])=>'<label class="consent-label"><input type="checkbox" name="topics" value="'+esc(key)+'"'+(entry?.topics?.includes(key)?' checked':'')+'><span>'+esc(label)+'</span></label>').join('');
+    slot.innerHTML='<form id="author-form" class="feed-form"><h2>'+(entry?'Редактирование материала':'Новый материал')+'</h2><div class="field"><label for="author-kind">Тип материала</label><select id="author-kind" name="kind">'+options(authorKinds,entry?.kind||'article')+'</select></div>'+
+      '<div class="field"><label for="author-title">Заголовок</label><input id="author-title" name="title" required minlength="8" maxlength="180" value="'+esc(entry?.title||'')+'"></div>'+
+      '<div class="field"><label for="author-description">Краткое описание</label><textarea id="author-description" name="description" rows="3" required minlength="25" maxlength="350">'+esc(entry?.description||'')+'</textarea></div>'+
+      '<fieldset class="author-topics"><legend>Темы (можно выбрать несколько)</legend><div class="author-topic-grid">'+topics+'</div></fieldset>'+
+      '<div class="field"><label for="author-body">Текст материала</label><p class="help">Начните каждый раздел с ## Название раздела. Нужно не менее двух разделов. Абзацы разделяйте пустой строкой. Строка с «- » создаёт пункт списка.</p><textarea id="author-body" name="body_text" rows="14" required minlength="200" maxlength="12000" placeholder="## Постановка задачи&#10;Опишите проблему и свой подход…&#10;&#10;## Практический результат&#10;Расскажите, что получилось…">'+esc(entry?.body_text||'')+'</textarea></div>'+
+      '<p class="help">Только ваш собственный текст. Не добавляйте контакты, ссылки, чужие личные сведения, коммерческие секреты и чужие тексты без разрешения.</p>'+
+      (entry&&['published','pending'].includes(entry.status)?'<p class="notice warning">Изменение текста снимет материал с публикации или проверки. Потребуется новое согласие и решение редактора.</p>':'')+
+      '<div class="actions"><button type="submit" class="button primary">Сохранить черновик</button><button type="button" class="button secondary" data-action="author-cancel">Отмена</button></div></form>';
+    const form=$('#author-form');
+    form.addEventListener('input',()=>{state.authorDirty=true;});
+    form.addEventListener('change',()=>{state.authorDirty=true;});
+    form.addEventListener('submit',event=>{
+      event.preventDefault();const data=new FormData(form);
+      const fields={kind:data.get('kind'),title:data.get('title'),description:data.get('description'),body_text:data.get('body_text'),topics:data.getAll('topics')};
+      const fingerprint=JSON.stringify(fields);
+      if(form.authorFingerprint!==fingerprint){form.authorFingerprint=fingerprint;form.authorClientKey=crypto.randomUUID();}
+      busy(form,async()=>{
+        const result=await api(entry?authorApi+'/'+encodeURIComponent(entry.id):authorApi,{method:entry?'PUT':'POST',body:entry?{...fields,expected_version:entry.version}:{...fields,client_key:form.authorClientKey}});
+        state.authorDirty=false;state.authorEdit=null;slot.hidden=true;slot.innerHTML='';
+        state.authorEntries=[result.entry,...state.authorEntries.filter(item=>item.id!==result.entry.id)];
+        $('#author-list').innerHTML=state.authorEntries.map(item=>authorCard(item,false)).join('');
+        notice('Материал сохранён. Для публикации отправьте его в редакцию.');
+        try{await loadAuthors();}catch(error){notice('Материал сохранён, но список не обновился: '+error.message,'warning');}
+      });
+    });
+    $('#author-title').focus();slot.scrollIntoView({block:'start'});
+  }
+  function switchAuthorEditor(entry){
+    if(state.authorRestricted)return;
+    if(state.authorDirty)confirmAction('Заменить черновик?','Несохранённые изменения будут потеряны.','Продолжить',async()=>showAuthorEditor(entry));
+    else showAuthorEditor(entry);
+  }
+  function cancelAuthorEditor(){
+    const clear=()=>{state.authorDirty=false;state.authorEdit=null;const slot=$('#author-editor');slot.hidden=true;slot.innerHTML='';};
+    if(state.authorDirty)confirmAction('Закрыть редактор?','Несохранённые изменения будут потеряны.','Закрыть',async()=>clear());
+    else clear();
+  }
+  function submitAuthor(entry){
+    if(!entry||state.authorRestricted)return;
+    if(state.authorDirty&&state.authorEdit?.id===entry.id){notice('Сначала сохраните изменения материала.','warning');return;}
+    openDialog('Предложить материал редакции','<p>Проверьте текст, который будет размещён в журнале под вашим публичным именем после проверки редактором.</p><div class="portfolio-consent-preview"><h3>'+esc(entry.title)+'</h3><p>'+esc(entry.description)+'</p><p class="multiline">'+esc(entry.body_text)+'</p></div><form id="author-consent-form" class="dialog-form"><label class="consent-label"><input type="checkbox" required name="publish_consent"><span>Я подтверждаю право на публикацию этого текста и согласен на его размещение в журнале СТАЖНО под моим публичным именем. Согласие можно отозвать.</span></label><button type="submit" class="button primary">Отправить на проверку</button></form>');
+    const form=$('#author-consent-form');form.addEventListener('submit',event=>{event.preventDefault();busy(form,async()=>{
+      await api(authorApi+'/'+encodeURIComponent(entry.id)+'/submit',{method:'POST',body:{expected_version:entry.version,publish_consent:form.elements.publish_consent.checked}});
+      dialogBusy=false;closeDialog();notice('Материал отправлен на редакционную проверку.');await loadAuthors();
+    });});
+  }
+  function reviewAuthor(entry,decision){
+    if(!entry)return;
+    openDialog(decision==='approve'?'Опубликовать авторский материал?':decision==='reject'?'Вернуть автору?':'Скрыть материал?','<p>Проверьте права автора, практическую ценность, достоверность, отсутствие контактов и чужих персональных данных. Редакция не изменяет согласованный текст без новой версии от автора.</p><div class="portfolio-consent-preview"><h3>'+esc(entry.title)+'</h3><p>'+esc(entry.description)+'</p><p class="multiline">'+esc(entry.body_text)+'</p></div><form id="author-review-form" class="dialog-form">'+(decision==='approve'?'':'<div class="field"><label for="author-review-reason">Причина решения</label><textarea id="author-review-reason" name="reason" maxlength="500" required></textarea></div>')+'<button class="button primary" type="submit">Подтвердить решение</button></form>');
+    const form=$('#author-review-form');form.addEventListener('submit',event=>{event.preventDefault();busy(form,async()=>{
+      await api(authorAdminApi+'/'+encodeURIComponent(entry.id),{method:'PATCH',body:{expected_version:entry.version,decision,reason:form.elements.reason?.value||''}});
+      dialogBusy=false;closeDialog();notice('Решение редакции сохранено.');await loadAuthors();
+    });});
+  }
+  async function renderAuthors(){
+    if(!state.user)return accountGate('Авторские публикации');
+    const admin=state.user.role==='admin';
+    if(!admin&&state.user.role!=='candidate'){content.innerHTML=empty('Авторские публикации','Предлагать материалы могут участники с личным профессиональным профилем.','<a class="button primary" href="/journal">Читать журнал</a>');return;}
+    content.innerHTML='<div class="section-heading"><div><h1>'+(admin?'Редакция: материалы участников':'Мои авторские материалы')+'</h1><p>'+(admin?'Проверяйте точный текст, согласованный с автором.':'Поделитесь знаниями и практическим опытом с профессиональным сообществом.')+'</p></div><a class="button secondary" href="/journal">Открыть журнал</a></div>'+
+      (admin?'<div class="connections-toolbar"><label for="author-filter">Материалы<select id="author-filter"><option value="pending">На проверке</option><option value="published">Опубликованные</option></select></label><button type="button" class="button secondary" data-action="author-refresh">Обновить</button></div>':
+      '<section class="panel portfolio-intro"><h2>Станьте автором журнала</h2><p>Экспертные статьи, профессиональные кейсы, учебные материалы. Сохраните черновик, подтвердите публикацию, дождитесь решения редакции. При изменении профиля или текста потребуется новое согласие.</p><p class="help" id="author-hint"></p><p class="help" id="author-count"></p><div class="actions"><button type="button" id="author-add" class="button primary" data-action="author-add" disabled>Новый материал</button><a class="button secondary" href="/community/profile">Мой профиль</a><button type="button" class="button secondary" data-action="author-refresh">Обновить</button></div></section><section class="panel portfolio-editor" id="author-editor" hidden></section>')+
+      '<div id="author-list" class="portfolio-list" aria-live="polite"></div>';
+    if(admin)$('#author-filter').addEventListener('change',()=>{state.authorPage=1;loadAuthors().catch(error=>notice(error.message,'error'));});
+    await loadAuthors();
+  }
+
   async function handleAction(event) {
     const button=event.target.closest('[data-action]');if(!button||button.disabled)return;
     const {action,id}=button.dataset;
@@ -1014,6 +1126,14 @@
       else if(action==='moderation-page'){state.moderationPage=Number(button.dataset.page);await loadModeration();}
       else if(action==='reports-page'){state.reportPage=Number(button.dataset.page);await loadReports();}
       else if(['resolve-report','dismiss-report'].includes(action))await busy(button.closest('article'),async()=>{await api('/api/admin/community/reports/'+encodeURIComponent(id),{method:'PATCH',body:{status:action==='resolve-report'?'resolved':'dismissed'}});await loadReports();notice('Статус жалобы сохранён.');});
+      else if(action==='author-refresh')await loadAuthors();
+      else if(action==='author-page'){state.authorPage=Number(button.dataset.page);await loadAuthors();}
+      else if(action==='author-add')switchAuthorEditor(null);
+      else if(action==='author-edit'){const entry=state.authorEntries.find(item=>item.id===id);if(entry)switchAuthorEditor(entry);}
+      else if(action==='author-cancel')cancelAuthorEditor();
+      else if(action==='author-submit')submitAuthor(state.authorEntries.find(item=>item.id===id));
+      else if(action==='author-withdraw')confirmAction('Отозвать публикацию?','Материал будет скрыт из журнала. Его можно будет отправить на новую проверку.','Отозвать согласие',async()=>{await api(authorApi+'/'+encodeURIComponent(id)+'/publication',{method:'DELETE',body:{expected_version:Number(button.dataset.version)}});notice('Согласие отозвано.');await loadAuthors();});
+      else if(['author-approve','author-reject','author-hide'].includes(action))reviewAuthor(state.authorEntries.find(item=>item.id===id),action.slice(7));
       else if(action==='share-profile'){const result=await api('/api/community/profile');if(result.public_visible&&result.profile.public_id===id)shareProfile(id);else notice('Профиль сейчас недоступен для публикации. Можно пригласить коллегу в сообщество.','warning');}
       else if(action==='invite-colleague'){const result=await api('/api/community/profile');shareProfile(result.public_visible?result.profile.public_id:null,true);}
       else if(action==='refresh-reputation')await loadReputation();
@@ -1107,6 +1227,7 @@
       else if(mode==='profile')await renderProfile();
       else if(mode==='portfolio')await renderPortfolio();
       else if(mode==='reputation')await renderReputation();
+      else if(mode==='author-articles')await renderAuthors();
       else if(mode==='connections')await renderConnections();
       else if(mode==='moderation')await renderModeration();
       else if(mode==='person')await renderPerson();
@@ -1123,7 +1244,7 @@
     $('#close-community-dialog').addEventListener('click',closeDialog);
     dialog.addEventListener('click',event=>{if(event.target.closest('[data-close-dialog]'))closeDialog();});
     dialog.addEventListener('cancel',event=>{if(dialogBusy)event.preventDefault();});
-    window.addEventListener('beforeunload',event=>{if(state.dirty||state.messageDirty||state.feedDirty||state.feedCommentDirty||state.discoveryDirty||state.portfolioDirty||state.reputationDirty){event.preventDefault();event.returnValue='';}});
+    window.addEventListener('beforeunload',event=>{if(state.dirty||state.messageDirty||state.feedDirty||state.feedCommentDirty||state.discoveryDirty||state.portfolioDirty||state.reputationDirty||state.authorDirty){event.preventDefault();event.returnValue='';}});
     try{state.user=(await api('/api/me')).user;}catch(error){if(error.status!==401){notice(error.message,'error');if(!['directory','person'].includes(mode)){content.innerHTML='<section class="panel"><h1>Аккаунт временно недоступен</h1><p>Обновите страницу, когда соединение восстановится.</p><button class="button secondary" type="button" id="retry-account">Повторить</button></section>';$('#retry-account').addEventListener('click',()=>location.reload());return;}}}
     updateIdentity();await renderMode();if(mode!=='feed')refreshFeedAlertBadge();
   }
