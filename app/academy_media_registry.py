@@ -86,7 +86,12 @@ def course_media_metadata(db, course_slug: str, draft: dict | None = None) -> li
         """SELECT id,kind,content_type,byte_count,state FROM academy_media
            WHERE course_slug=? ORDER BY created_at,id""", (course_slug,)
     ).fetchall()
-    return [dict(row) for row in rows if selected is None or row["id"] in selected]
+    # Expose only metadata from a completely verified batch bound to the
+    # current clean source. Reserved/partially written objects stay invisible.
+    from .academy_renditions import ready_metadata
+    copies = ready_metadata(db, course_slug)
+    return [{**dict(row), "renditions": copies.get(row["id"], [])}
+            for row in rows if selected is None or row["id"] in selected]
 
 
 def validate_media_references(db, course_slug: str, draft: dict) -> None:

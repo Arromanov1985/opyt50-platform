@@ -13,7 +13,7 @@ def test_postgres_schema_contains_core_and_release02_tables():
             "account_controls", "email_tokens", "email_outbox",
             "vacancy_updates", "vacancy_update_recipients", "community_read_state", "community_feed_entries",
             "community_feed_follows", "community_feed_alert_reads", "community_feed_reports", "community_opportunities",
-            "community_saved_entries", "community_discovery_preferences", "community_portfolio_entries", "community_recommendations", "community_group_memberships", "community_group_posts", "community_author_articles", "academy_courses", "academy_media"}.issubset(names)
+            "community_saved_entries", "community_discovery_preferences", "community_portfolio_entries", "community_recommendations", "community_group_memberships", "community_group_posts", "community_author_articles", "academy_courses", "academy_media", "academy_media_renditions"}.issubset(names)
 
 
 def test_no_sqlite_only_ddl_is_emitted():

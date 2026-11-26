@@ -106,6 +106,21 @@ COMMUNITY_DDL = (
     )""",
     "CREATE INDEX IF NOT EXISTS idx_academy_media_course ON academy_media(course_slug,created_at,id)",
     "CREATE INDEX IF NOT EXISTS idx_academy_media_state ON academy_media(state,updated_at)",
+    """CREATE TABLE IF NOT EXISTS academy_media_renditions (
+        id TEXT PRIMARY KEY,
+        media_id TEXT NOT NULL REFERENCES academy_media(id) ON DELETE RESTRICT,
+        source_sha256 TEXT NOT NULL CHECK(length(source_sha256)=64),
+        position INTEGER NOT NULL CHECK(position>=1 AND position<=30),
+        content_type TEXT NOT NULL CHECK(content_type IN ('image/jpeg','audio/mp4','video/mp4')),
+        byte_count INTEGER NOT NULL CHECK(byte_count>0 AND byte_count<=167772160),
+        sha256 TEXT NOT NULL CHECK(length(sha256)=64),
+        duration_ms INTEGER CHECK(duration_ms>0 AND duration_ms<=1801000),
+        object_key TEXT NOT NULL UNIQUE,
+        state TEXT NOT NULL DEFAULT 'reserved' CHECK(state IN ('reserved','ready','purge_pending')),
+        created_at TEXT NOT NULL, updated_at TEXT NOT NULL,
+        UNIQUE(media_id,position)
+    )""",
+    "CREATE INDEX IF NOT EXISTS idx_academy_renditions_state ON academy_media_renditions(state,updated_at)",
     """CREATE TABLE IF NOT EXISTS community_author_articles (
         id TEXT PRIMARY KEY,
         user_id INTEGER NOT NULL REFERENCES community_profiles(user_id) ON DELETE CASCADE,

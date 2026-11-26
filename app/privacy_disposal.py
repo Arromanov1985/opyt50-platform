@@ -48,6 +48,9 @@ COMMON_COUNTS = (
     ("academy_courses", "SELECT COUNT(*) FROM academy_courses WHERE owner_id=?", "id"),
     ("academy_media", """SELECT COUNT(*) FROM academy_media m
         JOIN academy_courses a ON a.slug=m.course_slug WHERE a.owner_id=?""", "id"),
+    ("academy_media_renditions", """SELECT COUNT(*) FROM academy_media_renditions r
+        JOIN academy_media m ON m.id=r.media_id JOIN academy_courses a ON a.slug=m.course_slug
+        WHERE a.owner_id=?""", "id"),
     ("community_author_articles", "SELECT COUNT(*) FROM community_author_articles WHERE user_id=?", "id"),
     ("community_group_memberships", "SELECT COUNT(*) FROM community_group_memberships WHERE user_id=?", "id"),
     ("community_group_posts", """SELECT COUNT(*) FROM community_group_posts g
