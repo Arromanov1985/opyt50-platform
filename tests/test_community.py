@@ -1371,7 +1371,8 @@ def test_portfolio_parent_withdrawal_privacy_and_no_draft_profile_leak(community
     request = mutate(first, "POST", "/api/account/privacy-requests", {"kind": "deletion"})
     assert request.status_code == 201, request.text
     assert visitor.get(public_url).status_code == 404
-    assert first.get(url).status_code == 403
+    assert first.get(url).status_code == 200
+    assert first.get(url).json()["restricted"] is True
     from app.privacy_disposal import impact_preview
     with database(app.state.db_path) as db:
         row = db.execute("SELECT request_key FROM privacy_rights_requests WHERE user_id=?",
@@ -1379,3 +1380,227 @@ def test_portfolio_parent_withdrawal_privacy_and_no_draft_profile_leak(community
         preview = impact_preview(db, row["request_key"])
         assert preview["counts"]["community_portfolio_entries"] == 2
         assert preview["automatic_deletion"] is False
+
+
+def reputation_payload(connection_id, **changes):
+    return {"connection_id": connection_id, "client_key": str(uuid4()),
+            "skill": "Обучение команды", "context": "Совместно готовили обучение новых сотрудников",
+            "body": "Коллега понятно объясняет процессы и помогает закреплять знания.",
+            "publish_consent": True, **changes}
+
+
+def offer_reputation(client, connection_id, **changes):
+    result = mutate(client, "POST", "/api/community/reputation", reputation_payload(connection_id, **changes))
+    assert result.status_code == 200, result.text
+    return result.json()["entry"]
+
+
+def accept_reputation(client, entry):
+    result = mutate(client, "POST", "/api/community/reputation/" + entry["id"] + "/respond",
+                    {"expected_version": entry["version"], "decision": "accept", "publish_consent": True})
+    assert result.status_code == 200, result.text
+    return result.json()["entry"]
+
+
+def approve_reputation(admin, entry):
+    result = mutate(admin, "PATCH", "/api/admin/community/reputation/" + entry["id"],
+                    {"expected_version": entry["version"], "decision": "approve"})
+    assert result.status_code == 200, result.text
+    return result.json()["entry"]
+
+
+def test_reputation_requires_accepted_connection_two_consents_and_moderation(community):
+    app, clients, ids = community
+    first, second, outsider, admin, visitor = (
+        clients[key] for key in ("first", "second", "outsider", "admin", "visitor"))
+    a = publish(clients, "first", public_name="Автор рекомендации")
+    b = publish(clients, "second", public_name="Коллега по проекту")
+    publish(clients, "outsider")
+    url = "/api/community/reputation"
+    queue = "/api/admin/community/reputation"
+    public = "/api/community/people/" + b["public_id"] + "/reputation"
+    page = "/people/" + b["public_id"]
+    connection = connect(clients, b["public_id"])
+    cid = connection["id"]
+    payload = reputation_payload(cid, body="Работает внимательно. <img src=x onerror=window.reputationXss=1>")
+    assert visitor.get(url).status_code == 401
+    assert clients["employer"].get(url).status_code == 403
+    assert outsider.get(queue).status_code == 403
+    assert mutate(first, "POST", url, payload).status_code == 409
+    assert mutate(second, "POST", "/api/community/connections/" + cid + "/respond",
+                  {"decision": "accept"}).status_code == 200
+    assert mutate(outsider, "POST", url, payload).status_code == 404
+    assert mutate(first, "POST", url, {**payload, "publish_consent": False}).status_code == 400
+    assert mutate(first, "POST", url, {**payload, "publish_consent": "true"}).status_code == 422
+    assert mutate(first, "POST", url, {**payload, "body": "Позвоните мне по номеру +79991234567"}).status_code == 422
+    response = mutate(first, "POST", url, payload)
+    assert response.status_code == 200, response.text
+    offer = response.json()["entry"]
+    assert offer["status"] == "offered"
+    assert mutate(first, "POST", url, payload).json()["entry"] == offer
+    assert mutate(first, "POST", url, reputation_payload(cid)).status_code == 409
+    assert outsider.get(url).json()["entries"] == []
+    assert second.get(url).json()["entries"][0]["id"] == offer["id"]
+    assert first.get(url + "?direction=outgoing").json()["entries"][0]["id"] == offer["id"]
+    assert admin.get(queue).json()["entries"] == []
+    assert visitor.get(public).json()["entries"] == []
+    assert offer["skill"] not in visitor.get(page).text
+    decision = {"expected_version": offer["version"], "decision": "accept", "publish_consent": True}
+    path = url + "/" + offer["id"]
+    assert mutate(first, "POST", path + "/respond", decision).status_code == 403
+    assert mutate(outsider, "POST", path + "/respond", decision).status_code == 404
+    assert mutate(second, "POST", path + "/respond", {**decision, "publish_consent": False}).status_code == 400
+    assert mutate(admin, "PATCH", queue + "/" + offer["id"],
+                  {"expected_version": offer["version"], "decision": "approve"}).status_code == 409
+    pending = accept_reputation(second, offer)
+    assert pending["status"] == "pending"
+    assert visitor.get(public).json()["entries"] == []
+    assert admin.get(queue).json()["entries"][0]["id"] == offer["id"]
+    approved = approve_reputation(admin, pending)
+    result = visitor.get(public)
+    assert result.status_code == 200 and "no-store" in result.headers["cache-control"]
+    entry = result.json()["entries"][0]
+    assert set(entry) == {"id", "skill", "context", "body", "author_public_id", "author_public_name"}
+    assert entry["author_public_id"] == a["public_id"]
+    html = visitor.get(page).text
+    assert offer["skill"] in html and "&lt;img" in html
+    assert "<img src=x onerror=window.reputationXss=1>" not in html
+    assert "first@community.example.invalid" not in html
+    assert first.get("/api/account/data-export").json()["sections"]["my_written_recommendations"][0]["id"] == offer["id"]
+    assert second.get("/api/account/data-export").json()["sections"]["my_received_recommendations"][0]["id"] == offer["id"]
+    assert outsider.get("/api/account/data-export").json()["sections"]["my_received_recommendations"] == []
+    assert mutate(outsider, "DELETE", path + "/publication",
+                  {"expected_version": approved["version"]}).status_code == 404
+    assert mutate(first, "DELETE", path + "/publication",
+                  {"expected_version": offer["version"]}).status_code == 409
+    withdrawn = mutate(first, "DELETE", path + "/publication", {"expected_version": approved["version"]})
+    assert withdrawn.status_code == 200, withdrawn.text
+    assert withdrawn.json()["entry"]["status"] == "hidden"
+    assert visitor.get(public).json()["entries"] == []
+    assert mutate(first, "POST", url, reputation_payload(cid)).status_code == 409
+    assert visitor.get(page).status_code == 200
+
+
+def test_reputation_decline_revision_block_and_profile_privacy(community):
+    app, clients, ids = community
+    first, second, outsider, admin, visitor = (
+        clients[key] for key in ("first", "second", "outsider", "admin", "visitor"))
+    a = publish(clients, "first", public_name="Автор первой рекомендации")
+    b = publish(clients, "second", public_name="Коллега по обмену опытом")
+    c = publish(clients, "outsider")
+    url = "/api/community/reputation"
+    queue = "/api/admin/community/reputation"
+    public = "/api/community/people/" + b["public_id"] + "/reputation"
+    cid = connect(clients, b["public_id"])["id"]
+    assert mutate(second, "POST", "/api/community/connections/" + cid + "/respond",
+                  {"decision": "accept"}).status_code == 200
+    offered = offer_reputation(first, cid)
+    pending = accept_reputation(second, offered)
+    rejected = mutate(admin, "PATCH", queue + "/" + pending["id"],
+                      {"expected_version": pending["version"], "decision": "reject",
+                       "reason": "Уточните описание совместной работы"})
+    assert rejected.status_code == 200, rejected.text
+    revised = offer_reputation(first, cid, skill="Организация обучения")
+    assert revised["id"] == offered["id"] and revised["status"] == "offered"
+    assert revised["recipient_consent_at"] is None
+    approved = approve_reputation(admin, accept_reputation(second, revised))
+    reverse = offer_reputation(second, cid)
+    declined = mutate(first, "POST", url + "/" + reverse["id"] + "/respond",
+                      {"expected_version": reverse["version"], "decision": "decline"})
+    assert declined.status_code == 200, declined.text
+    assert mutate(second, "POST", url, reputation_payload(cid)).status_code == 409
+    draft = save(first, public_name="Непубличное имя черновика")
+    assert visitor.get(public).json()["entries"] == []
+    assert second.get(url).json()["entries"][0]["counterpart_public_name"] is None
+    assert admin.get(queue + "?status=published").json()["entries"] == []
+    a = approve(admin, submit(first, draft))
+    assert visitor.get(public).json()["entries"][0]["id"] == approved["id"]
+    assert mutate(second, "POST", "/api/community/connections/" + cid + "/block").status_code == 200
+    assert visitor.get(public).json()["entries"] == []
+    assert second.get(url).json()["entries"][0]["status"] == "hidden"
+    other = connect(clients, c["public_id"])["id"]
+    assert mutate(outsider, "POST", "/api/community/connections/" + other + "/respond",
+                  {"decision": "accept"}).status_code == 200
+    second_record = approve_reputation(admin, accept_reputation(outsider, offer_reputation(first, other)))
+    other_public = "/api/community/people/" + c["public_id"] + "/reputation"
+    assert visitor.get(other_public).json()["entries"][0]["id"] == second_record["id"]
+    withdrawn = mutate(first, "DELETE", "/api/community/profile/publication",
+                       {"expected_version": a["version"]})
+    assert withdrawn.status_code == 200, withdrawn.text
+    assert visitor.get(other_public).json()["entries"] == []
+    assert outsider.get(url).json()["entries"][0]["status"] == "hidden"
+    a = approve(admin, submit(first, withdrawn.json()["profile"]))
+    assert visitor.get(other_public).json()["entries"] == []
+    request = mutate(first, "POST", "/api/account/privacy-requests", {"kind": "deletion"})
+    assert request.status_code == 201, request.text
+    assert first.get(url).status_code == 200
+    assert first.get(url).json()["restricted"] is True
+    from app.privacy_disposal import impact_preview
+    with database(app.state.db_path) as db:
+        row = db.execute("SELECT request_key FROM privacy_rights_requests WHERE user_id=?",
+                         (ids["first"],)).fetchone()
+        preview = impact_preview(db, row["request_key"])
+        assert preview["counts"]["community_recommendations"] == 3
+        assert preview["automatic_deletion"] is False
+
+
+def test_recommendation_and_portfolio_withdrawal_remain_available_under_privacy_restriction(community):
+    app, clients, ids = community
+    first, second, admin, visitor = (clients[k] for k in ("first", "second", "admin", "visitor"))
+    a = publish(clients, "first")
+    b = publish(clients, "second", public_name="Коллега")
+    cid = connect(clients, b["public_id"])["id"]
+    assert mutate(second, "POST", "/api/community/connections/" + cid + "/respond",
+                  {"decision": "accept"}).status_code == 200
+    entry = approve_reputation(admin, accept_reputation(second, offer_reputation(first, cid)))
+    portfolio = approve_portfolio(admin, submit_portfolio(first, create_portfolio(first)))
+    public = "/api/community/people/" + b["public_id"] + "/reputation"
+    assert visitor.get(public).json()["entries"][0]["id"] == entry["id"]
+    request = mutate(first, "POST", "/api/account/privacy-requests", {"kind": "stop_processing"})
+    assert request.status_code == 201, request.text
+    assert visitor.get(public).json()["entries"] == []
+    assert mutate(first, "POST", "/api/community/reputation", reputation_payload(cid)).status_code == 409
+    history = first.get("/api/community/reputation?direction=outgoing")
+    assert history.status_code == 200 and history.json()["restricted"] is True
+    assert history.json()["entries"][0]["id"] == entry["id"]
+    assert history.json()["entries"][0]["version"] == entry["version"]
+    own = first.get("/api/community/portfolio")
+    assert own.status_code == 200 and own.json()["restricted"] is True
+    assert own.json()["entries"][0]["id"] == portfolio["id"]
+    withdrawn = mutate(first, "DELETE", "/api/community/reputation/" + entry["id"] + "/publication",
+                       {"expected_version": entry["version"]})
+    assert withdrawn.status_code == 200, withdrawn.text
+    assert withdrawn.json()["entry"]["status"] == "hidden"
+    assert withdrawn.json()["entry"]["author_consent_at"] is None
+    assert withdrawn.json()["entry"]["recipient_consent_at"] is None
+    hidden = mutate(first, "DELETE", "/api/community/portfolio/" + portfolio["id"] + "/publication",
+                    {"expected_version": portfolio["version"]})
+    assert hidden.status_code == 200, hidden.text
+    assert hidden.json()["entry"]["consent_at"] is None
+    # Simulate resolution of the privacy request in the isolated DB. Neither
+    # withdrawn publication may reappear when the temporary restriction ends.
+    with database(app.state.db_path) as db:
+        db.execute("UPDATE privacy_rights_requests SET status='declined' WHERE user_id=?", (ids["first"],))
+    assert visitor.get(public).json()["entries"] == []
+    assert visitor.get("/api/community/people/" + a["public_id"] + "/portfolio").json()["entries"] == []
+
+
+def test_profile_share_visibility_matches_public_routes_under_restriction(community):
+    app, clients, ids = community
+    first, visitor = clients["first"], clients["visitor"]
+    own = "/api/community/profile"
+    assert first.get(own).json()["public_visible"] is False
+    profile = publish(clients, "first")
+    public = "/people/" + profile["public_id"]
+    assert first.get(own).json()["public_visible"] is True
+    assert visitor.get(public).status_code == 200
+    assert mutate(first, "POST", "/api/account/privacy-requests", {"kind": "stop_processing"}).status_code == 201
+    restricted = first.get(own).json()
+    assert restricted["profile"]["status"] == "published"
+    assert restricted["public_visible"] is False
+    assert visitor.get(public).status_code == 404
+    with database(app.state.db_path) as db:
+        db.execute("UPDATE privacy_rights_requests SET status='declined' WHERE user_id=?", (ids["first"],))
+    assert first.get(own).json()["public_visible"] is True
+    assert visitor.get(public).status_code == 200
+

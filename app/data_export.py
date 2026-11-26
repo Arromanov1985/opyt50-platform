@@ -116,6 +116,18 @@ def build_personal_data_snapshot(db, user_id: int) -> dict:
         )
     if role == "candidate":
         section(
+            "my_written_recommendations",
+            """SELECT id,connection_id,skill,context,body,status,version,author_consent_at,
+                      recipient_consent_at,consent_version,moderation_reason,created_at,updated_at,published_at
+               FROM community_recommendations WHERE author_id=? ORDER BY created_at DESC,id DESC""",
+        )
+        section(
+            "my_received_recommendations",
+            """SELECT id,connection_id,skill,context,body,status,version,author_consent_at,
+                      recipient_consent_at,consent_version,moderation_reason,created_at,updated_at,published_at
+               FROM community_recommendations WHERE recipient_id=? ORDER BY created_at DESC,id DESC""",
+        )
+        section(
             "my_community_portfolio",
             """SELECT id,kind,title,period,contribution,result,status,version,consent_at,consent_version,
                       moderation_reason,created_at,updated_at,published_at

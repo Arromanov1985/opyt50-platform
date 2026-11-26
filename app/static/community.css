@@ -139,3 +139,4 @@
 @media(max-width:760px){.portfolio-public-grid,.portfolio-list{grid-template-columns:1fr}.person-portfolio{grid-column:auto}}
 @media(max-width:480px){.portfolio-intro .actions,.portfolio-card .actions,.portfolio-editor .actions{display:grid;grid-template-columns:1fr}.portfolio-intro .button,.portfolio-card .button,.portfolio-editor .button{width:100%}}
 .comfortable-view .portfolio-public-grid,.comfortable-view .portfolio-list{grid-template-columns:1fr}
+.reputation-toolbar{margin-top:24px}.reputation-toolbar+.portfolio-list{margin-top:12px}.status-badge.offered{background:#f5ecdc;color:#795019}.portfolio-card .actions a.button{min-height:44px}

@@ -32,6 +32,10 @@ COMMUNITY_PRIVATE_ROUTES = {
     "connections": "/api/community/connections",
     "moderation_profiles": "/api/admin/community/profiles",
     "moderation_reports": "/api/admin/community/reports",
+    "portfolio": "/api/community/portfolio",
+    "reputation": "/api/community/reputation",
+    "moderation_portfolio": "/api/admin/community/portfolio",
+    "moderation_reputation": "/api/admin/community/reputation",
 }
 
 

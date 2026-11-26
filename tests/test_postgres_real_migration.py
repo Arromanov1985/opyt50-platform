@@ -86,6 +86,26 @@ def sample(tmp_path):
         )
         conn.execute("INSERT INTO community_opportunities VALUES('z-parent','offer','online','regular')")
         conn.execute(
+            "INSERT INTO users(id,email,password_hash,role,name) VALUES(6,?,?,?,?)",
+            ("peer@example.invalid", "test-hash", "candidate", "Peer"),
+        )
+        conn.execute(
+            """INSERT INTO community_profiles(user_id,public_id,public_name,headline,created_at,updated_at)
+               VALUES(6,'peer-profile','Test peer','Test headline','2026-01-01','2026-01-01')"""
+        )
+        conn.execute(
+            """INSERT INTO community_connections(id,sender_id,recipient_id,pair_low,pair_high,
+               purpose,status,created_at,updated_at)
+               VALUES('reputation-thread',1,6,1,6,'exchange','accepted','2026-01-01','2026-01-01')"""
+        )
+        conn.execute(
+            """INSERT INTO community_recommendations(id,connection_id,author_id,recipient_id,
+               client_key,skill,context,body,status,author_consent_at,recipient_consent_at,consent_version,
+               created_at,updated_at) VALUES('recommendation-1','reputation-thread',1,6,'rec-key',
+               'Test skill','Shared project','Test recommendation','pending','2026-01-01','2026-01-02',
+               'test-consent','2026-01-01','2026-01-02')"""
+        )
+        conn.execute(
             """INSERT INTO community_portfolio_entries(id,user_id,client_key,kind,title,period,
                contribution,result,created_at,updated_at)
                VALUES('portfolio-1',1,'portfolio-client','project','Test project','2020–2024',
@@ -107,10 +127,11 @@ def test_import_preserves_ids_consents_and_relations(target, sample):
     import psycopg
     before = sample.read_bytes()
     counts = migrate(str(sample), target)
-    assert counts["users"] == 2
+    assert counts["users"] == 3
     assert counts["job_applications"] == 1
     assert counts["candidate_saved_searches"] == 1
-    assert counts["community_connections"] == 1
+    assert counts["community_connections"] == 2
+    assert counts["community_recommendations"] == 1
     assert counts["community_messages"] == 1
     assert counts["community_read_state"] == 1
     assert counts["community_feed_entries"] == 2
@@ -139,6 +160,9 @@ def test_import_preserves_ids_consents_and_relations(target, sample):
         assert conn.execute("SELECT user_id,keyword,focus FROM community_discovery_preferences").fetchone() == (2, "Test topic", "mentoring")
         assert conn.execute("SELECT id,user_id,kind,title FROM community_portfolio_entries").fetchone() == (
             "portfolio-1", 1, "project", "Test project")
+        assert conn.execute(
+            "SELECT id,author_id,recipient_id,author_consent_at,recipient_consent_at FROM community_recommendations"
+        ).fetchone() == ("recommendation-1", 1, 6, "2026-01-01", "2026-01-02")
     assert sample.read_bytes() == before
 
 
@@ -148,7 +172,7 @@ def test_nonempty_target_is_rejected(target, sample):
     with pytest.raises(ValueError, match="not empty"):
         migrate(str(sample), target)
     with psycopg.connect(target) as conn:
-        assert conn.execute("SELECT COUNT(*) FROM users").fetchone()[0] == 2
+        assert conn.execute("SELECT COUNT(*) FROM users").fetchone()[0] == 3
 
 
 def test_production_cutover_preflight_is_read_only_and_detects_nonempty_target(target, sample):

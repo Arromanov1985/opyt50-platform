@@ -104,6 +104,33 @@ COMMUNITY_DDL = (
         CHECK(pair_low<pair_high),
         CHECK(sender_id<>recipient_id)
     )""",
+    """CREATE TABLE IF NOT EXISTS community_recommendations (
+        id TEXT PRIMARY KEY,
+        connection_id TEXT NOT NULL REFERENCES community_connections(id) ON DELETE CASCADE,
+        author_id INTEGER NOT NULL REFERENCES community_profiles(user_id) ON DELETE CASCADE,
+        recipient_id INTEGER NOT NULL REFERENCES community_profiles(user_id) ON DELETE CASCADE,
+        client_key TEXT NOT NULL,
+        skill TEXT NOT NULL,
+        context TEXT NOT NULL,
+        body TEXT NOT NULL,
+        status TEXT NOT NULL CHECK(status IN ('offered','pending','published','rejected','hidden')),
+        version INTEGER NOT NULL DEFAULT 1 CHECK(version>=1),
+        author_consent_at TEXT,
+        recipient_consent_at TEXT,
+        consent_version TEXT,
+        moderation_reason TEXT NOT NULL DEFAULT '',
+        reviewed_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+        reviewed_at TEXT,
+        published_at TEXT,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        UNIQUE(author_id,recipient_id),
+        UNIQUE(author_id,client_key),
+        CHECK(author_id<>recipient_id)
+    )""",
+    "CREATE INDEX IF NOT EXISTS idx_community_reputation_recipient ON community_recommendations(recipient_id,status,updated_at,id)",
+    "CREATE INDEX IF NOT EXISTS idx_community_reputation_author ON community_recommendations(author_id,updated_at,id)",
+    "CREATE INDEX IF NOT EXISTS idx_community_reputation_queue ON community_recommendations(status,updated_at,id)",
     """CREATE TABLE IF NOT EXISTS community_messages (
         id TEXT PRIMARY KEY,
         connection_id TEXT NOT NULL REFERENCES community_connections(id) ON DELETE CASCADE,
@@ -658,7 +685,8 @@ def install_community_routes(app) -> None:
     @app.get("/api/community/profile")
     def own_profile(user: dict = Depends(community_user), db=Depends(get_connection)):
         allowed(user, "candidate")
-        return {"profile": _own_profile(_profile(db, user["id"]))}
+        return {"profile": _own_profile(_profile(db, user["id"])),
+                "public_visible": _is_published(db, user["id"])}
 
     @app.put("/api/community/profile")
     def save_profile(data: ProfileInput, user: dict = Depends(community_user), db=Depends(get_connection)):
@@ -739,6 +767,8 @@ def install_community_routes(app) -> None:
                WHERE user_id=? AND status IN ('pending','published')""",
             (_now(), user["id"]),
         )
+        from .community_reputation import revoke_profile_recommendations
+        revoke_profile_recommendations(db, user["id"])
         _profile_event(db, updated, user["id"], "consent_withdrawn")
         return _committed(db, {"profile": _own_profile(updated)})
 
@@ -956,6 +986,8 @@ def install_community_routes(app) -> None:
         if row["status"] != "blocked":
             db.execute("UPDATE community_connections SET status='blocked',blocked_by=?,updated_at=? WHERE id=?",
                        (user["id"], _now(), connection_id))
+            from .community_reputation import revoke_connection_recommendations
+            revoke_connection_recommendations(db, connection_id)
         return _committed(db, {"connection": _connection_dto(db, _connection(db, connection_id, user["id"]), user["id"])})
 
     def readable_thread(db, connection_id: str, user_id: int):
@@ -1092,3 +1124,6 @@ def install_community_routes(app) -> None:
 
     from .community_portfolio import install_portfolio_routes
     install_portfolio_routes(app, community_user, throttle, get_connection, allowed, record_security_event)
+
+    from .community_reputation import install_reputation_routes
+    install_reputation_routes(app, community_user, throttle, get_connection, allowed, record_security_event)

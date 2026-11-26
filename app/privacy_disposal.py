@@ -65,6 +65,7 @@ COMMON_COUNTS = (
         JOIN community_feed_entries f ON f.id=r.entry_id
         LEFT JOIN community_feed_entries root ON root.id=f.parent_id
         WHERE ? IN (f.author_id,root.author_id)""", "id"),
+    ("community_recommendations", "SELECT COUNT(*) FROM community_recommendations WHERE ? IN (author_id,recipient_id)", "id"),
     ("community_portfolio_entries", "SELECT COUNT(*) FROM community_portfolio_entries WHERE user_id=?", "id"),
     ("community_professional_profile", "SELECT COUNT(*) FROM community_profiles WHERE user_id=?", "id"),
     ("workflow_mail_awaiting", """SELECT COUNT(*) FROM email_delivery_jobs q
@@ -138,6 +139,8 @@ def impact_preview(db, request_key: str) -> dict | None:
         risks.append("Вакансии содержат отклики третьих лиц: удалить их вместе с работодателем нельзя без оценки")
     if any(counts.get(key, 0) for key in ("community_feed_followers_affected", "community_feed_linked_alert_reads", "community_feed_linked_reports", "community_saved_entries_affected")):
         risks.append("Проверить связанные подписки, сохранённые записи, отметки уведомлений и жалобы других участников")
+    if counts.get("community_recommendations", 0):
+        risks.append("Рекомендации затрагивают согласия и данные двух участников: отдельно оценить права второй стороны")
     if counts.get("community_feed_linked_comments", 0):
         risks.append("Удаление публикаций затронет комментарии других участников: отдельно оцените их права и сохранность")
     if counts.get("applications", 0):
