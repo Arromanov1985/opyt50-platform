@@ -25,7 +25,7 @@ document.addEventListener('DOMContentLoaded', () => {
   const source = path === '/journal'
     ? 'journal'
     : path.startsWith('/journal/paths/') ? 'path:' + path.slice('/journal/paths/'.length)
-    : path === '/journal/paths' ? ''
+    : path === '/journal/paths' || path.startsWith('/journal/guide/') ? ''
     : path.startsWith('/journal/') ? path.slice('/journal/'.length)
     : /^\/vacancies\/[1-9][0-9]*$/.test(path) ? 'vacancy:' + path.slice('/vacancies/'.length)
     : /^\/(?:companies|employers)\/[1-9][0-9]*$/.test(path)

@@ -10,7 +10,8 @@ import json
 import re
 import sqlite3
 import uuid
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
+from typing import Literal
 
 from fastapi import Depends, FastAPI, HTTPException
 from fastapi.responses import FileResponse
@@ -53,6 +54,11 @@ class ArticleInput(BaseModel):
     read: str = Field(min_length=3, max_length=30)
     body_text: str = Field(min_length=200, max_length=20000)
     version: int = Field(default=0, ge=0)
+    content_type: Literal['article', 'news', 'learning', 'event'] = 'article'
+    source_name: str = Field(default='', max_length=180)
+    source_url: str = Field(default='', max_length=1500)
+    event_date: date | None = None
+    event_format: Literal['online', 'offline', 'hybrid'] | None = None
 
 
 class ArticleCreate(ArticleInput):
@@ -127,7 +133,16 @@ def parse_sections(value: str) -> list[dict]:
 def normalize_article(slug: str, data: ArticleInput) -> dict:
     if not SLUG_PATTERN.fullmatch(slug) or slug in {"journal", "paths"}:
         raise HTTPException(422, "Некорректный адрес статьи")
-    return {
+    from .journal_guide import source_url
+    name = data.source_name.strip()
+    url = source_url(data.source_url)
+    if data.content_type == "news" and (not name or not url):
+        raise HTTPException(422, "Для новости укажите название и HTTPS-ссылку на источник")
+    if data.content_type == "event" and (not data.event_date or not data.event_format or not name):
+        raise HTTPException(422, "Для мероприятия укажите дату, формат и организатора")
+    if data.content_type != "event" and (data.event_date or data.event_format):
+        raise HTTPException(422, "Дата и формат допустимы только для мероприятия")
+    result = {
         "slug": slug,
         "title": data.title.strip(),
         "description": data.description.strip(),
@@ -135,6 +150,16 @@ def normalize_article(slug: str, data: ArticleInput) -> dict:
         "read": data.read.strip(),
         "sections": parse_sections(data.body_text),
     }
+    if data.content_type != "article":
+        result["content_type"] = data.content_type
+    if name:
+        result["source_name"] = name
+    if url:
+        result["source_url"] = url
+    if data.event_date:
+        result["event_date"] = data.event_date.isoformat()
+        result["event_format"] = data.event_format
+    return result
 
 
 def init_journal(path: str) -> None:
@@ -195,6 +220,7 @@ def _summary(row: dict) -> dict:
     return {
         "slug": row["slug"], "title": draft["title"],
         "category": draft["category"], "status": row["status"],
+        "content_type": draft.get("content_type", "article"),
         "version": row["version"], "updated_at": row["updated_at"],
         "published_at": row["published_at"],
         "has_changes": row["published_json"] != row["draft_json"],
@@ -241,6 +267,8 @@ def install_journal_admin_routes(app: FastAPI) -> None:
         return {"article": {
             **_summary(row), "description": article["description"], "read": article["read"],
             "body_text": sections_to_text(article["sections"]),
+            "source_name": article.get("source_name", ""), "source_url": article.get("source_url", ""),
+            "event_date": article.get("event_date"), "event_format": article.get("event_format"),
         }}
 
     @app.post("/api/admin/journal", status_code=201)
