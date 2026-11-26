@@ -62,7 +62,8 @@ def test_cms_admin_auth_seed_and_assets(tmp_path: Path):
         assert panel.status_code == 200
         assert panel.headers["cache-control"] == "no-store"
         assert 'id="article-form"' in panel.text
-        assert 'href="/static/journal-admin.css?v=1"' in panel.text
+        assert 'href="/static/journal-admin.css?v=2"' in panel.text
+        assert 'id="article-type"' in panel.text
         result = editor.get("/api/admin/journal")
         assert result.status_code == 200
         assert len(result.json()["articles"]) == 10
@@ -169,3 +170,79 @@ def test_plain_text_validation_and_escaped_public_render(tmp_path: Path):
         assert "&lt;img src=x" in public_page.text
         assert "editor@cms.example.invalid" not in public_page.text
         assert public.get("/api/public/journal/highlights").status_code == 200
+
+
+def test_editorial_navigator_news_learning_events_use_only_published_versions(tmp_path):
+    import hashlib
+
+    app = create_app(str(tmp_path / "editorial-guide.db"))
+    with TestClient(app) as public, TestClient(app) as editor:
+        setup_admin(app, editor)
+        guide = "/journal/guide/"
+        overview = public.get(guide + "overview")
+        assert overview.status_code == 200
+        assert "Подтверждённых анонсов пока нет" in overview.text
+        assert "Цифровые навыки для работы" in public.get(guide + "learning").text
+        assert public.get(guide + "unknown").status_code == 404
+        assert public.post(guide + "news").status_code == 405
+        assert "noindex" in overview.headers["x-robots-tag"]
+        assert public.get(guide + "events").headers["cache-control"] == "no-store"
+        news = {**draft("test-editorial-news"), "content_type": "news",
+                "title": "Вымышленная новость для изолированного теста"}
+        assert request(editor, "POST", "/api/admin/journal", news).status_code == 422
+        news.update(source_name="Тестовый первоисточник", source_url="javascript:alert(1)")
+        assert request(editor, "POST", "/api/admin/journal", news).status_code == 422
+        news["source_url"] = "https://name:password@example.invalid/news"
+        assert request(editor, "POST", "/api/admin/journal", news).status_code == 422
+        news["source_url"] = "https://example.invalid/news"
+        assert request(editor, "POST", "/api/admin/journal", news).status_code == 201
+        assert news["title"] not in public.get(guide + "news").text
+        assert request(editor, "POST", "/api/admin/journal/test-editorial-news/publish",
+                       {"version": 1}).status_code == 200
+        assert news["title"] in public.get(guide + "news").text
+        article = public.get("/journal/test-editorial-news")
+        assert 'href="https://example.invalid/news"' in article.text
+        assert 'rel="noopener noreferrer"' in article.text
+        assert "Тестовый первоисточник" in article.text
+        assert request(editor, "PUT", "/api/admin/journal/test-editorial-news",
+                       {**news, "version": 2, "title": "Черновик новой редакции новости"}).status_code == 200
+        assert "Черновик новой редакции новости" not in public.get(guide + "news").text
+
+        event = {**draft("test-editorial-event"), "content_type": "event",
+                 "title": "Тестовый учебный вебинар", "source_name": "Вымышленный организатор"}
+        assert request(editor, "POST", "/api/admin/journal", event).status_code == 422
+        event.update(event_date="2027-02-30", event_format="online")
+        assert request(editor, "POST", "/api/admin/journal", event).status_code == 422
+        event["event_date"] = "2027-02-15"
+        assert request(editor, "POST", "/api/admin/journal", event).status_code == 201
+        assert event["title"] not in public.get(guide + "events").text
+        assert request(editor, "POST", "/api/admin/journal/test-editorial-event/publish",
+                       {"version": 1}).status_code == 200
+        events = public.get(guide + "events").text
+        assert event["title"] in events and "15.02.2027" in events and "Онлайн" in events
+        assert "Вымышленный организатор" in events
+        assert event["title"] not in public.get(guide + "news").text
+        detail = editor.get("/api/admin/journal/test-editorial-event").json()["article"]
+        assert detail["content_type"] == "event" and detail["event_date"] == "2027-02-15"
+        assert detail["event_format"] == "online"
+
+        learning = {**draft("test-editorial-lesson"), "content_type": "learning",
+                    "title": "Тестовый материал по обучению"}
+        assert request(editor, "POST", "/api/admin/journal", learning).status_code == 201
+        assert request(editor, "POST", "/api/admin/journal/test-editorial-lesson/publish",
+                       {"version": 1}).status_code == 200
+        assert learning["title"] in public.get(guide + "learning").text
+        assert learning["title"] not in public.get(guide + "events").text
+        assert request(editor, "POST", "/api/admin/journal/test-editorial-event/hide",
+                       {"version": 2}).status_code == 200
+        assert event["title"] not in public.get(guide + "events").text
+        assert "Подтверждённых анонсов пока нет" in public.get(guide + "events").text
+        manifest = public.get("/api/public/journal/manifest").json()["pages"]
+        sitemap = public.get("/sitemap.xml").text
+        for section in ("overview", "news", "learning", "events"):
+            path = guide + section
+            assert manifest[path] == hashlib.sha256(public.get(path).content).hexdigest()
+            assert "https://stazhno.ru" + path in sitemap
+        assert "test-editorial-event" not in sitemap
+        assert "editor@cms.example.invalid" not in public.get(guide + "overview").text
+

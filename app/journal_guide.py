@@ -59,9 +59,9 @@ def article_type(article: dict) -> str:
 
 def editorial_facts(article: dict) -> str:
     kind = article_type(article)
-    if kind == "article":
+    if kind == "article" and not (article.get("source_name") or article.get("source_url")):
         return ""
-    labels = {"news": "Отраслевая новость", "learning": "Учебный материал", "event": "Анонс мероприятия"}
+    labels = {"article": "Экспертная статья", "news": "Отраслевая новость", "learning": "Учебный материал", "event": "Анонс мероприятия"}
     if kind not in labels:
         return ""
     facts = ['<p><strong>' + labels[kind] + '</strong></p>']

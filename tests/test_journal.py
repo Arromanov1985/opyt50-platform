@@ -104,6 +104,7 @@ def test_public_sitemap_lists_only_public_editorial_pages(tmp_path):
             "https://stazhno.ru/employers",
             "https://stazhno.ru/journal",
             *["https://stazhno.ru/journal/" + slug for slug in SLUGS],
+            *["https://stazhno.ru/journal/guide/" + section for section in ("overview", "news", "learning", "events")],
             "https://stazhno.ru/journal/paths",
             *["https://stazhno.ru/journal/paths/" + slug for slug in
               ("nayti-rabotu", "novye-navyki", "delitsya-opytom")],

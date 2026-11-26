@@ -146,12 +146,14 @@ def test_deployed_journal_check_requires_exact_html_and_get_only(monkeypatch):
     from urllib.parse import urlsplit
     from app.journal import ARTICLES, journal_index, journal_article
     from app.journal_paths import PATHS, path_detail, paths_index
+    from app.journal_guide import SECTIONS, guide_page
 
     pages = {"/journal": journal_index().body}
     pages.update({
         "/journal/" + article["slug"]: journal_article(article["slug"]).body
         for article in ARTICLES
     })
+    pages.update({"/journal/guide/" + section: guide_page(section, ARTICLES).body for section in SECTIONS})
     pages["/journal/paths"] = paths_index(ARTICLES).body
     pages.update({"/journal/paths/" + path["slug"]: path_detail(path["slug"], ARTICLES).body
                   for path in PATHS})
@@ -179,7 +181,7 @@ def test_deployed_journal_check_requires_exact_html_and_get_only(monkeypatch):
     assert good["result"] == "unverified"
     assert good["catalog_source"] == "seed-catalog"
     assert good["renderer"]["result"] == "unverified"
-    assert len(good["pages"]) == len(ARTICLES) + 2 + len(PATHS)
+    assert len(good["pages"]) == len(ARTICLES) + 2 + len(PATHS) + len(SECTIONS)
     assert all(item["result"] == "exact-match" for item in good["pages"].values())
     assert len(requests) == len(pages) + 1  # public manifest plus all page GETs
 
@@ -194,6 +196,7 @@ def published_journal_fixture(articles=None):
     import hashlib
     from app.journal import ARTICLES, journal_index, journal_article, journal_renderer_sha256
     from app.journal_paths import path_detail, paths_index, visible_paths
+    from app.journal_guide import SECTIONS, guide_page
 
     if articles is None:
         articles = ARTICLES
@@ -203,6 +206,7 @@ def published_journal_fixture(articles=None):
                    for article in articles})
     bodies.update({"/journal/paths/" + path["slug"]: path_detail(path["slug"], articles).body
                    for path in visible_paths(articles)})
+    bodies.update({"/journal/guide/" + section: guide_page(section, articles).body for section in SECTIONS})
     manifest = {"pages": {path: hashlib.sha256(body).hexdigest() for path, body in bodies.items()},
                 "renderer_sha256": journal_renderer_sha256()}
     return bodies, manifest
@@ -424,3 +428,14 @@ def test_private_community_probe_never_reads_response_content_or_uses_session(mo
     assert probe.probe_private_route(route)["result"] == "unexpected-public-access"
     assert len(requests) == 1
     assert requests[0].full_url == probe.BASE + route
+
+
+def test_missing_editorial_guide_page_never_confirms_release(monkeypatch):
+    bodies, manifest = published_journal_fixture()
+    del manifest["pages"]["/journal/guide/events"]
+    requests = install_journal_opener(monkeypatch, bodies, manifest)
+    result = probe.probe_public_journal_pages()
+    assert result["result"] != "exact-match"
+    assert result["manifest_result"] == "unavailable-or-invalid"
+    assert "/journal/guide/events" in requests
+
