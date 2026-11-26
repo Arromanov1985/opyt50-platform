@@ -158,7 +158,7 @@ def _is_editor(user, row):
 def _public_visible(db, row):
     owner = row["owner_id"]
     return bool(row["published_json"]) and (owner is None or (_is_published(db, owner) and
-        row["published_profile_version"] == _profile(db, owner)["content_version"]))
+        row["published_consent_at"] is not None and row["published_profile_version"] == _profile(db, owner)["content_version"]))
 
 
 def _review_visible(db, row):
@@ -175,7 +175,7 @@ def public_courses(db):
            WHERE a.published_json IS NOT NULL AND
              (a.owner_id IS NULL OR (p.status='published' AND p.consent_at IS NOT NULL
               AND p.consent_content_version=p.content_version AND p.reviewed_content_version=p.content_version
-              AND a.published_profile_version=p.content_version AND u.role='candidate'
+              AND a.published_consent_at IS NOT NULL AND a.published_profile_version=p.content_version AND u.role='candidate'
               AND COALESCE(ac.status,'active')='active' AND NOT EXISTS (
                 SELECT 1 FROM privacy_rights_requests pr WHERE pr.user_id=a.owner_id
                 AND pr.kind IN ('deletion','stop_processing') AND pr.status IN ('received','in_review','completed'))))
@@ -198,7 +198,7 @@ def public_catalog(request: Request):
 
 def revoke_courses(db, owner):
     db.execute(
-        """UPDATE academy_courses SET published_json=NULL,published_profile_version=NULL,
+        """UPDATE academy_courses SET published_json=NULL,published_profile_version=NULL,published_consent_at=NULL,
            state='hidden',consent_at=NULL,pending_profile_version=NULL,published_at=NULL,
            version=version+1,updated_at=? WHERE owner_id=? AND (published_json IS NOT NULL OR state='pending')""",
         (_now(), owner),
@@ -265,7 +265,7 @@ def install_builder_routes(app, community_user, throttle, get_connection, allowe
                        AND pr.kind IN ('deletion','stop_processing') AND pr.status IN ('received','in_review','completed'))
                      AND ((?='review' AND a.state='pending' AND a.consent_at IS NOT NULL
                            AND a.pending_profile_version=p.content_version)
-                       OR (?='published' AND a.published_json IS NOT NULL AND a.published_profile_version=p.content_version))
+                       OR (?='published' AND a.published_json IS NOT NULL AND a.published_consent_at IS NOT NULL AND a.published_profile_version=p.content_version))
                    ORDER BY a.updated_at DESC,a.slug LIMIT ? OFFSET ?""",
                 (view,view,PAGE_SIZE+1,(page-1)*PAGE_SIZE),
             ).fetchall()
@@ -345,9 +345,9 @@ def install_builder_routes(app, community_user, throttle, get_connection, allowe
         now=_now()
         result=db.execute(
             """UPDATE academy_courses SET published_json=?,state='published',version=version+1,
-               published_profile_version=?,pending_profile_version=NULL,reviewed_by=?,
+               published_profile_version=?,published_consent_at=?,pending_profile_version=NULL,reviewed_by=?,
                published_at=?,updated_at=?,moderation_reason='' WHERE slug=? AND version=?""",
-            (_encoded(payload),profile_version,actor,now,now,row["slug"],row["version"]),
+            (_encoded(payload),profile_version,row["consent_at"],actor,now,now,row["slug"],row["version"]),
         )
         if result.rowcount!=1:
             raise HTTPException(409,"Курс изменился в другой вкладке")
@@ -393,7 +393,7 @@ def install_builder_routes(app, community_user, throttle, get_connection, allowe
         row=_row(db,slug)
         _version(row,data.expected_version)
         result=db.execute(
-            """UPDATE academy_courses SET published_json=NULL,published_profile_version=NULL,state='hidden',
+            """UPDATE academy_courses SET published_json=NULL,published_profile_version=NULL,published_consent_at=NULL,state='hidden',
                consent_at=NULL,pending_profile_version=NULL,published_at=NULL,version=version+1,updated_at=?
                WHERE slug=? AND version=?""",(_now(),slug,data.expected_version),
         )
@@ -429,7 +429,7 @@ def install_builder_routes(app, community_user, throttle, get_connection, allowe
                 if not _public_visible(db,row) and not _review_visible(db,row):
                     raise HTTPException(409,"Курс уже недоступен")
                 result=db.execute(
-                    """UPDATE academy_courses SET state='hidden',published_json=NULL,published_profile_version=NULL,
+                    """UPDATE academy_courses SET state='hidden',published_json=NULL,published_profile_version=NULL,published_consent_at=NULL,
                        consent_at=NULL,pending_profile_version=NULL,published_at=NULL,moderation_reason=?,
                        reviewed_by=?,updated_at=?,version=version+1 WHERE slug=? AND version=?""",
                     (data.reason,user["id"],_now(),slug,data.expected_version),

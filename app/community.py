@@ -84,7 +84,7 @@ COMMUNITY_DDL = (
         published_json TEXT,
         state TEXT NOT NULL DEFAULT 'draft' CHECK(state IN ('draft','pending','published','rejected','hidden')),
         version INTEGER NOT NULL DEFAULT 1 CHECK(version>=1),
-        consent_at TEXT, pending_profile_version INTEGER, published_profile_version INTEGER,
+        consent_at TEXT, pending_profile_version INTEGER, published_profile_version INTEGER, published_consent_at TEXT,
         reviewed_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
         moderation_reason TEXT NOT NULL DEFAULT '',
         created_at TEXT NOT NULL, updated_at TEXT NOT NULL, published_at TEXT

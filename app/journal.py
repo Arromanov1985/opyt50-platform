@@ -254,7 +254,7 @@ def journal_highlights(request: Request) -> dict:
 def journal_renderer_sha256() -> str:
     """Identify the two fixed renderers without exposing code or local paths."""
     digest = hashlib.sha256(b"stazhno-journal-renderer-v1\0")
-    for name in ("journal.py", "journal_paths.py", "journal_guide.py", "community_author.py", "academy.py", "academy_content.py", "public_discovery.py", "vacancy_pages.py"):
+    for name in ("journal.py", "journal_paths.py", "journal_guide.py", "community_author.py", "academy.py", "academy_content.py", "academy_builder.py", "public_discovery.py", "vacancy_pages.py"):
         payload = Path(__file__).with_name(name).read_bytes()
         digest.update(name.encode("ascii") + b"\0" + len(payload).to_bytes(8, "big") + payload)
     return digest.hexdigest()
@@ -274,7 +274,9 @@ def journal_manifest(request: Request) -> dict:
     for section in SECTIONS:
         pages["/journal/guide/" + section] = hashlib.sha256(guide_page(section, articles).body).hexdigest()
     from .academy import academy_pages
-    pages.update({path: hashlib.sha256(page.body).hexdigest() for path, page in academy_pages().items()})
+    from .academy_builder import public_catalog
+    courses = public_catalog(request)
+    pages.update({path: hashlib.sha256(page.body).hexdigest() for path, page in academy_pages(courses).items()})
     pages["/journal/paths"] = hashlib.sha256(paths_index(articles).body).hexdigest()
     for path in visible_paths(articles):
         pages["/journal/paths/" + path["slug"]] = hashlib.sha256(
@@ -287,8 +289,9 @@ def journal_manifest(request: Request) -> dict:
             journal_article(article["slug"], articles, jobs).body
         ).hexdigest()
     paths = _public_sitemap_paths(request)
-    pages["/sitemap.xml"] = hashlib.sha256(journal_sitemap(articles, paths).body).hexdigest()
-    return {"pages": pages, "count": len(articles), "renderer_sha256": journal_renderer_sha256()}
+    pages["/sitemap.xml"] = hashlib.sha256(journal_sitemap(articles, paths, courses).body).hexdigest()
+    return {"pages": pages, "count": len(articles), "renderer_sha256": journal_renderer_sha256(),
+            "academy_courses": {course["slug"]: [lesson["slug"] for lesson in course["lessons"]] for course in courses}}
 
 
 def _public_sitemap_paths(request: Request) -> list[str]:
@@ -298,7 +301,7 @@ def _public_sitemap_paths(request: Request) -> list[str]:
 
 
 def journal_sitemap(
-    articles: list[dict] | None = None, public_paths: list[str] | None = None,
+    articles: list[dict] | None = None, public_paths: list[str] | None = None, courses=None,
 ) -> Response:
     """Canonical published editorial pages and currently discoverable jobs/companies."""
     if articles is None:
@@ -310,7 +313,7 @@ def journal_sitemap(
         ["/", "/employers", "/journal"]
         + ["/journal/" + article["slug"] for article in articles]
         + list(GUIDE_PATHS)
-        + list(academy_pages())
+        + list(academy_pages(courses))
         + ["/journal/paths"]
         + ["/journal/paths/" + path["slug"] for path in visible_paths(articles)]
         + (public_paths or [])
@@ -345,7 +348,8 @@ def install_journal_routes(app: FastAPI) -> None:
     # The pure renderers still accept a default seed catalog for deterministic
     # unit/probe rendering. Public HTTP routes use current published DB rows.
     def sitemap_http(request: Request):
-        return journal_sitemap(_catalog(request), _public_sitemap_paths(request))
+        from .academy_builder import public_catalog
+        return journal_sitemap(_catalog(request), _public_sitemap_paths(request), public_catalog(request))
 
     def index_http(request: Request):
         return journal_index(_catalog(request))

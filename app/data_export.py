@@ -142,7 +142,7 @@ def build_personal_data_snapshot(db, user_id: int) -> dict:
         section(
             "my_academy_courses",
             """SELECT slug,draft_json,published_json,state,version,consent_at,pending_profile_version,
-                      published_profile_version,moderation_reason,created_at,updated_at,published_at
+                      published_profile_version,published_consent_at,moderation_reason,created_at,updated_at,published_at
                FROM academy_courses WHERE owner_id=? ORDER BY updated_at DESC,slug""",
         )
         section(
