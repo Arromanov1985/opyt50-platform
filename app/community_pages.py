@@ -127,7 +127,7 @@ def community_page(mode: str = "directory", person: dict | None = None,
 <div id="community-content">{content}</div>
 <noscript><div class="panel"><p>Для поиска участников и работы с профилем включите JavaScript. Публичный профиль можно прочитать без него.</p><a href="/journal">Перейти в журнал</a></div></noscript>
 </main>
-<footer class="community-footer wrap"><p><strong>СТАЖНО.</strong> Ваш опыт работает на вас.</p><div><a href="/academy">Обучение</a><a href="/journal/guide/overview">Материалы и мероприятия</a><a href="/journal/kak-proverit-vakansiyu">Безопасное знакомство</a><a href="/">На главную</a></div></footer>
+<footer class="community-footer wrap"><p><strong>СТАЖНО.</strong> Ваш опыт работает на вас.</p><div><a href="/academy">Обучение</a><a href="/community/courses">Создать курс</a><a href="/journal/guide/overview">Материалы и мероприятия</a><a href="/journal/kak-proverit-vakansiyu">Безопасное знакомство</a><a href="/">На главную</a></div></footer>
 <dialog id="community-dialog" aria-labelledby="community-dialog-title"><div class="dialog-top"><h2 id="community-dialog-title"></h2><button class="icon-button" type="button" id="close-community-dialog" aria-label="Закрыть окно">×</button></div><div id="community-dialog-content"></div></dialog>
 </body></html>"""
     return HTMLResponse(markup, headers={

@@ -221,7 +221,7 @@ def _detail(db, row, user, full=True):
            "state":row["state"] if mine or reviewing else "published",
            "version":row["version"],"lesson_count":len(draft["lessons"]),
            "minutes":sum(item["minutes"] for item in draft["lessons"]),
-           "can_edit":mine,"has_publication":visible,
+           "can_edit":mine,"has_publication":visible,"has_saved_publication":mine and bool(row["published_json"]),
            "moderation_reason":row["moderation_reason"] if mine else "",
            "updated_at":row["updated_at"]}
     if full:

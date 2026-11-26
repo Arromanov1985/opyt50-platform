@@ -10,7 +10,7 @@
   const mode = document.body.dataset.communityPage;
   const opportunityMode=['mentoring','projects'].includes(mode);
   const groupSlug=mode==='feed'?new URLSearchParams(location.search).get('group')||'':'';
-  const state = {user:null, profile:null, profileVisible:false, dirty:false, messageDirty:false, connections:[], connectionPage:1, connectionFilter:'', connectionListRequest:0, readThrough:null, selected:null, messageKey:null, messageBody:null, nextBefore:null, directoryPage:1, directoryRequest:0, threadSelectionRequest:0, threadRequest:0, messageLoadRequest:0, moderationPage:1, reportPage:1, busy:new WeakSet(), feedPage:1, feedMinePage:1, feedReviewPage:1, feedRequest:0, feedThreadRequest:0, feedReviewRequest:0, feedThreadId:null, feedThreadPage:1, feedCanPublish:false, feedDirty:false, feedCommentDirty:false, feedFollowingIds:new Set(), feedOwnPublicId:null, feedFollowsPage:1, feedAlertsPage:1, feedReportsPage:1, feedFollowsRequest:0, feedAlertsRequest:0, feedReportsRequest:0, feedSavedIds:new Set(), savedPage:1, savedRequest:0, discoveryPeoplePage:1, discoveryFeedPage:1, discoveryRequest:0, discoveryRevision:null, discoveryDirty:false, portfolioEntries:[], portfolioCanPublish:false, portfolioEdit:null, portfolioDirty:false, portfolioRequest:0, portfolioReviewRequest:0, portfolioReviewPage:1,reputationDirection:'incoming',reputationPage:1,reputationRequest:0,reputationDirty:false,reputationRestricted:false,portfolioRestricted:false,group:null,groupsRequest:0,groupsMine:false,authorEntries:[],authorTopics:{},authorRestricted:false,authorCanSubmit:false,authorDirty:false,authorEdit:null,authorPage:1,authorRequest:0};
+  const state = {user:null, profile:null, profileVisible:false, dirty:false, messageDirty:false, connections:[], connectionPage:1, connectionFilter:'', connectionListRequest:0, readThrough:null, selected:null, messageKey:null, messageBody:null, nextBefore:null, directoryPage:1, directoryRequest:0, threadSelectionRequest:0, threadRequest:0, messageLoadRequest:0, moderationPage:1, reportPage:1, busy:new WeakSet(), feedPage:1, feedMinePage:1, feedReviewPage:1, feedRequest:0, feedThreadRequest:0, feedReviewRequest:0, feedThreadId:null, feedThreadPage:1, feedCanPublish:false, feedDirty:false, feedCommentDirty:false, feedFollowingIds:new Set(), feedOwnPublicId:null, feedFollowsPage:1, feedAlertsPage:1, feedReportsPage:1, feedFollowsRequest:0, feedAlertsRequest:0, feedReportsRequest:0, feedSavedIds:new Set(), savedPage:1, savedRequest:0, discoveryPeoplePage:1, discoveryFeedPage:1, discoveryRequest:0, discoveryRevision:null, discoveryDirty:false, portfolioEntries:[], portfolioCanPublish:false, portfolioEdit:null, portfolioDirty:false, portfolioRequest:0, portfolioReviewRequest:0, portfolioReviewPage:1,reputationDirection:'incoming',reputationPage:1,reputationRequest:0,reputationDirty:false,reputationRestricted:false,portfolioRestricted:false,group:null,groupsRequest:0,groupsMine:false,authorEntries:[],authorTopics:{},authorRestricted:false,authorCanSubmit:false,authorDirty:false,authorEdit:null,authorPage:1,authorRequest:0,builderDirty:false};
   const content = $('#community-content');
   const dialog = $('#community-dialog');
   let dialogBusy = false;
@@ -139,7 +139,7 @@
   function renderProfileForm(preserved = null) {
     const p = state.profile, values = preserved || p;
     const canSubmit = p.version > 0 && !['published','pending'].includes(p.status) && !preserved;
-    content.innerHTML = `<div class="section-heading"><div><h1>Ваш опыт — вашими словами</h1><p>Создайте отдельную страницу для коллег, проектов и наставничества. Вы сами выбираете, что рассказывать о себе.</p></div><div class="actions"><a class="button secondary compact" href="/community/portfolio">Моё портфолио →</a><a class="button secondary compact" href="/community/author-articles">Мои статьи</a><a class="button secondary compact" href="/community/reputation">Рекомендации коллег</a><button class="button secondary compact" type="button" data-action="invite-colleague">Пригласить коллегу</button><a class="button secondary compact" href="/community/connections">Мои связи →</a></div></div>
+    content.innerHTML = `<div class="section-heading"><div><h1>Ваш опыт — вашими словами</h1><p>Создайте отдельную страницу для коллег, проектов и наставничества. Вы сами выбираете, что рассказывать о себе.</p></div><div class="actions"><a class="button secondary compact" href="/community/portfolio">Моё портфолио →</a><a class="button secondary compact" href="/community/author-articles">Мои статьи</a><a class="button secondary compact" href="/community/courses">Мои курсы</a><a class="button secondary compact" href="/community/reputation">Рекомендации коллег</a><button class="button secondary compact" type="button" data-action="invite-colleague">Пригласить коллегу</button><a class="button secondary compact" href="/community/connections">Мои связи →</a></div></div>
     <div class="profile-layout"><div class="panel"><div class="status-line" id="profile-status">${statusBadge(p.status,profileStates)}</div>${p.moderation_reason ? `<p class="notice warning">Комментарий модератора: ${esc(p.moderation_reason)}</p>` : ''}
     <form id="professional-profile-form" class="profile-form"><div class="form-grid"><div class="field"><label for="public-name">Публичное имя *</label><input id="public-name" name="public_name" maxlength="60" value="${esc(values.public_name)}" placeholder="Имя или профессиональный псевдоним"><p class="help">Не обязательно указывать полное имя.</p></div><div class="field"><label for="public-city">Город</label><input id="public-city" name="city" maxlength="80" value="${esc(values.city)}" placeholder="Например, Москва"></div></div>
     <div class="field"><label for="public-headline">Профессия и направление *</label><input id="public-headline" name="headline" maxlength="120" value="${esc(values.headline)}" placeholder="Бухгалтер · помогаю малому бизнесу"></div>
@@ -167,7 +167,7 @@
         state.profile = result.profile; state.dirty=false; renderProfileForm(); notice('Черновик сохранён. Для публикации проверьте текст и отдельно отправьте профиль на проверку.');
       };
       if (p.status === 'published' || p.status === 'pending') {
-        confirmAction('Сохранить новую версию?', 'Если текст изменился, текущая публикация или заявка на проверку будет снята. Новую версию можно отправить на проверку после сохранения. Авторские статьи также потребуют нового согласия.', 'Сохранить новую версию', () => busy(form.closest('.panel'),save));
+        confirmAction('Сохранить новую версию?', 'Если текст изменился, текущая публикация или заявка на проверку будет снята. Новую версию можно отправить на проверку после сохранения. Авторские статьи и курсы также потребуют нового согласия.', 'Сохранить новую версию', () => busy(form.closest('.panel'),save));
       } else busy(form.closest('.panel'),save);
     });
     $('#submit-profile-review').addEventListener('click', () => {
@@ -175,7 +175,7 @@
       const panel = $('#professional-profile-form').closest('.panel');
       busy(panel,async () => { const result=await api('/api/community/profile/submit',{method:'POST',body:{expected_version:p.version,publish_consent:true}}); state.profile=result.profile; renderProfileForm(); notice('Профиль отправлен на проверку. До решения модератора он доступен только вам.'); });
     });
-    $('#withdraw-profile')?.addEventListener('click', () => confirmAction('Скрыть профессиональный профиль?', 'Страница и карточка исчезнут из сообщества, новые запросы станут недоступны. Разрешения на публикацию портфолио, рекомендаций коллег и авторских материалов также будут отозваны. Уже начатые разговоры сохранятся. Введённые изменения останутся в форме.', 'Скрыть профиль', async () => {
+    $('#withdraw-profile')?.addEventListener('click', () => confirmAction('Скрыть профессиональный профиль?', 'Страница и карточка исчезнут из сообщества, новые запросы станут недоступны. Разрешения на публикацию портфолио, рекомендаций коллег, авторских материалов и курсов также будут отозваны. Уже начатые разговоры сохранятся. Введённые изменения останутся в форме.', 'Скрыть профиль', async () => {
       const draft = state.dirty ? profileValues() : null;
       const result=await api('/api/community/profile/publication',{method:'DELETE',body:{expected_version:p.version}}); state.profile=result.profile; renderProfileForm(draft); notice('Профиль скрыт. Разрешение на публикацию отозвано.');
     }));
@@ -368,7 +368,7 @@
     content.innerHTML=`<div class="section-heading"><div><h1>Модерация сообщества</h1><p>Перед публикацией проверьте отсутствие контактов, личных данных других людей, спама и недостоверных обещаний. Одобрение относится только к текущей версии профиля.</p></div></div><div class="connections-toolbar"><label for="moderation-filter">Профили<select id="moderation-filter">${options({pending:'Ожидают проверки',published:'Опубликованы',rejected:'Отклонены',hidden:'Скрыты'},'pending')}</select></label><button class="button secondary compact" type="button" data-action="reload-moderation">Обновить очередь</button></div><div id="moderation-list" class="moderation-grid"></div><div id="moderation-pager"></div><section class="section-divider"><h2>Жалобы участников</h2><div id="moderation-reports" class="moderation-grid"></div><div id="reports-pager"></div><p class="help">Жалобы содержат только отправленные участниками сведения. Доступ ко всей переписке здесь не открывается. При необходимости профиль можно скрыть в разделе опубликованных профилей.</p></section>`;
     $('#moderation-filter').addEventListener('change',()=>{state.moderationPage=1;loadModeration().catch(error=>notice(error.message,'error'));});
     const portfolioSection=document.createElement('section');portfolioSection.className='section-divider';
-    portfolioSection.innerHTML='<div class="section-heading"><div><h2>Портфолио и достижения</h2><p>Проверяйте только записи, отправленные с отдельным согласием на публикацию.</p></div><a href="/community/portfolio" class="button secondary">Модерация портфолио</a><a href="/community/reputation" class="button secondary">Модерация рекомендаций</a><a href="/community/author-articles" class="button secondary">Авторские материалы</a></div>';
+    portfolioSection.innerHTML='<div class="section-heading"><div><h2>Портфолио и достижения</h2><p>Проверяйте только записи, отправленные с отдельным согласием на публикацию.</p></div><a href="/community/portfolio" class="button secondary">Модерация портфолио</a><a href="/community/reputation" class="button secondary">Модерация рекомендаций</a><a href="/community/author-articles" class="button secondary">Авторские материалы</a><a href="/community/courses" class="button secondary">Редакция курсов</a></div>';
     content.append(portfolioSection);
     await Promise.all([loadModeration(),loadReports()]);
   }
@@ -1102,6 +1102,238 @@
     await loadAuthors();
   }
 
+
+  // A structured course studio. No user HTML, no markup syntax or hidden autosave.
+  // The same in-memory draft survives tab changes and unsuccessful requests.
+  const studio={entry:null,draft:null,step:'info',lesson:0,lessonStep:'content',view:'own',page:1,key:null,loading:false,bound:false};
+  const studioApi='/api/community/courses';
+  const studioStates={draft:'Черновик',pending:'На проверке',published:'Опубликован',rejected:'На доработке',hidden:'Скрыт'};
+  const studioSteps=[['info','Карточка курса'],['lessons','Уроки и задания'],['preview','Предпросмотр'],['publish','Публикация']];
+  const studioButton=(action,label,kind='secondary',extra='')=>'<button type="button" class="button '+kind+'" data-studio="'+action+'" '+extra+'>'+label+'</button>';
+  const studioPath=()=>studioApi+'/'+encodeURIComponent(studio.entry.slug);
+  const studioEditable=()=>studio.entry?.can_edit&&!studio.entry?.restricted;
+  const studioClone=value=>JSON.parse(JSON.stringify(value));
+  const newStudioQuestion=()=>({text:'',options:['','',''],correct:null,feedback:''});
+  const newStudioLesson=()=>({slug:'lesson-'+crypto.randomUUID(),title:'',minutes:10,goal:'',sections:[['','']],example:'',practice:'',questions:[newStudioQuestion()]});
+  function studioField(label,path,value,{area=false,max=600,rows=3,help='',type='text',placeholder=''}={}){
+    const id='studio-'+path.replaceAll('.','-'),attr='id="'+id+'" data-studio-path="'+path+'" '+(type==='number'?'type="number" min="1" max="180"':'maxlength="'+max+'"')+' placeholder="'+esc(placeholder)+'"';
+    return '<div class="studio-field"><label for="'+id+'">'+esc(label)+'</label>'+
+      (help?'<p class="help">'+esc(help)+'</p>':'')+
+      (area?'<textarea '+attr+' rows="'+rows+'">'+esc(value??'')+'</textarea>':'<input '+attr+' value="'+esc(value??'')+'">')+'</div>';
+  }
+  function studioChange(){
+    state.builderDirty=true;
+    const badge=$('#studio-save-status');if(badge)badge.textContent='Есть несохранённые изменения';
+    const save=$('#studio-save');if(save)save.disabled=false;
+    const name=$('#studio-course-title');if(name)name.textContent=studio.draft.title||'Курс без названия';
+    const lesson=studio.draft.lessons[studio.lesson];
+    const label=$('[data-studio-lesson-label="'+studio.lesson+'"]');if(label&&lesson)label.textContent=lesson.title||'Урок без названия';
+    const time=$('#studio-total-time');if(time)time.textContent=studio.draft.lessons.length+' уроков · '+studio.draft.lessons.reduce((sum,item)=>sum+(Number(item.minutes)||0),0)+' мин.';
+  }
+  function studioSet(path,value){
+    const parts=path.split('.');
+    let target=studio.draft;
+    for(const key of parts.slice(0,-1))target=target[key];
+    target[parts[parts.length-1]]=value;studioChange();
+  }
+  function studioLeave(action){
+    if(state.builderDirty)confirmAction('Есть несохранённые изменения','Если продолжить, введённый текст будет потерян. Сначала можно сохранить черновик.','Выйти без сохранения',action);
+    else return action();
+  }
+  async function studioList(){
+    studio.entry=null;studio.draft=null;state.builderDirty=false;
+    const result=await api(studioApi+'?view='+studio.view+'&page='+studio.page);
+    content.innerHTML='<section class="section-heading"><div><span class="eyebrow">АКАДЕМИЯ СТАЖНО</span><h1>Конструктор курсов</h1><p>Создавайте понятные учебные программы: уроки, практику и самопроверку.</p></div><a class="button secondary" href="/academy">Открыть Академию ↗</a></section>'+
+      '<section class="panel studio-list-intro"><div><h2>'+(state.user.role==='admin'?'Редакция Академии':'Ваши курсы')+'</h2><p>Черновики видны только автору. Изменения опубликованного курса появятся после утверждения новой версии.</p></div>'+
+      (result.can_create?studioButton('new','+ Новый курс','primary'):'')+
+      (result.restricted?'<p class="notice warning">Обработка данных ограничена. Можно просматривать свои курсы и отзывать публикации.</p>':!result.can_create&&state.user.role==='candidate'?'<p class="help">Для создания курса сохраните профессиональный профиль. Максимум 10 курсов. <a href="/community/profile">Мой профиль</a></p>':'')+'</section>'+
+      (state.user.role==='admin'?'<nav class="studio-tabs" aria-label="Курсы редакции">'+[['own','Курсы СТАЖНО'],['review','На проверке'],['published','Курсы участников']].map(([key,label])=>studioButton('view',label,studio.view===key?'primary':'secondary','data-view="'+key+'" aria-pressed="'+(studio.view===key)+'"')).join('')+'</nav>':'')+
+      '<div class="studio-catalog">'+(result.courses.length?result.courses.map(course=>
+        '<article class="panel studio-catalog-card"><div class="status-line">'+statusBadge(course.state,studioStates)+(course.has_publication?'<span class="tag">Версия доступна ученикам</span>':'')+'</div><h2>'+esc(course.title)+'</h2><p class="help">'+course.lesson_count+' уроков · '+course.minutes+' мин.</p>'+
+        (course.moderation_reason?'<p class="notice warning">'+esc(course.moderation_reason)+'</p>':'')+
+        '<div class="actions">'+studioButton('open',course.can_edit?'Открыть редактор':'Проверить курс','primary','data-slug="'+esc(course.slug)+'"')+
+        (course.has_publication?'<a class="button secondary" href="/academy/'+encodeURIComponent(course.slug)+'">Открыть курс</a>':'')+'</div></article>').join(''):empty('Пока нет курсов',studio.view==='review'?'Новые курсы участников появятся здесь после отправки на проверку.':'Создайте курс с нуля и добавьте первый урок.'))+'</div>'+
+      (studio.page>1||result.has_more?'<div class="actions">'+studioButton('page','← Назад','secondary','data-page="'+(studio.page-1)+'" '+(studio.page===1?'disabled':''))+'<span>Страница '+studio.page+'</span>'+studioButton('page','Далее →','secondary','data-page="'+(studio.page+1)+'" '+(!result.has_more?'disabled':''))+'</div>':'');
+  }
+  function studioLoadEntry(entry){
+    studio.entry=entry;studio.draft=studioClone(entry.draft);studio.step=entry.can_edit?'info':'preview';studio.lesson=0;studio.lessonStep='content';state.builderDirty=false;studioRender();
+  }
+  function studioInfo(){
+    const d=studio.draft;
+    return '<section class="panel studio-panel"><h2>1. Карточка курса</h2><p class="help">Эту информацию ученик увидит до начала обучения.</p>'+
+      studioField('Название курса','title',d.title,{max:180,placeholder:'Например, Основы работы с таблицами'})+
+      studioField('Краткое описание','description',d.description,{area:true,max:600,help:'Что человек научится делать и зачем ему этот курс?'})+
+      studioField('Для кого этот курс','audience',d.audience,{area:true,max:600,placeholder:'Начинающие, без специальной подготовки...'})+
+      '<div class="studio-field"><label for="studio-outcomes">Результаты обучения</label><p class="help">Один результат на строку, до 12 строк. Например: «Составлять простой отчёт в таблице».</p><textarea id="studio-outcomes" data-studio-list="outcomes" rows="5" maxlength="6000">'+esc(d.outcomes.join('\n'))+'</textarea></div>'+
+      '<div class="actions">'+studioButton('next','Перейти к урокам →','primary')+'</div></section>';
+  }
+  function studioLessons(){
+    const lessons=studio.draft.lessons,lesson=lessons[studio.lesson];
+    const sidebar='<aside class="panel studio-lessons-nav"><div class="studio-side-heading"><h2>Программа</h2>'+studioButton('add-lesson','+ Урок','secondary',lessons.length>=30?'disabled':'')+'</div>'+
+      (lessons.length?'<ol>'+lessons.map((item,index)=>'<li><button type="button" class="studio-lesson-select'+(index===studio.lesson?' selected':'')+'" data-studio="lesson" data-index="'+index+'" aria-current="'+(index===studio.lesson?'step':'false')+'"><span class="studio-num">'+(index+1)+'</span><span data-studio-lesson-label="'+index+'">'+esc(item.title||'Урок без названия')+'</span></button></li>').join('')+'</ol>':'<p class="help">Добавьте первый урок. Его название и содержание можно заполнить позже.</p>')+'</aside>';
+    if(!lesson)return '<div class="studio-lesson-layout">'+sidebar+'<section class="panel studio-panel"><h2>Добавьте первый урок</h2><p>Каждый урок состоит из объяснения, практики и вопросов для самопроверки.</p>'+studioButton('add-lesson','+ Добавить урок','primary')+'</section></div>';
+    const prefix='lessons.'+studio.lesson;
+    let body='';
+    if(studio.lessonStep==='content'){
+      body=studioField('Название урока',prefix+'.title',lesson.title,{max:180,placeholder:'Что изучаем?'})+
+        studioField('Продолжительность, минут',prefix+'.minutes',lesson.minutes,{type:'number'})+
+        studioField('Цель урока',prefix+'.goal',lesson.goal,{area:true,max:600,rows:2,placeholder:'Что ученик сможет сделать после урока?'})+
+        '<h3>Текстовые блоки</h3><p class="help">Разделите материал на небольшие части. Никакой специальной разметки не нужно.</p>'+
+        lesson.sections.map((section,index)=>'<section class="studio-block"><div class="studio-side-heading"><h4>Блок '+(index+1)+'</h4>'+studioButton('remove-block','Удалить','secondary','data-index="'+index+'"')+'</div>'+
+          studioField('Заголовок блока',prefix+'.sections.'+index+'.0',section[0],{max:4000,placeholder:'Название темы'})+
+          '<div class="studio-field"><label for="studio-body-'+index+'">Текст</label><textarea id="studio-body-'+index+'" rows="6" data-studio-block="'+index+'" maxlength="32000">'+esc(section.slice(1).join('\n\n'))+'</textarea><p class="help">Пустая строка отделяет абзацы (до восьми на блок).</p></div></section>').join('')+
+        studioButton('add-block','+ Добавить текстовый блок','secondary',lesson.sections.length>=12?'disabled':'');
+    }else if(studio.lessonStep==='practice'){
+      body=studioField('Практический пример',prefix+'.example',lesson.example,{area:true,rows:6,max:4000,help:'Покажите образец решения или конкретную ситуацию.'})+
+        studioField('Самостоятельное задание',prefix+'.practice',lesson.practice,{area:true,rows:6,max:4000,help:'Опишите, что выполнить и как проверить результат. Не запрашивайте личные данные.'});
+    }else{
+      body='<h3>Самопроверка</h3><p class="help">Добавьте вопрос, два–пять вариантов, выберите один правильный ответ и объясните почему.</p>'+
+        lesson.questions.map((q,i)=>{
+          const p=prefix+'.questions.'+i;
+          return '<section class="studio-block"><div class="studio-side-heading"><h4>Вопрос '+(i+1)+'</h4>'+studioButton('remove-question','Удалить','secondary','data-index="'+i+'"')+'</div>'+
+            studioField('Вопрос',p+'.text',q.text,{area:true,rows:2,max:500})+
+            '<fieldset class="studio-options"><legend>Варианты ответа и правильный вариант</legend>'+
+            q.options.map((value,j)=>'<div class="studio-option"><input type="radio" name="studio-correct-'+i+'" aria-label="Вариант '+(j+1)+' правильный" data-studio-correct="'+i+'" value="'+j+'" '+(q.correct===j?'checked':'')+'><div>'+studioField('Вариант '+(j+1),p+'.options.'+j,value,{max:500})+'</div>'+studioButton('remove-option','−','secondary','aria-label="Удалить вариант '+(j+1)+'" data-index="'+i+'" data-option="'+j+'" '+(q.options.length<=2?'disabled':''))+'</div>').join('')+
+            studioButton('add-option','+ Вариант','secondary','data-index="'+i+'" '+(q.options.length>=5?'disabled':''))+'</fieldset>'+
+            studioField('Пояснение после ответа',p+'.feedback',q.feedback,{area:true,rows:3,max:1000,help:'Коротко объясните правильный ответ.'})+'</section>';
+        }).join('')+studioButton('add-question','+ Добавить вопрос','secondary',lesson.questions.length>=10?'disabled':'');
+    }
+    return '<div class="studio-lesson-layout">'+sidebar+'<section class="panel studio-panel"><div class="studio-side-heading"><h2>Урок '+(studio.lesson+1)+' из '+lessons.length+'</h2><div class="studio-small-actions">'+studioButton('move-up','↑','secondary','aria-label="Переместить урок выше" '+(studio.lesson===0?'disabled':''))+studioButton('move-down','↓','secondary','aria-label="Переместить урок ниже" '+(studio.lesson===lessons.length-1?'disabled':''))+studioButton('duplicate-lesson','Копировать','secondary',lessons.length>=30?'disabled':'')+studioButton('remove-lesson','Удалить','secondary')+'</div></div>'+
+      '<nav class="studio-tabs" aria-label="Содержание урока">'+[['content','Материал'],['practice','Практика'],['quiz','Тест']].map(([key,label])=>studioButton('lesson-step',label,key===studio.lessonStep?'primary':'secondary','data-step="'+key+'" aria-pressed="'+(key===studio.lessonStep)+'"')).join('')+'</nav>'+body+
+      '<div class="actions">'+studioButton('lesson-next',studio.lessonStep==='content'?'К практическому заданию →':studio.lessonStep==='practice'?'К тесту →':'Предпросмотр курса →','primary')+'</div></section></div>';
+  }
+  function studioPreview(){
+    const d=studio.draft,lesson=d.lessons[studio.lesson];
+    return '<section class="panel studio-panel"><span class="eyebrow">ПРЕДПРОСМОТР · НЕ ОПУБЛИКОВАНО</span><h2>'+esc(d.title||'Курс без названия')+'</h2><p>'+esc(d.description||'Описание ещё не заполнено')+'</p><p class="help">'+esc(d.audience)+'</p><h3>Результаты обучения</h3><ul>'+d.outcomes.filter(Boolean).map(item=>'<li>'+esc(item)+'</li>').join('')+'</ul><h3>Программа</h3><ol>'+d.lessons.map((item,index)=>'<li>'+studioButton('preview-lesson',esc(item.title||'Урок '+(index+1))+' · '+item.minutes+' мин.',index===studio.lesson?'primary':'secondary','data-index="'+index+'"')+'</li>').join('')+'</ol></section>'+
+      (lesson?'<section class="panel studio-panel studio-preview"><span class="eyebrow">УРОК '+(studio.lesson+1)+'</span><h2>'+esc(lesson.title||'Урок без названия')+'</h2><p>'+esc(lesson.goal)+'</p>'+
+      lesson.sections.map(section=>'<section><h3>'+esc(section[0]||'Заголовок блока')+'</h3>'+section.slice(1).map(p=>'<p class="multiline">'+esc(p)+'</p>').join('')+'</section>').join('')+
+      '<h3>Практический пример</h3><div class="studio-example multiline">'+esc(lesson.example)+'</div><h3>Попробуйте сами</h3><p class="multiline">'+esc(lesson.practice)+'</p><h3>Вопросы для самопроверки</h3>'+
+      lesson.questions.map((q,index)=>'<section class="studio-block"><h4>'+(index+1)+'. '+esc(q.text)+'</h4><ul>'+q.options.map((value,i)=>'<li>'+esc(value)+(q.correct===i?' <strong>✓ Правильный ответ</strong>':'')+'</li>').join('')+'</ul><p class="help">'+esc(q.feedback)+'</p></section>').join('')+'</section>':'')+
+      '<div class="actions">'+studioButton('next','К проверке готовности →','primary')+'</div>';
+  }
+  function studioPublication(){
+    const entry=studio.entry,editable=studioEditable();
+    const dirty=state.builderDirty;
+    const issues=entry.issues||[];
+    let actions='';
+    if(editable){
+      actions=dirty?studioButton('save','Сохранить и проверить','primary'):entry.state==='pending'?'<p class="help">Материал передан в редакцию. Изменение черновика отменит текущую проверку.</p>':entry.state==='published'?'<p class="help">Эта версия опубликована. Измените черновик, чтобы подготовить новую.</p>':!issues.length&&entry.can_submit?studioButton('submit',state.user.role==='admin'?'Опубликовать курс':'Отправить в редакцию','primary'):!entry.can_submit?'<p class="help">Перед отправкой курса опубликуйте <a href="/community/profile">профессиональный профиль</a>.</p>':'';
+    }
+    if(entry.can_edit&&(entry.has_saved_publication||entry.state==='pending'))actions+=studioButton('withdraw','Снять с публикации / отозвать согласие','danger');
+    if(!entry.can_edit&&state.user.role==='admin'){
+      if(entry.state==='pending')actions+=studioButton('approve','Одобрить и опубликовать','primary')+studioButton('reject','Вернуть автору');
+      if(entry.has_publication)actions+=studioButton('hide','Скрыть курс','danger');
+    }
+    return '<section class="panel studio-panel"><h2>4. Проверка и публикация</h2><div class="status-line">'+statusBadge(entry.state,studioStates)+(entry.has_publication?'<span class="tag">Предыдущая версия доступна</span>':'')+'</div>'+
+      (entry.moderation_reason?'<p class="notice warning">Редакция: '+esc(entry.moderation_reason)+'</p>':'')+
+      '<p>Проверьте точность, авторские права, безопасность данных и качество заданий. После публикации новой версии прогресс ученика для старой версии не переносится автоматически.</p>'+
+      (dirty?'<p class="notice warning">Сохраните черновик, чтобы сервер проверил его готовность.</p>':issues.length?'<h3>Что необходимо заполнить ('+issues.length+')</h3><ul class="studio-issues">'+issues.map(issue=>'<li>'+esc(issue)+'</li>').join('')+'</ul>':'<p class="studio-ready">✓ Обязательные поля заполнены. Проверьте смысл и качество материалов в предпросмотре.</p>')+
+      '<div class="actions">'+actions+'</div></section>';
+  }
+  function studioRender(){
+    const d=studio.draft,e=studio.entry,editable=studioEditable();
+    if(!editable&&['info','lessons'].includes(studio.step))studio.step='preview';
+    content.innerHTML='<div class="studio-top"><div><button type="button" class="button secondary compact" data-studio="back">← Все курсы</button><span class="eyebrow">КОНСТРУКТОР КУРСОВ</span><h1 id="studio-course-title">'+esc(d.title||'Курс без названия')+'</h1><div class="status-line">'+statusBadge(e.state,studioStates)+'<span class="help" id="studio-total-time">'+d.lessons.length+' уроков · '+d.lessons.reduce((sum,l)=>sum+(Number(l.minutes)||0),0)+' мин.</span></div></div><div class="studio-save-area"><p class="help" id="studio-save-status" role="status">'+(state.builderDirty?'Есть несохранённые изменения':'Черновик сохранён')+'</p>'+
+      (editable?'<button type="button" class="button primary" id="studio-save" data-studio="save" '+(!state.builderDirty?'disabled':'')+'>Сохранить черновик</button>':'')+
+      (e.has_publication?'<a class="button secondary" href="/academy/'+encodeURIComponent(e.slug)+'">Опубликованная версия ↗</a>':'')+'</div></div>'+
+      (e.restricted?'<p class="notice warning">Доступны просмотр и отзыв согласия. Редактирование ограничено.</p>':'')+
+      '<nav class="studio-steps" aria-label="Этапы создания курса">'+studioSteps.map(([key,label],i)=>'<button type="button" class="studio-step'+(key===studio.step?' current':'')+'" data-studio="step" data-step="'+key+'" '+(key===studio.step?'aria-current="step"':'')+' '+(!editable&&['info','lessons'].includes(key)?'disabled':'')+'><span class="studio-num">'+(i+1)+'</span><span>'+label+'</span></button>').join('')+'</nav>'+
+      '<div id="studio-workspace">'+(studio.step==='info'?studioInfo():studio.step==='lessons'?studioLessons():studio.step==='preview'?studioPreview():studioPublication())+'</div>';
+  }
+  async function studioSave(){
+    if(!studioEditable()||!state.builderDirty)return;
+    const result=await api(studioPath(),{method:'PUT',body:{...studio.draft,expected_version:studio.entry.version}});
+    studio.entry=result.course;studio.draft=studioClone(result.course.draft);state.builderDirty=false;studioRender();notice('Черновик сохранён. Опубликованная версия не изменена.');
+  }
+  function studioSubmit(){
+    if(state.builderDirty||!studioEditable())return;
+    const admin=state.user.role==='admin';
+    openDialog(admin?'Опубликовать новую версию курса?':'Отправить курс в редакцию?','<p>Публикуется только сохранённая версия. '+(admin?'Убедитесь, что курс проверен и готов для учеников.':'После одобрения материал будет доступен под вашим публичным именем.')+'</p><form id="studio-consent-form" class="dialog-form"><label class="consent-label"><input type="checkbox" name="consent" required><span>Подтверждаю права на материалы, проверку содержания и согласие на размещение этой версии. Согласие можно отозвать.</span></label><button type="submit" class="button primary">'+(admin?'Опубликовать':'Отправить на проверку')+'</button></form>');
+    const form=$('#studio-consent-form');form.addEventListener('submit',event=>{event.preventDefault();busy(form,async()=>{
+      const result=await api(studioPath()+'/submit',{method:'POST',body:{expected_version:studio.entry.version,publish_consent:form.elements.consent.checked}});
+      studio.entry=result.course;studio.draft=studioClone(result.course.draft);state.builderDirty=false;dialogBusy=false;closeDialog();studioRender();notice(admin?'Курс опубликован.':'Курс отправлен на проверку.');
+    });});
+  }
+  function studioReview(action){
+    openDialog(action==='approve'?'Одобрить курс?':action==='reject'?'Вернуть на доработку?':'Скрыть курс?','<p>Проверьте программу, уроки, вопросы и права на материалы. Утверждается только сохранённая авторская версия.</p><form id="studio-review-form" class="dialog-form">'+(action==='approve'?'':'<div class="studio-field"><label for="studio-reason">Комментарий редакции</label><textarea id="studio-reason" name="reason" maxlength="500" required rows="4"></textarea></div>')+'<button type="submit" class="button primary">Подтвердить</button></form>');
+    const form=$('#studio-review-form');form.addEventListener('submit',event=>{event.preventDefault();busy(form,async()=>{
+      await api('/api/admin/community/courses/'+encodeURIComponent(studio.entry.slug),{method:'PATCH',body:{expected_version:studio.entry.version,decision:action,reason:form.elements.reason?.value||''}});
+      dialogBusy=false;closeDialog();await studioList();notice('Решение редакции сохранено.');
+    });});
+  }
+  async function studioAction(event){
+    const button=event.target.closest('[data-studio]');if(!button||button.disabled||mode!=='courses')return;
+    const action=button.dataset.studio,index=Number(button.dataset.index);
+    if(studio.loading)return;
+    const lesson=studio.draft?.lessons[studio.lesson];
+    const structural=()=>{
+      studioChange();studioRender();
+    };
+    try{
+      if(action==='new'){
+        studio.loading=true;studio.key=studio.key||crypto.randomUUID();
+        await busy(content,async()=>{const result=await api(studioApi,{method:'POST',body:{client_key:studio.key}});studio.key=null;studioLoadEntry(result.course);});
+      }else if(action==='open'){
+        studio.loading=true;
+        const result=await api(studioApi+'/'+encodeURIComponent(button.dataset.slug));studioLoadEntry(result.course);
+      }else if(action==='back'){await studioLeave(async()=>{await studioList();});}
+      else if(action==='view'){studio.view=button.dataset.view;studio.page=1;await studioList();}
+      else if(action==='page'){studio.page=Number(button.dataset.page);await studioList();}
+      else if(action==='step'){studio.step=button.dataset.step;studioRender();}
+      else if(action==='next'){studio.step=studio.step==='info'?'lessons':'publish';studioRender();}
+      else if(action==='preview-lesson'){studio.lesson=index;studioRender();}
+      else if(action==='save'){studio.loading=true;await busy(content,studioSave);}
+      else if(action==='submit')studioSubmit();
+      else if(action==='withdraw')confirmAction('Снять курс с публикации?','Опубликованная версия и текущая заявка на проверку будут скрыты. Черновик останется.','Снять с публикации',async()=>{
+        const result=await api(studioPath()+'/publication',{method:'DELETE',body:{expected_version:studio.entry.version}});
+        studio.entry=result.course;
+        if(!state.builderDirty)studio.draft=studioClone(result.course.draft);
+        studioRender();notice('Публикация отозвана.');
+      });
+      else if(['approve','reject','hide'].includes(action))studioReview(action);
+      else if(!studioEditable())return;
+      else if(action==='lesson'){studio.lesson=index;studio.lessonStep='content';studioRender();}
+      else if(action==='lesson-step'){studio.lessonStep=button.dataset.step;studioRender();}
+      else if(action==='lesson-next'){if(studio.lessonStep==='content')studio.lessonStep='practice';else if(studio.lessonStep==='practice')studio.lessonStep='quiz';else studio.step='preview';studioRender();}
+      else if(action==='add-lesson'&&studio.draft.lessons.length<30){studio.draft.lessons.push(newStudioLesson());studio.lesson=studio.draft.lessons.length-1;studio.lessonStep='content';structural();}
+      else if(action==='duplicate-lesson'&&lesson&&studio.draft.lessons.length<30){const copy=studioClone(lesson);copy.slug='lesson-'+crypto.randomUUID();copy.title=(copy.title+' (копия)').slice(0,180);studio.draft.lessons.splice(studio.lesson+1,0,copy);studio.lesson++;structural();}
+      else if(action==='move-up'||action==='move-down'){
+        const to=studio.lesson+(action==='move-up'?-1:1);
+        if(to>=0&&to<studio.draft.lessons.length){studio.draft.lessons.splice(studio.lesson,1);studio.draft.lessons.splice(to,0,lesson);studio.lesson=to;structural();}
+      }else if(action==='remove-lesson')confirmAction('Удалить урок?','Все материалы, задания и вопросы этого урока будут удалены из черновика.','Удалить',async()=>{studio.draft.lessons.splice(studio.lesson,1);studio.lesson=Math.max(0,Math.min(studio.lesson,studio.draft.lessons.length-1));structural();});
+      else if(action==='add-block'&&lesson.sections.length<12){lesson.sections.push(['','']);structural();}
+      else if(action==='remove-block')confirmAction('Удалить текстовый блок?','Текст будет удалён из черновика.','Удалить',async()=>{lesson.sections.splice(index,1);structural();});
+      else if(action==='add-question'&&lesson.questions.length<10){lesson.questions.push(newStudioQuestion());structural();}
+      else if(action==='remove-question')confirmAction('Удалить вопрос?','Вопрос и варианты будут удалены из черновика.','Удалить',async()=>{lesson.questions.splice(index,1);structural();});
+      else if(action==='add-option'&&lesson.questions[index].options.length<5){lesson.questions[index].options.push('');structural();}
+      else if(action==='remove-option'&&lesson.questions[index].options.length>2){
+        const q=lesson.questions[index],opt=Number(button.dataset.option);q.options.splice(opt,1);
+        if(q.correct===opt)q.correct=null;else if(q.correct!==null&&q.correct>opt)q.correct--;
+        structural();
+      }
+    }catch(error){notice(error.message,'error');}finally{studio.loading=false;}
+  }
+  function studioInput(event){
+    if(mode!=='courses'||!studioEditable()||studio.loading)return;
+    const node=event.target;
+    if(node.dataset.studioPath){
+      const value=node.type==='number'?Number(node.value):node.value;
+      studioSet(node.dataset.studioPath,value);
+    }else if(node.dataset.studioList==='outcomes'){studio.draft.outcomes=node.value.split(/\r?\n/);studioChange();}
+    else if(node.dataset.studioBlock!==undefined){
+      const section=studio.draft.lessons[studio.lesson].sections[Number(node.dataset.studioBlock)];
+      section.splice(1,section.length-1,...node.value.split(/\r?\n\s*\r?\n/));studioChange();
+    }else if(node.dataset.studioCorrect!==undefined){
+      studio.draft.lessons[studio.lesson].questions[Number(node.dataset.studioCorrect)].correct=Number(node.value);studioChange();
+    }
+  }
+  async function renderCourseBuilder(){
+    if(!state.user)return accountGate('Конструктор курсов');
+    if(!['candidate','admin'].includes(state.user.role)){content.innerHTML=empty('Конструктор курсов','Создавать курсы могут авторы сообщества и редакция.','<a class="button primary" href="/academy">Открыть Академию</a>');return;}
+    if(!studio.bound){content.addEventListener('click',studioAction);content.addEventListener('input',studioInput);studio.bound=true;}
+    await studioList();
+  }
+
   async function handleAction(event) {
     const button=event.target.closest('[data-action]');if(!button||button.disabled)return;
     const {action,id}=button.dataset;
@@ -1228,6 +1460,7 @@
       else if(mode==='portfolio')await renderPortfolio();
       else if(mode==='reputation')await renderReputation();
       else if(mode==='author-articles')await renderAuthors();
+      else if(mode==='courses')await renderCourseBuilder();
       else if(mode==='connections')await renderConnections();
       else if(mode==='moderation')await renderModeration();
       else if(mode==='person')await renderPerson();
@@ -1244,7 +1477,7 @@
     $('#close-community-dialog').addEventListener('click',closeDialog);
     dialog.addEventListener('click',event=>{if(event.target.closest('[data-close-dialog]'))closeDialog();});
     dialog.addEventListener('cancel',event=>{if(dialogBusy)event.preventDefault();});
-    window.addEventListener('beforeunload',event=>{if(state.dirty||state.messageDirty||state.feedDirty||state.feedCommentDirty||state.discoveryDirty||state.portfolioDirty||state.reputationDirty||state.authorDirty){event.preventDefault();event.returnValue='';}});
+    window.addEventListener('beforeunload',event=>{if(state.dirty||state.messageDirty||state.feedDirty||state.feedCommentDirty||state.discoveryDirty||state.portfolioDirty||state.reputationDirty||state.authorDirty||state.builderDirty){event.preventDefault();event.returnValue='';}});
     try{state.user=(await api('/api/me')).user;}catch(error){if(error.status!==401){notice(error.message,'error');if(!['directory','person'].includes(mode)){content.innerHTML='<section class="panel"><h1>Аккаунт временно недоступен</h1><p>Обновите страницу, когда соединение восстановится.</p><button class="button secondary" type="button" id="retry-account">Повторить</button></section>';$('#retry-account').addEventListener('click',()=>location.reload());return;}}}
     updateIdentity();await renderMode();if(mode!=='feed')refreshFeedAlertBadge();
   }
