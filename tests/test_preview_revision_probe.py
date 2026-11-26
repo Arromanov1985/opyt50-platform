@@ -196,20 +196,22 @@ def test_deployed_journal_check_requires_exact_html_and_get_only(monkeypatch):
 def published_journal_fixture(articles=None):
     """A deployed CMS catalog with this checkout's actual page renderers."""
     import hashlib
-    from app.journal import ARTICLES, journal_index, journal_article, journal_renderer_sha256
+    from app.journal import ARTICLES, journal_index, journal_article, journal_renderer_sha256, catalog_page_count, catalog_page_path
     from app.journal_paths import path_detail, paths_index, visible_paths
-    from app.journal_guide import SECTIONS, guide_page
+    from app.journal_guide import SECTIONS, guide_page, guide_page_count
     from app.academy import academy_pages
 
     if articles is None:
         articles = ARTICLES
-    bodies = {"/journal": journal_index(articles).body,
-              "/journal/paths": paths_index(articles).body}
+    bodies = {catalog_page_path("/journal", page): journal_index(articles, page).body
+              for page in range(1, catalog_page_count(len(articles)) + 1)}
+    bodies["/journal/paths"] = paths_index(articles).body
     bodies.update({"/journal/" + article["slug"]: journal_article(article["slug"], articles).body
                    for article in articles})
     bodies.update({"/journal/paths/" + path["slug"]: path_detail(path["slug"], articles).body
                    for path in visible_paths(articles)})
-    bodies.update({"/journal/guide/" + section: guide_page(section, articles).body for section in SECTIONS})
+    bodies.update({catalog_page_path("/journal/guide/" + section, page): guide_page(section, articles, page).body
+                   for section in SECTIONS for page in range(1, guide_page_count(section, articles) + 1)})
     bodies.update({path: page.body for path, page in academy_pages().items()})
     manifest = {"pages": {path: hashlib.sha256(body).hexdigest() for path, body in bodies.items()},
                 "renderer_sha256": journal_renderer_sha256(),
@@ -445,14 +447,24 @@ def test_missing_editorial_guide_page_never_confirms_release(monkeypatch):
     assert "/journal/guide/events" in requests
 
 def test_large_editorial_manifest_is_not_rejected_by_page_count(monkeypatch):
-    import hashlib
+    from app.journal import ARTICLES, CATALOG_PAGE_SIZE, catalog_page_count, catalog_page_path
+    from copy import deepcopy
 
-    bodies, manifest = published_journal_fixture()
+    articles = deepcopy(ARTICLES)
     for index in range(300):
-        path = "/journal/author-test-" + str(index)
-        body = b"<html>Published test article</html>"
-        bodies[path] = body
-        manifest["pages"][path] = hashlib.sha256(body).hexdigest()
+        article = deepcopy(ARTICLES[0])
+        article.update(slug="author-test-" + str(index), title="Учебный материал " + str(index) + " " + "а" * 150,
+                       description="Описание " + "я" * 330, category="Учебные материалы", content_type="learning")
+        articles.append(article)
+    bodies, manifest = published_journal_fixture(articles)
+    assert all(len(body) <= 250_000 for body in bodies.values())
+    assert len(bodies["/journal"]) < 250_000
+    pages = catalog_page_count(len(articles))
+    for page in range(1, pages + 1):
+        body = bodies[catalog_page_path("/journal", page)].decode()
+        assert body.count('data-jr-category="') <= CATALOG_PAGE_SIZE
+    assert b"/journal/author-test-299" in bodies[catalog_page_path("/journal", pages)]
+    assert b"/journal/author-test-299" not in bodies["/journal"]
     requests = install_journal_opener(monkeypatch, bodies, manifest)
     result = probe.probe_public_journal_pages()
     assert result["result"] == "exact-match"

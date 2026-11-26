@@ -96,8 +96,8 @@ def _personal_section(articles: list[dict]) -> str:
             save_button(item["slug"]) + '</article>')
     return (
         '<section class="jr-list"><h2 class="jr-list-title">Подберите материалы по своим интересам</h2>'
-        '<p>Выберите одно или несколько направлений. Если ничего не выбрано, показаны все опубликованные материалы. '
-        'Отбор идёт по редакционным темам, а не по вашему профилю или истории посещений.</p>'
+        '<p>Выберите одно или несколько направлений. Если ничего не выбрано, показаны материалы текущей страницы. '
+        'Отбор идёт по редакционным темам на текущей странице. Закладки сохраняются при переходах между страницами. </p>'
         '<section class="jr-discovery jr-personal-controls" id="jr-personal-controls" hidden>'
         '<fieldset class="jr-topic-fieldset"><legend>Профессиональные интересы</legend>'
         '<div class="jr-topic-grid">' + choices + '</div></fieldset>'
@@ -130,7 +130,7 @@ def _events_section(items: list[dict]) -> str:
         '<option value="past">Прошедшие</option><option value="all">Все даты</option></select></label>'
         '<label for="jr-event-format">Формат<select id="jr-event-format"><option value="all">Все форматы</option>' +
         options + '</select></label></div>'
-        '<p class="jr-analytics-note">Период определяется по календарной дате на вашем устройстве.</p>'
+        '<p class="jr-analytics-note">Период определяется по календарной дате на вашем устройстве. Фильтр действует на текущей странице.</p>'
         '<p class="jr-results-count" id="jr-event-count" role="status" aria-live="polite"></p></section>'
         '<div class="jr-grid" id="jr-events-grid">' + "".join(_event_card(item) for item in items) + '</div>'
         '<p id="jr-event-empty" class="jr-no-results" hidden>Нет мероприятий по выбранным условиям.</p>')
@@ -222,11 +222,21 @@ def _cards(items: list[dict], section: str) -> str:
     return '<div class="jr-grid">' + "".join(cards) + '</div>'
 
 
-def guide_page(section: str, articles: list[dict]) -> HTMLResponse:
-    from .journal import _layout, _prelaunch_note
+def guide_page_count(section: str, articles: list[dict]) -> int:
+    from .journal import catalog_page_count
+    if section == "overview":
+        return 1
+    return catalog_page_count(len(articles if section == "personal" else materials(section, articles)))
+
+
+def guide_page(section: str, articles: list[dict], page: int = 1) -> HTMLResponse:
+    from .journal import _layout, _prelaunch_note, catalog_slice, catalog_navigation, catalog_page_path
     if section not in SECTIONS:
         raise HTTPException(404, "Раздел не найден")
+    if not 1 <= page <= guide_page_count(section, articles):
+        raise HTTPException(404, "Страница каталога не найдена")
     title, description = SECTIONS[section]
+    base = "/journal/guide/" + section
     nav = '<nav class="jr-category-filters" aria-label="Разделы навигатора">' + "".join(
         '<a class="jr-secondary" href="/journal/guide/' + slug + '"' +
         (' aria-current="page"' if slug == section else '') + '>' + _e(info[0]) + '</a>'
@@ -246,7 +256,8 @@ def guide_page(section: str, articles: list[dict]) -> HTMLResponse:
                      '</h2><p>' + _e(desc) + '</p>' + _cards(items[:3], key) +
                      '<p><a class="jr-secondary" href="/journal/guide/' + key + '">Все материалы раздела →</a></p></section>')
     elif section == "personal":
-        body += _personal_section(articles)
+        body += _personal_section(catalog_slice(articles, page))
+        body += catalog_navigation(base, page, len(articles))
     else:
         if section == "events":
             body += ('<p class="jr-analytics-note">Анонсы упорядочены по дате. Уточняйте актуальность, время, '
@@ -255,10 +266,12 @@ def guide_page(section: str, articles: list[dict]) -> HTMLResponse:
         if section == 'learning':
             body += ('<aside class="jr-path-promo"><h2>Академия СТАЖНО</h2><p>Бесплатные последовательные курсы, практические задания и самопроверка.</p>'
                      '<a class="jr-primary" href="/academy">Выбрать курс →</a></aside>')
-        body += '<section class="jr-list">' + (_events_section(items) if section == 'events' else _cards(items, section)) + '</section>'
+        page_items = catalog_slice(items, page)
+        body += '<section class="jr-list">' + (_events_section(page_items) if section == 'events' else _cards(page_items, section)) + '</section>'
+        body += catalog_navigation(base, page, len(items))
     body += ('<aside class="jr-bottom"><h2>Продолжите профессиональное развитие</h2>'
              '<p>Выберите учебный маршрут или найдите коллег для обмена практическим опытом.</p>'
              '<a class="jr-primary" href="/journal/paths">Маршруты чтения →</a>'
              '<a class="jr-secondary" href="/community/groups">Профессиональные группы</a></aside>')
-    return HTMLResponse(_layout(title, description, "/journal/guide/" + section, body),
+    return HTMLResponse(_layout(title, description, catalog_page_path(base, page), body),
                         headers={"Cache-Control": "no-store"})
