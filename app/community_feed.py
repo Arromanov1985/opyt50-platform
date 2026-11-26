@@ -425,6 +425,8 @@ def install_feed_routes(app, community_user, throttle, get_connection, allowed, 
         if data.decision == "approve":
             if row["status"] != "pending" or not row["consent_at"] or not _is_published(db, row["author_id"]):
                 raise HTTPException(409, "Нельзя одобрить этот текст без согласия и действующего профиля")
+            if row["group_slug"] and not group_member(db, int(row["author_id"]), row["group_slug"]):
+                raise HTTPException(409, "Автор больше не состоит в тематической группе")
             if row["parent_id"]:
                 _visible_root(db, int(row["author_id"]), row["parent_id"])
             status, published, reason = "published", _now(), ""

@@ -489,3 +489,28 @@ def test_edited_academy_catalog_does_not_require_hidden_seed_course(monkeypatch)
     install_journal_opener(monkeypatch, bodies, manifest)
     assert probe.probe_public_journal_pages()["result"] == "unverified"
 
+
+
+def test_journal_probe_budget_exhaustion_never_confirms_publication(monkeypatch):
+    bodies, manifest = published_journal_fixture()
+    requests = install_journal_opener(monkeypatch, bodies, manifest)
+    monkeypatch.setattr(probe, "JOURNAL_PROBE_BYTES", 1)
+    result = probe.probe_public_journal_pages()
+    assert result["manifest_result"] == "accepted"
+    assert result["result"] == "unverified"
+    assert result["budget_exhausted"]
+    assert result["unprobed_pages"] > 0
+    assert len(requests) == 2
+
+
+def test_journal_probe_stops_when_deadline_expires(monkeypatch):
+    bodies, manifest = published_journal_fixture()
+    requests = install_journal_opener(monkeypatch, bodies, manifest)
+    ticks = iter((0, 91))
+    monkeypatch.setattr(probe, "time", type("Clock", (), {"monotonic": staticmethod(lambda: next(ticks))}))
+    result = probe.probe_public_journal_pages()
+    assert result["manifest_result"] == "accepted"
+    assert result["result"] == "unverified"
+    assert result["budget_exhausted"]
+    assert result["unprobed_pages"] == len(bodies)
+    assert len(requests) == 1
