@@ -1419,16 +1419,16 @@
       else if(action==='retry-community')await renderMode();
     }catch(error){notice(error.message,'error');}
   }
-  function groupCard(group,canJoin){
+  function groupCard(group,canJoin,canRead){
     const id=esc(group.slug);
-    return '<article class="panel group-card" data-group-slug="'+id+'"><div class="status-line">'+(group.joined?'<span class="status-badge published">Вы участник</span>':'<span class="tag">Открытая группа</span>')+'</div><h2>'+esc(group.name)+'</h2><p>'+esc(group.description)+'</p><div class="actions"><a class="button primary" href="/community/feed?group='+encodeURIComponent(group.slug)+'">Открыть обсуждения</a>'+(canJoin?'<button type="button" class="button secondary" data-action="'+(group.joined?'leave-group':'join-group')+'" data-id="'+id+'">'+(group.joined?'Выйти':'Вступить')+'</button>':'')+'</div></article>';
+    return '<article class="panel group-card" data-group-slug="'+id+'"><div class="status-line">'+(group.joined?'<span class="status-badge published">Вы участник</span>':'<span class="tag">Открытая группа</span>')+'</div><h2>'+esc(group.name)+'</h2><p>'+esc(group.description)+'</p><div class="actions">'+(canRead?'<a class="button primary" href="/community/feed?group='+encodeURIComponent(group.slug)+'">Открыть обсуждения</a>':'')+((canJoin||group.joined)?'<button type="button" class="button secondary" data-action="'+(group.joined?'leave-group':'join-group')+'" data-id="'+id+'">'+(group.joined?'Выйти':'Вступить')+'</button>':'')+'</div></article>';
   }
   async function loadGroups(){
     const request=++state.groupsRequest;
     const result=await api('/api/community/groups');
     if(request!==state.groupsRequest)return;
     const groups=result.groups.filter(group=>!state.groupsMine||group.joined);
-    $('#groups-list').innerHTML=groups.length?groups.map(group=>groupCard(group,result.can_join)).join(''):empty('Пока нет ваших групп','Вступите в интересующие вас профессиональные сообщества.');
+    $('#groups-list').innerHTML=groups.length?groups.map(group=>groupCard(group,result.can_join,result.can_read)).join(''):empty('Пока нет ваших групп',result.can_join?'Вступите в интересующие вас профессиональные сообщества.':'Доступных членств нет.');
     $('#groups-summary').textContent='Ваши группы: '+result.groups.filter(group=>group.joined).length;
   }
   async function renderGroups(){
