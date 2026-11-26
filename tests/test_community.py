@@ -1371,7 +1371,8 @@ def test_portfolio_parent_withdrawal_privacy_and_no_draft_profile_leak(community
     request = mutate(first, "POST", "/api/account/privacy-requests", {"kind": "deletion"})
     assert request.status_code == 201, request.text
     assert visitor.get(public_url).status_code == 404
-    assert first.get(url).status_code == 403
+    assert first.get(url).status_code == 200
+    assert first.get(url).json()["restricted"] is True
     from app.privacy_disposal import impact_preview
     with database(app.state.db_path) as db:
         row = db.execute("SELECT request_key FROM privacy_rights_requests WHERE user_id=?",
@@ -1558,6 +1559,13 @@ def test_recommendation_and_portfolio_withdrawal_remain_available_under_privacy_
     assert request.status_code == 201, request.text
     assert visitor.get(public).json()["entries"] == []
     assert mutate(first, "POST", "/api/community/reputation", reputation_payload(cid)).status_code == 409
+    history = first.get("/api/community/reputation?direction=outgoing")
+    assert history.status_code == 200 and history.json()["restricted"] is True
+    assert history.json()["entries"][0]["id"] == entry["id"]
+    assert history.json()["entries"][0]["version"] == entry["version"]
+    own = first.get("/api/community/portfolio")
+    assert own.status_code == 200 and own.json()["restricted"] is True
+    assert own.json()["entries"][0]["id"] == portfolio["id"]
     withdrawn = mutate(first, "DELETE", "/api/community/reputation/" + entry["id"] + "/publication",
                        {"expected_version": entry["version"]})
     assert withdrawn.status_code == 200, withdrawn.text

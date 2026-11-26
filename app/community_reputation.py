@@ -152,7 +152,7 @@ def install_reputation_routes(app, community_user, throttle, get_connection, all
     def mine(direction: Literal["incoming", "outgoing"] = "incoming",
              page: int = Query(default=1, ge=1, le=10000),
              user: dict = Depends(community_user), db=Depends(get_connection)):
-        candidate(user, db)
+        allowed(user, "candidate")
         owner = user["id"]
         rows = db.execute(
             PARTICIPANT_QUERY + """
@@ -161,7 +161,9 @@ def install_reputation_routes(app, community_user, throttle, get_connection, all
             (direction, owner, direction, owner, PAGE_SIZE + 1, (page - 1) * PAGE_SIZE),
         ).fetchall()
         return _private({"entries": [_dto(row, owner) for row in rows[:PAGE_SIZE]],
-                         "page": page, "has_more": len(rows) > PAGE_SIZE})
+                         "page": page, "has_more": len(rows) > PAGE_SIZE,
+                         "can_offer": _is_published(db, owner),
+                         "restricted": not _active_account(db, owner)})
 
     @app.get("/api/community/people/{public_id}/reputation")
     def public_list(public_id: str, db=Depends(get_connection)):
