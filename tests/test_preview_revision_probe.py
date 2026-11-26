@@ -147,6 +147,7 @@ def test_deployed_journal_check_requires_exact_html_and_get_only(monkeypatch):
     from app.journal import ARTICLES, journal_index, journal_article
     from app.journal_paths import PATHS, path_detail, paths_index
     from app.journal_guide import SECTIONS, guide_page
+    from app.academy import academy_pages
 
     pages = {"/journal": journal_index().body}
     pages.update({
@@ -154,6 +155,7 @@ def test_deployed_journal_check_requires_exact_html_and_get_only(monkeypatch):
         for article in ARTICLES
     })
     pages.update({"/journal/guide/" + section: guide_page(section, ARTICLES).body for section in SECTIONS})
+    pages.update({path: page.body for path, page in academy_pages().items()})
     pages["/journal/paths"] = paths_index(ARTICLES).body
     pages.update({"/journal/paths/" + path["slug"]: path_detail(path["slug"], ARTICLES).body
                   for path in PATHS})
@@ -181,7 +183,7 @@ def test_deployed_journal_check_requires_exact_html_and_get_only(monkeypatch):
     assert good["result"] == "unverified"
     assert good["catalog_source"] == "seed-catalog"
     assert good["renderer"]["result"] == "unverified"
-    assert len(good["pages"]) == len(ARTICLES) + 2 + len(PATHS) + len(SECTIONS)
+    assert len(good["pages"]) == len(ARTICLES) + 2 + len(PATHS) + len(SECTIONS) + len(academy_pages())
     assert all(item["result"] == "exact-match" for item in good["pages"].values())
     assert len(requests) == len(pages) + 1  # public manifest plus all page GETs
 
@@ -197,6 +199,7 @@ def published_journal_fixture(articles=None):
     from app.journal import ARTICLES, journal_index, journal_article, journal_renderer_sha256
     from app.journal_paths import path_detail, paths_index, visible_paths
     from app.journal_guide import SECTIONS, guide_page
+    from app.academy import academy_pages
 
     if articles is None:
         articles = ARTICLES
@@ -207,6 +210,7 @@ def published_journal_fixture(articles=None):
     bodies.update({"/journal/paths/" + path["slug"]: path_detail(path["slug"], articles).body
                    for path in visible_paths(articles)})
     bodies.update({"/journal/guide/" + section: guide_page(section, articles).body for section in SECTIONS})
+    bodies.update({path: page.body for path, page in academy_pages().items()})
     manifest = {"pages": {path: hashlib.sha256(body).hexdigest() for path, body in bodies.items()},
                 "renderer_sha256": journal_renderer_sha256()}
     return bodies, manifest
@@ -454,3 +458,15 @@ def test_large_editorial_manifest_is_not_rejected_by_page_count(monkeypatch):
     assert result["manifest_result"] == "accepted"
     assert set(result["pages"]) == set(bodies)
     assert len(requests) == len(bodies) + 1
+
+
+def test_missing_academy_lesson_never_confirms_release(monkeypatch):
+    bodies, manifest = published_journal_fixture()
+    missing = "/academy/ai-basics/privacy-safety"
+    del manifest["pages"][missing]
+    requests = install_journal_opener(monkeypatch, bodies, manifest)
+    result = probe.probe_public_journal_pages()
+    assert result["result"] == "unverified"
+    assert result["manifest_result"] == "unavailable-or-invalid"
+    assert missing in requests
+

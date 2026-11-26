@@ -385,6 +385,42 @@ def exercise(browser, base, receipts_path):
         page.locator("#jr-event-period").select_option("all")
         expect(upcoming).to_be_visible()
         capture(page, "event-calendar-mobile-large")
+        # Academy: interactive self-check, explicit completion, resume and reset.
+        academy_requests = []
+        def observe_academy(request):
+            if request.method != "GET":
+                academy_requests.append(request.url)
+        page.on("request", observe_academy)
+        page.goto(base + "/academy", wait_until="networkidle")
+        expect(page.locator("h1")).to_contain_text("Новые навыки")
+        page.locator('a[data-ac-start]').click()
+        expect(page.locator("h1")).to_have_text("Искусственный интеллект с нуля")
+        expect(page.locator("[data-ac-progress-label]")).to_contain_text("0 из 6")
+        page.locator("[data-ac-resume]").click()
+        expect(page.locator("#ac-quiz")).to_be_visible()
+        capture(page, "academy-lesson-mobile-large")
+        form = page.locator("#ac-quiz")
+        form.locator('input[name="q1"][value="0"]').check()
+        form.locator('input[name="q2"][value="2"]').check()
+        form.locator('button[type="submit"]').click()
+        expect(page.locator("#ac-quiz-result")).to_contain_text("1 из 2")
+        expect(page.locator("[data-ac-progress-label]")).to_contain_text("0 из 6")
+        form.locator('input[name="q1"][value="1"]').check()
+        form.locator('button[type="submit"]').click()
+        expect(page.locator("#ac-quiz-result")).to_contain_text("Урок пройден")
+        expect(page.locator("[data-ac-progress-label]")).to_contain_text("1 из 6")
+        page.reload(wait_until="networkidle")
+        expect(page.locator("[data-ac-progress-label]")).to_contain_text("1 из 6")
+        page.goto(base + "/academy/ai-basics", wait_until="networkidle")
+        expect(page.locator("[data-ac-resume]")).to_have_attribute("href", "/academy/ai-basics/clear-prompts")
+        expect(page.locator('[data-ac-lesson-state="what-ai-does"]')).to_contain_text("Пройден")
+        capture(page, "academy-course-mobile-large")
+        page.once("dialog", lambda dialog: dialog.accept())
+        page.locator("[data-ac-reset]").click()
+        expect(page.locator("[data-ac-progress-label]")).to_contain_text("0 из 6")
+        expect(page.locator("[data-ac-resume]")).to_have_attribute("href", "/academy/ai-basics/what-ai-does")
+        assert not academy_requests, academy_requests
+        page.remove_listener("request", observe_academy)
         assert not errors, "Uncaught browser errors: " + " | ".join(errors)
     except Exception:
         for name, active in (("visitor", page), ("admin", admin)):

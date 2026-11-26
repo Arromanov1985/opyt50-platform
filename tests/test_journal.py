@@ -25,7 +25,7 @@ def test_journal_public_pages_and_no_leaks(tmp_path):
         assert index.status_code == 200
         assert index.headers["content-type"].startswith("text/html")
         assert 'href="https://stazhno.ru/journal"' in index.text
-        assert 'href="/static/journal.css?v=7"' in index.text
+        assert 'href="/static/journal.css?v=8"' in index.text
         assert 'id="reading-mode-toggle"' in index.text
         assert 'id="jr-article-search"' in index.text
         assert 'data-jr-category-filter="all"' in index.text
@@ -90,6 +90,7 @@ def test_journal_assets_exist_and_accessible(tmp_path):
 
 def test_public_sitemap_lists_only_public_editorial_pages(tmp_path):
     import xml.etree.ElementTree as ET
+    from app.academy import academy_pages
 
     app = create_app(str(tmp_path / "seo.sqlite"))
     with TestClient(app, base_url="https://stazhno.ru") as client:
@@ -105,6 +106,7 @@ def test_public_sitemap_lists_only_public_editorial_pages(tmp_path):
             "https://stazhno.ru/journal",
             *["https://stazhno.ru/journal/" + slug for slug in SLUGS],
             *["https://stazhno.ru/journal/guide/" + section for section in ("overview", "news", "learning", "events", "personal")],
+            *["https://stazhno.ru" + path for path in academy_pages()],
             "https://stazhno.ru/journal/paths",
             *["https://stazhno.ru/journal/paths/" + slug for slug in
               ("nayti-rabotu", "novye-navyki", "delitsya-opytom")],
