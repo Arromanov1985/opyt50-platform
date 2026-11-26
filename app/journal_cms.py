@@ -132,7 +132,7 @@ def parse_sections(value: str) -> list[dict]:
 
 
 def normalize_article(slug: str, data: ArticleInput) -> dict:
-    if not SLUG_PATTERN.fullmatch(slug) or slug in {"journal", "paths"}:
+    if not SLUG_PATTERN.fullmatch(slug) or slug in {"journal", "paths"} or slug.startswith("author-"):
         raise HTTPException(422, "Некорректный адрес статьи")
     from .journal_guide import source_url
     name = data.source_name.strip()
@@ -196,6 +196,8 @@ def public_articles(db) -> list[dict]:
         article["slug"] = row["slug"]
         article["published_at"] = row["published_at"]
         items.append(article)
+    from .community_author import published_author_articles
+    items.extend(published_author_articles(db))
     return items
 
 

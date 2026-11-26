@@ -37,6 +37,8 @@ COMMUNITY_PRIVATE_ROUTES = {
     "moderation_portfolio": "/api/admin/community/portfolio",
     "moderation_reputation": "/api/admin/community/reputation",
     "groups": "/api/community/groups",
+    "author_articles": "/api/community/author-articles",
+    "moderation_author_articles": "/api/admin/community/author-articles",
 }
 
 
@@ -280,7 +282,7 @@ def probe_public_journal_pages():
         if not isinstance(manifest, dict):
             raise ValueError("Invalid editorial manifest")
         pages = manifest.get("pages")
-        if not isinstance(pages, dict) or not 1 <= len(pages) <= 56:
+        if not isinstance(pages, dict) or not 1 <= len(pages) <= 256:
             raise ValueError("Invalid editorial manifest")
         if not all(
             path in {"/journal", "/journal/paths", "/sitemap.xml"} or path in GUIDE_PATHS

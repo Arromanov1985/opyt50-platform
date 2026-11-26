@@ -200,6 +200,8 @@ def journal_article(
     )
     from .journal_guide import editorial_facts, date_label, save_button
     published_date = str(article.get("published_at") or PUBLISHED)[:10]
+    byline = ('<a href="/people/' + _e(article["author_public_id"]) + '">' + _e(article["author_public_name"]) + "</a> · Автор сообщества"
+              if article.get("author_public_id") else "Редакция СТАЖНО")
     article_body = (
         '<div class="jr-breadcrumb"><a href="/">Главная</a>'
         '<span aria-hidden="true">/</span><a href="/journal">Журнал</a>'
@@ -208,7 +210,7 @@ def journal_article(
         f'<header><span class="jr-kicker">{_e(article["category"])}</span>'
         f'<h1>{_e(article["title"])}</h1>'
         f'<p class="jr-lead">{_e(article["description"])}</p>'
-        f'<p class="jr-meta">Редакция СТАЖНО · <time datetime="{_e(published_date)}">{_e(date_label(published_date))}</time>'
+        f'<p class="jr-meta">{byline} · <time datetime="{_e(published_date)}">{_e(date_label(published_date))}</time>'
         f' · {_e(article["read"])} чтения</p></header>'
         + editorial_facts(article) + "".join(sections) + '</article>'
         '<aside class="jr-aside"><h2>Следующий шаг</h2>'
@@ -232,7 +234,7 @@ def journal_article(
         '<p class="jr-back"><a href="/journal/paths">Маршруты чтения</a> · '
         '<a href="/journal">← Все статьи журнала</a></p>'
     )
-    cache_control = "no-store" if jobs is not None else "public, max-age=300"
+    cache_control = "no-store" if jobs is not None or article.get("author_public_id") else "public, max-age=300"
     return HTMLResponse(_layout(article["title"], article["description"],
                                "/journal/" + slug, article_body),
                         headers={"Cache-Control": cache_control})
@@ -252,7 +254,7 @@ def journal_highlights(request: Request) -> dict:
 def journal_renderer_sha256() -> str:
     """Identify the two fixed renderers without exposing code or local paths."""
     digest = hashlib.sha256(b"stazhno-journal-renderer-v1\0")
-    for name in ("journal.py", "journal_paths.py", "journal_guide.py", "public_discovery.py", "vacancy_pages.py"):
+    for name in ("journal.py", "journal_paths.py", "journal_guide.py", "community_author.py", "public_discovery.py", "vacancy_pages.py"):
         payload = Path(__file__).with_name(name).read_bytes()
         digest.update(name.encode("ascii") + b"\0" + len(payload).to_bytes(8, "big") + payload)
     return digest.hexdigest()

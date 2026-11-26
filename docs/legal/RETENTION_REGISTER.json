@@ -32,9 +32,10 @@
         "candidate_saved_searches",
         "community_profiles",
         "community_profile_events",
-        "community_portfolio_entries"
+        "community_portfolio_entries",
+        "community_author_articles"
       ],
-      "purpose": "Профессиональный профиль, резюме и сохранённые условия поиска с отметками просмотренных вакансий и добровольно размещаемое профессиональное портфолио",
+      "purpose": "Профессиональный профиль, резюме и сохранённые условия поиска с отметками просмотренных вакансий и добровольно размещаемое профессиональное портфолио; авторские материалы, согласия и редакционные решения",
       "start_event": "account_termination_or_goal_achieved",
       "systems": [
         "primary_database",

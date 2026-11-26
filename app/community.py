@@ -77,6 +77,24 @@ COMMUNITY_DDL = (
     )""",
     "CREATE INDEX IF NOT EXISTS idx_community_portfolio_owner ON community_portfolio_entries(user_id,status,created_at,id)",
     "CREATE INDEX IF NOT EXISTS idx_community_portfolio_review ON community_portfolio_entries(status,updated_at,id)",
+    """CREATE TABLE IF NOT EXISTS community_author_articles (
+        id TEXT PRIMARY KEY,
+        user_id INTEGER NOT NULL REFERENCES community_profiles(user_id) ON DELETE CASCADE,
+        client_key TEXT NOT NULL,
+        kind TEXT NOT NULL CHECK(kind IN ('article','case','learning')),
+        title TEXT NOT NULL, description TEXT NOT NULL, body_text TEXT NOT NULL,
+        topics_json TEXT NOT NULL DEFAULT '[]',
+        status TEXT NOT NULL DEFAULT 'draft' CHECK(status IN ('draft','pending','published','rejected','hidden')),
+        version INTEGER NOT NULL DEFAULT 1 CHECK(version>=1),
+        consent_at TEXT, consent_version TEXT, profile_content_version INTEGER,
+        reviewed_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+        reviewed_at TEXT, published_at TEXT,
+        moderation_reason TEXT NOT NULL DEFAULT '',
+        created_at TEXT NOT NULL, updated_at TEXT NOT NULL,
+        UNIQUE(user_id,client_key)
+    )""",
+    "CREATE INDEX IF NOT EXISTS idx_community_author_owner ON community_author_articles(user_id,updated_at,id)",
+    "CREATE INDEX IF NOT EXISTS idx_community_author_review ON community_author_articles(status,updated_at,id)",
     """CREATE TABLE IF NOT EXISTS community_profile_events (
         id TEXT PRIMARY KEY,
         user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -725,6 +743,9 @@ def install_community_routes(app) -> None:
                    published_at=NULL,moderation_reason='',updated_at=? WHERE user_id=? AND version=?""",
                 (*(fields[field] for field in CONTENT_FIELDS), now, user["id"], data.expected_version),
             )
+        if current is not None:
+            from .community_author import revoke_author_articles
+            revoke_author_articles(db, user["id"])
         updated = _profile(db, user["id"])
         _profile_event(db, updated, user["id"], "saved")
         return _committed(db, {"profile": _own_profile(updated)})
@@ -780,6 +801,8 @@ def install_community_routes(app) -> None:
         )
         from .community_reputation import revoke_profile_recommendations
         revoke_profile_recommendations(db, user["id"])
+        from .community_author import revoke_author_articles
+        revoke_author_articles(db, user["id"])
         _profile_event(db, updated, user["id"], "consent_withdrawn")
         return _committed(db, {"profile": _own_profile(updated)})
 
@@ -1138,3 +1161,6 @@ def install_community_routes(app) -> None:
 
     from .community_reputation import install_reputation_routes
     install_reputation_routes(app, community_user, throttle, get_connection, allowed, record_security_event)
+
+    from .community_author import install_author_routes
+    install_author_routes(app, community_user, throttle, get_connection, allowed, record_security_event)
