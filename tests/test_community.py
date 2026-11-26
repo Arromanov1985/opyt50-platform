@@ -1571,7 +1571,7 @@ def test_recommendation_and_portfolio_withdrawal_remain_available_under_privacy_
     # Simulate resolution of the privacy request in the isolated DB. Neither
     # withdrawn publication may reappear when the temporary restriction ends.
     with database(app.state.db_path) as db:
-        db.execute("UPDATE privacy_rights_requests SET status='rejected' WHERE user_id=?", (ids["first"],))
+        db.execute("UPDATE privacy_rights_requests SET status='declined' WHERE user_id=?", (ids["first"],))
     assert visitor.get(public).json()["entries"] == []
     assert visitor.get("/api/community/people/" + a["public_id"] + "/portfolio").json()["entries"] == []
 
