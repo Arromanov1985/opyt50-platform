@@ -156,3 +156,37 @@ def stage_upload(stream: BinaryIO, declared_content_type: str, *,
             Metadata={"sha256": checksum},
         )
     return StagedMedia(media_id, key, rule.kind, content_type, size, checksum)
+
+
+@dataclass(frozen=True)
+class MediaAccess:
+    """Inputs must be derived from trusted database rows, never request JSON."""
+    course_slug: str
+    media_course_slug: str
+    scan_state: Literal["pending", "clean", "rejected", "failed"]
+    account_active: bool
+    is_editor: bool
+    is_reviewer: bool
+    review_visible: bool
+    publication_visible: bool
+    in_draft: bool
+    in_public_snapshot: bool
+
+
+def may_read_media(access: MediaAccess, *, view: Literal["draft", "review", "public"]) -> bool:
+    """Fail closed across course boundaries and independent publication snapshots.
+
+    This policy does not replace authentication, database ownership checks or
+    actual scanner integration. Quarantine objects are never served directly.
+    """
+    if (not access.account_active or not access.course_slug
+            or access.course_slug != access.media_course_slug
+            or access.scan_state != "clean"):
+        return False
+    if view == "draft":
+        return access.is_editor and access.in_draft
+    if view == "review":
+        return access.is_reviewer and access.review_visible and access.in_draft
+    if view == "public":
+        return access.publication_visible and access.in_public_snapshot
+    return False

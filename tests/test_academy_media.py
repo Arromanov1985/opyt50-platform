@@ -115,3 +115,27 @@ def test_storage_failure_is_not_a_success():
     with pytest.raises(OSError):
         stage_upload(BytesIO(b"%PDF-1.7"), "application/pdf",
                      storage=Broken(), private_bucket="private")
+
+
+def test_media_access_is_bound_to_course_and_snapshot():
+    from dataclasses import replace
+    from app.academy_media import MediaAccess, may_read_media
+
+    access = MediaAccess("course-a", "course-a", "clean", True,
+                         True, False, False, True, True, False)
+    assert may_read_media(access, view="draft")
+    assert not may_read_media(access, view="public")
+    assert not may_read_media(access, view="review")
+    published = replace(access, in_public_snapshot=True, in_draft=False,
+                        is_editor=False)
+    assert may_read_media(published, view="public")
+    assert not may_read_media(published, view="draft")
+    assert not may_read_media(replace(published, publication_visible=False), view="public")
+    review = replace(access, is_editor=False, is_reviewer=True, review_visible=True)
+    assert may_read_media(review, view="review")
+    assert not may_read_media(replace(review, review_visible=False), view="review")
+    for view, candidate in (("draft", access), ("review", review), ("public", published)):
+        for state in ("pending", "rejected", "failed"):
+            assert not may_read_media(replace(candidate, scan_state=state), view=view)
+        assert not may_read_media(replace(candidate, account_active=False), view=view)
+        assert not may_read_media(replace(candidate, media_course_slug="course-b"), view=view)
