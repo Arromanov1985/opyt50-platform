@@ -109,9 +109,10 @@
         "invitations",
         "invitation_outcomes",
         "demo_transactions",
-        "community_connections"
+        "community_connections",
+        "community_recommendations"
       ],
-      "purpose": "Знакомства и согласие на раскрытие контакта",
+      "purpose": "Знакомства и согласие на раскрытие контакта; добровольные рекомендации коллег и согласия обеих сторон",
       "start_event": "introduction_closed",
       "systems": [
         "primary_database",

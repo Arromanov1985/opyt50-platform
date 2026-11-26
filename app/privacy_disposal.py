@@ -65,6 +65,7 @@ COMMON_COUNTS = (
         JOIN community_feed_entries f ON f.id=r.entry_id
         LEFT JOIN community_feed_entries root ON root.id=f.parent_id
         WHERE ? IN (f.author_id,root.author_id)""", "id"),
+    ("community_recommendations", "SELECT COUNT(*) FROM community_recommendations WHERE ? IN (author_id,recipient_id)", "id"),
     ("community_portfolio_entries", "SELECT COUNT(*) FROM community_portfolio_entries WHERE user_id=?", "id"),
     ("community_professional_profile", "SELECT COUNT(*) FROM community_profiles WHERE user_id=?", "id"),
     ("workflow_mail_awaiting", """SELECT COUNT(*) FROM email_delivery_jobs q
