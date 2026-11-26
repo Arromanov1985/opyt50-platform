@@ -11,10 +11,14 @@ import re
 import socket
 import ssl
 import sys
+import time
 from pathlib import Path
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, build_opener, HTTPRedirectHandler
 
+
+JOURNAL_PROBE_SECONDS = 90
+JOURNAL_PROBE_BYTES = 64 * 1024 * 1024
 
 DEFAULT_BASE = "https://arromanov1985-opyt50-platform-fdd8.twc1.net"
 BASE = os.getenv("STAZHNO_PREVIEW_URL", DEFAULT_BASE).rstrip("/")
@@ -322,7 +326,14 @@ def probe_public_journal_pages():
         manifest_result = "unavailable-or-invalid"
 
     results = {}
+    # Bound total work without imposing an arbitrary number of articles.
+    # A partially checked catalog must never be reported as published.
+    deadline = time.monotonic() + JOURNAL_PROBE_SECONDS
+    bytes_read = 0
     for path, fingerprint in expected.items():
+        remaining = deadline - time.monotonic()
+        if remaining <= 0 or bytes_read >= JOURNAL_PROBE_BYTES:
+            break
         request = Request(
             BASE + path + "?revision_check=" + fingerprint[:16],
             headers={"User-Agent":"Stazhno-Preview-ReadOnly-Probe/1.0",
@@ -330,9 +341,13 @@ def probe_public_journal_pages():
             method="GET",
         )
         try:
-            with build_opener(NoRedirect).open(request, timeout=12) as response:
-                payload = response.read(250_001)
-                if len(payload) > 250_000:
+            with build_opener(NoRedirect).open(request, timeout=min(12, remaining)) as response:
+                limit = min(250_001, JOURNAL_PROBE_BYTES - bytes_read)
+                payload = response.read(limit)
+                bytes_read += len(payload)
+                if time.monotonic() >= deadline or (limit < 250_001 and len(payload) == limit):
+                    item = {"status":response.status,"result":"budget-exhausted"}
+                elif len(payload) > 250_000:
                     item = {"status":response.status,"result":"html-too-large"}
                 elif not response.headers.get("Content-Type", "").lower().startswith("text/html"):
                     item = {"status":response.status,"result":"not-html"}
@@ -352,9 +367,14 @@ def probe_public_journal_pages():
     return {
         "result": "exact-match" if (
             renderer["result"] == "exact-match" and manifest_result == "accepted"
+            and len(results) == len(expected)
             and all(item["result"] == "exact-match" for item in results.values())
         ) else "unverified",
         "catalog_source":source,"manifest_result":manifest_result,"renderer":renderer,"pages":results,
+        "unprobed_pages":len(expected) - len(results),
+        "budget_exhausted":len(results) < len(expected) or any(
+            item["result"] == "budget-exhausted" for item in results.values()
+        ),
     }
 
 
