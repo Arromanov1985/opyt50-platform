@@ -1643,7 +1643,11 @@ def test_groups_private_membership_and_moderated_discussions(community):
     assert first.get(discussion).json()["entries"][0]["id"] == reply["id"]
     assert first.get(discussion).json()["entries"][0]["group_slug"] == "engineering"
     assert [item["id"] for item in second.get(feed + "/mine?group_slug=engineering").json()["entries"]] == [reply["id"]]
+    pending_reply = submit_feed(second, parent_id=entry["id"], kind="comment", title="", body="Вопрос перед выходом из группы")
     assert mutate(second, "DELETE", engineering).json()["group"]["joined"] is False
+    denied = mutate(admin, "PATCH", "/api/admin/community/feed/" + pending_reply["id"],
+                    {"expected_version": pending_reply["version"], "decision": "approve", "reason": ""})
+    assert denied.status_code == 409
     assert second.get(discussion).json()["can_comment"] is False
     assert len(second.get(discussion).json()["entries"]) == 1
     assert mutate(second, "POST", feed, {**comment, "client_key": str(uuid4())}).status_code == 403
@@ -1654,8 +1658,15 @@ def test_groups_private_membership_and_moderated_discussions(community):
     request = mutate(first, "POST", "/api/account/privacy-requests", {"kind": "stop_processing"})
     assert request.status_code == 201
     assert second.get(feed + "?group_slug=engineering").json()["entries"] == []
+    restricted = first.get(groups)
+    assert restricted.status_code == 200
+    assert restricted.json()["can_join"] is False
+    assert restricted.json()["can_read"] is False
+    assert {item["slug"] for item in restricted.json()["groups"]} == {"engineering", "sales"}
+    assert first.get(feed + "?group_slug=engineering").status_code == 403
     assert mutate(first, "PUT", engineering).status_code == 409
     assert mutate(first, "DELETE", engineering).status_code == 200
+    assert [item["slug"] for item in first.get(groups).json()["groups"]] == ["sales"]
     from app.privacy_disposal import impact_preview
     with database(app.state.db_path) as db:
         row = db.execute("SELECT request_key FROM privacy_rights_requests WHERE user_id=?",
