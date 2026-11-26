@@ -738,6 +738,8 @@ def run_browser(browser, base, database):
         admin.locator("#studio-outcomes").fill("Проверять данные в таблице")
         admin.locator('[data-studio="next"]').click()
         admin.locator('[data-studio="add-lesson"]').first.click()
+        expect(admin.locator("#studio-workspace")).to_contain_text("Учебные файлы")
+        expect(admin.locator("#studio-workspace")).to_contain_text("Загрузка и публикация файлов пока не подключены")
         admin.locator("#studio-lessons-0-title").fill("Первый урок")
         admin.locator("#studio-lessons-0-goal").fill("Научиться проверять данные")
         admin.locator("#studio-lessons-0-sections-0-0").fill("Исходные значения")

@@ -140,7 +140,9 @@ def test_clamd_framed_stream_and_bounded_reply(monkeypatch, chunks, expected):
 
 
 def test_image_decoder_only_supports_verified_still_images():
-    image = pytest.importorskip("PIL.Image")
+    from PIL import Image
+
+    image = Image
     buffer = BytesIO()
     image.new("RGB", (8, 8)).save(buffer, format="PNG")
     assert validate_image(buffer, "image/png") == "clean"
