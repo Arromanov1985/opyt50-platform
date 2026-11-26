@@ -101,3 +101,15 @@ def test_worker_routes_bounded_image_and_rich_jobs(monkeypatch,tmp_path):
                          converter=object(),scratch=tmp_path,mode="all",limit=2)
     assert report=={"clean":2,"rejected":1,"failed":0,"skipped":0}
     assert seen==[("images",2),("pending",2),("rich","a"),("rich","b")]
+
+
+def test_existing_source_is_never_removed(tmp_path,monkeypatch):
+    instance=adapter(tmp_path,monkeypatch)
+    output=tmp_path/"out"
+    output.mkdir(mode=0o700)
+    source=tmp_path/"source.bin"
+    source.write_bytes(b"existing")
+    monkeypatch.setattr(instance,"check_runtime",lambda:None)
+    with pytest.raises(FileExistsError):
+        instance(BytesIO(b"other"),"video/mp4",output)
+    assert source.read_bytes()==b"existing"

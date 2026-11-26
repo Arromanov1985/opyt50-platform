@@ -104,9 +104,11 @@ class LocalConverter:
             if any(char in str(path) for char in (":",",","\n","\r")):
                 raise IsolationFailure("Unsafe local mount path")
         self.check_runtime()
+        created = False
         try:
             size = 0
             with original.open("xb") as local:
+                created = True
                 while chunk := source.read(MiB):
                     size += len(chunk)
                     if size > rule.limit:
@@ -150,5 +152,5 @@ class LocalConverter:
             # Only the exclusively created local file is removed. The outer
             # job's TemporaryDirectory handles its own output files.
             # The source path is not selected by the untrusted converter.
-            if original.is_file() and not original.is_symlink():
+            if created and original.is_file() and not original.is_symlink():
                 original.unlink(missing_ok=True)
