@@ -764,7 +764,7 @@ def run_browser(browser, base, database):
         expect(admin.locator(".studio-preview")).to_contain_text("Правильный ответ")
         admin.context.set_offline(True)
         admin.locator("#studio-save").click()
-        expect(admin.locator(".form-error")).to_be_visible()
+        expect(admin.locator(".form-error:visible")).to_contain_text("Не удалось связаться с сервером")
         expect(admin.locator(".studio-preview")).to_contain_text("Исходные значения")
         admin.context.set_offline(False)
         with admin.expect_response(lambda r: r.url.endswith("/api/community/courses/" + course["slug"]) and r.request.method == "PUT") as course_saved:
