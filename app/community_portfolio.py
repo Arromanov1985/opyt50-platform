@@ -194,7 +194,13 @@ def install_portfolio_routes(app, community_user, throttle, get_connection, allo
               user: dict = Depends(community_user), db=Depends(get_connection)):
         allowed(user, "admin")
         rows = db.execute(
-            """SELECT e.*,p.public_id,p.public_name,p.headline,p.status AS profile_status
+            """SELECT e.*,p.public_id,p.status AS profile_status,
+                      CASE WHEN p.status='published' AND p.consent_at IS NOT NULL
+                        AND p.consent_content_version=p.content_version
+                        AND p.reviewed_content_version=p.content_version THEN p.public_name ELSE NULL END AS public_name,
+                      CASE WHEN p.status='published' AND p.consent_at IS NOT NULL
+                        AND p.consent_content_version=p.content_version
+                        AND p.reviewed_content_version=p.content_version THEN p.headline ELSE NULL END AS headline
                FROM community_portfolio_entries e JOIN community_profiles p ON p.user_id=e.user_id
                WHERE e.status=? AND e.consent_at IS NOT NULL
                ORDER BY e.updated_at,e.id LIMIT ? OFFSET ?""",

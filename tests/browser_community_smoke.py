@@ -210,6 +210,56 @@ def run_browser(browser, base, database):
         visitor.locator("#reading-mode-toggle").click()
         visitor.set_viewport_size({"width": 390, "height": 844})
 
+        # Portfolio drafts are independently consented and moderated.
+        anna.goto(base + "/community/portfolio", wait_until="networkidle")
+        anna.locator("#portfolio-add").click()
+        editor = anna.locator("#portfolio-form")
+        editor.locator('[name="kind"]').select_option("project")
+        editor.locator('[name="title"]').fill("Внедрение складского учёта")
+        editor.locator('[name="period"]').fill("2020–2024")
+        editor.locator('[name="contribution"]').fill("Обучила коллег. <img src=x onerror=window.portfolioXss=1>")
+        editor.locator('[name="result"]').fill("Снизили количество ошибок.")
+        anna.context.set_offline(True)
+        editor.locator('[type="submit"]').click()
+        expect(editor.locator(".form-error")).to_be_visible()
+        expect(editor.locator('[name="title"]')).to_have_value("Внедрение складского учёта")
+        anna.context.set_offline(False)
+        with anna.expect_response(lambda r: r.url.endswith("/api/community/portfolio") and r.request.method == "POST") as portfolio_saved:
+            editor.locator('[type="submit"]').click()
+        portfolio = checked(portfolio_saved.value)["entry"]
+        portfolio_id = portfolio["id"]
+        card = anna.locator(f'#portfolio-list [data-portfolio-id="{portfolio_id}"]')
+        expect(card).to_contain_text("Черновик")
+        assert checked(visitor.request.get(base + "/api/community/people/" + person_id + "/portfolio"))["entries"] == []
+        card.locator('[data-action="submit-portfolio"]').click()
+        consent = anna.locator("#portfolio-submit-form")
+        consent.locator('[name="publish_consent"]').check()
+        with anna.expect_response(lambda r: r.url.endswith("/portfolio/" + portfolio_id + "/submit")) as portfolio_submitted:
+            consent.locator('[type="submit"]').click()
+        assert checked(portfolio_submitted.value)["entry"]["status"] == "pending"
+        expect(card).to_contain_text("На проверке")
+        capture(anna, "community-portfolio-owner-mobile.png")
+        admin.goto(base + "/community/portfolio", wait_until="networkidle")
+        admin.locator(f'#portfolio-review-list [data-portfolio-id="{portfolio_id}"] [data-action="approve-portfolio"]').click()
+        with admin.expect_response(lambda r: r.url.endswith("/api/admin/community/portfolio/" + portfolio_id) and r.request.method == "PATCH") as portfolio_approved:
+            admin.locator('#portfolio-review-form [type="submit"]').click()
+        assert checked(portfolio_approved.value)["entry"]["status"] == "published"
+        visitor.goto(base + "/people/" + person_id, wait_until="networkidle")
+        expect(visitor.locator(f'.person-portfolio [data-portfolio-id="{portfolio_id}"]')).to_contain_text("Внедрение складского учёта")
+        assert visitor.evaluate("window.portfolioXss || 0") == 0
+        visitor.locator("#share-person").click()
+        expect(visitor.locator("#share-profile-url")).to_have_value(base + "/people/" + person_id)
+        visitor.keyboard.press("Escape")
+        capture(visitor, "community-public-portfolio-mobile.png")
+        anna.reload(wait_until="networkidle")
+        card.locator('[data-action="edit-portfolio"]').click()
+        editor.locator('[name="result"]').fill("Уточнённый результат работы.")
+        with anna.expect_response(lambda r: r.url.endswith("/api/community/portfolio/" + portfolio_id) and r.request.method == "PUT") as portfolio_edited:
+            editor.locator('[type="submit"]').click()
+        assert checked(portfolio_edited.value)["entry"]["status"] == "draft"
+        assert checked(visitor.request.get(base + "/api/community/people/" + person_id + "/portfolio"))["entries"] == []
+        assert visitor.request.get(base + "/people/" + person_id).status == 200
+
         boris_profile = api_profile(boris, base, admin, "Борис Проекты", "Координатор проектов")
         outsider_profile = api_profile(outsider, base, admin, "Виктор Мастер", "Мастер производственного обучения")
         # Professional feed: an explicit, moderated submission and discussion.
