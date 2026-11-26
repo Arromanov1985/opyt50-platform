@@ -280,7 +280,7 @@ def probe_public_journal_pages():
         if not isinstance(manifest, dict):
             raise ValueError("Invalid editorial manifest")
         pages = manifest.get("pages")
-        if not isinstance(pages, dict) or not 1 <= len(pages) <= 55:
+        if not isinstance(pages, dict) or not 1 <= len(pages) <= 56:
             raise ValueError("Invalid editorial manifest")
         if not all(
             path in {"/journal", "/journal/paths", "/sitemap.xml"} or path in GUIDE_PATHS
