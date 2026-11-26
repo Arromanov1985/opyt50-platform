@@ -1172,6 +1172,39 @@
   function studioMediaLabel(file){
     return (studioMediaKinds[file.kind]||'Файл')+' · '+(file.byte_count/1048576).toFixed(2)+' МиБ · '+(studioMediaStates[file.state]||'Недоступен');
   }
+  function studioUploadImage(file,progress){
+    if(!file||!['image/jpeg','image/png','image/webp'].includes(file.type)||file.size<1||file.size>10*1048576){
+      return Promise.reject(new Error('Выберите JPEG, PNG или WebP не больше 10 МиБ.'));
+    }
+    return new Promise((resolve,reject)=>{
+      const xhr=new XMLHttpRequest();
+      xhr.open('POST',studioPath()+'/media/upload?expected_version='+studio.entry.version);
+      xhr.timeout=180000;
+      xhr.responseType='json';
+      xhr.setRequestHeader('Content-Type',file.type);
+      xhr.setRequestHeader('X-Requested-With','OPYT50');
+      xhr.setRequestHeader('X-Community-Actor',String(state.user.id));
+      xhr.upload.onprogress=event=>{
+        if(event.lengthComputable){
+          const percent=Math.min(100,Math.round(100*event.loaded/event.total));
+          progress.value=percent;
+          const label=$('#studio-upload-progress-label');
+          if(label)label.textContent=percent===100?'Файл передан. Подтверждаем сохранение…':'Передано '+percent+'%';
+        }
+      };
+      const uncertain=()=>reject(new Error('Не удалось подтвердить загрузку. Текст урока сохранён в этой вкладке. Обновите реестр перед повторной попыткой.'));
+      xhr.onerror=uncertain;xhr.ontimeout=uncertain;xhr.onabort=uncertain;
+      xhr.onload=()=>{
+        if(xhr.status===201&&xhr.response?.file_id&&Array.isArray(xhr.response.media_files)){
+          resolve(xhr.response);
+        }else{
+          const message=typeof xhr.response?.detail==='string'?xhr.response.detail:'Не удалось подтвердить загрузку. Обновите реестр перед повторной попыткой.';
+          reject(new Error(message));
+        }
+      };
+      xhr.send(file);
+    });
+  }
   function studioMediaEditor(lesson,prefix){
     const blocks=lesson.media||[];
     const files=studio.entry.media_files||[];
@@ -1186,7 +1219,12 @@
         studioField('Описание / альтернативный текст',p+'.description',block.description,{area:true,max:1000,help:'Объясните, что показывает материал. Это важно для доступности.'})+
         studioField('Расшифровка или текстовое содержание',p+'.transcript',block.transcript,{area:true,max:12000,rows:5,help:'Для аудио и видео подготовьте текстовую расшифровку.'})+'</section>';
     }).join('');
-    return '<h3>Учебные файлы</h3><p class="notice warning">Загрузка и публикация файлов пока не подключены. Можно подготовить расположение и описание материалов из реестра курса.</p>'+
+    const upload=studio.entry.image_upload_enabled
+      ?'<div class="studio-block"><h4>Добавить изображение</h4><p class="help">JPEG, PNG или WebP, до 10 МиБ. Файл будет доступен в предпросмотре после проверки и сохранения черновика.</p><div class="studio-field"><label for="studio-image-file">Выберите изображение</label><input id="studio-image-file" type="file" accept="image/jpeg,image/png,image/webp"></div>'+
+        studioButton('upload-image','Загрузить изображение','primary',blocks.length>=12?'disabled':'')+
+        '<progress id="studio-upload-progress" max="100" value="0" aria-label="Загрузка изображения" hidden></progress><p class="help" id="studio-upload-progress-label" role="status"></p></div><p class="help">Публикация мультимедиа пока отключена.</p>'
+      :'<p class="notice warning">Загрузка и публикация файлов пока не подключены. Можно подготовить расположение и описание материалов из реестра курса.</p>';
+    return '<h3>Учебные файлы</h3>'+upload+studioButton('refresh-media','Обновить статус файлов')+
       cards+(available.length&&blocks.length<12?'<div class="studio-field"><label for="studio-media-picker">Выберите файл курса</label><select id="studio-media-picker">'+available.map(file=>'<option value="'+esc(file.id)+'">'+esc(studioMediaLabel(file)+' · '+file.id.slice(0,8))+'</option>').join('')+'</select></div>'+studioButton('add-media','+ Добавить материал'):'<p class="help">'+(blocks.length>=12?'До 12 материалов на урок.':'Нет дополнительных файлов в реестре.')+'</p>');
   }
   function studioMediaPreview(lesson){
@@ -1194,8 +1232,12 @@
     if(!(lesson.media||[]).length)return '';
     return '<h3>Учебные материалы</h3>'+lesson.media.map(block=>{
       const file=files.find(item=>item.id===block.file_id);
-      return '<section class="studio-block"><h4>'+esc(block.caption||'Материал без названия')+'</h4><p class="help">'+esc(file?studioMediaLabel(file):'Файл недоступен')+'</p><p class="multiline">'+esc(block.description)+'</p>'+
-        (block.transcript?'<details><summary>Текст материала</summary><p class="multiline">'+esc(block.transcript)+'</p></details>':'')+'<p class="help">Воспроизведение пока недоступно.</p></section>';
+      const savedReference=studio.entry.draft?.lessons?.some(item=>(item.media||[]).some(saved=>saved.file_id===block.file_id));
+      const preview=studio.entry.image_upload_enabled&&savedReference&&file?.kind==='image'&&file.state==='clean'
+        ?'<img class="studio-media-image" loading="lazy" src="'+studioPath()+'/media/'+encodeURIComponent(block.file_id)+'/preview" alt="'+esc(block.description||block.caption||'Учебное изображение')+'">'
+        :'<p class="help">Предпросмотр файла пока недоступен. Для проверенного изображения сохраните связь с уроком и обновите статус.</p>';
+      return '<section class="studio-block"><h4>'+esc(block.caption||'Материал без названия')+'</h4><p class="help">'+esc(file?studioMediaLabel(file):'Файл недоступен')+'</p>'+preview+'<p class="multiline">'+esc(block.description)+'</p>'+
+        (block.transcript?'<details><summary>Текст материала</summary><p class="multiline">'+esc(block.transcript)+'</p></details>':'')+'</section>';
     }).join('');
   }
   function studioLessons(){
@@ -1333,6 +1375,30 @@
         const to=studio.lesson+(action==='move-up'?-1:1);
         if(to>=0&&to<studio.draft.lessons.length){studio.draft.lessons.splice(studio.lesson,1);studio.draft.lessons.splice(to,0,lesson);studio.lesson=to;structural();}
       }else if(action==='remove-lesson')confirmAction('Удалить урок?','Все материалы, задания и вопросы этого урока будут удалены из черновика.','Удалить',async()=>{studio.draft.lessons.splice(studio.lesson,1);studio.lesson=Math.max(0,Math.min(studio.lesson,studio.draft.lessons.length-1));structural();});
+      else if(action==='refresh-media'){
+        studio.loading=true;
+        await busy(content,async()=>{
+          const fresh=(await api(studioPath())).course;
+          if(fresh.version!==studio.entry.version)throw new Error('Курс изменён в другой вкладке. Введённый текст остаётся здесь; сохраните его отдельно перед повторным открытием.');
+          studio.entry=fresh;
+          studioRender();notice('Статусы файлов обновлены.');
+        });
+      }
+      else if(action==='upload-image'&&lesson&&studio.entry.image_upload_enabled){
+        const input=$('#studio-image-file'),file=input?.files?.[0];
+        const progress=$('#studio-upload-progress');
+        if(!file||!progress)throw new Error('Сначала выберите изображение.');
+        if((lesson.media||[]).length>=12)throw new Error('В уроке уже 12 материалов.');
+        studio.loading=true;
+        progress.hidden=false;
+        await busy(content,async()=>{
+          const result=await studioUploadImage(file,progress);
+          studio.entry.media_files=result.media_files;
+          lesson.media=lesson.media||[];
+          if(!lesson.media.some(block=>block.file_id===result.file_id))lesson.media.push({file_id:result.file_id,caption:'',description:'',transcript:''});
+          structural();notice('Изображение отправлено на проверку. Заполните описание и сохраните черновик.');
+        });
+      }
       else if(action==='add-media'&&lesson){
         const id=$('#studio-media-picker')?.value;
         const files=studio.entry.media_files||[];

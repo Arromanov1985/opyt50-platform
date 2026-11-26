@@ -159,3 +159,7 @@
 @media(max-width:850px){.studio-steps{grid-template-columns:repeat(2,minmax(0,1fr))}.studio-lesson-layout{grid-template-columns:1fr}.studio-lessons-nav{position:static}.studio-lessons-nav ol{max-height:240px}.studio-save-area{flex:1 1 200px}.studio-catalog{grid-template-columns:1fr}}
 @media(max-width:480px){.studio-steps{gap:7px}.studio-step{font-size:.9em;padding:9px;gap:6px;min-height:58px}.studio-num{flex-basis:26px;width:26px;height:26px}.studio-panel .actions{display:grid;grid-template-columns:minmax(0,1fr)}.studio-panel .actions .button,.studio-save-area .button{width:100%}.studio-block{padding:12px}.studio-option{gap:6px;grid-template-columns:22px minmax(0,1fr) 40px}.studio-tabs .button{flex:1 1 100px}}
 .comfortable-view .studio-catalog{grid-template-columns:1fr}.comfortable-view .studio-steps{grid-template-columns:repeat(2,minmax(0,1fr))}
+
+/* Academy private image upload and preview */
+#studio-upload-progress { width: 100%; margin-top: .75rem; }
+.studio-media-image { display: block; max-width: 100%; height: auto; border-radius: 12px; margin: .75rem auto; }

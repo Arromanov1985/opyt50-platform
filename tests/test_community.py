@@ -2035,3 +2035,100 @@ def test_course_media_draft_isolation_and_publication_gate(community):
     assert removed.status_code == 200 and not removed.json()["course"]["issues"]
     assert removed.json()["course"]["draft"] == text
     assert removed.json()["course"]["media_files"][0]["id"] == own_file.id.hex
+
+
+def test_opt_in_image_upload_and_sanitized_private_preview(community, monkeypatch):
+    from copy import deepcopy
+    from io import BytesIO
+    from PIL import Image, PngImagePlugin
+    from scripts.scan_academy_media import scan_batch
+
+    app, clients, ids = community
+    author, outsider, visitor = (clients[key] for key in ("first", "second", "visitor"))
+    save(author)
+    url = "/api/community/courses"
+    course = mutate(author, "POST", url, {"client_key": str(uuid4())}).json()["course"]
+    own = url + "/" + course["slug"]
+    target = own + "/media/upload?expected_version=" + str(course["version"])
+    image = Image.new("RGBA", (48, 32), (10, 20, 30, 180))
+    source = BytesIO()
+    info = PngImagePlugin.PngInfo()
+    info.add_text("Comment", "metadata-only-private-string")
+    image.save(source, format="PNG", pnginfo=info)
+    raw = source.getvalue()
+    headers = {**HEADERS, "Content-Type": "image/png", "X-Community-Actor": str(ids["first"])}
+    assert not author.get(own).json()["course"]["image_upload_enabled"]
+    assert author.post(target, headers=headers, content=raw).status_code == 503
+
+    for key,value in {
+        "STORAGE_ENABLED":"1", "IMAGE_UPLOAD_ENABLED":"1",
+        "S3_ENDPOINT":"https://objects.example.invalid", "S3_REGION":"test",
+        "S3_BUCKET":"private-test-bucket", "S3_ACCESS_KEY":"dummy", "S3_SECRET_KEY":"dummy",
+        "CLAMD_SOCKET":"/run/clamav/clamd.sock",
+    }.items():
+        monkeypatch.setenv("STAZHNO_ACADEMY_" + key, value)
+
+    class Storage:
+        def __init__(self):
+            self.objects = {}
+
+        def put_object(self, **kwargs):
+            assert kwargs["Bucket"] == "private-test-bucket"
+            assert kwargs["IfNoneMatch"] == "*"
+            key = kwargs["Key"]
+            assert key not in self.objects
+            self.objects[key] = kwargs["Body"].read()
+
+        def get_object(self, **kwargs):
+            value = self.objects[kwargs["Key"]]
+            return {"Body": BytesIO(value), "ContentLength": len(value)}
+
+    class CleanScanner:
+        def scan(self, stream):
+            assert stream.read() == raw
+            return "clean"
+
+    storage = Storage()
+    monkeypatch.setattr("app.academy_media_routes.build_storage_client", lambda config: storage)
+    assert author.get(own).json()["course"]["image_upload_enabled"]
+    assert visitor.post(target, headers=HEADERS, content=raw).status_code == 401
+    assert outsider.post(target, headers={**HEADERS, "Content-Type":"image/png"}, content=raw).status_code == 404
+    assert author.post(target, headers={"Content-Type":"image/png"}, content=raw).status_code == 403
+    assert author.post(target, headers={**headers, "Content-Type":"application/pdf"}, content=b"%PDF-1.7").status_code == 415
+    assert author.post(target, headers={**headers, "Content-Length":str(10*1024*1024+1)}, content=raw).status_code == 413
+    assert author.post(own + "?x=1", headers={**headers, "Content-Length":str(300000)}, content=raw).status_code == 413
+    assert not storage.objects
+    response = author.post(target, headers=headers, content=raw)
+    assert response.status_code == 201, response.text
+    payload = response.json()
+    media_id = payload["file_id"]
+    assert payload["media_files"][0]["state"] == "pending"
+    assert "object_key" not in response.text and "sha256" not in response.text
+    preview = own + "/media/" + media_id + "/preview"
+    assert author.get(preview).status_code == 404
+    data = deepcopy(COURSE_DRAFT)
+    data["lessons"][0]["media"] = [{"file_id":media_id, "caption":"Схема", "description":"Таблица", "transcript":""}]
+    result = mutate(author, "PUT", own, {**data, "expected_version":course["version"]})
+    assert result.status_code == 200, result.text
+    assert author.get(preview).status_code == 404
+    assert scan_batch(app.state.db_path, storage=storage, bucket="private-test-bucket",
+                      scanner=CleanScanner(), limit=10)["clean"] == 1
+    assert author.get(own).json()["course"]["media_files"][0]["state"] == "clean"
+    assert outsider.get(preview).status_code == 404
+    assert visitor.get(preview).status_code == 401
+    visible = author.get(preview)
+    assert visible.status_code == 200, visible.text[:500]
+    assert visible.headers["content-type"] == "image/jpeg"
+    assert visible.headers["cache-control"] == "no-store"
+    assert visible.content != raw and b"metadata-only-private-string" not in visible.content
+    with Image.open(BytesIO(visible.content)) as decoded:
+        assert decoded.size == (48, 32) and decoded.format == "JPEG"
+        assert not decoded.getexif()
+    # A clean record never authorizes altered bytes.
+    key = next(iter(storage.objects))
+    storage.objects[key] = b"x" * len(raw)
+    assert author.get(preview).status_code == 503
+    storage.objects[key] = raw
+    assert mutate(author, "POST", "/api/account/privacy-requests", {"kind":"stop_processing"}).status_code == 201
+    assert author.get(preview).status_code == 404
+    assert author.post(target, headers=headers, content=raw).status_code == 409
