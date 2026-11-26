@@ -46,6 +46,8 @@ COMMON_COUNTS = (
     ("community_opportunities", """SELECT COUNT(*) FROM community_opportunities o
         JOIN community_feed_entries f ON f.id=o.entry_id WHERE f.author_id=?""", "id"),
     ("academy_courses", "SELECT COUNT(*) FROM academy_courses WHERE owner_id=?", "id"),
+    ("academy_media", """SELECT COUNT(*) FROM academy_media m
+        JOIN academy_courses a ON a.slug=m.course_slug WHERE a.owner_id=?""", "id"),
     ("community_author_articles", "SELECT COUNT(*) FROM community_author_articles WHERE user_id=?", "id"),
     ("community_group_memberships", "SELECT COUNT(*) FROM community_group_memberships WHERE user_id=?", "id"),
     ("community_group_posts", """SELECT COUNT(*) FROM community_group_posts g
@@ -148,6 +150,8 @@ def impact_preview(db, request_key: str) -> dict | None:
         risks.append("Рекомендации затрагивают согласия и данные двух участников: отдельно оценить права второй стороны")
     if counts.get("community_feed_linked_comments", 0):
         risks.append("Удаление публикаций затронет комментарии других участников: отдельно оцените их права и сохранность")
+    if counts.get("academy_media", 0):
+        risks.append("Проверить приватное хранилище учебных файлов и подтвердить удаление объектов до удаления реестра")
     if counts.get("applications", 0):
         risks.append("Отклики кандидата связаны с процессами работодателей")
     return {
@@ -159,7 +163,7 @@ def impact_preview(db, request_key: str) -> dict | None:
         "risk_flags": risks,
         "external_systems_not_scanned": [
             "Timeweb infrastructure logs", "SMTP queues and provider logs",
-            "database backups", "third-party recipients' copies",
+            "database backups", "third-party recipients' copies", "private Academy media storage",
         ],
         "read_only": True,
         "automatic_deletion": False,

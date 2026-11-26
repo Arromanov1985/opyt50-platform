@@ -114,7 +114,8 @@ def _matches_type(stream: BinaryIO, content_type: str, size: int) -> bool:
 
 
 def stage_upload(stream: BinaryIO, declared_content_type: str, *,
-                 storage: PrivateStorage, private_bucket: str) -> StagedMedia:
+                 storage: PrivateStorage, private_bucket: str,
+                 media_id: UUID | None = None, expected_bytes: int | None = None) -> StagedMedia:
     """Copy and hash a bounded stream, then write only to private quarantine.
 
     A matching signature is NOT an antivirus, transcoding or content safety
@@ -127,24 +128,29 @@ def stage_upload(stream: BinaryIO, declared_content_type: str, *,
         raise MediaRejected("Неподдерживаемый формат файла")
     if not private_bucket:
         raise RuntimeError("Private Academy media storage is not configured")
+    if expected_bytes is not None and not 1 <= expected_bytes <= rule.limit:
+        raise MediaRejected("Некорректный размер файла")
+    limit = expected_bytes if expected_bytes is not None else rule.limit
     digest = sha256()
     size = 0
     with SpooledTemporaryFile(max_size=MiB, mode="w+b") as temp:
         while True:
-            chunk = stream.read(min(MiB, rule.limit - size + 1))
+            chunk = stream.read(min(MiB, limit - size + 1))
             if not chunk:
                 break
             size += len(chunk)
-            if size > rule.limit:
+            if size > limit:
                 raise MediaRejected("Файл превышает допустимый размер")
             temp.write(chunk)
             digest.update(chunk)
         if not size:
             raise MediaRejected("Файл пуст")
+        if expected_bytes is not None and size != expected_bytes:
+            raise MediaRejected("Размер файла не соответствует заявленному")
         temp.seek(0)
         if not _matches_type(temp, content_type, size):
             raise MediaRejected("Содержимое файла не соответствует формату")
-        media_id = uuid4()
+        media_id = media_id or uuid4()
         key = "academy/quarantine/" + media_id.hex
         checksum = digest.hexdigest()
         # No user-supplied filename, URL, ACL, executable content type or

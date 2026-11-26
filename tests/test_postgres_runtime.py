@@ -882,3 +882,24 @@ def test_course_builder_runtime_postgresql(runtime_db):
         assert removed.status_code == 200, removed.text
         assert client.get(public).status_code == 404
 
+
+
+def test_academy_media_registry_postgresql(runtime_db):
+    from app.academy_media import StagedMedia
+    from app.academy_media_registry import reserve_media, record_staged
+    from fastapi import HTTPException
+
+    with postgres_database(runtime_db) as db:
+        db.execute("""INSERT INTO academy_courses(slug,owner_id,draft_json,created_at,updated_at)
+                   VALUES('pg-media-course',1,'{}','2026-01-01','2026-01-01')""")
+        actor = {"id": 1, "role": "candidate"}
+        reservation = reserve_media(db, actor, "pg-media-course", 1, "image/png", 12)
+        with pytest.raises(HTTPException) as denied:
+            reserve_media(db, {"id": 2, "role": "employer"}, "pg-media-course", 1, "image/png", 12)
+        assert denied.value.status_code == 404
+    with postgres_database(runtime_db) as db:
+        media = StagedMedia(reservation.id, "academy/quarantine/" + reservation.id.hex,
+                            "image", "image/png", 12, "a" * 64)
+        record_staged(db, reservation, media)
+        row = db.execute("SELECT state,sha256 FROM academy_media WHERE id=?", (reservation.id.hex,)).fetchone()
+        assert row[0] == "pending" and row[1] == "a" * 64

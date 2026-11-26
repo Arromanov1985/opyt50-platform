@@ -139,3 +139,79 @@ def test_media_access_is_bound_to_course_and_snapshot():
             assert not may_read_media(replace(candidate, scan_state=state), view=view)
         assert not may_read_media(replace(candidate, account_active=False), view=view)
         assert not may_read_media(replace(candidate, media_course_slug="course-b"), view=view)
+
+
+def test_registry_reserves_exact_bytes_and_never_approves(tmp_path):
+    from dataclasses import replace
+    from fastapi import HTTPException
+    from app.db import database, init_db
+    from app.release02 import init_release02
+    from app.academy_media_registry import reserve_media, upload_reserved, record_staged
+
+    path = str(tmp_path / "media.sqlite")
+    init_db(path)
+    init_release02(path)
+    data = b"\x89PNG\r\n\x1a\n1234"
+    author = {"id": 1, "role": "candidate"}
+    with database(path) as db:
+        for uid in (1, 2):
+            db.execute("INSERT INTO users(id,email,password_hash,role,name) VALUES(?,?,?,?,?)",
+                       (uid, f"media-{uid}@example.invalid", "hash", "candidate", "Test"))
+        db.execute("""INSERT INTO academy_courses(slug,owner_id,draft_json,created_at,updated_at)
+                   VALUES('course-a',1,'{}','2026-01-01','2026-01-01')""")
+        with pytest.raises(HTTPException) as denied:
+            reserve_media(db, {"id": 2, "role": "candidate"}, "course-a", 1, "image/png", len(data))
+        assert denied.value.status_code == 404
+        with pytest.raises(HTTPException) as stale:
+            reserve_media(db, author, "course-a", 2, "image/png", len(data))
+        assert stale.value.status_code == 409
+        reservation = reserve_media(db, author, "course-a", 1, "image/png", len(data))
+    client = FakePrivateStorage()
+    with pytest.raises(MediaRejected):
+        upload_reserved(reservation, BytesIO(data + b"X"), storage=client, private_bucket="private")
+    assert client.calls == []
+    media = upload_reserved(reservation, BytesIO(data), storage=client, private_bucket="private")
+    with database(path) as db:
+        row = db.execute("SELECT * FROM academy_media WHERE id=?", (reservation.id.hex,)).fetchone()
+        assert row["state"] == "reserved" and row["sha256"] is None
+        assert row["object_key"] == media.object_key
+        with pytest.raises(ValueError):
+            record_staged(db, reservation, replace(media, byte_count=len(data)+1))
+        record_staged(db, reservation, media)
+        row = db.execute("SELECT * FROM academy_media WHERE id=?", (reservation.id.hex,)).fetchone()
+        assert row["state"] == "pending" and row["sha256"] == sha256(data).hexdigest()
+        with pytest.raises(ValueError):
+            record_staged(db, reservation, media)
+    # A failed or unfinished upload cannot leave an untracked object after
+    # deleting its parent course: the registry must be reconciled first.
+    import sqlite3
+    with pytest.raises(sqlite3.IntegrityError):
+        with database(path) as db:
+            db.execute("DELETE FROM academy_courses WHERE slug='course-a'")
+
+
+def test_registry_quota_and_restricted_accounts(tmp_path, monkeypatch):
+    from fastapi import HTTPException
+    from app.db import database, init_db
+    from app.release02 import init_release02
+    from app import academy_media_registry as registry
+
+    path = str(tmp_path / "quota.sqlite")
+    init_db(path)
+    init_release02(path)
+    actor = {"id": 1, "role": "candidate"}
+    monkeypatch.setattr(registry, "MAX_COURSE_FILES", 2)
+    monkeypatch.setattr(registry, "MAX_COURSE_BYTES", 30)
+    with database(path) as db:
+        db.execute("INSERT INTO users(id,email,password_hash,role,name) VALUES(1,'quota@example.invalid','hash','candidate','Test')")
+        db.execute("""INSERT INTO academy_courses(slug,owner_id,draft_json,created_at,updated_at)
+                   VALUES('course-q',1,'{}','2026-01-01','2026-01-01')""")
+        registry.reserve_media(db, actor, "course-q", 1, "image/png", 20)
+        with pytest.raises(HTTPException) as quota:
+            registry.reserve_media(db, actor, "course-q", 1, "image/png", 11)
+        assert quota.value.status_code == 409
+        registry.reserve_media(db, actor, "course-q", 1, "image/png", 10)
+        with pytest.raises(HTTPException) as quota:
+            registry.reserve_media(db, actor, "course-q", 1, "image/png", 1)
+        assert quota.value.status_code == 409
+        assert db.execute("SELECT COUNT(*) FROM academy_media").fetchone()[0] == 2
