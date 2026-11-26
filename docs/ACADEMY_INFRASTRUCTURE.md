@@ -60,3 +60,34 @@ Rollback by disabling the web upload and preview switches and stopping the
 worker; do not delete existing database rows or objects on rollback.
 Record the deployed commit and health verification. Legal approval remains
 a separate launch gate.
+
+
+## 5. Timeweb Cloud read-only API access through GitHub
+
+The repository is public. Never commit credentials, place them in Actions
+variables, PR comments or chat, or print raw Timeweb API responses.
+
+1. In Timeweb Cloud → API and Terraform issue a restricted API token for
+   the STAZHNO project only. Initially grant read-only access to App Platform,
+   S3 and cloud servers; deny unrelated services. Leave API deletion bypass
+   disabled. Use a short validity period when available.
+2. In GitHub Settings → Environments create an environment named
+   `timeweb-stazhno`. Restrict deployment branches to exactly `main`
+   and enable approval by a trusted owner if available. Add an
+   **environment secret**, not a variable, named `TIMEWEB_CLOUD_TOKEN`.
+3. After the workflow is merged into the default branch, manually run
+   **Timeweb STAZHNO read-only access check** in GitHub Actions. Use only the
+   main branch. Optionally enter the numeric STAZHNO project ID to verify
+   access to its specific server and S3 resource-list endpoints.
+4. The workflow makes only fixed-host HTTPS GET requests and emits HTTP
+   status codes; it does not print API response bodies or use the token to
+   mutate resources. A 200 is an API access check, not proof that a
+   particular resource is correctly configured or all permissions are safe.
+
+A separate management token, with narrowly scoped permissions and explicit
+approval, may be required for future changes. Do not enable any paid
+resources, alter existing databases, change feature switches or widen
+permissions as part of the read-only check. S3 object access credentials
+are separate from the cloud API token; store them only in the appropriate
+trusted server configuration. Revoke the cloud API token in Timeweb when
+no longer needed and remove its GitHub environment secret.
