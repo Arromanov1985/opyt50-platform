@@ -140,6 +140,12 @@ def build_personal_data_snapshot(db, user_id: int) -> dict:
                WHERE f.author_id=? ORDER BY f.created_at DESC,f.id DESC""",
         )
         section(
+            "my_academy_courses",
+            """SELECT slug,draft_json,published_json,state,version,consent_at,pending_profile_version,
+                      published_profile_version,moderation_reason,created_at,updated_at,published_at
+               FROM academy_courses WHERE owner_id=? ORDER BY updated_at DESC,slug""",
+        )
+        section(
             "my_author_articles",
             """SELECT id,kind,title,description,body_text,topics_json,status,version,
                       consent_at,consent_version,profile_content_version,moderation_reason,

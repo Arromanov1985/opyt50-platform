@@ -77,6 +77,20 @@ COMMUNITY_DDL = (
     )""",
     "CREATE INDEX IF NOT EXISTS idx_community_portfolio_owner ON community_portfolio_entries(user_id,status,created_at,id)",
     "CREATE INDEX IF NOT EXISTS idx_community_portfolio_review ON community_portfolio_entries(status,updated_at,id)",
+    """CREATE TABLE IF NOT EXISTS academy_courses (
+        slug TEXT PRIMARY KEY,
+        owner_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+        draft_json TEXT NOT NULL,
+        published_json TEXT,
+        state TEXT NOT NULL DEFAULT 'draft' CHECK(state IN ('draft','pending','published','rejected','hidden')),
+        version INTEGER NOT NULL DEFAULT 1 CHECK(version>=1),
+        consent_at TEXT, pending_profile_version INTEGER, published_profile_version INTEGER,
+        reviewed_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+        moderation_reason TEXT NOT NULL DEFAULT '',
+        created_at TEXT NOT NULL, updated_at TEXT NOT NULL, published_at TEXT
+    )""",
+    "CREATE INDEX IF NOT EXISTS idx_academy_courses_owner ON academy_courses(owner_id,updated_at)",
+    "CREATE INDEX IF NOT EXISTS idx_academy_courses_review ON academy_courses(state,updated_at)",
     """CREATE TABLE IF NOT EXISTS community_author_articles (
         id TEXT PRIMARY KEY,
         user_id INTEGER NOT NULL REFERENCES community_profiles(user_id) ON DELETE CASCADE,
@@ -746,6 +760,8 @@ def install_community_routes(app) -> None:
         if current is not None:
             from .community_author import revoke_author_articles
             revoke_author_articles(db, user["id"])
+            from .academy_builder import revoke_courses
+            revoke_courses(db, user["id"])
         updated = _profile(db, user["id"])
         _profile_event(db, updated, user["id"], "saved")
         return _committed(db, {"profile": _own_profile(updated)})
@@ -803,6 +819,8 @@ def install_community_routes(app) -> None:
         revoke_profile_recommendations(db, user["id"])
         from .community_author import revoke_author_articles
         revoke_author_articles(db, user["id"])
+        from .academy_builder import revoke_courses
+        revoke_courses(db, user["id"])
         _profile_event(db, updated, user["id"], "consent_withdrawn")
         return _committed(db, {"profile": _own_profile(updated)})
 
@@ -1164,3 +1182,6 @@ def install_community_routes(app) -> None:
 
     from .community_author import install_author_routes
     install_author_routes(app, community_user, throttle, get_connection, allowed, record_security_event)
+
+    from .academy_builder import install_builder_routes
+    install_builder_routes(app, community_user, throttle, get_connection, allowed, record_security_event)
