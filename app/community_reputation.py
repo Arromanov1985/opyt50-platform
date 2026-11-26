@@ -12,19 +12,34 @@ from fastapi import Depends, HTTPException, Query
 from pydantic import Field, StrictBool, field_validator
 
 from .community import (
-    CommunityModel, ModerationInput, PAGE_SIZE, PUBLIC_JOIN, PUBLIC_VISIBILITY,
+    CommunityModel, ModerationInput, PAGE_SIZE,
     VersionInput, _active_account, _check_version, _committed, _connection,
     _is_published, _key, _lock_actors, _now, _public_text, public_person,
 )
 from .community_feed import _private
 
 CONSENT = "colleague-recommendation-2026-11-26"
-VISIBLE = "WITH visible_profiles AS (SELECT p.user_id,p.public_id,p.public_name " + PUBLIC_JOIN + " WHERE " + PUBLIC_VISIBILITY + ") "
 PARTICIPANT_FIELDS = ("id", "connection_id", "skill", "context", "body", "status", "version",
                       "author_consent_at", "recipient_consent_at", "moderation_reason",
                       "created_at", "updated_at", "published_at")
 PUBLIC_FIELDS = ("id", "skill", "context", "body", "author_public_id", "author_public_name")
-PARTICIPANT_QUERY = VISIBLE + """
+# Static SQL; the public-profile visibility conditions are deliberately kept
+# explicit here so the analyzer can verify that all user values are bound.
+PARTICIPANT_QUERY = """
+WITH visible_profiles AS (
+    SELECT p.user_id,p.public_id,p.public_name
+    FROM community_profiles p JOIN users u ON u.id=p.user_id
+    LEFT JOIN account_controls ac ON ac.user_id=p.user_id
+    WHERE p.status='published' AND p.consent_at IS NOT NULL
+      AND p.consent_content_version=p.content_version
+      AND p.reviewed_content_version=p.content_version
+      AND u.role='candidate' AND COALESCE(ac.status,'active')='active'
+      AND NOT EXISTS (
+        SELECT 1 FROM privacy_rights_requests pr WHERE pr.user_id=p.user_id
+          AND pr.kind IN ('deletion','stop_processing')
+          AND pr.status IN ('received','in_review','completed')
+      )
+)
 SELECT r.*,a.public_id AS author_public_id,a.public_name AS author_public_name,
        b.public_id AS recipient_public_id,b.public_name AS recipient_public_name
 FROM community_recommendations r
