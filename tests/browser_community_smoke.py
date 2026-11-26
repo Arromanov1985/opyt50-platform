@@ -739,6 +739,24 @@ def run_browser(browser, base, database):
         ).status == 409, "A stale tab must not republish after withdrawal"
         with sqlite3.connect(database) as db:
             assert db.execute("SELECT COUNT(*) FROM email_outbox").fetchone()[0] == initial_notices
+        # A stored published status is not permission to share an inaccessible profile.
+        outsider.goto(base + "/community/profile", wait_until="networkidle")
+        expect(outsider.locator('[data-action="share-profile"]')).to_be_visible()
+        privacy_request = outsider.request.post(base + "/api/account/privacy-requests", headers=HEADERS,
+                                               data={"kind": "stop_processing"})
+        assert privacy_request.status == 201, privacy_request.text()
+        assert visitor.request.get(base + "/people/" + outsider_profile["public_id"]).status == 404
+        outsider.locator('[data-action="invite-colleague"]').click()
+        expect(outsider.locator("#share-profile-url")).to_have_value(base + "/community")
+        outsider.keyboard.press("Escape")
+        outsider.locator('[data-action="share-profile"]').click()
+        expect(outsider.locator("#share-profile-url")).to_have_count(0)
+        outsider.reload(wait_until="networkidle")
+        expect(outsider.locator('[data-action="share-profile"]')).to_have_count(0)
+        outsider.goto(base + "/community/reputation", wait_until="networkidle")
+        outsider.locator('[data-action="invite-colleague"]').click()
+        expect(outsider.locator("#share-profile-url")).to_have_value(base + "/community")
+        outsider.keyboard.press("Escape")
         assert not errors, "Uncaught browser errors: " + " | ".join(errors)
     except Exception:
         for index, context in enumerate(contexts):
