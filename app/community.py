@@ -1200,3 +1200,6 @@ def install_community_routes(app) -> None:
 
     from .academy_builder import install_builder_routes
     install_builder_routes(app, community_user, throttle, get_connection, allowed, record_security_event)
+
+    from .academy_media_routes import install_media_routes
+    install_media_routes(app, community_user, throttle, get_connection)

@@ -75,3 +75,25 @@ def build_storage_client(config: StorageConfig):
                       s3={"addressing_style": "path"}),
         verify=True,
     )
+
+
+def image_upload_config(env: Mapping[str, str] | None = None) -> tuple[StorageConfig, str] | None:
+    """A second explicit switch plus scanner configuration are required."""
+    env = os.environ if env is None else env
+    flag = env.get(PREFIX + "IMAGE_UPLOAD_ENABLED", "0").strip()
+    if flag == "0":
+        return None
+    if flag != "1":
+        raise RuntimeError("Invalid Academy image upload flag")
+    config = storage_config(env)
+    scanner_path = env.get(PREFIX + "CLAMD_SOCKET", "").strip()
+    if config is None or not os.path.isabs(scanner_path) or "\x00" in scanner_path:
+        raise RuntimeError("Private storage and local scanner must be configured")
+    return config, scanner_path
+
+
+def image_upload_ready() -> bool:
+    try:
+        return image_upload_config() is not None
+    except RuntimeError:
+        return False
