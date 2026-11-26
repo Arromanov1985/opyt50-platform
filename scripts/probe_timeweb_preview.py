@@ -38,6 +38,7 @@ COMMUNITY_PRIVATE_ROUTES = {
     "moderation_reputation": "/api/admin/community/reputation",
     "groups": "/api/community/groups",
     "author_articles": "/api/community/author-articles",
+    "courses": "/api/community/courses",
     "moderation_author_articles": "/api/admin/community/author-articles",
 }
 

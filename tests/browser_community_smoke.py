@@ -724,6 +724,71 @@ def run_browser(browser, base, database):
             admin.locator(f'[data-action="resolve-report"][data-id="{report["id"]}"]').click()
         checked(resolved.value)
 
+        # Course studio: complete a real course without code, save and publish.
+        admin.set_viewport_size({"width": 390, "height": 844})
+        admin.goto(base + "/community/courses", wait_until="networkidle")
+        expect(admin.locator(".studio-catalog")).to_contain_text("Искусственный интеллект с нуля")
+        with admin.expect_response(lambda r: r.url.endswith("/api/community/courses") and r.request.method == "POST") as made:
+            admin.locator('[data-studio="new"]').click()
+        course = checked(made.value)["course"]
+        course_url = base + "/academy/" + course["slug"]
+        admin.locator("#studio-title").fill("Работа с учебной таблицей")
+        admin.locator("#studio-description").fill("Научитесь проверять данные и оформлять простой учебный отчёт.")
+        admin.locator("#studio-audience").fill("Для начинающих пользователей")
+        admin.locator("#studio-outcomes").fill("Проверять данные в таблице")
+        admin.locator('[data-studio="next"]').click()
+        admin.locator('[data-studio="add-lesson"]').first.click()
+        admin.locator("#studio-lessons-0-title").fill("Первый урок")
+        admin.locator("#studio-lessons-0-goal").fill("Научиться проверять данные")
+        admin.locator("#studio-lessons-0-sections-0-0").fill("Исходные значения")
+        admin.locator("#studio-body-0").fill("Проверьте учебные данные перед расчётом.")
+        capture(admin, "course-studio-content-mobile.png")
+        admin.locator('[data-studio="lesson-step"][data-step="practice"]').click()
+        admin.locator("#studio-lessons-0-example").fill("Три учебные строки с числами.")
+        admin.locator("#studio-lessons-0-practice").fill("Составьте учебную таблицу и проверьте итог.")
+        admin.locator('[data-studio="lesson-step"][data-step="quiz"]').click()
+        admin.locator("#studio-lessons-0-questions-0-text").fill("Что нужно сделать сначала?")
+        for i, value in enumerate(("Проверить данные", "Удалить данные", "Скопировать результат")):
+            admin.locator(f"#studio-lessons-0-questions-0-options-{i}").fill(value)
+        admin.locator('[data-studio-correct="0"][value="0"]').check()
+        admin.locator("#studio-lessons-0-questions-0-feedback").fill("Проверка данных помогает избежать ошибок.")
+        capture(admin, "course-studio-quiz-mobile.png")
+        admin.locator('[data-studio="duplicate-lesson"]').click()
+        expect(admin.locator(".studio-lesson-select")).to_have_count(2)
+        admin.locator('[data-studio="move-up"]').click()
+        admin.locator('[data-studio="remove-lesson"]').click()
+        admin.locator("#confirm-community-action").click()
+        expect(admin.locator(".studio-lesson-select")).to_have_count(1)
+        admin.locator('[data-studio="step"][data-step="preview"]').click()
+        expect(admin.locator(".studio-preview")).to_contain_text("Проверить данные")
+        expect(admin.locator(".studio-preview")).to_contain_text("Правильный ответ")
+        admin.context.set_offline(True)
+        admin.locator("#studio-save").click()
+        expect(admin.locator(".form-error")).to_be_visible()
+        expect(admin.locator(".studio-preview")).to_contain_text("Исходные значения")
+        admin.context.set_offline(False)
+        with admin.expect_response(lambda r: r.url.endswith("/api/community/courses/" + course["slug"]) and r.request.method == "PUT") as course_saved:
+            admin.locator("#studio-save").click()
+        saved_course = checked(course_saved.value)["course"]
+        assert not saved_course["issues"], saved_course["issues"]
+        assert visitor.request.get(course_url).status == 404
+        admin.locator('[data-studio="step"][data-step="publish"]').click()
+        expect(admin.locator(".studio-ready")).to_be_visible()
+        admin.locator('[data-studio="submit"]').click()
+        admin.locator('#studio-consent-form input[name="consent"]').check()
+        with admin.expect_response(lambda r: r.url.endswith("/courses/" + course["slug"] + "/submit")) as course_published:
+            admin.locator('#studio-consent-form button[type="submit"]').click()
+        assert checked(course_published.value)["course"]["state"] == "published"
+        visitor.goto(course_url, wait_until="networkidle")
+        expect(visitor.locator("h1")).to_have_text("Работа с учебной таблицей")
+        visitor.locator("[data-ac-resume]").click()
+        expect(visitor.locator("#ac-quiz")).to_contain_text("Что нужно сделать сначала?")
+        admin.locator('[data-studio="withdraw"]').click()
+        with admin.expect_response(lambda r: r.url.endswith("/courses/" + course["slug"] + "/publication") and r.request.method == "DELETE") as course_hidden:
+            admin.locator("#confirm-community-action").click()
+        assert checked(course_hidden.value)["course"]["state"] == "hidden"
+        assert visitor.request.get(course_url).status == 404
+
         # Author contribution: save, submit exact text, editorial approval and revoke.
         anna.set_viewport_size({"width": 390, "height": 844})
         anna.goto(base + "/community/author-articles", wait_until="networkidle")

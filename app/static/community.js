@@ -1141,8 +1141,8 @@
     else return action();
   }
   async function studioList(){
-    studio.entry=null;studio.draft=null;state.builderDirty=false;
     const result=await api(studioApi+'?view='+studio.view+'&page='+studio.page);
+    studio.entry=null;studio.draft=null;state.builderDirty=false;
     content.innerHTML='<section class="section-heading"><div><span class="eyebrow">АКАДЕМИЯ СТАЖНО</span><h1>Конструктор курсов</h1><p>Создавайте понятные учебные программы: уроки, практику и самопроверку.</p></div><a class="button secondary" href="/academy">Открыть Академию ↗</a></section>'+
       '<section class="panel studio-list-intro"><div><h2>'+(state.user.role==='admin'?'Редакция Академии':'Ваши курсы')+'</h2><p>Черновики видны только автору. Изменения опубликованного курса появятся после утверждения новой версии.</p></div>'+
       (result.can_create?studioButton('new','+ Новый курс','primary'):'')+
@@ -1277,8 +1277,8 @@
         studio.loading=true;
         const result=await api(studioApi+'/'+encodeURIComponent(button.dataset.slug));studioLoadEntry(result.course);
       }else if(action==='back'){await studioLeave(async()=>{await studioList();});}
-      else if(action==='view'){studio.view=button.dataset.view;studio.page=1;await studioList();}
-      else if(action==='page'){studio.page=Number(button.dataset.page);await studioList();}
+      else if(action==='view'){studio.loading=true;studio.view=button.dataset.view;studio.page=1;await studioList();}
+      else if(action==='page'){studio.loading=true;studio.page=Number(button.dataset.page);await studioList();}
       else if(action==='step'){studio.step=button.dataset.step;studioRender();}
       else if(action==='next'){studio.step=studio.step==='info'?'lessons':'publish';studioRender();}
       else if(action==='preview-lesson'){studio.lesson=index;studioRender();}

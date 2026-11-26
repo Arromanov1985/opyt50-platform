@@ -101,8 +101,8 @@ def academy_course(slug: str, courses=None):
     return _page(course["title"], course["description"], _url(course), body)
 
 
-def academy_lesson(slug: str, lesson_slug: str):
-    course = _course(slug)
+def academy_lesson(slug: str, lesson_slug: str, courses=None):
+    course = _course(slug, courses)
     lessons = course["lessons"]
     index = next((i for i, item in enumerate(lessons) if item["slug"] == lesson_slug), None)
     if index is None:

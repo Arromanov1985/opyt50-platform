@@ -1824,3 +1824,146 @@ def test_author_material_reconsent_after_profile_changes(community):
     assert first.get(url).json()["entries"][0]["consent_at"] is None
     assert visitor.get(public).status_code == 404
 
+
+COURSE_DRAFT = {
+    "title": "Учебный курс по работе с таблицами",
+    "description": "Научитесь создавать понятные таблицы и проверять исходные данные.",
+    "audience": "Для начинающих пользователей таблиц",
+    "outcomes": ["Подготовить таблицу с исходными данными"],
+    "lessons": [{
+        "slug": "first-lesson", "title": "Первый урок", "minutes": 15,
+        "goal": "Научиться проверять данные в таблице",
+        "sections": [["Исходные данные", "Проверьте все исходные значения и единицы измерения."]],
+        "example": "В учебной таблице три строки с условными числами.",
+        "practice": "Создайте таблицу на вымышленных данных и проверьте итог.",
+        "questions": [{"text": "Что нужно сделать сначала?", "options": ["Проверить данные", "Удалить данные"],
+                       "correct": 0, "feedback": "Проверка помогает избежать ошибок."}],
+    }],
+}
+
+
+def test_course_builder_private_draft_review_and_published_snapshot(community):
+    from copy import deepcopy
+    app, clients, ids = community
+    first, second, admin, visitor, employer = (
+        clients[key] for key in ("first", "second", "admin", "visitor", "employer"))
+    url = "/api/community/courses"
+    assert visitor.get(url).status_code == 401
+    assert employer.get(url).status_code == 403
+    assert mutate(first, "POST", url, {"client_key": str(uuid4())}).status_code == 409
+    profile = publish(clients, "first")
+    key = str(uuid4())
+    response = mutate(first, "POST", url, {"client_key": key})
+    assert response.status_code == 200, response.text
+    draft = response.json()["course"]
+    slug = draft["slug"]
+    own = url + "/" + slug
+    public = "/academy/" + slug
+    review = "/api/admin/community/courses/" + slug
+    assert draft["state"] == "draft" and draft["issues"]
+    assert mutate(first, "POST", url, {"client_key": key}).json()["course"]["slug"] == slug
+    assert visitor.get(public).status_code == 404
+    assert second.get(own).status_code == 404
+    assert admin.get(own).status_code == 404
+    assert mutate(first, "POST", own + "/submit",
+                  {"expected_version": draft["version"], "publish_consent": True}).status_code == 422
+    data = deepcopy(COURSE_DRAFT)
+    invalid = deepcopy(data)
+    invalid["lessons"][0]["questions"][0]["correct"] = None
+    saved = mutate(first, "PUT", own, {**invalid, "expected_version": draft["version"]})
+    assert saved.status_code == 200 and saved.json()["course"]["issues"]
+    draft = saved.json()["course"]
+    invalid["lessons"].append(invalid["lessons"][0])
+    assert mutate(first, "PUT", own, {**invalid, "expected_version": draft["version"]}).status_code == 422
+    assert mutate(first, "PUT", own, {**data, "title": "Контакт name@example.invalid",
+                                     "expected_version": draft["version"]}).status_code == 422
+    saved = mutate(first, "PUT", own, {**data, "expected_version": draft["version"]})
+    assert saved.status_code == 200, saved.text
+    draft = saved.json()["course"]
+    assert not draft["issues"]
+    assert mutate(first, "PUT", own, {**data, "expected_version": draft["version"] - 1}).status_code == 409
+    assert mutate(first, "POST", own + "/submit",
+                  {"expected_version": draft["version"], "publish_consent": False}).status_code == 400
+    pending = mutate(first, "POST", own + "/submit",
+                     {"expected_version": draft["version"], "publish_consent": True}).json()["course"]
+    assert pending["state"] == "pending"
+    assert visitor.get(public).status_code == 404
+    assert admin.get(url + "?view=review").json()["courses"][0]["slug"] == slug
+    assert admin.get(own).json()["course"]["draft"] == data
+    assert mutate(second, "PATCH", review, {"expected_version": pending["version"], "decision": "approve"}).status_code == 403
+    assert mutate(admin, "PUT", own, {**data, "expected_version": pending["version"]}).status_code == 404
+    approved = mutate(admin, "PATCH", review, {"expected_version": pending["version"], "decision": "approve"})
+    assert approved.status_code == 200, approved.text
+    published = first.get(own).json()["course"]
+    assert published["has_publication"] and published["state"] == "published"
+    assert data["title"] in visitor.get(public).text
+    assert profile["public_name"] in visitor.get(public).text
+    assert visitor.get(public + "/first-lesson").status_code == 200
+    assert "first@community.example.invalid" not in visitor.get(public).text
+    manifest = visitor.get("/api/public/journal/manifest").json()
+    assert manifest["academy_courses"][slug] == ["first-lesson"]
+    assert public + "/first-lesson" in manifest["pages"]
+    assert public + "/first-lesson" in visitor.get("/sitemap.xml").text
+
+    data["title"] = "Новая версия учебного курса"
+    data["lessons"][0]["sections"][0][1] += " <img src=x onerror=window.courseXss=1>"
+    changed = mutate(first, "PUT", own, {**data, "expected_version": published["version"]}).json()["course"]
+    assert changed["state"] == "draft" and changed["has_publication"]
+    assert data["title"] not in visitor.get(public).text
+    assert admin.get(own).json()["course"]["draft"]["title"] != data["title"]
+    pending = mutate(first, "POST", own + "/submit",
+                     {"expected_version": changed["version"], "publish_consent": True}).json()["course"]
+    rejected = mutate(admin, "PATCH", review, {"expected_version": pending["version"],
+                      "decision": "reject", "reason": "Проверьте пример"})
+    assert rejected.status_code == 200
+    changed = first.get(own).json()["course"]
+    assert changed["state"] == "rejected" and changed["has_publication"]
+    assert data["title"] not in visitor.get(public).text
+    pending = mutate(first, "POST", own + "/submit",
+                     {"expected_version": changed["version"], "publish_consent": True}).json()["course"]
+    assert mutate(admin, "PATCH", review, {"expected_version": pending["version"], "decision": "approve"}).status_code == 200
+    assert data["title"] in visitor.get(public).text
+    page = visitor.get(public + "/first-lesson")
+    assert "&lt;img" in page.text and "<img src=x" not in page.text
+
+    export = first.get("/api/account/data-export").json()["sections"]
+    assert export["my_academy_courses"][0]["slug"] == slug
+    assert second.get("/api/account/data-export").json()["sections"]["my_academy_courses"] == []
+    assert mutate(first, "POST", "/api/account/privacy-requests", {"kind": "stop_processing"}).status_code == 201
+    assert visitor.get(public).status_code == 404
+    assert admin.get(own).status_code == 404
+    current = first.get(own).json()["course"]
+    assert current["restricted"] and current["has_saved_publication"]
+    assert mutate(first, "PUT", own, {**data, "expected_version": current["version"]}).status_code == 409
+    hidden = mutate(first, "DELETE", own + "/publication", {"expected_version": current["version"]})
+    assert hidden.status_code == 200, hidden.text
+    with database(app.state.db_path) as db:
+        db.execute("UPDATE privacy_rights_requests SET status='declined' WHERE user_id=?", (ids["first"],))
+    assert visitor.get(public).status_code == 404
+    assert slug not in visitor.get("/api/public/journal/manifest").json()["academy_courses"]
+
+
+def test_editorial_course_seed_is_editable_and_never_reseeded_after_hide(community):
+    app, clients, ids = community
+    admin, first, visitor = (clients[key] for key in ("admin", "first", "visitor"))
+    from app.academy_builder import init_academy
+    url = "/api/community/courses/ai-basics"
+    assert first.get(url).status_code == 404
+    initial = admin.get(url).json()["course"]
+    assert initial["can_edit"] and initial["has_publication"]
+    changed = mutate(admin, "PUT", url, {**initial["draft"], "title": "Обновлённый курс Академии",
+                                        "expected_version": initial["version"]})
+    assert changed.status_code == 200, changed.text
+    entry = changed.json()["course"]
+    assert "Обновлённый курс Академии" not in visitor.get("/academy/ai-basics").text
+    assert mutate(admin, "POST", url + "/submit",
+                  {"expected_version": entry["version"], "publish_consent": True}).status_code == 200
+    assert "Обновлённый курс Академии" in visitor.get("/academy/ai-basics").text
+    current = admin.get(url).json()["course"]
+    assert mutate(admin, "DELETE", url + "/publication",
+                  {"expected_version": current["version"]}).status_code == 200
+    init_academy(app.state.db_path)
+    assert visitor.get("/academy/ai-basics").status_code == 404
+    assert visitor.get("/academy").status_code == 200
+    assert visitor.get("/api/public/journal/manifest").json()["academy_courses"] == {}
+

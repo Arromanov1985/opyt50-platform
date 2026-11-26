@@ -212,7 +212,8 @@ def published_journal_fixture(articles=None):
     bodies.update({"/journal/guide/" + section: guide_page(section, articles).body for section in SECTIONS})
     bodies.update({path: page.body for path, page in academy_pages().items()})
     manifest = {"pages": {path: hashlib.sha256(body).hexdigest() for path, body in bodies.items()},
-                "renderer_sha256": journal_renderer_sha256()}
+                "renderer_sha256": journal_renderer_sha256(),
+                "academy_courses": {"ai-basics": [path.rsplit("/",1)[1] for path in bodies if path.startswith("/academy/ai-basics/")]}}
     return bodies, manifest
 
 
@@ -469,4 +470,22 @@ def test_missing_academy_lesson_never_confirms_release(monkeypatch):
     assert result["result"] == "unverified"
     assert result["manifest_result"] == "unavailable-or-invalid"
     assert missing in requests
+
+
+def test_edited_academy_catalog_does_not_require_hidden_seed_course(monkeypatch):
+    import hashlib
+    bodies, manifest = published_journal_fixture()
+    for path in list(bodies):
+        if path.startswith("/academy/ai-basics"):
+            del bodies[path]
+            del manifest["pages"][path]
+    manifest["academy_courses"] = {"course-new": ["lesson-one"]}
+    for path in ("/academy/course-new", "/academy/course-new/lesson-one"):
+        bodies[path] = b"<html>New published course</html>"
+        manifest["pages"][path] = hashlib.sha256(bodies[path]).hexdigest()
+    install_journal_opener(monkeypatch, bodies, manifest)
+    assert probe.probe_public_journal_pages()["result"] == "exact-match"
+    del manifest["pages"]["/academy/course-new/lesson-one"]
+    install_journal_opener(monkeypatch, bodies, manifest)
+    assert probe.probe_public_journal_pages()["result"] == "unverified"
 
