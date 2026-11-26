@@ -1,0 +1,70 @@
+name: Timeweb STAZHNO read-only access check
+on:
+  workflow_dispatch:
+    inputs:
+      project_id:
+        description: "Optional numeric STAZHNO project ID (for project-specific S3 and server access checks)"
+        required: false
+        type: string
+
+permissions: {}
+
+jobs:
+  read-only:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    environment: timeweb-stazhno
+    steps:
+      - name: Check restricted Timeweb token without exposing response data
+        env:
+          TIMEWEB_CLOUD_TOKEN: ${{ secrets.TIMEWEB_CLOUD_TOKEN }}
+          PROJECT_ID: ${{ inputs.project_id }}
+        run: |
+          python3 - <<'PY'
+          import http.client
+          import os
+          import re
+          import ssl
+
+          token = os.environ.get("TIMEWEB_CLOUD_TOKEN", "").strip()
+          project = os.environ.get("PROJECT_ID", "").strip()
+          if not token or any(ord(ch) < 33 or ord(ch) > 126 for ch in token):
+              raise SystemExit("Missing or invalid Timeweb environment secret")
+          if project and not re.fullmatch(r"[1-9][0-9]{0,15}", project):
+              raise SystemExit("Invalid project ID")
+          endpoints = [
+              ("Projects", "/api/v1/projects"),
+              ("App Platform", "/api/v1/apps"),
+          ]
+          if project:
+              endpoints.extend([
+                  ("Selected project", f"/api/v1/projects/{project}"),
+                  ("Project S3", f"/api/v1/projects/{project}/resources/buckets"),
+                  ("Project servers", f"/api/v1/projects/{project}/resources/servers"),
+              ])
+          passed = True
+          for label, path in endpoints:
+              connection = http.client.HTTPSConnection(
+                  "api.timeweb.cloud", timeout=15, context=ssl.create_default_context()
+              )
+              try:
+                  connection.request("GET", path, headers={
+                      "Authorization": "Bearer " + token,
+                      "Accept": "application/json",
+                  })
+                  response = connection.getresponse()
+                  status = response.status
+                  print(f"{label}: HTTP {status}")
+                  passed = passed and status == 200
+                  # Do not follow redirects, print JSON, expose app names,
+                  # variables, credentials, project IDs or infrastructure logs.
+              except Exception:
+                  print(f"{label}: connection failed")
+                  passed = False
+              finally:
+                  connection.close()
+          if not passed:
+              raise SystemExit("One or more read-only checks failed")
+          print("Read-only API access check passed")
+          PY
