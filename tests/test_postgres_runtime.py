@@ -835,3 +835,50 @@ def test_author_article_runtime_postgresql(runtime_db):
         assert hidden.status_code == 200, hidden.text
         assert client.get(public).status_code == 404
 
+
+def test_course_builder_runtime_postgresql(runtime_db):
+    from fastapi.testclient import TestClient
+    from app.main import create_app, active_user
+    from app.academy_content import COURSES
+    from uuid import uuid4
+
+    app = create_app("unused-with-DATABASE_URL")
+    actor = {"id": 1, "role": "candidate"}
+    app.dependency_overrides[active_user] = lambda: actor
+    with TestClient(app) as client:
+        with postgres_database(runtime_db) as db:
+            admin = db.execute(
+                "INSERT INTO users(email,password_hash,role,name) VALUES(?,?,'admin','Admin')",
+                ("course-admin@example.invalid", "test-hash"),
+            ).lastrowid
+            db.execute(
+                """INSERT INTO community_profiles(user_id,public_id,public_name,headline,status,
+                   consent_at,consent_content_version,reviewed_content_version,created_at,updated_at)
+                   VALUES(1,'pg-course-author','Коллега','Наставник','published',
+                   '2026-01-01',1,1,'2026-01-01','2026-01-01')"""
+            )
+        headers = {"X-Requested-With": "OPYT50"}
+        url = "/api/community/courses"
+        created = client.post(url, headers=headers, json={"client_key": str(uuid4())})
+        assert created.status_code == 200, created.text
+        entry = created.json()["course"]
+        path = url + "/" + entry["slug"]
+        public = "/academy/" + entry["slug"]
+        data = {key: COURSES[0][key] for key in ("title","description","audience","outcomes","lessons")}
+        saved = client.put(path, headers=headers, json={**data, "expected_version": entry["version"]})
+        assert saved.status_code == 200, saved.text
+        item = saved.json()["course"]
+        assert not item["issues"]
+        pending = client.post(path + "/submit", headers=headers, json={"expected_version": item["version"], "publish_consent": True})
+        assert pending.status_code == 200, pending.text
+        actor.update(id=admin,role="admin")
+        result = client.patch("/api/admin/community/courses/" + entry["slug"], headers=headers,
+                              json={"expected_version": pending.json()["course"]["version"], "decision": "approve"})
+        assert result.status_code == 200, result.text
+        assert client.get(public).status_code == 200
+        actor.update(id=1,role="candidate")
+        current = client.get(path).json()["course"]
+        removed = client.request("DELETE",path + "/publication",headers=headers,json={"expected_version": current["version"]})
+        assert removed.status_code == 200, removed.text
+        assert client.get(public).status_code == 404
+

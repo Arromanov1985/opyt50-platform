@@ -42,6 +42,7 @@ COMMUNITY_PRIVATE_ROUTES = {
     "moderation_reputation": "/api/admin/community/reputation",
     "groups": "/api/community/groups",
     "author_articles": "/api/community/author-articles",
+    "courses": "/api/community/courses",
     "moderation_author_articles": "/api/admin/community/author-articles",
 }
 
@@ -292,8 +293,19 @@ def probe_public_journal_pages():
         pages = manifest.get("pages")
         if not isinstance(pages, dict) or not pages:
             raise ValueError("Invalid editorial manifest")
+        declared_courses = manifest.get("academy_courses")
+        if not isinstance(declared_courses, dict):
+            raise ValueError("Missing academy catalog")
+        academy_routes = {"/academy"}
+        for slug, lessons in declared_courses.items():
+            if not re.fullmatch(r"[a-z0-9]+(?:-[a-z0-9]+)*", slug) or len(slug) > 60 or not isinstance(lessons, list) or not 1 <= len(lessons) <= 30:
+                raise ValueError("Invalid academy course")
+            if not all(isinstance(lesson, str) and len(lesson) <= 60 and re.fullmatch(r"[a-z0-9]+(?:-[a-z0-9]+)*", lesson) for lesson in lessons) or len(set(lessons)) != len(lessons):
+                raise ValueError("Invalid academy lesson list")
+            academy_routes.add("/academy/" + slug)
+            academy_routes.update("/academy/" + slug + "/" + lesson for lesson in lessons)
         if not all(
-            path in {"/journal", "/journal/paths", "/sitemap.xml"} or path in GUIDE_PATHS or path in academy
+            path in {"/journal", "/journal/paths", "/sitemap.xml"} or path in GUIDE_PATHS or path in academy_routes
             or path in route_urls or _journal_article_slug(path)
             or re.fullmatch(r"/journal(?:/guide/(?:personal|learning|news|events))?/page/[1-9][0-9]{0,5}", path)
             for path in pages
@@ -317,7 +329,7 @@ def probe_public_journal_pages():
             "/journal/paths/" + item["slug"] for item in PATHS
             if any(slug in published_slugs for slug, _label in item["steps"])
         }
-        if not ({"/journal", "/journal/paths"} | set(GUIDE_PATHS) | set(academy)) <= pages.keys() or (
+        if not ({"/journal", "/journal/paths"} | set(GUIDE_PATHS) | academy_routes) <= pages.keys() or (
             route_urls.intersection(pages) != required_routes
         ):
             raise ValueError("Editorial manifest omitted or added a journey")
