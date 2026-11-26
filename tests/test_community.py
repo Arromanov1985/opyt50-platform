@@ -1664,3 +1664,23 @@ def test_groups_private_membership_and_moderated_discussions(community):
         assert preview["counts"]["community_group_memberships"] == 1
         assert preview["counts"]["community_group_posts"] == 2
 
+
+def test_profile_share_visibility_matches_public_routes_under_restriction(community):
+    app, clients, ids = community
+    first, visitor = clients["first"], clients["visitor"]
+    own = "/api/community/profile"
+    assert first.get(own).json()["public_visible"] is False
+    profile = publish(clients, "first")
+    public = "/people/" + profile["public_id"]
+    assert first.get(own).json()["public_visible"] is True
+    assert visitor.get(public).status_code == 200
+    assert mutate(first, "POST", "/api/account/privacy-requests", {"kind": "stop_processing"}).status_code == 201
+    restricted = first.get(own).json()
+    assert restricted["profile"]["status"] == "published"
+    assert restricted["public_visible"] is False
+    assert visitor.get(public).status_code == 404
+    with database(app.state.db_path) as db:
+        db.execute("UPDATE privacy_rights_requests SET status='declined' WHERE user_id=?", (ids["first"],))
+    assert first.get(own).json()["public_visible"] is True
+    assert visitor.get(public).status_code == 200
+
