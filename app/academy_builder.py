@@ -255,8 +255,12 @@ def _detail(db, row, user, full=True):
         # Authors may see their own complete file registry; moderators only
         # see the references in the exact version they are allowed to review.
         dto["media_files"] = course_media_metadata(db, row["slug"], None if mine else draft)
-        from .academy_storage import image_upload_ready
-        dto["image_upload_enabled"] = bool(mine and _active_account(db, user["id"]) and image_upload_ready())
+        from .academy_storage import image_upload_ready, rendition_preview_ready
+        active = _active_account(db, user["id"]) and (row["owner_id"] is None or _active_account(db, row["owner_id"]))
+        private_view = bool((mine or reviewing) and active)
+        dto["image_upload_enabled"] = bool(mine and active and image_upload_ready())
+        dto["image_preview_enabled"] = bool(private_view and image_upload_ready())
+        dto["rendition_preview_enabled"] = bool(private_view and rendition_preview_ready())
         dto.update(draft={key:draft[key] for key in DRAFT_FIELDS},issues=readiness(draft),
                    restricted=user["role"]=="candidate" and not _active_account(db,user["id"]),
                    can_submit=user["role"]=="admin" or _is_published(db,user["id"]))

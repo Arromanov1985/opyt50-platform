@@ -163,3 +163,5 @@
 /* Academy private image upload and preview */
 #studio-upload-progress { width: 100%; margin-top: .75rem; }
 .studio-media-image { display: block; max-width: 100%; height: auto; border-radius: 12px; margin: .75rem auto; }
+
+.studio-media-player { display: block; width: 100%; max-width: 100%; max-height: 480px; margin: .75rem auto; }

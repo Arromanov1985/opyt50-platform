@@ -97,3 +97,9 @@ def image_upload_ready() -> bool:
         return image_upload_config() is not None
     except RuntimeError:
         return False
+
+
+def rendition_preview_ready() -> bool:
+    """Separate operator switch for verified rich-media draft delivery."""
+    return (os.getenv(PREFIX + "RENDITION_PREVIEW_ENABLED", "0") == "1"
+            and image_upload_ready())
