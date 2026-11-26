@@ -91,6 +91,36 @@ COMMUNITY_DDL = (
     )""",
     "CREATE INDEX IF NOT EXISTS idx_academy_courses_owner ON academy_courses(owner_id,updated_at)",
     "CREATE INDEX IF NOT EXISTS idx_academy_courses_review ON academy_courses(state,updated_at)",
+    """CREATE TABLE IF NOT EXISTS academy_media (
+        id TEXT PRIMARY KEY,
+        course_slug TEXT NOT NULL REFERENCES academy_courses(slug) ON DELETE RESTRICT,
+        course_version INTEGER NOT NULL CHECK(course_version>=1),
+        object_key TEXT NOT NULL UNIQUE,
+        kind TEXT NOT NULL CHECK(kind IN ('image','audio','video','document','presentation')),
+        content_type TEXT NOT NULL,
+        byte_count INTEGER NOT NULL CHECK(byte_count>0 AND byte_count<=314572800),
+        sha256 TEXT CHECK(sha256 IS NULL OR length(sha256)=64),
+        state TEXT NOT NULL DEFAULT 'reserved' CHECK(state IN ('reserved','pending','clean','rejected','failed','purge_pending')),
+        created_at TEXT NOT NULL, updated_at TEXT NOT NULL,
+        CHECK(state IN ('reserved','purge_pending','failed') OR sha256 IS NOT NULL)
+    )""",
+    "CREATE INDEX IF NOT EXISTS idx_academy_media_course ON academy_media(course_slug,created_at,id)",
+    "CREATE INDEX IF NOT EXISTS idx_academy_media_state ON academy_media(state,updated_at)",
+    """CREATE TABLE IF NOT EXISTS academy_media_renditions (
+        id TEXT PRIMARY KEY,
+        media_id TEXT NOT NULL REFERENCES academy_media(id) ON DELETE RESTRICT,
+        source_sha256 TEXT NOT NULL CHECK(length(source_sha256)=64),
+        position INTEGER NOT NULL CHECK(position>=1 AND position<=30),
+        content_type TEXT NOT NULL CHECK(content_type IN ('image/jpeg','audio/mp4','video/mp4')),
+        byte_count INTEGER NOT NULL CHECK(byte_count>0 AND byte_count<=167772160),
+        sha256 TEXT NOT NULL CHECK(length(sha256)=64),
+        duration_ms INTEGER CHECK(duration_ms>0 AND duration_ms<=1801000),
+        object_key TEXT NOT NULL UNIQUE,
+        state TEXT NOT NULL DEFAULT 'reserved' CHECK(state IN ('reserved','ready','purge_pending')),
+        created_at TEXT NOT NULL, updated_at TEXT NOT NULL,
+        UNIQUE(media_id,position)
+    )""",
+    "CREATE INDEX IF NOT EXISTS idx_academy_renditions_state ON academy_media_renditions(state,updated_at)",
     """CREATE TABLE IF NOT EXISTS community_author_articles (
         id TEXT PRIMARY KEY,
         user_id INTEGER NOT NULL REFERENCES community_profiles(user_id) ON DELETE CASCADE,
@@ -1185,3 +1215,6 @@ def install_community_routes(app) -> None:
 
     from .academy_builder import install_builder_routes
     install_builder_routes(app, community_user, throttle, get_connection, allowed, record_security_event)
+
+    from .academy_media_routes import install_media_routes
+    install_media_routes(app, community_user, throttle, get_connection)

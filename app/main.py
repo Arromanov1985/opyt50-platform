@@ -912,7 +912,16 @@ def create_app(db_path: str | None = None) -> FastAPI:
             content_length = request.headers.get("content-length")
             if content_length:
                 try:
-                    if int(content_length) > 262_144:
+                    limit = 262_144
+                    # Only the explicitly enabled raw Academy image endpoint
+                    # gets a larger cap. All other JSON routes keep 256 KiB.
+                    if (request.method == "POST"
+                            and os.getenv("STAZHNO_ACADEMY_IMAGE_UPLOAD_ENABLED") == "1"
+                            and re.fullmatch(r"/api/community/courses/[a-z0-9-]{1,80}/media/upload", request.url.path)):
+                        limit = 10 * 1024 * 1024
+                    if int(content_length) < 0:
+                        return Response(status_code=400, content="Некорректный Content-Length")
+                    if int(content_length) > limit:
                         return Response(status_code=413, content="Слишком большой запрос")
                 except ValueError:
                     return Response(status_code=400, content="Некорректный Content-Length")

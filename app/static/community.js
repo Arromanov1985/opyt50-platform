@@ -1105,7 +1105,7 @@
 
   // A structured course studio. No user HTML, no markup syntax or hidden autosave.
   // The same in-memory draft survives tab changes and unsuccessful requests.
-  const studio={entry:null,draft:null,step:'info',lesson:0,lessonStep:'content',view:'own',page:1,key:null,loading:false,bound:false};
+  const studio={entry:null,draft:null,step:'info',lesson:0,lessonStep:'content',view:'own',page:1,key:null,loading:false,bound:false,previewPages:new Map()};
   const studioApi='/api/community/courses';
   const studioStates={draft:'Черновик',pending:'На проверке',published:'Опубликован',rejected:'На доработке',hidden:'Скрыт'};
   const studioSteps=[['info','Карточка курса'],['lessons','Уроки и задания'],['preview','Предпросмотр'],['publish','Публикация']];
@@ -1114,7 +1114,7 @@
   const studioEditable=()=>studio.entry?.can_edit&&!studio.entry?.restricted;
   const studioClone=value=>JSON.parse(JSON.stringify(value));
   const newStudioQuestion=()=>({text:'',options:['','',''],correct:null,feedback:''});
-  const newStudioLesson=()=>({slug:'lesson-'+crypto.randomUUID(),title:'',minutes:10,goal:'',sections:[['','']],example:'',practice:'',questions:[newStudioQuestion()]});
+  const newStudioLesson=()=>({slug:'lesson-'+crypto.randomUUID(),title:'',minutes:10,goal:'',sections:[['','']],example:'',practice:'',questions:[newStudioQuestion()],media:[]});
   function studioField(label,path,value,{area=false,max=600,rows=3,help='',type='text',placeholder=''}={}){
     const id='studio-'+path.replaceAll('.','-'),attr='id="'+id+'" data-studio-path="'+path+'" '+(type==='number'?'type="number" min="1" max="180"':'maxlength="'+max+'"')+' placeholder="'+esc(placeholder)+'"';
     return '<div class="studio-field"><label for="'+id+'">'+esc(label)+'</label>'+
@@ -1156,7 +1156,7 @@
       (studio.page>1||result.has_more?'<div class="actions">'+studioButton('page','← Назад','secondary','data-page="'+(studio.page-1)+'" '+(studio.page===1?'disabled':''))+'<span>Страница '+studio.page+'</span>'+studioButton('page','Далее →','secondary','data-page="'+(studio.page+1)+'" '+(!result.has_more?'disabled':''))+'</div>':'');
   }
   function studioLoadEntry(entry){
-    studio.entry=entry;studio.draft=studioClone(entry.draft);studio.step=entry.can_edit?'info':'preview';studio.lesson=0;studio.lessonStep='content';state.builderDirty=false;studioRender();
+    studio.previewPages.clear();studio.entry=entry;studio.draft=studioClone(entry.draft);studio.step=entry.can_edit?'info':'preview';studio.lesson=0;studio.lessonStep='content';state.builderDirty=false;studioRender();
   }
   function studioInfo(){
     const d=studio.draft;
@@ -1166,6 +1166,99 @@
       studioField('Для кого этот курс','audience',d.audience,{area:true,max:600,placeholder:'Начинающие, без специальной подготовки...'})+
       '<div class="studio-field"><label for="studio-outcomes">Результаты обучения</label><p class="help">Один результат на строку, до 12 строк. Например: «Составлять простой отчёт в таблице».</p><textarea id="studio-outcomes" data-studio-list="outcomes" rows="5" maxlength="6000">'+esc(d.outcomes.join('\n'))+'</textarea></div>'+
       '<div class="actions">'+studioButton('next','Перейти к урокам →','primary')+'</div></section>';
+  }
+  const studioMediaKinds={image:'Изображение',audio:'Аудио',video:'Видео',document:'Документ',presentation:'Презентация'};
+  const studioMediaStates={reserved:'Ожидает загрузки',pending:'На проверке',clean:'Проверен',rejected:'Не прошёл проверку',failed:'Ошибка проверки',purge_pending:'Удаляется'};
+  function studioMediaLabel(file){
+    const copies=file.renditions||[];
+    const summary=copies.length?(copies[0].duration_ms?' · '+Math.ceil(copies[0].duration_ms/1000)+' сек.':' · '+copies.length+' стр.'):'';
+    return (studioMediaKinds[file.kind]||'Файл')+' · '+(file.byte_count/1048576).toFixed(2)+' МиБ · '+(studioMediaStates[file.state]||'Недоступен')+summary;
+  }
+  function studioUploadImage(file,progress){
+    if(!file||!['image/jpeg','image/png','image/webp'].includes(file.type)||file.size<1||file.size>10*1048576){
+      return Promise.reject(new Error('Выберите JPEG, PNG или WebP не больше 10 МиБ.'));
+    }
+    return new Promise((resolve,reject)=>{
+      const xhr=new XMLHttpRequest();
+      xhr.open('POST',studioPath()+'/media/upload?expected_version='+studio.entry.version);
+      xhr.timeout=180000;
+      xhr.responseType='json';
+      xhr.setRequestHeader('Content-Type',file.type);
+      xhr.setRequestHeader('X-Requested-With','OPYT50');
+      xhr.setRequestHeader('X-Community-Actor',String(state.user.id));
+      xhr.upload.onprogress=event=>{
+        if(event.lengthComputable){
+          const percent=Math.min(100,Math.round(100*event.loaded/event.total));
+          progress.value=percent;
+          const label=$('#studio-upload-progress-label');
+          if(label)label.textContent=percent===100?'Файл передан. Подтверждаем сохранение…':'Передано '+percent+'%';
+        }
+      };
+      const uncertain=()=>reject(new Error('Не удалось подтвердить загрузку. Текст урока сохранён в этой вкладке. Обновите реестр перед повторной попыткой.'));
+      xhr.onerror=uncertain;xhr.ontimeout=uncertain;xhr.onabort=uncertain;
+      xhr.onload=()=>{
+        if(xhr.status===201&&xhr.response?.file_id&&Array.isArray(xhr.response.media_files)){
+          resolve(xhr.response);
+        }else{
+          const message=typeof xhr.response?.detail==='string'?xhr.response.detail:'Не удалось подтвердить загрузку. Обновите реестр перед повторной попыткой.';
+          reject(new Error(message));
+        }
+      };
+      xhr.send(file);
+    });
+  }
+  function studioMediaEditor(lesson,prefix){
+    const blocks=lesson.media||[];
+    const files=studio.entry.media_files||[];
+    const available=files.filter(file=>file.state!=='purge_pending'&&!blocks.some(block=>block.file_id===file.id));
+    const cards=blocks.map((block,i)=>{
+      const file=files.find(item=>item.id===block.file_id),p=prefix+'.media.'+i;
+      return '<section class="studio-block"><div class="studio-side-heading"><h4>Материал '+(i+1)+'</h4><div class="studio-small-actions">'+
+        studioButton('media-up','↑','secondary','data-index="'+i+'" aria-label="Переместить материал выше" '+(i===0?'disabled':''))+
+        studioButton('media-down','↓','secondary','data-index="'+i+'" aria-label="Переместить материал ниже" '+(i===blocks.length-1?'disabled':''))+
+        studioButton('remove-media','Убрать из урока','secondary','data-index="'+i+'"')+'</div></div><p class="help">'+esc(file?studioMediaLabel(file):'Файл недоступен')+'</p>'+
+        studioField('Название материала',p+'.caption',block.caption,{max:180})+
+        studioField('Описание / альтернативный текст',p+'.description',block.description,{area:true,max:1000,help:'Объясните, что показывает материал. Это важно для доступности.'})+
+        studioField('Расшифровка или текстовое содержание',p+'.transcript',block.transcript,{area:true,max:12000,rows:5,help:'Для аудио и видео подготовьте текстовую расшифровку.'})+'</section>';
+    }).join('');
+    const upload=studio.entry.image_upload_enabled
+      ?'<div class="studio-block"><h4>Добавить изображение</h4><p class="help">JPEG, PNG или WebP, до 10 МиБ. Файл будет доступен в предпросмотре после проверки и сохранения черновика.</p><div class="studio-field"><label for="studio-image-file">Выберите изображение</label><input id="studio-image-file" type="file" accept="image/jpeg,image/png,image/webp"></div>'+
+        studioButton('upload-image','Загрузить изображение','primary',blocks.length>=12?'disabled':'')+
+        '<progress id="studio-upload-progress" max="100" value="0" aria-label="Загрузка изображения" hidden></progress><p class="help" id="studio-upload-progress-label" role="status"></p></div><p class="help">Публикация мультимедиа пока отключена.</p>'
+      :'<p class="notice warning">Загрузка и публикация файлов пока не подключены. Можно подготовить расположение и описание материалов из реестра курса.</p>';
+    return '<h3>Учебные файлы</h3>'+upload+studioButton('refresh-media','Обновить статус файлов')+
+      cards+(available.length&&blocks.length<12?'<div class="studio-field"><label for="studio-media-picker">Выберите файл курса</label><select id="studio-media-picker">'+available.map(file=>'<option value="'+esc(file.id)+'">'+esc(studioMediaLabel(file)+' · '+file.id.slice(0,8))+'</option>').join('')+'</select></div>'+studioButton('add-media','+ Добавить материал'):'<p class="help">'+(blocks.length>=12?'До 12 материалов на урок.':'Нет дополнительных файлов в реестре.')+'</p>');
+  }
+  function studioMediaPreview(lesson){
+    const files=studio.entry.media_files||[];
+    if(!(lesson.media||[]).length)return '';
+    return '<h3>Учебные материалы</h3>'+lesson.media.map(block=>{
+      const file=files.find(item=>item.id===block.file_id);
+      const savedReference=studio.entry.draft?.lessons?.some(item=>(item.media||[]).some(saved=>saved.file_id===block.file_id));
+      const mediaPath=studioPath()+'/media/'+encodeURIComponent(block.file_id);
+      const alt=block.description||block.caption||'Учебный материал';
+      let preview='<p class="help">Предпросмотр пока недоступен. Сохраните связь с уроком и обновите статус проверки.</p>';
+      if(savedReference&&file?.state==='clean'){
+        if(file.kind==='image'&&studio.entry.image_preview_enabled){
+          preview='<img class="studio-media-image" loading="lazy" src="'+mediaPath+'/preview" alt="'+esc(alt)+'">';
+        }else if(studio.entry.rendition_preview_enabled&&file.renditions?.length){
+          const copies=file.renditions;
+          if(copies.length===1&&['audio/mp4','video/mp4'].includes(copies[0].content_type)){
+            const tag=copies[0].content_type==='audio/mp4'?'audio':'video';
+            preview='<'+tag+' class="studio-media-player" controls preload="none" aria-label="'+esc(alt)+'" src="'+mediaPath+'/renditions/1"></'+tag+'>';
+          }else if(copies.every(item=>item.content_type==='image/jpeg')){
+            const page=Math.max(1,Math.min(copies.length,studio.previewPages.get(block.file_id)||1));
+            preview='<div class="studio-block"><div class="actions">'+
+              studioButton('media-page','←','secondary','aria-label="Предыдущая страница" data-file-id="'+esc(block.file_id)+'" data-page="'+(page-1)+'" '+(page===1?'disabled':''))+
+              '<span class="help" role="status">Страница '+page+' из '+copies.length+'</span>'+
+              studioButton('media-page','→','secondary','aria-label="Следующая страница" data-file-id="'+esc(block.file_id)+'" data-page="'+(page+1)+'" '+(page===copies.length?'disabled':''))+
+              '</div><img class="studio-media-image" loading="lazy" src="'+mediaPath+'/renditions/'+page+'" alt="'+esc(alt+' — страница '+page)+'"></div>';
+          }
+        }
+      }
+      return '<section class="studio-block"><h4>'+esc(block.caption||'Материал без названия')+'</h4><p class="help">'+esc(file?studioMediaLabel(file):'Файл недоступен')+'</p>'+preview+'<p class="multiline">'+esc(block.description)+'</p>'+
+        (block.transcript?'<details><summary>Текст материала</summary><p class="multiline">'+esc(block.transcript)+'</p></details>':'')+'</section>';
+    }).join('');
   }
   function studioLessons(){
     const lessons=studio.draft.lessons,lesson=lessons[studio.lesson];
@@ -1182,7 +1275,8 @@
         lesson.sections.map((section,index)=>'<section class="studio-block"><div class="studio-side-heading"><h4>Блок '+(index+1)+'</h4>'+studioButton('remove-block','Удалить','secondary','data-index="'+index+'"')+'</div>'+
           studioField('Заголовок блока',prefix+'.sections.'+index+'.0',section[0],{max:4000,placeholder:'Название темы'})+
           '<div class="studio-field"><label for="studio-body-'+index+'">Текст</label><textarea id="studio-body-'+index+'" rows="6" data-studio-block="'+index+'" maxlength="32000">'+esc(section.slice(1).join('\n\n'))+'</textarea><p class="help">Пустая строка отделяет абзацы (до восьми на блок).</p></div></section>').join('')+
-        studioButton('add-block','+ Добавить текстовый блок','secondary',lesson.sections.length>=12?'disabled':'');
+        studioButton('add-block','+ Добавить текстовый блок','secondary',lesson.sections.length>=12?'disabled':'')+
+        studioMediaEditor(lesson,prefix);
     }else if(studio.lessonStep==='practice'){
       body=studioField('Практический пример',prefix+'.example',lesson.example,{area:true,rows:6,max:4000,help:'Покажите образец решения или конкретную ситуацию.'})+
         studioField('Самостоятельное задание',prefix+'.practice',lesson.practice,{area:true,rows:6,max:4000,help:'Опишите, что выполнить и как проверить результат. Не запрашивайте личные данные.'});
@@ -1207,7 +1301,7 @@
     return '<section class="panel studio-panel"><span class="eyebrow">ПРЕДПРОСМОТР · НЕ ОПУБЛИКОВАНО</span><h2>'+esc(d.title||'Курс без названия')+'</h2><p>'+esc(d.description||'Описание ещё не заполнено')+'</p><p class="help">'+esc(d.audience)+'</p><h3>Результаты обучения</h3><ul>'+d.outcomes.filter(Boolean).map(item=>'<li>'+esc(item)+'</li>').join('')+'</ul><h3>Программа</h3><ol>'+d.lessons.map((item,index)=>'<li>'+studioButton('preview-lesson',esc(item.title||'Урок '+(index+1))+' · '+item.minutes+' мин.',index===studio.lesson?'primary':'secondary','data-index="'+index+'"')+'</li>').join('')+'</ol></section>'+
       (lesson?'<section class="panel studio-panel studio-preview"><span class="eyebrow">УРОК '+(studio.lesson+1)+'</span><h2>'+esc(lesson.title||'Урок без названия')+'</h2><p>'+esc(lesson.goal)+'</p>'+
       lesson.sections.map(section=>'<section><h3>'+esc(section[0]||'Заголовок блока')+'</h3>'+section.slice(1).map(p=>'<p class="multiline">'+esc(p)+'</p>').join('')+'</section>').join('')+
-      '<h3>Практический пример</h3><div class="studio-example multiline">'+esc(lesson.example)+'</div><h3>Попробуйте сами</h3><p class="multiline">'+esc(lesson.practice)+'</p><h3>Вопросы для самопроверки</h3>'+
+      studioMediaPreview(lesson)+'<h3>Практический пример</h3><div class="studio-example multiline">'+esc(lesson.example)+'</div><h3>Попробуйте сами</h3><p class="multiline">'+esc(lesson.practice)+'</p><h3>Вопросы для самопроверки</h3>'+
       lesson.questions.map((q,index)=>'<section class="studio-block"><h4>'+(index+1)+'. '+esc(q.text)+'</h4><ul>'+q.options.map((value,i)=>'<li>'+esc(value)+(q.correct===i?' <strong>✓ Правильный ответ</strong>':'')+'</li>').join('')+'</ul><p class="help">'+esc(q.feedback)+'</p></section>').join('')+'</section>':'')+
       '<div class="actions">'+studioButton('next','К проверке готовности →','primary')+'</div>';
   }
@@ -1282,6 +1376,13 @@
       else if(action==='step'){studio.step=button.dataset.step;studioRender();}
       else if(action==='next'){studio.step=studio.step==='info'?'lessons':'publish';studioRender();}
       else if(action==='preview-lesson'){studio.lesson=index;studioRender();}
+      else if(action==='media-page'){
+        const id=button.dataset.fileId,page=Number(button.dataset.page);
+        const file=studio.entry.media_files?.find(item=>item.id===id);
+        if(file&&Number.isInteger(page)&&page>=1&&page<=file.renditions?.length){
+          studio.previewPages.set(id,page);studioRender();
+        }
+      }
       else if(action==='save'){studio.loading=true;await busy(content,studioSave);}
       else if(action==='submit')studioSubmit();
       else if(action==='withdraw')confirmAction('Снять курс с публикации?','Опубликованная версия и текущая заявка на проверку будут скрыты. Черновик останется.','Снять с публикации',async()=>{
@@ -1301,6 +1402,43 @@
         const to=studio.lesson+(action==='move-up'?-1:1);
         if(to>=0&&to<studio.draft.lessons.length){studio.draft.lessons.splice(studio.lesson,1);studio.draft.lessons.splice(to,0,lesson);studio.lesson=to;structural();}
       }else if(action==='remove-lesson')confirmAction('Удалить урок?','Все материалы, задания и вопросы этого урока будут удалены из черновика.','Удалить',async()=>{studio.draft.lessons.splice(studio.lesson,1);studio.lesson=Math.max(0,Math.min(studio.lesson,studio.draft.lessons.length-1));structural();});
+      else if(action==='refresh-media'){
+        studio.loading=true;
+        await busy(content,async()=>{
+          const fresh=(await api(studioPath())).course;
+          if(fresh.version!==studio.entry.version)throw new Error('Курс изменён в другой вкладке. Введённый текст остаётся здесь; сохраните его отдельно перед повторным открытием.');
+          studio.entry=fresh;
+          studioRender();notice('Статусы файлов обновлены.');
+        });
+      }
+      else if(action==='upload-image'&&lesson&&studio.entry.image_upload_enabled){
+        const input=$('#studio-image-file'),file=input?.files?.[0];
+        const progress=$('#studio-upload-progress');
+        if(!file||!progress)throw new Error('Сначала выберите изображение.');
+        if((lesson.media||[]).length>=12)throw new Error('В уроке уже 12 материалов.');
+        studio.loading=true;
+        progress.hidden=false;
+        await busy(content,async()=>{
+          const result=await studioUploadImage(file,progress);
+          studio.entry.media_files=result.media_files;
+          lesson.media=lesson.media||[];
+          if(!lesson.media.some(block=>block.file_id===result.file_id))lesson.media.push({file_id:result.file_id,caption:'',description:'',transcript:''});
+          structural();notice('Изображение отправлено на проверку. Заполните описание и сохраните черновик.');
+        });
+      }
+      else if(action==='add-media'&&lesson){
+        const id=$('#studio-media-picker')?.value;
+        const files=studio.entry.media_files||[];
+        lesson.media=lesson.media||[];
+        if(id&&lesson.media.length<12&&files.some(file=>file.id===id&&file.state!=='purge_pending')&&!lesson.media.some(block=>block.file_id===id)){
+          lesson.media.push({file_id:id,caption:'',description:'',transcript:''});structural();
+        }
+      }
+      else if(action==='remove-media'&&lesson?.media&&index>=0&&index<lesson.media.length)confirmAction('Убрать учебный материал?','Связь с уроком будет удалена из черновика. Файл останется в реестре курса.','Убрать',async()=>{lesson.media.splice(index,1);structural();});
+      else if((action==='media-up'||action==='media-down')&&lesson?.media&&index>=0&&index<lesson.media.length){
+        const to=index+(action==='media-up'?-1:1);
+        if(to>=0&&to<lesson.media.length){const [block]=lesson.media.splice(index,1);lesson.media.splice(to,0,block);structural();}
+      }
       else if(action==='add-block'&&lesson.sections.length<12){lesson.sections.push(['','']);structural();}
       else if(action==='remove-block')confirmAction('Удалить текстовый блок?','Текст будет удалён из черновика.','Удалить',async()=>{lesson.sections.splice(index,1);structural();});
       else if(action==='add-question'&&lesson.questions.length<10){lesson.questions.push(newStudioQuestion());structural();}

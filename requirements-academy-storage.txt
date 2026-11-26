@@ -1,0 +1,5 @@
+# Optional server-only SDK; not installed/enabled by default.
+boto3>=1.35,<2
+
+# Optional decoder; needed for verified images.
+Pillow>=11.3,<14

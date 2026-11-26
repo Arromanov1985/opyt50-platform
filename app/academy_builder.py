@@ -40,6 +40,18 @@ class Question(CommunityModel):
         return [_public_text(value) for value in values]
 
 
+class MediaBlock(CommunityModel):
+    file_id: str = Field(pattern=r"^[0-9a-f]{32}$")
+    caption: str = Field(default="", max_length=180)
+    description: str = Field(default="", max_length=1000)
+    transcript: str = Field(default="", max_length=12000)
+
+    @field_validator("caption", "description", "transcript")
+    @classmethod
+    def safe(cls, value):
+        return _public_text(value)
+
+
 class Lesson(CommunityModel):
     slug: str = Field(pattern=r"^[a-z0-9]+(?:-[a-z0-9]+)*$", max_length=60)
     title: str = Field(default="", max_length=180)
@@ -49,6 +61,13 @@ class Lesson(CommunityModel):
     example: str = Field(default="", max_length=4000)
     practice: str = Field(default="", max_length=4000)
     questions: list[Question] = Field(default_factory=list, max_length=10)
+    media: list[MediaBlock] = Field(default_factory=list, max_length=12)
+
+    @model_validator(mode="after")
+    def unique_media(self):
+        if len({block.file_id for block in self.media}) != len(self.media):
+            raise ValueError("Один файл нельзя добавить в урок дважды")
+        return self
 
     @field_validator("title", "goal", "example", "practice")
     @classmethod
@@ -116,6 +135,13 @@ def readiness(draft: dict) -> list[str]:
             issues.append(prefix + "заполните заголовки и текст блоков")
         if not lesson["example"] or not lesson["practice"]:
             issues.append(prefix + "добавьте пример и практическое задание")
+        if lesson.get("media"):
+            # No quarantine object is yet deliverable. Keep the previous text
+            # publication unchanged until the safe delivery subsystem exists.
+            issues.append(prefix + "публикация мультимедиа пока недоступна")
+            for block in lesson["media"]:
+                if not block["caption"].strip() or not block["description"].strip():
+                    issues.append(prefix + "добавьте название и описание учебного файла")
         if not lesson["questions"]:
             issues.append(prefix + "добавьте хотя бы один вопрос")
         for qindex, q in enumerate(lesson["questions"], 1):
@@ -225,6 +251,16 @@ def _detail(db, row, user, full=True):
            "moderation_reason":row["moderation_reason"] if mine else "",
            "updated_at":row["updated_at"]}
     if full:
+        from .academy_media_registry import course_media_metadata
+        # Authors may see their own complete file registry; moderators only
+        # see the references in the exact version they are allowed to review.
+        dto["media_files"] = course_media_metadata(db, row["slug"], None if mine else draft)
+        from .academy_storage import image_upload_ready, rendition_preview_ready
+        active = _active_account(db, user["id"]) and (row["owner_id"] is None or _active_account(db, row["owner_id"]))
+        private_view = bool((mine or reviewing) and active)
+        dto["image_upload_enabled"] = bool(mine and active and image_upload_ready())
+        dto["image_preview_enabled"] = bool(private_view and image_upload_ready())
+        dto["rendition_preview_enabled"] = bool(private_view and rendition_preview_ready())
         dto.update(draft={key:draft[key] for key in DRAFT_FIELDS},issues=readiness(draft),
                    restricted=user["role"]=="candidate" and not _active_account(db,user["id"]),
                    can_submit=user["role"]=="admin" or _is_published(db,user["id"]))
@@ -323,6 +359,12 @@ def install_builder_routes(app, community_user, throttle, get_connection, allowe
         editable(user,db,row)
         _version(row,data.expected_version)
         draft=data.model_dump(exclude={"expected_version"})
+        # Preserve unchanged legacy text-only JSON and version behavior.
+        for lesson in draft["lessons"]:
+            if not lesson.get("media"):
+                lesson.pop("media", None)
+        from .academy_media_registry import validate_media_references
+        validate_media_references(db, slug, draft)
         if json.loads(row["draft_json"])==draft:
             return _committed(db,{"course":_detail(db,row,user)})
         throttle(db,user["id"],"academy-course-save",120,3600)

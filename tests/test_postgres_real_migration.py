@@ -123,6 +123,20 @@ def sample(tmp_path):
             """INSERT INTO academy_courses(slug,owner_id,draft_json,state,version,created_at,updated_at)
                VALUES('course-test',1,'{"title":"Test course"}','draft',2,'2026-01-01','2026-01-02')"""
         )
+        conn.execute(
+            """INSERT INTO academy_media(id,course_slug,course_version,object_key,kind,content_type,
+               byte_count,state,created_at,updated_at)
+               VALUES('00000000000000000000000000000001','course-test',2,
+                      'academy/quarantine/00000000000000000000000000000001','image','image/png',
+                      20,'reserved','2026-01-01','2026-01-02')"""
+        )
+        conn.execute(
+            """INSERT INTO academy_media_renditions(id,media_id,source_sha256,position,content_type,
+               byte_count,sha256,object_key,state,created_at,updated_at)
+               VALUES('00000000000000000000000000000002','00000000000000000000000000000001',
+                      ?,1,'image/jpeg',30,?,'academy/renditions/00000000000000000000000000000002',
+                      'reserved','2026-01-01','2026-01-02')""", ("a"*64,"b"*64)
+        )
         conn.execute("INSERT INTO community_saved_entries VALUES(2,'z-parent','2026-01-03')")
         conn.execute("INSERT INTO community_discovery_preferences VALUES(2,'Test topic','','mentoring','rev-1','2026-01-03')")
         conn.execute("INSERT INTO community_feed_follows VALUES(2,1,'2026-01-01')")
@@ -151,7 +165,7 @@ def test_import_preserves_ids_consents_and_relations(target, sample):
     assert counts["community_group_memberships"] == counts["community_group_posts"] == 1
     assert counts["community_portfolio_entries"] == 1
     assert counts["community_author_articles"] == 1
-    assert counts["academy_courses"] == 1
+    assert counts["academy_courses"] == counts["academy_media"] == counts["academy_media_renditions"] == 1
     assert counts["community_saved_entries"] == counts["community_discovery_preferences"] == 1
     assert counts["community_feed_follows"] == counts["community_feed_alert_reads"] == counts["community_feed_reports"] == 1
     with psycopg.connect(target) as conn:
@@ -183,6 +197,10 @@ def test_import_preserves_ids_consents_and_relations(target, sample):
         assert conn.execute("SELECT id,user_id,kind,status,consent_at FROM community_author_articles").fetchone() == (
             "author-test", 1, "case", "pending", "2026-01-02")
         assert conn.execute("SELECT slug,owner_id,state,version FROM academy_courses").fetchone() == ("course-test",1,"draft",2)
+        assert conn.execute("SELECT course_slug,course_version,byte_count,state FROM academy_media").fetchone() == (
+            "course-test",2,20,"reserved")
+        assert conn.execute("SELECT media_id,position,byte_count,state FROM academy_media_renditions").fetchone() == (
+            "00000000000000000000000000000001",1,30,"reserved")
     assert sample.read_bytes() == before
 
 
