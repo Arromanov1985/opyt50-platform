@@ -1,0 +1,12 @@
+[Unit]
+Description=STAZHNO Academy bounded private media worker
+After=network-online.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=%h/stazhno/opyt50-platform
+EnvironmentFile=%h/.config/stazhno/academy-worker.env
+ExecStart=%h/stazhno/.venv/bin/python -m scripts.academy_worker --mode all --limit 1
+UMask=0077
+TimeoutStartSec=45min
+Restart=no

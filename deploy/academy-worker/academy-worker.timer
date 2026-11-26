@@ -1,0 +1,11 @@
+[Unit]
+Description=Run STAZHNO Academy media processing in bounded batches
+
+[Timer]
+OnBootSec=2min
+OnUnitInactiveSec=60s
+AccuracySec=10s
+Unit=academy-worker.service
+
+[Install]
+WantedBy=timers.target

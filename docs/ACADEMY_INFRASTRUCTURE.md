@@ -110,3 +110,37 @@ selected project, not a claim that an existing resource can be reused.
 Inspect resource ownership, geography, existing workloads and access
 privately before selecting or provisioning infrastructure. No paid
 services are ordered and no API permissions are widened by this workflow.
+
+
+## 7. Dedicated worker activation (operator only)
+
+The separate `scripts.academy_worker` command processes at most the configured
+number of images and rich-media jobs per invocation. It is disabled by default.
+The rootless local Podman adapter pins the converter to an existing local image
+ID; it does not pull images, forward cloud/DB credentials, share the runtime
+socket, or mount any application directory. It imports results only after
+container removal is confirmed. The temporary output and manifest require a
+host-enforced scratch-volume quota. Unit tests mock Podman; actual container
+execution, SELinux/cgroup compatibility, and the live worker are not yet tested.
+
+Before activation:
+
+- Provision a dedicated non-root worker account and an independently quota-limited
+  scratch filesystem (private, mode 0700); configure ClamAV and update signatures.
+- Restrict PostgreSQL access to the worker host and verify TLS; store DB/S3
+  credentials in a private environment file (0600), not in the repository.
+- Build the converter locally from Dockerfile.academy-converter, record its
+  full sha256 image ID, verify the image and rootless Podman runtime.
+- Set STAZHNO_ACADEMY_WORKER_ENABLED=1 only in the worker environment, together
+  with DATABASE_URL, existing private S3 settings, STAZHNO_ACADEMY_CLAMD_SOCKET,
+  STAZHNO_ACADEMY_WORKER_SCRATCH and STAZHNO_ACADEMY_CONVERTER_IMAGE_ID.
+- First run one image-only batch on synthetic files, then a rich-media batch.
+  Inspect aggregate outcomes and manually reconcile failed reservations.
+- Review the paths in deploy/academy-worker/academy-worker.service and .timer;
+  install them as user units only after the complete live acceptance test and
+  approved infrastructure setup. The timer is not enabled by this release.
+  An existing converter container blocks subsequent rich-media execution until
+  an operator verifies and reconciles it. Do not blindly remove a container.
+
+The public upload, preview and publication flags remain unchanged. No server,
+bucket or credentials are created by the worker implementation.
