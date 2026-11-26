@@ -247,7 +247,7 @@ def probe_public_journal_pages():
     root = str(Path(__file__).resolve().parents[1])
     if root not in sys.path:
         sys.path.insert(0, root)
-    from app.journal import ARTICLES, journal_index, journal_article, journal_renderer_sha256
+    from app.journal import ARTICLES, journal_index, journal_article, journal_renderer_sha256, catalog_page_count, catalog_page_path
     from app.journal_paths import PATHS, path_detail, paths_index, visible_paths
     from app.journal_guide import GUIDE_PATHS, SECTIONS, guide_page
     from app.academy import academy_pages
@@ -295,6 +295,7 @@ def probe_public_journal_pages():
         if not all(
             path in {"/journal", "/journal/paths", "/sitemap.xml"} or path in GUIDE_PATHS or path in academy
             or path in route_urls or _journal_article_slug(path)
+            or re.fullmatch(r"/journal(?:/guide/(?:personal|learning|news|events))?/page/[1-9][0-9]{0,5}", path)
             for path in pages
         ) or not all(
             isinstance(digest,str) and len(digest)==64
@@ -303,6 +304,15 @@ def probe_public_journal_pages():
         ):
             raise ValueError("Invalid editorial page digests")
         published_slugs = {slug for path in pages if (slug := _journal_article_slug(path))}
+        # Main and personal catalogs contain all published articles.
+        # Other sections contain a subset; any additional pages must be contiguous.
+        count = catalog_page_count(len(published_slugs))
+        for base in ("/journal", "/journal/guide/personal", "/journal/guide/learning",
+                     "/journal/guide/news", "/journal/guide/events"):
+            actual = {path for path in pages if path.startswith(base + "/page/")}
+            size = count if base in {"/journal", "/journal/guide/personal"} else len(actual) + 1
+            if size > count or actual != {catalog_page_path(base, page) for page in range(2, size + 1)}:
+                raise ValueError("Invalid editorial catalog pagination")
         required_routes = {
             "/journal/paths/" + item["slug"] for item in PATHS
             if any(slug in published_slugs for slug, _label in item["steps"])
