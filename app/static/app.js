@@ -193,6 +193,7 @@ function newDraftCreateKey() {
 // Values are never written to browser storage. Timers belong to a live form.
 const draftAutoTimers = new WeakMap();
 const draftAutoSaving = new WeakSet();
+const draftAutoRequests = new WeakMap();
 const draftAutoBlocked = new WeakSet();
 const draftAutoWarnings = new WeakMap();
 // Original server snapshot is essential to a three-way merge. DOM only, no storage.
@@ -267,7 +268,13 @@ function scheduleVacancyAutosave(form) {
   setEditorStatus(form, 'Есть изменения — автоматически сохраним через секунду…');
   draftAutoTimers.set(form, setTimeout(() => {
     draftAutoTimers.delete(form);
-    if (form.isConnected && editorIsDirty(form)) void saveVacancyDraft(form, true);
+    if (form.isConnected && editorIsDirty(form) && !draftAutoSaving.has(form) && !editorSubmitting.has(form)) {
+      const pending = saveVacancyDraft(form, true);
+      draftAutoRequests.set(form, pending);
+      void pending.finally(() => {
+        if (draftAutoRequests.get(form) === pending) draftAutoRequests.delete(form);
+      });
+    }
   }, 1400));
 }
 async function saveVacancyDraft(form, automatic = false) {
@@ -4375,10 +4382,7 @@ async function handleDashboardSubmit(event) {
       toast('Сначала проверьте вакансию в предпросмотре.', true);
       return;
     }
-    if (draftAutoSaving.has(form)) {
-      toast('Автосохранение ещё выполняется. Повторите публикацию после его завершения.', true);
-      return;
-    }
+    const pendingAutosave = draftAutoRequests.get(form);
     cancelDraftAutosave(form);
     const submit = beginEditorSave(form);
     if (!submit) return;
@@ -4388,6 +4392,24 @@ async function handleDashboardSubmit(event) {
     let persisted = false;
     let conflict = false;
     try {
+      // Keep the explicit publish action while an earlier versioned autosave
+      // finishes. The editor is inert until both operations complete.
+      if (pendingAutosave) {
+        await pendingAutosave;
+        cancelDraftAutosave(form);
+        if (!form.isConnected) return;
+        if (draftConflictSessions.has(form) || draftAutoBlocked.has(form)) {
+          conflict = draftConflictSessions.has(form);
+          toast('Автосохранение не подтверждено. Проверьте сообщение в форме перед публикацией.', true);
+          return;
+        }
+        if (window.OpytnovacancyWizard?.getReviewedDescription(form) !== description) {
+          conflict = true;
+          toast('Сначала проверьте актуальную версию вакансии.', true);
+          return;
+        }
+        setEditorStatus(form, 'Публикуем вакансию…');
+      }
       const draftId = !editing ? Number(form.dataset.draftId || 0) : 0;
       if (draftId) {
         const saved = await api(`/api/employer/vacancy-drafts/${draftId}`, {
