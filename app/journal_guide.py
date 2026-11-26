@@ -263,6 +263,9 @@ def guide_page(section: str, articles: list[dict], page: int = 1) -> HTMLRespons
             body += ('<p class="jr-analytics-note">Анонсы упорядочены по дате. Уточняйте актуальность, время, '
                      'стоимость и условия участия у организатора. СТАЖНО не принимает заявки и оплату.</p>')
         items = materials(section, articles)
+        if section == 'learning':
+            body += ('<aside class="jr-path-promo"><h2>Академия СТАЖНО</h2><p>Бесплатные последовательные курсы, практические задания и самопроверка.</p>'
+                     '<a class="jr-primary" href="/academy">Выбрать курс →</a></aside>')
         page_items = catalog_slice(items, page)
         body += '<section class="jr-list">' + (_events_section(page_items) if section == 'events' else _cards(page_items, section)) + '</section>'
         body += catalog_navigation(base, page, len(items))

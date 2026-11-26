@@ -241,3 +241,132 @@ document.addEventListener('DOMContentLoaded', () => {
   filter();
 });
 
+
+// Local learning progress. Answers and exercises are never sent to a server.
+// A completed lesson is a self-check, not a verified credential.
+document.addEventListener('DOMContentLoaded', () => {
+  const nodes = [...document.querySelectorAll('[data-ac-course]')];
+  if (!nodes.length) return;
+  const courses = new Map();
+  for (const node of nodes) {
+    const slug = node.dataset.acCourse;
+    if (!courses.has(slug)) {
+      const lessons = node.dataset.acLessons.split(' ').filter(Boolean);
+      courses.set(slug, {slug, lessons, key:'stazhno-academy-v1:'+slug+':'+node.dataset.acRevision,
+        nodes:[], completed:new Set()});
+    }
+    courses.get(slug).nodes.push(node);
+  }
+  function read(course) {
+    try {
+      const raw = localStorage.getItem(course.key);
+      const parsed = raw && raw.length < 16000 ? JSON.parse(raw) : [];
+      return new Set(Array.isArray(parsed) ? parsed.filter(item=>course.lessons.includes(item)) : []);
+    } catch { return new Set(); }
+  }
+  function say(course,message) {
+    course.nodes.forEach(node => {
+      const status=node.querySelector('[data-ac-storage-status]');
+      if(status)status.textContent=message;
+    });
+  }
+  function store(course) {
+    try {
+      localStorage.setItem(course.key,JSON.stringify(course.lessons.filter(item=>course.completed.has(item))));
+      return true;
+    } catch { return false; }
+  }
+  function draw(course) {
+    const count=course.completed.size,total=course.lessons.length;
+    for(const node of course.nodes){
+      node.querySelectorAll('[data-ac-progress-label]').forEach(label=>{
+        label.textContent=count+' из '+total+' уроков пройдено'; label.hidden=false;
+      });
+      node.querySelectorAll('[data-ac-progress]').forEach(bar=>{bar.value=count;});
+      node.querySelectorAll('[data-ac-finished]').forEach(label=>{label.hidden=count!==total;});
+      node.querySelectorAll('[data-ac-lesson-state]').forEach(label=>{
+        label.textContent=course.completed.has(label.dataset.acLessonState)?' · ✓ Пройден':' · Не пройден';
+      });
+      node.querySelectorAll('[data-ac-reset]').forEach(button=>{button.hidden=false;button.disabled=count===0;});
+      node.querySelectorAll('[data-ac-start]').forEach(link=>{
+        link.textContent=count===total?'Повторить курс →':count?'Продолжить курс →':'Открыть курс →';
+      });
+    }
+    const resume=document.querySelector('[data-ac-resume]');
+    if(resume){
+      const next=course.lessons.find(item=>!course.completed.has(item));
+      resume.href='/academy/'+encodeURIComponent(course.slug)+'/'+encodeURIComponent(next||course.lessons[0]);
+      resume.textContent=count===total?'Повторить курс →':count?'Продолжить обучение →':'Начать обучение →';
+    }
+  }
+  for(const course of courses.values()){
+    course.completed=read(course);draw(course);
+    course.nodes.forEach(node=>node.querySelectorAll('[data-ac-reset]').forEach(button=>{
+      button.addEventListener('click',()=>{
+        if(!window.confirm('Сбросить прогресс этого курса в текущем браузере?'))return;
+        let removed=true;
+        try{localStorage.removeItem(course.key);}catch{removed=false;}
+        course.completed.clear();draw(course);
+        say(course,removed?'Прогресс курса сброшен.':'Не удалось удалить данные из хранилища. Прогресс сброшен только на этой странице.');
+        const result=document.getElementById('ac-quiz-result');if(result)result.textContent='';
+        const form=document.getElementById('ac-quiz');if(form){
+          form.reset();form.querySelectorAll('[data-ac-feedback]').forEach(p=>{p.hidden=true;});
+        }
+      });
+    }));
+  }
+  window.addEventListener('storage',event=>{
+    for(const course of courses.values())if(event.key===course.key||event.key===null){course.completed=read(course);draw(course);}
+  });
+  const form=document.getElementById('ac-quiz');
+  if(form){
+    const course=courses.get(form.dataset.acCourse);
+    const lesson=form.dataset.acLesson;
+    const check=form.querySelector('.ac-check');
+    const result=document.getElementById('ac-quiz-result');
+    check.hidden=false;
+    form.addEventListener('submit',event=>{
+      event.preventDefault();
+      const questions=[...form.querySelectorAll('[data-ac-question]')];
+      let correct=0;
+      for(const question of questions){
+        const answer=question.querySelector('input:checked');
+        const right=Boolean(answer?.dataset.acCorrect==='true');
+        if(right)correct++;
+        const feedback=question.querySelector('[data-ac-feedback]');
+        const explanation=feedback.dataset.explanation||feedback.textContent;
+        feedback.dataset.explanation=explanation;
+        feedback.textContent=(right?'Верно. ':'Попробуйте ещё раз. ')+explanation;
+        feedback.classList.toggle('ac-feedback-wrong',!right);feedback.hidden=false;
+      }
+      if(correct===questions.length&&course.lessons.includes(lesson)){
+        // Merge any progress completed in another tab before writing.
+        for(const item of read(course))course.completed.add(item);
+        course.completed.add(lesson);
+        const persisted=store(course);draw(course);
+        result.textContent='Все ответы верны. Урок пройден. '+(persisted?'Прогресс сохранён в этом браузере.':'Браузер не сохранил прогресс: он доступен только на этой странице.');
+      }else{
+        result.textContent='Верных ответов: '+correct+' из '+questions.length+'. Перечитайте пояснения и попробуйте снова.';
+      }
+    });
+    form.addEventListener('change',event=>{
+      const question=event.target.closest('[data-ac-question]');
+      if(question)question.querySelector('[data-ac-feedback]').hidden=true;
+      result.textContent='';
+    });
+  }
+  const copy=document.querySelector('[data-ac-copy]');
+  if(copy){
+    copy.hidden=false;
+    copy.addEventListener('click',async()=>{
+      const text=document.getElementById('ac-example-text');
+      const status=document.querySelector('[data-ac-copy-status]');
+      try{await navigator.clipboard.writeText(text.textContent);status.textContent='Запрос скопирован.';}
+      catch{
+        try{const range=document.createRange();range.selectNodeContents(text);const selection=window.getSelection();selection.removeAllRanges();selection.addRange(range);}catch{}
+        status.textContent='Автоматическое копирование недоступно. Скопируйте выделенный текст вручную.';
+      }
+    });
+  }
+});
+
