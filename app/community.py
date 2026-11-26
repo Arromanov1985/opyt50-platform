@@ -186,6 +186,17 @@ COMMUNITY_DDL = (
         CHECK((parent_id IS NULL AND kind<>'comment') OR (parent_id IS NOT NULL AND kind='comment')),
         CHECK(parent_id IS NULL OR parent_id<>id)
     )""",
+    """CREATE TABLE IF NOT EXISTS community_group_memberships (
+        user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        group_slug TEXT NOT NULL CHECK(group_slug IN ('engineering','management','sales','education','finance','technology','operations','career')),
+        created_at TEXT NOT NULL,
+        PRIMARY KEY(user_id,group_slug)
+    )""",
+    """CREATE TABLE IF NOT EXISTS community_group_posts (
+        entry_id TEXT PRIMARY KEY REFERENCES community_feed_entries(id) ON DELETE CASCADE,
+        group_slug TEXT NOT NULL CHECK(group_slug IN ('engineering','management','sales','education','finance','technology','operations','career'))
+    )""",
+    "CREATE INDEX IF NOT EXISTS idx_community_group_posts_slug ON community_group_posts(group_slug,entry_id)",
     """CREATE TABLE IF NOT EXISTS community_opportunities (
         entry_id TEXT PRIMARY KEY REFERENCES community_feed_entries(id) ON DELETE CASCADE,
         intent TEXT NOT NULL CHECK(intent IN ('offer','seek','organize','join')),

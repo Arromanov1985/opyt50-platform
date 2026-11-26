@@ -45,6 +45,9 @@ COMMON_COUNTS = (
     ("community_reports_submitted", "SELECT COUNT(*) FROM community_reports WHERE reporter_id=?", "id"),
     ("community_opportunities", """SELECT COUNT(*) FROM community_opportunities o
         JOIN community_feed_entries f ON f.id=o.entry_id WHERE f.author_id=?""", "id"),
+    ("community_group_memberships", "SELECT COUNT(*) FROM community_group_memberships WHERE user_id=?", "id"),
+    ("community_group_posts", """SELECT COUNT(*) FROM community_group_posts g
+        JOIN community_feed_entries f ON f.id=g.entry_id WHERE f.author_id=?""", "id"),
     ("community_feed_entries", "SELECT COUNT(*) FROM community_feed_entries WHERE author_id=?", "id"),
     ("community_feed_linked_comments", """SELECT COUNT(*) FROM community_feed_entries reply
         JOIN community_feed_entries root ON root.id=reply.parent_id

@@ -13,6 +13,8 @@ from .community import (
     _active_account, _committed, _is_published, _key, _lock_actors, _now, _public_text,
 )
 
+from .community_groups import group_info, group_member, install_group_routes
+
 FeedKind = Literal["experience", "question", "projects", "mentoring"]
 FEED_CONSENT_VERSION = "community-feed-2026-11-25"
 
@@ -23,7 +25,7 @@ _VISIBLE_SQL = """
 WITH viewer AS (SELECT CAST(? AS INTEGER) AS viewer_id),
 visible AS (
     SELECT f.id,f.parent_id,f.kind,f.title,f.body,f.created_at,f.published_at,
-           p.public_id,p.public_name,p.headline,p.city,p.skills,f.author_id,
+           p.public_id,p.public_name,p.headline,p.city,p.skills,f.author_id,g.group_slug,
            o.intent AS opportunity_intent,o.meeting_format AS opportunity_format,
            o.commitment AS opportunity_commitment,
            CASE WHEN EXISTS (SELECT 1 FROM community_saved_entries se
@@ -32,6 +34,7 @@ visible AS (
              WHERE ff.follower_id=v.viewer_id AND ff.target_id=f.author_id) THEN 1 ELSE 0 END AS followed
     FROM community_feed_entries f
     LEFT JOIN community_opportunities o ON o.entry_id=f.id
+    LEFT JOIN community_group_posts g ON g.entry_id=COALESCE(f.parent_id,f.id)
     JOIN community_profiles p ON p.user_id=f.author_id
     JOIN users u ON u.id=p.user_id
     LEFT JOIN account_controls ac ON ac.user_id=p.user_id
@@ -55,7 +58,7 @@ visible AS (
 )
 SELECT v.id,v.parent_id,v.kind,v.title,v.body,v.created_at,v.published_at,
        v.public_id,v.public_name,v.headline,v.followed,v.saved,
-       v.opportunity_intent,v.opportunity_format,v.opportunity_commitment,v.city AS opportunity_city,
+       v.opportunity_intent,v.opportunity_format,v.opportunity_commitment,v.city AS opportunity_city,v.group_slug,
        (SELECT root.title FROM visible root WHERE root.id=v.parent_id) AS root_title
 FROM visible v CROSS JOIN viewer actor
 WHERE (?<>0 OR COALESCE(v.parent_id,'')=?)
@@ -72,6 +75,7 @@ WHERE (?<>0 OR COALESCE(v.parent_id,'')=?)
   AND (?='' OR v.id=?)
   AND (?='' OR v.kind=?)
   AND (?=0 OR v.author_id<>actor.viewer_id)
+  AND (?='' OR v.group_slug=?)
   AND (?=0 OR v.id IN (
       SELECT se.entry_id FROM community_saved_entries se WHERE se.user_id=actor.viewer_id
       ORDER BY se.created_at DESC,se.entry_id LIMIT ? OFFSET ?
@@ -111,6 +115,7 @@ class FeedInput(CommunityModel):
     body: str = Field(min_length=1, max_length=2400)
     publish_consent: StrictBool = False
     opportunity: OpportunityInput | None = None
+    group_slug: str | None = Field(default=None, min_length=1, max_length=40)
 
     _safe = field_validator("title", "body")(_public_text)
 
@@ -121,6 +126,8 @@ class FeedInput(CommunityModel):
                 raise ValueError("Комментарий должен содержать только текст до 1000 символов")
         elif self.kind == "comment" or not self.title:
             raise ValueError("Для публикации укажите тему и заголовок")
+        if self.group_slug and (self.parent_id or self.opportunity):
+            raise ValueError("Группа определяется исходной публикацией; тематические предложения создаются отдельно")
         if self.opportunity and (self.parent_id or self.opportunity.intent not in OPPORTUNITY_INTENTS.get(self.kind, set())):
             raise ValueError("Выберите подходящую цель предложения")
         if not self.body:
@@ -132,7 +139,10 @@ def _own_dto(row) -> dict:
     fields = ("id", "parent_id", "kind", "title", "body", "status", "version",
               "moderation_reason", "created_at", "published_at")
     result = {field: row[field] for field in fields}
-    opportunity = _opportunity_dto(dict(row))
+    item = dict(row)
+    if item.get("group_slug"):
+        result["group_slug"] = item["group_slug"]
+    opportunity = _opportunity_dto(item)
     if opportunity:
         result["opportunity"] = opportunity
     return result
@@ -151,8 +161,9 @@ def _opportunity_dto(item: dict) -> dict | None:
 def _entry(db, entry_id: str):
     row = db.execute(
         """SELECT f.*,o.intent AS opportunity_intent,o.meeting_format AS opportunity_format,
-                  o.commitment AS opportunity_commitment
+                  o.commitment AS opportunity_commitment,g.group_slug
            FROM community_feed_entries f LEFT JOIN community_opportunities o ON o.entry_id=f.id
+           LEFT JOIN community_group_posts g ON g.entry_id=COALESCE(f.parent_id,f.id)
            WHERE f.id=?""", (entry_id,),
     ).fetchone()
     if row is None:
@@ -165,10 +176,10 @@ def _visible(db, viewer: int, parent: str = "", entry_id: str = "",
              following: bool = False, alerts: int = 0,
              opportunity_only: bool = False, intent: str = "", meeting_format: str = "",
              commitment: str = "", city: str = "", saved_page: int = 0,
-             exclude_self: bool = False, match_profile: bool = False) -> dict:
+             exclude_self: bool = False, match_profile: bool = False, group_slug: str = "") -> dict:
     rows = db.execute(_VISIBLE_SQL, (
         viewer, alerts, parent, int(following), alerts, alerts,
-        entry_id, entry_id, kind, kind, int(exclude_self), int(bool(saved_page)),
+        entry_id, entry_id, kind, kind, int(exclude_self), group_slug, group_slug, int(bool(saved_page)),
         PAGE_SIZE, max(0, saved_page - 1) * PAGE_SIZE, int(opportunity_only),
         intent, intent, meeting_format, meeting_format, commitment, commitment, city, city,
         q, q, q, int(opportunity_only or match_profile), q, q,
@@ -183,6 +194,8 @@ def _visible(db, viewer: int, parent: str = "", entry_id: str = "",
             followed.add(item["public_id"])
         opportunity = _opportunity_dto(item)
         opportunity_city = item.pop("opportunity_city")
+        if not item.get("group_slug"):
+            item.pop("group_slug", None)
         for field in ("opportunity_intent", "opportunity_format", "opportunity_commitment"):
             item.pop(field)
         if opportunity:
@@ -224,10 +237,13 @@ def install_feed_routes(app, community_user, throttle, get_connection, allowed, 
     @app.get("/api/community/feed")
     def feed(kind: FeedKind | None = None, q: str = Query(default="", max_length=100),
              page: int = Query(default=1, ge=1, le=10000), following: bool = False,
+             group_slug: str = Query(default="", max_length=40),
              user: dict = Depends(community_user), db=Depends(get_connection)):
         reader(user, db)
+        if group_slug:
+            group_info(group_slug)
         result = _visible(db, user["id"], kind=kind or "", q=q.strip().casefold(),
-                          page=page, following=following)
+                          page=page, following=following, group_slug=group_slug)
         own = db.execute("SELECT public_id FROM community_profiles WHERE user_id=?",
                          (user["id"],)).fetchone()
         result["own_public_id"] = own["public_id"] if own else None
@@ -258,16 +274,22 @@ def install_feed_routes(app, community_user, throttle, get_connection, allowed, 
     @app.get("/api/community/feed/mine")
     def mine(page: int = Query(default=1, ge=1, le=10000),
              opportunity_kind: OpportunityKind | None = None,
+             group_slug: str = Query(default="", max_length=40),
              user: dict = Depends(community_user), db=Depends(get_connection)):
         if user["role"] != "candidate":
             raise HTTPException(403, "Раздел доступен участникам с профессиональным профилем")
+        if group_slug:
+            group_info(group_slug)
         rows = db.execute(
             """SELECT f.*,o.intent AS opportunity_intent,o.meeting_format AS opportunity_format,
-                      o.commitment AS opportunity_commitment
+                      o.commitment AS opportunity_commitment,g.group_slug
                FROM community_feed_entries f LEFT JOIN community_opportunities o ON o.entry_id=f.id
+               LEFT JOIN community_group_posts g ON g.entry_id=COALESCE(f.parent_id,f.id)
                WHERE f.author_id=? AND (?='' OR (o.entry_id IS NOT NULL AND f.kind=?))
+                 AND (?='' OR g.group_slug=?)
                ORDER BY f.created_at DESC,f.id DESC LIMIT ? OFFSET ?""",
-            (user["id"], opportunity_kind or "", opportunity_kind or "", PAGE_SIZE + 1, (page - 1) * PAGE_SIZE),
+            (user["id"], opportunity_kind or "", opportunity_kind or "", group_slug, group_slug,
+             PAGE_SIZE + 1, (page - 1) * PAGE_SIZE),
         ).fetchall()
         return _private({**_page(rows, page), "can_publish": can_publish(user, db)})
 
@@ -276,7 +298,10 @@ def install_feed_routes(app, community_user, throttle, get_connection, allowed, 
                  user: dict = Depends(community_user), db=Depends(get_connection)):
         reader(user, db)
         root = _visible_root(db, user["id"], entry_id)
-        return _private({"post": root, **_visible(db, user["id"], parent=entry_id, page=page)})
+        return _private({"post": root,
+                         "can_comment": can_publish(user, db) and (
+                             not root.get("group_slug") or group_member(db, user["id"], root["group_slug"])),
+                         **_visible(db, user["id"], parent=entry_id, page=page)})
 
     @app.post("/api/community/feed")
     def submit(data: FeedInput, user: dict = Depends(community_user), db=Depends(get_connection)):
@@ -294,18 +319,26 @@ def install_feed_routes(app, community_user, throttle, get_connection, allowed, 
         _lock_actors(db, owner, parent_owner)
         if not can_publish(user, db):
             raise HTTPException(403, "Сначала опубликуйте профессиональный профиль")
+        group_slug = data.group_slug
         if data.parent_id:
             _visible_root(db, owner, data.parent_id)
+            group_slug = _entry(db, data.parent_id)["group_slug"]
+        if group_slug:
+            group_info(group_slug)
+            if not group_member(db, owner, group_slug):
+                raise HTTPException(403, "Сначала вступите в тематическую группу")
         previous = db.execute(
             """SELECT f.*,o.intent AS opportunity_intent,o.meeting_format AS opportunity_format,
-                      o.commitment AS opportunity_commitment
+                      o.commitment AS opportunity_commitment,g.group_slug
                FROM community_feed_entries f LEFT JOIN community_opportunities o ON o.entry_id=f.id
+               LEFT JOIN community_group_posts g ON g.entry_id=COALESCE(f.parent_id,f.id)
                WHERE f.author_id=? AND f.client_key=?""",
             (owner, str(data.client_key)),
         ).fetchone()
         if previous is not None:
             expected_opportunity = data.opportunity.model_dump() if data.opportunity else None
             if (any(previous[field] != getattr(data, field) for field in ("parent_id", "kind", "title", "body"))
+                    or previous["group_slug"] != group_slug
                     or _opportunity_dto(dict(previous)) != expected_opportunity):
                 raise HTTPException(409, "Идентификатор уже использован для другого текста")
             return _committed(db, {"entry": _own_dto(previous)})
@@ -318,6 +351,9 @@ def install_feed_routes(app, community_user, throttle, get_connection, allowed, 
             (entry_id, owner, data.parent_id, str(data.client_key), data.kind, data.title,
              data.body, now, FEED_CONSENT_VERSION, now, now),
         )
+        if data.group_slug:
+            db.execute("INSERT INTO community_group_posts(entry_id,group_slug) VALUES(?,?)",
+                       (entry_id, data.group_slug))
         if data.opportunity:
             db.execute(
                 """INSERT INTO community_opportunities(entry_id,intent,meeting_format,commitment)
@@ -355,9 +391,10 @@ def install_feed_routes(app, community_user, throttle, get_connection, allowed, 
             """SELECT f.*,p.public_id,p.public_name,p.headline,
                       root.title AS parent_title,root.body AS parent_body,
                       o.intent AS opportunity_intent,o.meeting_format AS opportunity_format,
-                      o.commitment AS opportunity_commitment
+                      o.commitment AS opportunity_commitment,g.group_slug
                FROM community_feed_entries f
                LEFT JOIN community_opportunities o ON o.entry_id=f.id
+               LEFT JOIN community_group_posts g ON g.entry_id=COALESCE(f.parent_id,f.id)
                LEFT JOIN community_profiles p ON p.user_id=f.author_id
                LEFT JOIN community_feed_entries root ON root.id=f.parent_id
                WHERE f.status=? ORDER BY f.created_at,f.id LIMIT ? OFFSET ?""",
@@ -414,3 +451,5 @@ def install_feed_routes(app, community_user, throttle, get_connection, allowed, 
 
     from .community_discovery import install_discovery_routes
     install_discovery_routes(app, community_user, throttle, get_connection, reader, can_publish)
+
+    install_group_routes(app, community_user, throttle, get_connection, reader, allowed)
