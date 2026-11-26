@@ -684,3 +684,63 @@ def test_professional_portfolio_runtime_postgresql(runtime_db):
         assert client.get(public).status_code == 404
         assert client.get(url).json()["entries"][0]["status"] == "hidden"
 
+
+def test_colleague_recommendations_runtime_postgresql(runtime_db):
+    from fastapi.testclient import TestClient
+    from app.main import create_app, active_user
+    from uuid import uuid4
+
+    app = create_app("unused-with-DATABASE_URL")
+    actor = {"id": 1, "role": "candidate"}
+    app.dependency_overrides[active_user] = lambda: actor
+    with TestClient(app) as client:
+        with postgres_database(runtime_db) as db:
+            colleague = db.execute(
+                "INSERT INTO users(email,password_hash,role,name) VALUES(?,?,'candidate','Colleague')",
+                ("reputation-peer@example.invalid", "test-hash"),
+            ).lastrowid
+            admin = db.execute(
+                "INSERT INTO users(email,password_hash,role,name) VALUES(?,?,'admin','Admin')",
+                ("reputation-admin@example.invalid", "test-hash"),
+            ).lastrowid
+            for uid, public_id in ((1, "pg-author"), (colleague, "pg-recipient")):
+                db.execute(
+                    """INSERT INTO community_profiles(user_id,public_id,public_name,headline,status,
+                       consent_at,consent_content_version,reviewed_content_version,created_at,updated_at)
+                       VALUES(?,?,'Коллега','Наставник','published','2026-01-01',1,1,'2026-01-01','2026-01-01')""",
+                    (uid, public_id),
+                )
+            db.execute(
+                """INSERT INTO community_connections(id,sender_id,recipient_id,pair_low,pair_high,
+                   purpose,status,created_at,updated_at) VALUES('pg-reputation-thread',1,?,1,?,
+                   'exchange','accepted','2026-01-01','2026-01-01')""",
+                (colleague, colleague),
+            )
+        headers = {"X-Requested-With": "OPYT50"}
+        url = "/api/community/reputation"
+        public = "/api/community/people/pg-recipient/reputation"
+        response = client.post(url, headers=headers, json={
+            "connection_id": "pg-reputation-thread", "client_key": str(uuid4()),
+            "skill": "Обучение", "context": "Работали над совместным проектом",
+            "body": "Помогал коллегам освоить новые процессы.", "publish_consent": True,
+        })
+        assert response.status_code == 200, response.text
+        item = response.json()["entry"]
+        assert client.get(public).json()["entries"] == []
+        actor.update(id=colleague, role="candidate")
+        consent = client.post(url + "/" + item["id"] + "/respond", headers=headers,
+                              json={"expected_version": item["version"], "decision": "accept",
+                                    "publish_consent": True})
+        assert consent.status_code == 200, consent.text
+        pending = consent.json()["entry"]
+        actor.update(id=admin, role="admin")
+        approved = client.patch("/api/admin/community/reputation/" + item["id"], headers=headers,
+                                json={"expected_version": pending["version"], "decision": "approve"})
+        assert approved.status_code == 200, approved.text
+        assert client.get(public).json()["entries"][0]["id"] == item["id"]
+        actor.update(id=colleague, role="candidate")
+        blocked = client.post("/api/community/connections/pg-reputation-thread/block", headers=headers, json={})
+        assert blocked.status_code == 200, blocked.text
+        assert client.get(public).json()["entries"] == []
+        assert client.get(url).json()["entries"][0]["status"] == "hidden"
+

@@ -442,6 +442,57 @@ def run_browser(browser, base, database):
             incoming.locator('[data-action="accept-connection"]').click()
         assert checked(accepted.value)["connection"]["status"] == "accepted"
 
+        # Colleague recommendation: accepted relationship, offline draft,
+        # separate recipient consent, independent moderation, public rendering.
+        anna.goto(base + "/community/connections", wait_until="networkidle")
+        anna.locator(f'[data-connection-id="{connection_id}"] a[href*="/community/reputation?connection="]').click()
+        recommendation_form = anna.locator("#recommendation-form")
+        expect(recommendation_form).to_be_visible()
+        recommendation_form.locator('[name="skill"]').fill("Организация обучения")
+        recommendation_form.locator('[name="context"]').fill("Вместе организовывали учебный проект")
+        recommendation_form.locator('[name="body"]').fill("Коллега понятно объясняет задачи. <img src=x onerror=window.reputationXss=1>")
+        recommendation_form.locator('[name="publish_consent"]').check()
+        anna.context.set_offline(True)
+        recommendation_form.locator('[type="submit"]').click()
+        expect(recommendation_form.locator(".form-error")).to_be_visible()
+        expect(recommendation_form.locator('[name="skill"]')).to_have_value("Организация обучения")
+        anna.context.set_offline(False)
+        with anna.expect_response(lambda r: r.url.endswith("/api/community/reputation") and r.request.method == "POST") as recommendation_sent:
+            recommendation_form.locator('[type="submit"]').click()
+        recommendation = checked(recommendation_sent.value)["entry"]
+        recommendation_id = recommendation["id"]
+        assert checked(visitor.request.get(base + "/api/community/people/" + boris_profile["public_id"] + "/reputation"))["entries"] == []
+        boris.goto(base + "/community/reputation", wait_until="networkidle")
+        recommendation_card = boris.locator(f'#reputation-list [data-recommendation-id="{recommendation_id}"]')
+        expect(recommendation_card).to_contain_text("Ожидает согласия")
+        recommendation_card.locator('[data-action="accept-reputation"]').click()
+        recommendation_consent = boris.locator("#reputation-consent-form")
+        recommendation_consent.locator('[name="publish_consent"]').check()
+        with boris.expect_response(lambda r: r.url.endswith("/reputation/" + recommendation_id + "/respond")) as recommendation_accepted:
+            recommendation_consent.locator('[type="submit"]').click()
+        assert checked(recommendation_accepted.value)["entry"]["status"] == "pending"
+        expect(recommendation_card).to_contain_text("На проверке")
+        capture(boris, "community-recommendations-mobile.png")
+        admin.goto(base + "/community/reputation", wait_until="networkidle")
+        admin.locator(f'#reputation-list [data-recommendation-id="{recommendation_id}"] [data-action="approve-reputation"]').click()
+        with admin.expect_response(lambda r: r.url.endswith("/api/admin/community/reputation/" + recommendation_id) and r.request.method == "PATCH") as recommendation_approved:
+            admin.locator('#reputation-review-form [type="submit"]').click()
+        assert checked(recommendation_approved.value)["entry"]["status"] == "published"
+        visitor.goto(base + "/people/" + boris_profile["public_id"], wait_until="networkidle")
+        expect(visitor.locator(f'[data-recommendation-id="{recommendation_id}"]')).to_contain_text("Организация обучения")
+        assert visitor.evaluate("window.reputationXss || 0") == 0
+        capture(visitor, "community-public-recommendation-mobile.png")
+        anna.goto(base + "/community/profile", wait_until="networkidle")
+        anna.locator('[data-action="invite-colleague"]').click()
+        expect(anna.locator("#share-profile-url")).to_have_value(base + "/people/" + person_id)
+        anna.keyboard.press("Escape")
+        boris.reload(wait_until="networkidle")
+        recommendation_card.locator('[data-action="withdraw-reputation"]').click()
+        with boris.expect_response(lambda r: r.url.endswith("/reputation/" + recommendation_id + "/publication") and r.request.method == "DELETE") as recommendation_withdrawn:
+            boris.locator("#confirm-community-action").click()
+        assert checked(recommendation_withdrawn.value)["entry"]["status"] == "hidden"
+        assert checked(visitor.request.get(base + "/api/community/people/" + boris_profile["public_id"] + "/reputation"))["entries"] == []
+
         boris.goto(base + "/community/connections", wait_until="networkidle")
         outgoing = boris.locator(f'#community-connections-list [data-connection-id="{connection_id}"]')
         outgoing.locator('[data-action="open-thread"]').click()
