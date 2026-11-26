@@ -101,3 +101,143 @@ document.addEventListener('DOMContentLoaded', () => {
   });
   update();
 });
+
+
+// Explicit, device-local reading choices. No profile data, network calls,
+// click history or implicit interest inference. Never persist on page load.
+document.addEventListener('DOMContentLoaded', () => {
+  const controls = document.getElementById('jr-personal-controls');
+  const buttons = [...document.querySelectorAll('[data-jr-save]')];
+  if (!controls && !buttons.length) return;
+  const topicsKey = 'stazhno-reading-topics-v1', savedKey = 'stazhno-reading-saved-v1';
+  const validSlug = value => typeof value === 'string' && value.length <= 90 && /^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(value);
+  const topicInputs = [...document.querySelectorAll('[data-jr-topic]')];
+  const topicIds = new Set(topicInputs.map(input => input.value));
+  const cards = [...document.querySelectorAll('[data-jr-material]')];
+  const status = document.getElementById('jr-reading-status');
+  const say = text => { if (status) status.textContent = text; };
+  function readList(key, valid, limit) {
+    try {
+      const raw = localStorage.getItem(key);
+      if (!raw || raw.length > 32000) return [];
+      const items = JSON.parse(raw);
+      return Array.isArray(items) ? [...new Set(items.filter(valid))].slice(0, limit) : [];
+    } catch { return []; }
+  }
+  function writeList(key, values) {
+    try { localStorage.setItem(key, JSON.stringify(values)); return true; }
+    catch { return false; }
+  }
+  let saved = new Set(readList(savedKey, validSlug, 100));
+  const selection = () => topicInputs.filter(input => input.checked).map(input => input.value);
+  function draw() {
+    for (const button of buttons) {
+      const active = saved.has(button.dataset.jrSave);
+      button.setAttribute('aria-pressed', String(active));
+      button.textContent = active ? 'Убрать из сохранённого' : 'Сохранить для чтения';
+      button.hidden = false;
+    }
+    if (!controls) return;
+    const selected = selection();
+    const kind = document.getElementById('jr-personal-kind').value;
+    const savedOnly = document.getElementById('jr-personal-saved').checked;
+    let visible = 0;
+    for (const card of cards) {
+      const matchTopic = !selected.length || selected.some(topic => card.dataset.jrTopics.split(' ').includes(topic));
+      const matchKind = kind === 'all' || card.dataset.jrKind === kind;
+      card.hidden = !(matchTopic && matchKind && (!savedOnly || saved.has(card.dataset.jrMaterial)));
+      if (!card.hidden) visible++;
+    }
+    const availableSaved = cards.filter(card => saved.has(card.dataset.jrMaterial)).length;
+    document.getElementById('jr-personal-count').textContent =
+      'Показано: ' + visible + ' из ' + cards.length + '. Доступных сохранённых: ' + availableSaved + '.';
+    document.getElementById('jr-personal-empty').hidden = visible !== 0;
+  }
+  for (const button of buttons) {
+    button.addEventListener('click', () => {
+      const slug = button.dataset.jrSave;
+      if (!validSlug(slug)) return;
+      if (saved.has(slug)) saved.delete(slug);
+      else {
+        if (saved.size >= 100) {
+          say('Можно сохранить до 100 материалов. Удалите ненужные закладки.');
+          return;
+        }
+        saved.add(slug);
+      }
+      if (writeList(savedKey, [...saved])) {
+        say(saved.has(slug) ? 'Материал сохранён в этом браузере.' : 'Материал убран из сохранённого.');
+      } else {
+        say('Браузер не сохранил закладки. Изменения доступны только до обновления страницы.');
+      }
+      draw();
+    });
+  }
+  if (controls) {
+    const remembered = new Set(readList(topicsKey, value => topicIds.has(value), 9));
+    topicInputs.forEach(input => {
+      input.checked = remembered.has(input.value);
+      input.addEventListener('change', draw);
+    });
+    document.getElementById('jr-personal-kind').addEventListener('change', draw);
+    document.getElementById('jr-personal-saved').addEventListener('change', draw);
+    document.getElementById('jr-remember-topics').addEventListener('click', () => {
+      say(writeList(topicsKey, selection()) ? 'Интересы запомнены в этом браузере.' :
+        'Не удалось запомнить интересы. Фильтры доступны до обновления страницы.');
+    });
+    function resetFilters() {
+      topicInputs.forEach(input => { input.checked = false; });
+      document.getElementById('jr-personal-kind').value = 'all';
+      document.getElementById('jr-personal-saved').checked = false;
+    }
+    document.getElementById('jr-reset-topics').addEventListener('click', () => {
+      resetFilters(); draw(); say('Фильтры сброшены. Запомненные интересы не изменены.');
+    });
+    document.getElementById('jr-clear-reading').addEventListener('click', () => {
+      if (!window.confirm('Удалить сохранённые интересы и все закладки в этом браузере?')) return;
+      let cleared = true;
+      try { localStorage.removeItem(topicsKey); localStorage.removeItem(savedKey); }
+      catch { cleared = false; }
+      saved.clear(); resetFilters(); draw();
+      say(cleared ? 'Интересы и закладки удалены.' :
+        'Не удалось очистить хранилище браузера. Список сброшен на этой странице.');
+    });
+    controls.hidden = false;
+  }
+  window.addEventListener('storage', event => {
+    if (event.key === savedKey || event.key === null) {
+      saved = new Set(readList(savedKey, validSlug, 100)); draw();
+    }
+  });
+  draw();
+});
+
+// Event dates are calendar dates, not UTC instants. The source/organizer
+// remains the authority for exact time and whether an event still takes place.
+document.addEventListener('DOMContentLoaded', () => {
+  const controls = document.getElementById('jr-event-controls');
+  if (!controls) return;
+  const grid = document.getElementById('jr-events-grid');
+  const cards = [...grid.querySelectorAll('[data-jr-event-date]')];
+  const period = document.getElementById('jr-event-period');
+  const format = document.getElementById('jr-event-format');
+  const dateKey = date => [date.getFullYear(), String(date.getMonth()+1).padStart(2,'0'),
+    String(date.getDate()).padStart(2,'0')].join('-');
+  function filter() {
+    const today = dateKey(new Date());
+    let count = 0;
+    for (const card of cards) {
+      const date = card.dataset.jrEventDate;
+      const periodMatches = period.value === 'all' || (period.value === 'upcoming' ? date >= today : date < today);
+      card.hidden = !(periodMatches && (format.value === 'all' || card.dataset.jrEventFormat === format.value));
+      if (!card.hidden) count++;
+    }
+    document.getElementById('jr-event-count').textContent = 'Показано мероприятий: ' + count + ' из ' + cards.length;
+    document.getElementById('jr-event-empty').hidden = count !== 0;
+  }
+  period.addEventListener('change', filter);
+  format.addEventListener('change', filter);
+  controls.hidden = false;
+  filter();
+});
+
