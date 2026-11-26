@@ -18,9 +18,9 @@ jobs:
       - name: Install media tools
         run: |
           sudo apt-get update
-          sudo apt-get install -y ffmpeg poppler-utils
-          python -m pip install -r requirements-dev.txt
-      - name: Real audio, video and PDF conversion
+          sudo apt-get install -y ffmpeg poppler-utils libreoffice-impress fonts-liberation
+          python -m pip install -r requirements-dev.txt 'python-pptx>=1.0,<2'
+      - name: Real audio, video, PDF and PPTX conversion
         env:
           STAZHNO_TEST_MEDIA_TOOLS: "1"
         run: python -m pytest -q tests/test_academy_conversion.py

@@ -16,8 +16,9 @@ import json
 import math
 import os
 import re
-import shutil
 import subprocess  # nosec B404 - fixed trusted executables, offline worker
+import zipfile
+from xml.etree import ElementTree  # nosec B405 - DTD rejected before parsing
 
 MiB = 1024 * 1024
 MAX_PDF_PAGES = 30
@@ -56,6 +57,7 @@ class Tools:
     ffprobe: str = "/usr/bin/ffprobe"
     pdfinfo: str = "/usr/bin/pdfinfo"
     pdftoppm: str = "/usr/bin/pdftoppm"
+    soffice: str = "/usr/bin/soffice"
 
 
 def _run(executable: str, args: list[str], work: Path, timeout: int,
@@ -281,3 +283,107 @@ def rasterize_pdf(source: BinaryIO, destination: Path, *, tools: Tools = Tools()
                 path.unlink(missing_ok=True)
             raise ConversionFailed("PDF output commit failed") from None
         return [item for _, item in pending]
+
+
+def _xml_part(archive: zipfile.ZipFile, name: str):
+    with archive.open(name) as source:
+        data = source.read(8 * MiB + 1)
+    if len(data) > 8 * MiB:
+        raise ConversionRejected("PPTX XML part exceeds limit")
+    try:
+        text = data.decode("utf-8-sig")
+        if "<!DOCTYPE" in text.upper() or "<!ENTITY" in text.upper():
+            raise ValueError
+        # No XML declarations with alternate encodings are accepted.
+        declaration = re.match(r'^<\?xml\s+[^?]*encoding\s*=\s*["\']([^"\']+)', text, re.I)
+        if declaration and declaration.group(1).lower() not in ("utf-8", "utf8"):
+            raise ValueError
+        return ElementTree.fromstring(text)  # nosec B314 - DTD/entities prohibited, bounded local input
+    except (UnicodeError, ValueError, ElementTree.ParseError):
+        raise ConversionRejected("Unsupported PPTX XML") from None
+
+
+def _validate_pptx(path: Path) -> None:
+    """Conservative preflight before a separate isolated LibreOffice run."""
+    try:
+        with zipfile.ZipFile(path) as archive:
+            entries = archive.infolist()
+            if not 1 <= len(entries) <= 2000:
+                raise ConversionRejected("PPTX archive entry limit exceeded")
+            names = set()
+            total = 0
+            for entry in entries:
+                name = entry.filename
+                lower = name.casefold()
+                parts = lower.rstrip("/").split("/")
+                total += entry.file_size
+                if (not name or "\\" in name or ":" in name
+                        or any(ord(ch) < 32 for ch in name)
+                        or any(part in ("", ".", "..") for part in parts)
+                        or lower in names or entry.flag_bits & 1
+                        or (entry.external_attr >> 16) & 0o170000 == 0o120000
+                        or total > 250 * MiB
+                        or any(part in ("embeddings", "activex", "customui", "externallinks") for part in parts)
+                        or lower.endswith(("vbaproject.bin", ".exe", ".dll", ".js", ".vbs"))):
+                    raise ConversionRejected("Unsupported or active PPTX archive content")
+                names.add(lower)
+            if not {"[content_types].xml", "ppt/presentation.xml", "_rels/.rels"} <= names:
+                raise ConversionRejected("Incomplete PPTX package")
+            for entry in entries:
+                name = entry.filename
+                if name == "[Content_Types].xml":
+                    root = _xml_part(archive, name)
+                    for item in root:
+                        value = item.attrib.get("ContentType", "").lower()
+                        if any(marker in value for marker in ("macroenabled", "vba", "activex", "oleobject", "externallink")):
+                            raise ConversionRejected("Active PPTX content is not allowed")
+                elif name.lower().endswith(".rels"):
+                    root = _xml_part(archive, name)
+                    for item in root:
+                        mode = item.attrib.get("TargetMode", "Internal").lower()
+                        target = item.attrib.get("Target", "")
+                        kind = item.attrib.get("Type", "").rsplit("/", 1)[-1].lower()
+                        if (mode != "internal" or not target or ":" in target or "\\" in target
+                                or target.startswith("//")
+                                or kind in ("oleobject", "package", "control", "vbaproject", "externallink")):
+                            raise ConversionRejected("External links or embedded active objects are not allowed")
+            root = _xml_part(archive, "ppt/presentation.xml")
+            slides = root.findall(".//{http://schemas.openxmlformats.org/presentationml/2006/main}sldId")
+            if not 1 <= len(slides) <= MAX_PDF_PAGES:
+                raise ConversionRejected("PPTX slide count exceeds limit")
+    except (OSError, KeyError, RuntimeError, zipfile.BadZipFile, NotImplementedError):
+        raise ConversionRejected("Invalid PPTX package") from None
+
+
+def rasterize_pptx(source: BinaryIO, destination: Path, *, tools: Tools = Tools()) -> list[Rendition]:
+    """Render static slides through an isolated LibreOffice profile then PDF."""
+    destination = Path(destination).resolve(strict=True)
+    if not destination.is_dir() or any(destination.iterdir()):
+        raise ConversionFailed("Destination must be a private empty directory")
+    # Use isolated scratch space so the PDF output directory is empty.
+    # Both directories belong to the same isolated job.
+    with TemporaryDirectory(prefix="presentation-") as temporary:
+        work = Path(temporary)
+        original = work / "source.pptx"
+        _copy(source, original, 50 * MiB)
+        _validate_pptx(original)
+        profile = work / "lo-profile"
+        profile.mkdir()
+        user = profile / "user"
+        user.mkdir()
+        (user / "registrymodifications.xcu").write_text(
+            '<?xml version="1.0" encoding="UTF-8"?>'
+            '<oor:items xmlns:oor="http://openoffice.org/2001/registry">'
+            '<item oor:path="/org.openoffice.Office.Common/Security/Scripting">'
+            '<prop oor:name="MacroSecurityLevel" oor:op="fuse"><value>3</value></prop>'
+            '</item></oor:items>', encoding="utf-8",
+        )
+        _run(tools.soffice, ["-env:UserInstallation=" + profile.as_uri(),
+             "--headless", "--nologo", "--nodefault", "--nofirststartwizard",
+             "--norestore", "--convert-to", "pdf:impress_pdf_Export",
+             "--outdir", str(work), str(original)], work, 120)
+        pdf = work / "source.pdf"
+        if not pdf.is_file():
+            raise ConversionFailed("PPTX converter did not produce a PDF")
+        with pdf.open("rb") as stream:
+            return rasterize_pdf(stream, destination, tools=tools)

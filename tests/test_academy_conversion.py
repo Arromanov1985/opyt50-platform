@@ -103,3 +103,37 @@ def test_malformed_video_produces_no_final_output(tmp_path):
     with pytest.raises((ConversionRejected, ConversionFailed)):
         normalize_av(BytesIO(b"not a video"), "video/mp4", tmp_path)
     assert not list(tmp_path.iterdir())
+
+
+@requires_tools
+def test_real_pptx_is_rendered_to_static_jpeg_slides(tmp_path):
+    from pptx import Presentation
+    from app.academy_conversion import rasterize_pptx
+
+    original = BytesIO()
+    deck = Presentation()
+    for title in ("Lesson one", "Lesson two"):
+        slide = deck.slides.add_slide(deck.slide_layouts[0])
+        slide.shapes.title.text = title
+    deck.save(original)
+    original.seek(0)
+    items = rasterize_pptx(original, tmp_path)
+    assert [item.page for item in items] == [1,2]
+    assert all(item.content_type == "image/jpeg" and item.path.is_file() for item in items)
+
+
+def test_pptx_rejects_external_relationship_before_conversion(tmp_path):
+    import zipfile
+    from app.academy_conversion import rasterize_pptx
+
+    original = BytesIO()
+    with zipfile.ZipFile(original, "w") as archive:
+        archive.writestr("[Content_Types].xml", "<Types/>")
+        archive.writestr("ppt/presentation.xml", "<presentation/>")
+        archive.writestr("_rels/.rels",
+            '<Relationships><Relationship Type="http://example.invalid/hyperlink" '
+            'TargetMode="External" Target="https://example.invalid/"/></Relationships>')
+    original.seek(0)
+    with pytest.raises(ConversionRejected, match="External"):
+        rasterize_pptx(original, tmp_path)
+    assert not list(tmp_path.iterdir())
