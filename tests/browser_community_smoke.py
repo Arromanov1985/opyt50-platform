@@ -724,6 +724,55 @@ def run_browser(browser, base, database):
             admin.locator(f'[data-action="resolve-report"][data-id="{report["id"]}"]').click()
         checked(resolved.value)
 
+        # Author contribution: save, submit exact text, editorial approval and revoke.
+        anna.set_viewport_size({"width": 390, "height": 844})
+        anna.goto(base + "/community/author-articles", wait_until="networkidle")
+        anna.locator("#author-add").click()
+        form = anna.locator("#author-form")
+        expect(form).to_be_visible()
+        form.locator('[name="kind"]').select_option("case")
+        form.locator('[name="title"]').fill("Опыт обучения новой команды")
+        form.locator('[name="description"]').fill("Практический пример создания учебных материалов для сотрудников.")
+        form.locator('[name="body_text"]').fill("## Постановка рабочей задачи\nМы разбирали типичные ошибки при подготовке новых сотрудников. Сначала составили список операций и описали, на что нужно обращать внимание во время работы.\n\n## Практический результат\nСотрудники получили понятную последовательность шагов. Теперь наставнику проще объяснять процесс, а новичок может сверить результат с учебным примером.")
+        form.locator('[name="topics"][value="education"]').check()
+        anna.context.set_offline(True)
+        form.locator('[type="submit"]').click()
+        expect(form.locator(".form-error")).to_be_visible()
+        expect(form.locator('[name="title"]')).to_have_value("Опыт обучения новой команды")
+        anna.context.set_offline(False)
+        with anna.expect_response(lambda r: r.url.endswith("/api/community/author-articles") and r.request.method == "POST") as author_saved:
+            form.locator('[type="submit"]').click()
+        article = checked(author_saved.value)["entry"]
+        article_id = article["id"]
+        public_article = base + "/journal/author-" + article_id
+        assert visitor.request.get(public_article).status == 404
+        card = anna.locator(f'#author-list [data-author-id="{article_id}"]')
+        expect(card).to_contain_text("Черновик")
+        capture(anna, "community-author-draft-mobile.png")
+        card.locator('[data-action="author-submit"]').click()
+        consent = anna.locator("#author-consent-form")
+        consent.locator('[name="publish_consent"]').check()
+        with anna.expect_response(lambda r: r.url.endswith("/author-articles/" + article_id + "/submit")) as author_sent:
+            consent.locator('[type="submit"]').click()
+        assert checked(author_sent.value)["entry"]["status"] == "pending"
+        assert visitor.request.get(public_article).status == 404
+        admin.goto(base + "/community/author-articles", wait_until="networkidle")
+        admin.locator(f'#author-list [data-author-id="{article_id}"] [data-action="author-approve"]').click()
+        with admin.expect_response(lambda r: r.url.endswith("/api/admin/community/author-articles/" + article_id) and r.request.method == "PATCH") as author_approved:
+            admin.locator('#author-review-form [type="submit"]').click()
+        assert checked(author_approved.value)["entry"]["status"] == "published"
+        visitor.goto(public_article, wait_until="networkidle")
+        expect(visitor.locator("h1")).to_have_text("Опыт обучения новой команды")
+        expect(visitor.locator(".jr-meta")).to_contain_text("Автор сообщества")
+        capture(visitor, "community-author-article-mobile.png")
+        anna.reload(wait_until="networkidle")
+        expect(card).to_contain_text("Опубликован")
+        card.locator('[data-action="author-withdraw"]').click()
+        with anna.expect_response(lambda r: r.url.endswith("/author-articles/" + article_id + "/publication") and r.request.method == "DELETE") as author_hidden:
+            anna.locator("#confirm-community-action").click()
+        assert checked(author_hidden.value)["entry"]["status"] == "hidden"
+        assert visitor.request.get(public_article).status == 404
+
         anna.goto(base + "/community/profile", wait_until="networkidle")
         anna.locator("#withdraw-profile").click()
         with anna.expect_response(lambda r: r.url.endswith("/profile/publication") and r.request.method == "DELETE") as withdrawn:

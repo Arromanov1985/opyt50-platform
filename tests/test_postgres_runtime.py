@@ -790,3 +790,48 @@ def test_groups_runtime_postgresql(runtime_db):
         assert client.get(feed + "/" + entry["id"] + "/comments").json()["can_comment"] is False
         assert client.get(feed + "?group_slug=engineering").json()["entries"][0]["id"] == entry["id"]
 
+
+def test_author_article_runtime_postgresql(runtime_db):
+    from fastapi.testclient import TestClient
+    from app.main import create_app, active_user
+    from uuid import uuid4
+
+    app = create_app("unused-with-DATABASE_URL")
+    actor = {"id": 1, "role": "candidate"}
+    app.dependency_overrides[active_user] = lambda: actor
+    with TestClient(app) as client:
+        with postgres_database(runtime_db) as db:
+            admin = db.execute(
+                "INSERT INTO users(email,password_hash,role,name) VALUES(?,?,'admin','Admin')",
+                ("author-admin@example.invalid", "test-hash"),
+            ).lastrowid
+            db.execute(
+                """INSERT INTO community_profiles(user_id,public_id,public_name,headline,status,
+                   consent_at,consent_content_version,reviewed_content_version,created_at,updated_at)
+                   VALUES(1,'pg-author-article','Коллега','Наставник','published',
+                   '2026-01-01',1,1,'2026-01-01','2026-01-01')"""
+            )
+        headers = {"X-Requested-With": "OPYT50"}
+        url = "/api/community/author-articles"
+        data = {"client_key": str(uuid4()), "kind": "case", "title": "Практический опыт обучения",
+                "description": "Практический пример обучения сотрудников.",
+                "topics": ["education"], "body_text": "## Постановка рабочей задачи\nМы разбирали типичные ошибки при подготовке новых сотрудников. Сначала составили список операций и описали, на что нужно обращать внимание во время работы.\n\n## Практический результат\nСотрудники получили понятную последовательность шагов. Теперь наставнику проще объяснять процесс, а новичок может сверить результат с учебным примером."}
+        saved = client.post(url, headers=headers, json=data)
+        assert saved.status_code == 200, saved.text
+        item = saved.json()["entry"]
+        public = "/journal/author-" + item["id"]
+        assert client.get(public).status_code == 404
+        pending = client.post(url + "/" + item["id"] + "/submit", headers=headers,
+                              json={"expected_version": item["version"], "publish_consent": True})
+        assert pending.status_code == 200, pending.text
+        actor.update(id=admin, role="admin")
+        result = client.patch("/api/admin/community/author-articles/" + item["id"], headers=headers,
+                              json={"expected_version": pending.json()["entry"]["version"], "decision": "approve"})
+        assert result.status_code == 200, result.text
+        assert client.get(public).status_code == 200
+        actor.update(id=1, role="candidate")
+        hidden = client.request("DELETE", url + "/" + item["id"] + "/publication", headers=headers,
+                                json={"expected_version": result.json()["entry"]["version"]})
+        assert hidden.status_code == 200, hidden.text
+        assert client.get(public).status_code == 404
+
