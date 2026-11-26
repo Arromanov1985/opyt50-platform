@@ -158,7 +158,7 @@ def stage_upload(stream: BinaryIO, declared_content_type: str, *,
         storage.put_object(
             Bucket=private_bucket, Key=key, Body=temp, ContentLength=size,
             ContentType="application/octet-stream",
-            ContentDisposition="attachment",
+            ContentDisposition="attachment", IfNoneMatch="*",
             Metadata={"sha256": checksum},
         )
     return StagedMedia(media_id, key, rule.kind, content_type, size, checksum)

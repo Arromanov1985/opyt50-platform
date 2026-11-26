@@ -59,6 +59,7 @@ def test_upload_stages_only_private_objects(mime, header, kind):
     assert call["Key"] == media.object_key
     assert call["ContentType"] == "application/octet-stream"
     assert call["ContentDisposition"] == "attachment"
+    assert call["IfNoneMatch"] == "*"
     assert call["Metadata"] == {"sha256": media.sha256}
     assert "ACL" not in call
     assert stage(data, mime)[0].object_key != media.object_key
@@ -215,3 +216,7 @@ def test_registry_quota_and_restricted_accounts(tmp_path, monkeypatch):
             registry.reserve_media(db, actor, "course-q", 1, "image/png", 1)
         assert quota.value.status_code == 409
         assert db.execute("SELECT COUNT(*) FROM academy_media").fetchone()[0] == 2
+        db.execute("INSERT INTO account_controls(user_id,status) VALUES(1,'disabled')")
+        with pytest.raises(HTTPException) as restricted:
+            registry.reserve_media(db, actor, "course-q", 1, "image/png", 1)
+        assert restricted.value.status_code == 403
