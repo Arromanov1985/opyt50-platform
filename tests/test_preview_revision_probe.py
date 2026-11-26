@@ -470,3 +470,28 @@ def test_missing_academy_lesson_never_confirms_release(monkeypatch):
     assert result["manifest_result"] == "unavailable-or-invalid"
     assert missing in requests
 
+
+
+def test_journal_probe_budget_exhaustion_never_confirms_publication(monkeypatch):
+    bodies, manifest = published_journal_fixture()
+    requests = install_journal_opener(monkeypatch, bodies, manifest)
+    monkeypatch.setattr(probe, "JOURNAL_PROBE_BYTES", 1)
+    result = probe.probe_public_journal_pages()
+    assert result["manifest_result"] == "accepted"
+    assert result["result"] == "unverified"
+    assert result["budget_exhausted"]
+    assert result["unprobed_pages"] > 0
+    assert len(requests) == 2
+
+
+def test_journal_probe_stops_when_deadline_expires(monkeypatch):
+    bodies, manifest = published_journal_fixture()
+    requests = install_journal_opener(monkeypatch, bodies, manifest)
+    ticks = iter((0, 91))
+    monkeypatch.setattr(probe, "time", type("Clock", (), {"monotonic": staticmethod(lambda: next(ticks))}))
+    result = probe.probe_public_journal_pages()
+    assert result["manifest_result"] == "accepted"
+    assert result["result"] == "unverified"
+    assert result["budget_exhausted"]
+    assert result["unprobed_pages"] == len(bodies)
+    assert len(requests) == 1
