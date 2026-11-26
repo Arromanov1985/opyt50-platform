@@ -9,7 +9,7 @@
   const reasons = {spam:'Спам или навязчивые предложения', fraud:'Подозрение на мошенничество', harassment:'Оскорбления или давление', personal_data:'Публикация личных данных', other:'Другая проблема'};
   const mode = document.body.dataset.communityPage;
   const opportunityMode=['mentoring','projects'].includes(mode);
-  const state = {user:null, profile:null, dirty:false, messageDirty:false, connections:[], connectionPage:1, connectionFilter:'', connectionListRequest:0, readThrough:null, selected:null, messageKey:null, messageBody:null, nextBefore:null, directoryPage:1, directoryRequest:0, threadSelectionRequest:0, threadRequest:0, messageLoadRequest:0, moderationPage:1, reportPage:1, busy:new WeakSet(), feedPage:1, feedMinePage:1, feedReviewPage:1, feedRequest:0, feedThreadRequest:0, feedReviewRequest:0, feedThreadId:null, feedThreadPage:1, feedCanPublish:false, feedDirty:false, feedCommentDirty:false, feedFollowingIds:new Set(), feedOwnPublicId:null, feedFollowsPage:1, feedAlertsPage:1, feedReportsPage:1, feedFollowsRequest:0, feedAlertsRequest:0, feedReportsRequest:0, feedSavedIds:new Set(), savedPage:1, savedRequest:0, discoveryPeoplePage:1, discoveryFeedPage:1, discoveryRequest:0, discoveryRevision:null, discoveryDirty:false, portfolioEntries:[], portfolioCanPublish:false, portfolioEdit:null, portfolioDirty:false, portfolioRequest:0, portfolioReviewRequest:0, portfolioReviewPage:1};
+  const state = {user:null, profile:null, dirty:false, messageDirty:false, connections:[], connectionPage:1, connectionFilter:'', connectionListRequest:0, readThrough:null, selected:null, messageKey:null, messageBody:null, nextBefore:null, directoryPage:1, directoryRequest:0, threadSelectionRequest:0, threadRequest:0, messageLoadRequest:0, moderationPage:1, reportPage:1, busy:new WeakSet(), feedPage:1, feedMinePage:1, feedReviewPage:1, feedRequest:0, feedThreadRequest:0, feedReviewRequest:0, feedThreadId:null, feedThreadPage:1, feedCanPublish:false, feedDirty:false, feedCommentDirty:false, feedFollowingIds:new Set(), feedOwnPublicId:null, feedFollowsPage:1, feedAlertsPage:1, feedReportsPage:1, feedFollowsRequest:0, feedAlertsRequest:0, feedReportsRequest:0, feedSavedIds:new Set(), savedPage:1, savedRequest:0, discoveryPeoplePage:1, discoveryFeedPage:1, discoveryRequest:0, discoveryRevision:null, discoveryDirty:false, portfolioEntries:[], portfolioCanPublish:false, portfolioEdit:null, portfolioDirty:false, portfolioRequest:0, portfolioReviewRequest:0, portfolioReviewPage:1,reputationDirection:'incoming',reputationPage:1,reputationRequest:0,reputationDirty:false};
   const content = $('#community-content');
   const dialog = $('#community-dialog');
   let dialogBusy = false;
@@ -138,7 +138,7 @@
   function renderProfileForm(preserved = null) {
     const p = state.profile, values = preserved || p;
     const canSubmit = p.version > 0 && !['published','pending'].includes(p.status) && !preserved;
-    content.innerHTML = `<div class="section-heading"><div><h1>Ваш опыт — вашими словами</h1><p>Создайте отдельную страницу для коллег, проектов и наставничества. Вы сами выбираете, что рассказывать о себе.</p></div><div class="actions"><a class="button secondary compact" href="/community/portfolio">Моё портфолио →</a><a class="button secondary compact" href="/community/connections">Мои связи →</a></div></div>
+    content.innerHTML = `<div class="section-heading"><div><h1>Ваш опыт — вашими словами</h1><p>Создайте отдельную страницу для коллег, проектов и наставничества. Вы сами выбираете, что рассказывать о себе.</p></div><div class="actions"><a class="button secondary compact" href="/community/portfolio">Моё портфолио →</a><a class="button secondary compact" href="/community/reputation">Рекомендации коллег</a><button class="button secondary compact" type="button" data-action="invite-colleague">Пригласить коллегу</button><a class="button secondary compact" href="/community/connections">Мои связи →</a></div></div>
     <div class="profile-layout"><div class="panel"><div class="status-line" id="profile-status">${statusBadge(p.status,profileStates)}</div>${p.moderation_reason ? `<p class="notice warning">Комментарий модератора: ${esc(p.moderation_reason)}</p>` : ''}
     <form id="professional-profile-form" class="profile-form"><div class="form-grid"><div class="field"><label for="public-name">Публичное имя *</label><input id="public-name" name="public_name" maxlength="60" value="${esc(values.public_name)}" placeholder="Имя или профессиональный псевдоним"><p class="help">Не обязательно указывать полное имя.</p></div><div class="field"><label for="public-city">Город</label><input id="public-city" name="city" maxlength="80" value="${esc(values.city)}" placeholder="Например, Москва"></div></div>
     <div class="field"><label for="public-headline">Профессия и направление *</label><input id="public-headline" name="headline" maxlength="120" value="${esc(values.headline)}" placeholder="Бухгалтер · помогаю малому бизнесу"></div>
@@ -174,7 +174,7 @@
       const panel = $('#professional-profile-form').closest('.panel');
       busy(panel,async () => { const result=await api('/api/community/profile/submit',{method:'POST',body:{expected_version:p.version,publish_consent:true}}); state.profile=result.profile; renderProfileForm(); notice('Профиль отправлен на проверку. До решения модератора он доступен только вам.'); });
     });
-    $('#withdraw-profile')?.addEventListener('click', () => confirmAction('Скрыть профессиональный профиль?', 'Страница и карточка исчезнут из сообщества, новые запросы станут недоступны. Разрешения на публикацию записей портфолио также будут отозваны. Уже начатые разговоры сохранятся. Введённые изменения останутся в форме.', 'Скрыть профиль', async () => {
+    $('#withdraw-profile')?.addEventListener('click', () => confirmAction('Скрыть профессиональный профиль?', 'Страница и карточка исчезнут из сообщества, новые запросы станут недоступны. Разрешения на публикацию портфолио и рекомендаций коллег также будут отозваны. Уже начатые разговоры сохранятся. Введённые изменения останутся в форме.', 'Скрыть профиль', async () => {
       const draft = state.dirty ? profileValues() : null;
       const result=await api('/api/community/profile/publication',{method:'DELETE',body:{expected_version:p.version}}); state.profile=result.profile; renderProfileForm(draft); notice('Профиль скрыт. Разрешение на публикацию отозвано.');
     }));
@@ -227,13 +227,13 @@
   function connectionCard(c) {
     const other=c.counterpart;
     const title=other.public_id ? `<a href="/people/${encodeURIComponent(other.public_id)}">${esc(other.public_name)}</a>` : esc(other.public_name);
-    return `<article class="panel connection-card${state.selected?.id===c.id?' selected':''}" data-connection-id="${esc(c.id)}"><span class="direction">${c.direction==='incoming'?'Вам предлагают знакомство':'Ваше предложение'}</span><h2>${title}</h2><p class="help">${esc(other.headline)}${other.role==='employer'?' · Работодатель':''}</p><div class="status-line">${statusBadge(c.status,connectionStates)}<span class="tag">${esc(goals[c.purpose])}</span>${Number(c.unread_count)>0?`<span class="community-unread">Непрочитанных: ${Number(c.unread_count)}</span>`:''}</div>${c.note?`<p class="note">${esc(c.note)}</p>`:''}<div class="actions">${c.can_respond?`<button class="button primary" type="button" data-action="accept-connection" data-id="${esc(c.id)}">Принять знакомство</button><button class="button secondary" type="button" data-action="decline-connection" data-id="${esc(c.id)}">Отклонить</button>`:''}${c.can_cancel?`<button class="button secondary" type="button" data-action="cancel-connection" data-id="${esc(c.id)}">Отозвать запрос</button>`:''}<button class="button secondary" type="button" data-action="open-thread" data-id="${esc(c.id)}">${['accepted','blocked'].includes(c.status)?'Открыть переписку':'Подробности'}</button></div>${c.can_respond?'<p class="help">Принятие откроет переписку внутри СТАЖНО. Контакты из аккаунта останутся закрыты.</p>':''}</article>`;
+    return `<article class="panel connection-card${state.selected?.id===c.id?' selected':''}" data-connection-id="${esc(c.id)}"><span class="direction">${c.direction==='incoming'?'Вам предлагают знакомство':'Ваше предложение'}</span><h2>${title}</h2><p class="help">${esc(other.headline)}${other.role==='employer'?' · Работодатель':''}</p><div class="status-line">${statusBadge(c.status,connectionStates)}<span class="tag">${esc(goals[c.purpose])}</span>${Number(c.unread_count)>0?`<span class="community-unread">Непрочитанных: ${Number(c.unread_count)}</span>`:''}</div>${c.note?`<p class="note">${esc(c.note)}</p>`:''}<div class="actions">${c.can_respond?`<button class="button primary" type="button" data-action="accept-connection" data-id="${esc(c.id)}">Принять знакомство</button><button class="button secondary" type="button" data-action="decline-connection" data-id="${esc(c.id)}">Отклонить</button>`:''}${c.can_cancel?`<button class="button secondary" type="button" data-action="cancel-connection" data-id="${esc(c.id)}">Отозвать запрос</button>`:''}<button class="button secondary" type="button" data-action="open-thread" data-id="${esc(c.id)}">${['accepted','blocked'].includes(c.status)?'Открыть переписку':'Подробности'}</button>${state.user.role==='candidate'&&c.status==='accepted'&&other.role==='candidate'&&other.public_id?`<a class="button secondary" href="/community/reputation?connection=${encodeURIComponent(c.id)}">Рекомендовать коллегу</a>`:''}</div>${c.can_respond?'<p class="help">Принятие откроет переписку внутри СТАЖНО. Контакты из аккаунта останутся закрыты.</p>':''}</article>`;
   }
   async function renderConnections() {
     if (!state.user) return accountGate('Мои профессиональные связи');
     if (state.user.role==='admin') {content.innerHTML=empty('Модерация сообщества','Управляйте публичными профилями и рассматривайте жалобы.','<a class="button primary" href="/community/moderation">Перейти к модерации</a>');return;}
     if(new URLSearchParams(location.search).get('attention')==='1') state.connectionFilter='attention';
-    content.innerHTML=`<div class="section-heading"><div><h1>Профессиональные связи</h1><p>Запросы на знакомство и ваши разговоры. Переписка доступна только участникам после принятия запроса.</p></div><a class="button secondary compact" href="/community">Найти коллег →</a></div><section class="panel community-attention" id="community-attention" aria-label="Активность сообщества" role="status"><p class="help">Проверяем новые сообщения и запросы…</p></section><div class="connections-toolbar"><label class="help" for="connection-filter">Показать<select id="connection-filter">${options({attention:'Требуют внимания',...connectionStates},state.connectionFilter,'Все знакомства')}</select></label><button class="button secondary compact" id="refresh-connections" type="button">Обновить</button></div><div class="connections-layout"><div><div class="connection-list" id="community-connections-list"></div><div id="connections-pager"></div></div><section id="community-thread" class="panel thread-panel"><div class="thread-empty"><p>Выберите знакомство слева,<br>чтобы увидеть подробности или переписку.</p></div></section></div>`;
+    content.innerHTML=`<div class="section-heading"><div><h1>Профессиональные связи</h1><p>Запросы на знакомство и ваши разговоры. Переписка доступна только участникам после принятия запроса.</p></div><div class="actions"><a class="button secondary compact" href="/community">Найти коллег →</a>${state.user.role==='candidate'?'<a class="button secondary compact" href="/community/reputation">Рекомендации коллег</a>':''}</div></div><section class="panel community-attention" id="community-attention" aria-label="Активность сообщества" role="status"><p class="help">Проверяем новые сообщения и запросы…</p></section><div class="connections-toolbar"><label class="help" for="connection-filter">Показать<select id="connection-filter">${options({attention:'Требуют внимания',...connectionStates},state.connectionFilter,'Все знакомства')}</select></label><button class="button secondary compact" id="refresh-connections" type="button">Обновить</button></div><div class="connections-layout"><div><div class="connection-list" id="community-connections-list"></div><div id="connections-pager"></div></div><section id="community-thread" class="panel thread-panel"><div class="thread-empty"><p>Выберите знакомство слева,<br>чтобы увидеть подробности или переписку.</p></div></section></div>`;
     $('#connection-filter').addEventListener('change',event=>{state.connectionFilter=event.target.value;state.connectionPage=1;loadConnections().catch(error=>notice(error.message,'error'));});
     $('#refresh-connections').addEventListener('click',async()=>{try{await loadConnections();if(state.selected)await openThread(state.selected.id,{preserve:true});notice('Список обновлён.');}catch(error){notice(error.message,'error');}});
     await loadConnections();
@@ -367,7 +367,7 @@
     content.innerHTML=`<div class="section-heading"><div><h1>Модерация сообщества</h1><p>Перед публикацией проверьте отсутствие контактов, личных данных других людей, спама и недостоверных обещаний. Одобрение относится только к текущей версии профиля.</p></div></div><div class="connections-toolbar"><label for="moderation-filter">Профили<select id="moderation-filter">${options({pending:'Ожидают проверки',published:'Опубликованы',rejected:'Отклонены',hidden:'Скрыты'},'pending')}</select></label><button class="button secondary compact" type="button" data-action="reload-moderation">Обновить очередь</button></div><div id="moderation-list" class="moderation-grid"></div><div id="moderation-pager"></div><section class="section-divider"><h2>Жалобы участников</h2><div id="moderation-reports" class="moderation-grid"></div><div id="reports-pager"></div><p class="help">Жалобы содержат только отправленные участниками сведения. Доступ ко всей переписке здесь не открывается. При необходимости профиль можно скрыть в разделе опубликованных профилей.</p></section>`;
     $('#moderation-filter').addEventListener('change',()=>{state.moderationPage=1;loadModeration().catch(error=>notice(error.message,'error'));});
     const portfolioSection=document.createElement('section');portfolioSection.className='section-divider';
-    portfolioSection.innerHTML='<div class="section-heading"><div><h2>Портфолио и достижения</h2><p>Проверяйте только записи, отправленные с отдельным согласием на публикацию.</p></div><a href="/community/portfolio" class="button secondary">Модерация портфолио</a></div>';
+    portfolioSection.innerHTML='<div class="section-heading"><div><h2>Портфолио и достижения</h2><p>Проверяйте только записи, отправленные с отдельным согласием на публикацию.</p></div><a href="/community/portfolio" class="button secondary">Модерация портфолио</a><a href="/community/reputation" class="button secondary">Модерация рекомендаций</a></div>';
     content.append(portfolioSection);
     await Promise.all([loadModeration(),loadReports()]);
   }
@@ -760,9 +760,10 @@
 
   const portfolioKinds={project:'Реализованный проект',achievement:'Достижение',experience:'Практический опыт'};
   const portfolioStatuses={draft:'Черновик',pending:'На проверке',published:'Одобрено',rejected:'Нужны изменения',hidden:'Скрыто'};
-  function shareProfile(publicId){
-    const url=new URL('/people/'+encodeURIComponent(publicId),location.origin).href;
-    openDialog('Поделиться профессиональным профилем','<p>Скопируйте ссылку и самостоятельно отправьте её коллегам. Она открывает только опубликованные сведения, без контактов аккаунта.</p><div class="field"><label for="share-profile-url">Ссылка на профиль</label><input id="share-profile-url" type="url" readonly value="'+esc(url)+'"></div><div class="actions"><button type="button" class="button primary" id="copy-profile-url">Скопировать ссылку</button><button type="button" class="button secondary" data-close-dialog>Закрыть</button></div><p id="share-profile-result" class="help" role="status"></p>');
+  function shareProfile(publicId, invitation=false){
+    const url=new URL(publicId?'/people/'+encodeURIComponent(publicId):'/community',location.origin).href;
+    const intro=invitation?'Пригласите знакомого коллегу: самостоятельно отправьте ссылку. СТАЖНО не собирает адреса получателей и не отправляет приглашения за вас.':'Скопируйте ссылку и самостоятельно отправьте её коллегам. Она открывает только опубликованные сведения, без контактов аккаунта.';
+    openDialog(invitation?'Пригласить коллегу':'Поделиться профессиональным профилем','<p>'+esc(intro)+'</p><div class="field"><label for="share-profile-url">'+(invitation?'Ссылка для приглашения':'Ссылка на профиль')+'</label><input id="share-profile-url" type="url" readonly value="'+esc(url)+'"></div><div class="actions"><button type="button" class="button primary" id="copy-profile-url">Скопировать ссылку</button><button type="button" class="button secondary" data-close-dialog>Закрыть</button></div><p id="share-profile-result" class="help" role="status"></p>');
     const field=$('#share-profile-url');field.focus();field.select();
     $('#copy-profile-url').addEventListener('click',async()=>{
       try{await navigator.clipboard.writeText(url);$('#share-profile-result').textContent='Ссылка скопирована.';}
@@ -881,6 +882,97 @@
     await loadPortfolio();
   }
 
+  const reputationStates={offered:'Ожидает согласия получателя',pending:'На проверке',published:'Опубликована',rejected:'Нужны изменения',hidden:'Скрыта'};
+  function reputationFacts(entry){
+    return '<h3>'+esc(entry.skill)+'</h3><h4>Контекст работы</h4><p class="multiline">'+esc(entry.context)+'</p><h4>Рекомендация</h4><p class="multiline">'+esc(entry.body)+'</p>';
+  }
+  function reputationName(publicId,name){
+    return publicId?'<a href="/people/'+encodeURIComponent(publicId)+'">'+esc(name)+'</a>':'Профиль недоступен';
+  }
+  function reputationCard(entry,admin){
+    const id=esc(entry.id),v=Number(entry.version);
+    const button=(action,label,kind='secondary')=>'<button class="button '+kind+' compact" type="button" data-action="'+action+'" data-id="'+id+'" data-version="'+v+'">'+label+'</button>';
+    let identity='',actions='';
+    if(admin){
+      identity='<p class="help">Автор: '+reputationName(entry.author_public_id,entry.author_public_name)+'<br>Получатель: '+reputationName(entry.recipient_public_id,entry.recipient_public_name)+'</p>';
+      if(entry.status==='pending')actions=button('approve-reputation','Одобрить','primary')+button('reject-reputation','Вернуть на доработку');
+      if(entry.status==='published')actions=button('hide-reputation','Скрыть','danger');
+    }else{
+      identity='<p class="help">'+(entry.direction==='incoming'?'От коллеги: ':'Для коллеги: ')+reputationName(entry.counterpart_public_id,entry.counterpart_public_name)+'</p>';
+      if(entry.direction==='incoming'&&entry.status==='offered')actions=button('accept-reputation','Согласиться на публикацию','primary')+button('decline-reputation','Отклонить');
+      else if(['offered','pending','published','rejected'].includes(entry.status))actions=button('withdraw-reputation','Отозвать согласие');
+      if(entry.direction==='outgoing'&&entry.status==='rejected')actions+='<a class="button secondary compact" href="/community/reputation?connection='+encodeURIComponent(entry.connection_id)+'">Подготовить новую редакцию</a>';
+    }
+    return '<article class="panel portfolio-card" data-recommendation-id="'+id+'"><div class="status-line">'+statusBadge(entry.status,reputationStates)+'</div>'+identity+reputationFacts(entry)+(entry.moderation_reason?'<p class="notice warning">Комментарий модератора: '+esc(entry.moderation_reason)+'</p>':'')+(actions?'<div class="actions">'+actions+'</div>':'')+'</article>';
+  }
+  async function loadReputation(){
+    const request=++state.reputationRequest,admin=state.user.role==='admin';
+    const params=new URLSearchParams({page:String(state.reputationPage)});
+    params.set(admin?'status':'direction', $('#reputation-filter').value);
+    const result=await api((admin?'/api/admin/community/reputation':'/api/community/reputation')+'?'+params);
+    if(request!==state.reputationRequest)return;
+    const list=$('#reputation-list');
+    list.innerHTML=result.entries.length?result.entries.map(entry=>reputationCard(entry,admin)).join('')+pager(result.page,result.has_more,'reputation-page'):empty('Пока нет рекомендаций',admin?'В этой очереди пока нет записей.':'Рекомендации появляются после профессионального знакомства и согласия автора.');
+  }
+  async function showRecommendationEditor(connectionId){
+    const slot=$('#reputation-editor');
+    const result=await api('/api/community/connections/'+encodeURIComponent(connectionId));
+    const c=result.connection;
+    if(c.status!=='accepted'||c.counterpart.role!=='candidate'||!c.counterpart.public_id){slot.innerHTML='<p class="notice warning">Нужно принятое знакомство с участником, имеющим опубликованный профиль.</p>';slot.hidden=false;return;}
+    slot.hidden=false;
+    slot.innerHTML='<form id="recommendation-form" class="feed-form"><h2>Рекомендовать коллегу</h2><p>Получатель: '+reputationName(c.counterpart.public_id,c.counterpart.public_name)+'</p><div class="field"><label for="recommendation-skill">Компетенция</label><input id="recommendation-skill" name="skill" minlength="3" maxlength="100" required placeholder="Например, обучение сотрудников"></div><div class="field"><label for="recommendation-context">Где вы наблюдали эту компетенцию</label><textarea id="recommendation-context" name="context" minlength="10" maxlength="200" rows="3" required placeholder="Например, вместе организовывали обучение команды"></textarea></div><div class="field"><label for="recommendation-body">В чём коллега показал себя</label><textarea id="recommendation-body" name="body" minlength="20" maxlength="1000" rows="5" required></textarea></div><p class="help">Указывайте только лично наблюдаемый опыт. Не включайте чужие персональные данные, контакты, ссылки или коммерческую тайну.</p><label class="consent-label"><input type="checkbox" name="publish_consent" required><span>Согласен на публикацию моего публичного имени и этой рекомендации после согласия коллеги и модерации. Я могу отозвать согласие.</span></label><div class="actions"><button class="button primary" type="submit">Предложить рекомендацию</button><button class="button secondary" type="button" data-action="cancel-recommendation">Отмена</button></div></form>';
+    const form=$('#recommendation-form');
+    form.addEventListener('input',()=>{state.reputationDirty=true;});
+    form.addEventListener('submit',event=>{
+      event.preventDefault();
+      const fields=Object.fromEntries(new FormData(form));fields.publish_consent=form.elements.publish_consent.checked;
+      const fingerprint=JSON.stringify(fields);
+      if(form.reputationFingerprint!==fingerprint){form.reputationFingerprint=fingerprint;form.reputationClientKey=crypto.randomUUID();}
+      busy(form,async()=>{
+        await api('/api/community/reputation',{method:'POST',body:{...fields,connection_id:connectionId,client_key:form.reputationClientKey}});
+        state.reputationDirty=false;slot.hidden=true;slot.innerHTML='';
+        const url=new URL(location.href);url.searchParams.delete('connection');history.replaceState(null,'',url);
+        $('#reputation-filter').value='outgoing';state.reputationPage=1;
+        notice('Рекомендация предложена коллеге. До его согласия и проверки она не будет опубликована.');
+        await loadReputation();
+      });
+    });
+    $('#recommendation-skill').focus();slot.scrollIntoView({block:'start'});
+  }
+  function cancelRecommendation(){
+    const clear=()=>{state.reputationDirty=false;const slot=$('#reputation-editor');slot.hidden=true;slot.innerHTML='';const url=new URL(location.href);url.searchParams.delete('connection');history.replaceState(null,'',url);};
+    if(state.reputationDirty)confirmAction('Закрыть редактор?','Введённая рекомендация не сохранится.','Закрыть',async()=>clear());
+    else clear();
+  }
+  function acceptReputation(button){
+    const id=button.dataset.id,version=Number(button.dataset.version),card=button.closest('article');
+    openDialog('Согласие на публикацию рекомендации','<p>Проверьте весь текст рекомендации. После одобрения модератором она появится в вашем публичном профиле. Отозвать согласие можно в любое время.</p><div class="portfolio-consent-preview"><p class="multiline">'+esc(card.querySelector('h3').textContent)+'</p>'+[...card.querySelectorAll('h4,.multiline')].map(el=>'<p class="multiline">'+esc(el.textContent)+'</p>').join('')+'</div><form id="reputation-consent-form" class="dialog-form"><label class="consent-label"><input type="checkbox" required name="publish_consent"><span>Согласен на публичное размещение этой рекомендации в моём профессиональном профиле.</span></label><button class="button primary" type="submit">Отправить на проверку</button></form>');
+    const form=$('#reputation-consent-form');form.addEventListener('submit',event=>{event.preventDefault();busy(form,async()=>{
+      await api('/api/community/reputation/'+encodeURIComponent(id)+'/respond',{method:'POST',body:{decision:'accept',expected_version:version,publish_consent:form.elements.publish_consent.checked}});
+      dialogBusy=false;closeDialog();notice('Согласие получено. Рекомендация отправлена на модерацию.');await loadReputation();
+    });});
+  }
+  function moderateReputation(button){
+    const {id,version,action}=button.dataset,decision=action.replace('-reputation','');
+    openDialog(decision==='approve'?'Одобрить рекомендацию?':decision==='reject'?'Вернуть на доработку?':'Скрыть рекомендацию?','<form id="reputation-review-form" class="dialog-form"><p>Проверяйте содержание, отсутствие контактов, чужих данных, спама и недостоверных обещаний. Одобрение не удостоверяет квалификацию.</p>'+(decision==='approve'?'':'<div class="field"><label for="reputation-reason">Причина</label><textarea id="reputation-reason" name="reason" maxlength="500" required></textarea></div>')+'<button type="submit" class="button primary">Подтвердить</button></form>');
+    const form=$('#reputation-review-form');form.addEventListener('submit',event=>{event.preventDefault();const reason=form.elements.reason?.value||'';busy(form,async()=>{
+      await api('/api/admin/community/reputation/'+encodeURIComponent(id),{method:'PATCH',body:{decision,reason,expected_version:Number(version)}});
+      dialogBusy=false;closeDialog();notice('Решение сохранено.');await loadReputation();
+    });});
+  }
+  async function renderReputation(){
+    if(!state.user)return accountGate('Рекомендации коллег');
+    const admin=state.user.role==='admin';
+    if(!admin&&state.user.role!=='candidate'){content.innerHTML=empty('Рекомендации участников','Рекомендации доступны между участниками с опубликованными личными профилями.','<a class="button secondary" href="/community">К участникам</a>');return;}
+    content.innerHTML='<div class="section-heading"><div><h1>'+(admin?'Модерация рекомендаций':'Рекомендации коллег')+'</h1><p>'+(admin?'Только записи с согласием обеих сторон.':'Профессиональная репутация основана на конкретном опыте, а не на звёздах или баллах.')+'</p></div><a class="button secondary" href="'+(admin?'/community/moderation':'/community/profile')+'">'+(admin?'Модерация профилей':'Мой профиль')+'</a></div>'+(admin?'':'<section class="panel portfolio-intro"><h2>Расскажите о работе с коллегой</h2><p>Выберите принятое знакомство в разделе «Мои связи». Рекомендация видна публично только после согласия обеих сторон и проверки модератором. Она не подтверждает квалификацию.</p><div class="actions"><a class="button primary" href="/community/connections">Выбрать коллегу</a><button class="button secondary" type="button" data-action="invite-colleague">Пригласить коллегу</button></div></section><section id="reputation-editor" class="panel portfolio-editor" hidden></section>')+'<div class="connections-toolbar reputation-toolbar"><label for="reputation-filter">'+(admin?'Статус':'Показать')+'<select id="reputation-filter">'+options(admin?{pending:'На проверке',published:'Опубликованы'}:{incoming:'Полученные',outgoing:'Написанные'},admin?'pending':'incoming')+'</select></label><button class="button secondary" type="button" data-action="refresh-reputation">Обновить</button></div><div id="reputation-list" class="portfolio-list" aria-live="polite"></div>';
+    $('#reputation-filter').addEventListener('change',()=>{state.reputationPage=1;loadReputation().catch(error=>notice(error.message,'error'));});
+    await loadReputation();
+    if(!admin){
+      const connectionId=new URLSearchParams(location.search).get('connection');
+      if(connectionId&&/^[a-f0-9-]{20,64}$/i.test(connectionId)){try{await showRecommendationEditor(connectionId);}catch(error){notice(error.message,'error');}}
+    }
+  }
+
   async function handleAction(event) {
     const button=event.target.closest('[data-action]');if(!button||button.disabled)return;
     const {action,id}=button.dataset;
@@ -896,7 +988,7 @@
       else if(action==='open-thread')await openThread(id);
       else if(action==='refresh-thread')await openThread(id,{preserve:true});
       else if(action==='accept-connection')await busy(button.closest('article'),()=>connectionAction(id,action));
-      else if(['decline-connection','cancel-connection','block-connection'].includes(action))confirmAction(action==='block-connection'?'Прекратить общение?':'Завершить этот запрос?',action==='block-connection'?'Вы больше не сможете отправлять друг другу сообщения и новые запросы. История разговора сохранится. Возобновить общение после блокировки будет нельзя.':'Запрос будет завершён. Отправить повторное приглашение этому участнику будет нельзя.',action==='block-connection'?'Прекратить общение':'Подтвердить',()=>connectionAction(id,action));
+      else if(['decline-connection','cancel-connection','block-connection'].includes(action))confirmAction(action==='block-connection'?'Прекратить общение?':'Завершить этот запрос?',action==='block-connection'?'Вы больше не сможете отправлять друг другу сообщения и новые запросы. Рекомендации между вами будут скрыты. История разговора сохранится. Возобновить общение после блокировки будет нельзя.':'Запрос будет завершён. Отправить повторное приглашение этому участнику будет нельзя.',action==='block-connection'?'Прекратить общение':'Подтвердить',()=>connectionAction(id,action));
       else if(action==='report-connection')report({connection_id:id});
       else if(['approve-profile','reject-profile','hide-profile'].includes(action))moderateProfile(button);
       else if(action==='reload-moderation')await Promise.all([loadModeration(),loadReports()]);
@@ -904,6 +996,14 @@
       else if(action==='reports-page'){state.reportPage=Number(button.dataset.page);await loadReports();}
       else if(['resolve-report','dismiss-report'].includes(action))await busy(button.closest('article'),async()=>{await api('/api/admin/community/reports/'+encodeURIComponent(id),{method:'PATCH',body:{status:action==='resolve-report'?'resolved':'dismissed'}});await loadReports();notice('Статус жалобы сохранён.');});
       else if(action==='share-profile')shareProfile(id);
+      else if(action==='invite-colleague'){const p=(await api('/api/community/profile')).profile;shareProfile(p.status==='published'?p.public_id:null,true);}
+      else if(action==='refresh-reputation')await loadReputation();
+      else if(action==='reputation-page'){state.reputationPage=Number(button.dataset.page);await loadReputation();}
+      else if(action==='cancel-recommendation')cancelRecommendation();
+      else if(action==='accept-reputation')acceptReputation(button);
+      else if(action==='decline-reputation')confirmAction('Отклонить рекомендацию?','Она не будет опубликована, а повторно отправить эту рекомендацию коллеге нельзя.','Отклонить',async()=>{await api('/api/community/reputation/'+encodeURIComponent(id)+'/respond',{method:'POST',body:{decision:'decline',expected_version:Number(button.dataset.version),publish_consent:false}});notice('Рекомендация отклонена.');await loadReputation();});
+      else if(action==='withdraw-reputation')confirmAction('Отозвать согласие?','Рекомендация перестанет отображаться публично. Повторное предложение этой записи недоступно.','Отозвать',async()=>{await api('/api/community/reputation/'+encodeURIComponent(id)+'/publication',{method:'DELETE',body:{expected_version:Number(button.dataset.version)}});notice('Согласие отозвано.');await loadReputation();});
+      else if(['approve-reputation','reject-reputation','hide-reputation'].includes(action))moderateReputation(button);
       else if(action==='new-portfolio')switchPortfolioEditor(null);
       else if(action==='edit-portfolio'){const item=state.portfolioEntries.find(entry=>entry.id===id);if(item)switchPortfolioEditor(item);}
       else if(action==='cancel-portfolio')cancelPortfolioEditor();
@@ -957,6 +1057,7 @@
       else if(mode==='saved')await renderSaved();
       else if(mode==='profile')await renderProfile();
       else if(mode==='portfolio')await renderPortfolio();
+      else if(mode==='reputation')await renderReputation();
       else if(mode==='connections')await renderConnections();
       else if(mode==='moderation')await renderModeration();
       else if(mode==='person')await renderPerson();
@@ -973,7 +1074,7 @@
     $('#close-community-dialog').addEventListener('click',closeDialog);
     dialog.addEventListener('click',event=>{if(event.target.closest('[data-close-dialog]'))closeDialog();});
     dialog.addEventListener('cancel',event=>{if(dialogBusy)event.preventDefault();});
-    window.addEventListener('beforeunload',event=>{if(state.dirty||state.messageDirty||state.feedDirty||state.feedCommentDirty||state.discoveryDirty||state.portfolioDirty){event.preventDefault();event.returnValue='';}});
+    window.addEventListener('beforeunload',event=>{if(state.dirty||state.messageDirty||state.feedDirty||state.feedCommentDirty||state.discoveryDirty||state.portfolioDirty||state.reputationDirty){event.preventDefault();event.returnValue='';}});
     try{state.user=(await api('/api/me')).user;}catch(error){if(error.status!==401){notice(error.message,'error');if(!['directory','person'].includes(mode)){content.innerHTML='<section class="panel"><h1>Аккаунт временно недоступен</h1><p>Обновите страницу, когда соединение восстановится.</p><button class="button secondary" type="button" id="retry-account">Повторить</button></section>';$('#retry-account').addEventListener('click',()=>location.reload());return;}}}
     updateIdentity();await renderMode();if(mode!=='feed')refreshFeedAlertBadge();
   }

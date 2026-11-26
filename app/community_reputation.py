@@ -92,23 +92,26 @@ def _dto(row, owner=None):
     return result
 
 
-def _revoke(db, where, args):
-    # Only fixed internal predicates are used. Revocation is terminal, so a
-    # blocked/declining participant cannot receive renewed unsolicited offers.
+def _revoke(db, *, key=None, owner=None, connection_id=None):
+    # One static statement, with bound selectors. A revoked pair cannot be
+    # repeatedly solicited. All callers already hold the relevant actor lock.
     db.execute(
         """UPDATE community_recommendations SET status='hidden',version=version+1,
            author_consent_at=NULL,recipient_consent_at=NULL,consent_version=NULL,
-           published_at=NULL,updated_at=? WHERE status IN ('offered','pending','published','rejected') AND """ + where,
-        (_now(), *args),
+           published_at=NULL,updated_at=? WHERE status IN ('offered','pending','published','rejected')
+             AND ((?<>'' AND id=?) OR (?<>0 AND ? IN (author_id,recipient_id))
+               OR (?<>'' AND connection_id=?))""",
+        (_now(), key or "", key or "", owner or 0, owner or 0,
+         connection_id or "", connection_id or ""),
     )
 
 
 def revoke_profile_recommendations(db, owner):
-    _revoke(db, "? IN (author_id,recipient_id)", (owner,))
+    _revoke(db, owner=owner)
 
 
 def revoke_connection_recommendations(db, connection_id):
-    _revoke(db, "connection_id=?", (connection_id,))
+    _revoke(db, connection_id=connection_id)
 
 
 def public_recommendations(db, public_id):
@@ -206,7 +209,7 @@ def install_reputation_routes(app, community_user, throttle, get_connection, all
         if row["status"] != "offered" or not row["author_consent_at"]:
             raise HTTPException(409, "Рекомендация больше не ожидает ответа")
         if data.decision == "decline":
-            _revoke(db, "id=?", (key,))
+            _revoke(db, key=key)
         else:
             if not data.publish_consent:
                 raise HTTPException(400, "Подтвердите согласие на публикацию рекомендации в своём профиле")
@@ -227,7 +230,7 @@ def install_reputation_routes(app, community_user, throttle, get_connection, all
         owner = user["id"]
         row = _locked(db, key, owner)
         _check_version(row, data.expected_version)
-        _revoke(db, "id=?", (key,))
+        _revoke(db, key=key)
         return _committed(db, {"entry": _dto(_row(db, key), owner)})
 
     @app.get("/api/admin/community/reputation")
