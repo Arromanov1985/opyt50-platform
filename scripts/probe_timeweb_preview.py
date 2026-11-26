@@ -275,14 +275,15 @@ def probe_public_journal_pages():
     )
     try:
         with build_opener(NoRedirect).open(manifest_request, timeout=12) as response:
-            raw = response.read(40_001)
-            if len(raw) > 40_000:
+            # Bound the response by bytes, not an arbitrary count of articles.
+            raw = response.read(4_000_001)
+            if len(raw) > 4_000_000:
                 raise ValueError("Editorial manifest too large")
             manifest = json.loads(raw)
         if not isinstance(manifest, dict):
             raise ValueError("Invalid editorial manifest")
         pages = manifest.get("pages")
-        if not isinstance(pages, dict) or not 1 <= len(pages) <= 256:
+        if not isinstance(pages, dict) or not pages:
             raise ValueError("Invalid editorial manifest")
         if not all(
             path in {"/journal", "/journal/paths", "/sitemap.xml"} or path in GUIDE_PATHS

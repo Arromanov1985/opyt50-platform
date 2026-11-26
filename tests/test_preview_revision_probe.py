@@ -439,3 +439,18 @@ def test_missing_editorial_guide_page_never_confirms_release(monkeypatch):
     assert result["manifest_result"] == "unavailable-or-invalid"
     assert "/journal/guide/events" in requests
 
+def test_large_editorial_manifest_is_not_rejected_by_page_count(monkeypatch):
+    import hashlib
+
+    bodies, manifest = published_journal_fixture()
+    for index in range(300):
+        path = "/journal/author-test-" + str(index)
+        body = b"<html>Published test article</html>"
+        bodies[path] = body
+        manifest["pages"][path] = hashlib.sha256(body).hexdigest()
+    requests = install_journal_opener(monkeypatch, bodies, manifest)
+    result = probe.probe_public_journal_pages()
+    assert result["result"] == "exact-match"
+    assert result["manifest_result"] == "accepted"
+    assert set(result["pages"]) == set(bodies)
+    assert len(requests) == len(bodies) + 1
