@@ -142,6 +142,7 @@ def _own_dto(row) -> dict:
     item = dict(row)
     if item.get("group_slug"):
         result["group_slug"] = item["group_slug"]
+        result["group_name"] = group_info(item["group_slug"])["name"]
     opportunity = _opportunity_dto(item)
     if opportunity:
         result["opportunity"] = opportunity
@@ -194,7 +195,9 @@ def _visible(db, viewer: int, parent: str = "", entry_id: str = "",
             followed.add(item["public_id"])
         opportunity = _opportunity_dto(item)
         opportunity_city = item.pop("opportunity_city")
-        if not item.get("group_slug"):
+        if item.get("group_slug"):
+            item["group_name"] = group_info(item["group_slug"])["name"]
+        else:
             item.pop("group_slug", None)
         for field in ("opportunity_intent", "opportunity_format", "opportunity_commitment"):
             item.pop(field)

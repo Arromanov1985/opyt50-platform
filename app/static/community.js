@@ -9,7 +9,8 @@
   const reasons = {spam:'Спам или навязчивые предложения', fraud:'Подозрение на мошенничество', harassment:'Оскорбления или давление', personal_data:'Публикация личных данных', other:'Другая проблема'};
   const mode = document.body.dataset.communityPage;
   const opportunityMode=['mentoring','projects'].includes(mode);
-  const state = {user:null, profile:null, dirty:false, messageDirty:false, connections:[], connectionPage:1, connectionFilter:'', connectionListRequest:0, readThrough:null, selected:null, messageKey:null, messageBody:null, nextBefore:null, directoryPage:1, directoryRequest:0, threadSelectionRequest:0, threadRequest:0, messageLoadRequest:0, moderationPage:1, reportPage:1, busy:new WeakSet(), feedPage:1, feedMinePage:1, feedReviewPage:1, feedRequest:0, feedThreadRequest:0, feedReviewRequest:0, feedThreadId:null, feedThreadPage:1, feedCanPublish:false, feedDirty:false, feedCommentDirty:false, feedFollowingIds:new Set(), feedOwnPublicId:null, feedFollowsPage:1, feedAlertsPage:1, feedReportsPage:1, feedFollowsRequest:0, feedAlertsRequest:0, feedReportsRequest:0, feedSavedIds:new Set(), savedPage:1, savedRequest:0, discoveryPeoplePage:1, discoveryFeedPage:1, discoveryRequest:0, discoveryRevision:null, discoveryDirty:false, portfolioEntries:[], portfolioCanPublish:false, portfolioEdit:null, portfolioDirty:false, portfolioRequest:0, portfolioReviewRequest:0, portfolioReviewPage:1,reputationDirection:'incoming',reputationPage:1,reputationRequest:0,reputationDirty:false};
+  const groupSlug=mode==='feed'?new URLSearchParams(location.search).get('group')||'':'';
+  const state = {user:null, profile:null, dirty:false, messageDirty:false, connections:[], connectionPage:1, connectionFilter:'', connectionListRequest:0, readThrough:null, selected:null, messageKey:null, messageBody:null, nextBefore:null, directoryPage:1, directoryRequest:0, threadSelectionRequest:0, threadRequest:0, messageLoadRequest:0, moderationPage:1, reportPage:1, busy:new WeakSet(), feedPage:1, feedMinePage:1, feedReviewPage:1, feedRequest:0, feedThreadRequest:0, feedReviewRequest:0, feedThreadId:null, feedThreadPage:1, feedCanPublish:false, feedDirty:false, feedCommentDirty:false, feedFollowingIds:new Set(), feedOwnPublicId:null, feedFollowsPage:1, feedAlertsPage:1, feedReportsPage:1, feedFollowsRequest:0, feedAlertsRequest:0, feedReportsRequest:0, feedSavedIds:new Set(), savedPage:1, savedRequest:0, discoveryPeoplePage:1, discoveryFeedPage:1, discoveryRequest:0, discoveryRevision:null, discoveryDirty:false, portfolioEntries:[], portfolioCanPublish:false, portfolioEdit:null, portfolioDirty:false, portfolioRequest:0, portfolioReviewRequest:0, portfolioReviewPage:1,reputationDirection:'incoming',reputationPage:1,reputationRequest:0,reputationDirty:false,group:null,groupsRequest:0,groupsMine:false};
   const content = $('#community-content');
   const dialog = $('#community-dialog');
   let dialogBusy = false;
@@ -426,7 +427,7 @@
       }
       actions+=' <button class="text-button" type="button" data-action="report-feed" data-id="'+id+'">Пожаловаться</button>';
     }
-    return '<article class="panel feed-card" data-feed-id="'+id+'"><div class="feed-meta"><span class="tag">'+esc(feedKinds[entry.kind]||'Публикация')+'</span>'+((mine||admin)?statusBadge(entry.status,feedStates):'')+'<time>'+esc(date(entry.published_at||entry.created_at))+'</time></div>'+heading+(author?'<p class="feed-author">'+author+'</p>':'')+reviewContext+opportunityFacts(entry)+'<p class="multiline feed-body">'+esc(entry.body)+'</p>'+((mine||admin)&&entry.moderation_reason?'<p class="help">Причина: '+esc(entry.moderation_reason)+'</p>':'')+(actions?'<div class="actions">'+actions+'</div>':'')+'</article>';
+    return '<article class="panel feed-card" data-feed-id="'+id+'"><div class="feed-meta"><span class="tag">'+esc(feedKinds[entry.kind]||'Публикация')+'</span>'+(entry.group_slug?'<a class="tag group-tag" href="/community/feed?group='+encodeURIComponent(entry.group_slug)+'">'+esc(entry.group_name||'Тематическая группа')+'</a>':'')+((mine||admin)?statusBadge(entry.status,feedStates):'')+'<time>'+esc(date(entry.published_at||entry.created_at))+'</time></div>'+heading+(author?'<p class="feed-author">'+author+'</p>':'')+reviewContext+opportunityFacts(entry)+'<p class="multiline feed-body">'+esc(entry.body)+'</p>'+((mine||admin)&&entry.moderation_reason?'<p class="help">Причина: '+esc(entry.moderation_reason)+'</p>':'')+(actions?'<div class="actions">'+actions+'</div>':'')+'</article>';
   }
   function bindFeedForm(form,comment=false) {
     const dirtyKey=comment?'feedCommentDirty':'feedDirty';
@@ -435,6 +436,7 @@
       event.preventDefault();
       const fields=Object.fromEntries(new FormData(form));
       const body={kind:comment?'comment':fields.kind,title:comment?'':fields.title,body:fields.body,parent_id:comment?state.feedThreadId:null,publish_consent:fields.publish_consent==='on'};
+      if(!comment&&state.group)body.group_slug=state.group.slug;
       if(!comment&&opportunityMode)body.opportunity={intent:fields.intent,meeting_format:fields.meeting_format,commitment:fields.commitment};
       const fingerprint=JSON.stringify(body);
       if(form.feedFingerprint!==fingerprint){form.feedFingerprint=fingerprint;form.feedKey=crypto.randomUUID();}
@@ -453,13 +455,14 @@
   }
   async function loadFeedMine() {
     if(state.user?.role!=='candidate'||!$('#feed-mine-list'))return;
-    const result=await api('/api/community/feed/mine?page='+state.feedMinePage+(opportunityMode?'&opportunity_kind='+mode:''));
+    const result=await api('/api/community/feed/mine?page='+state.feedMinePage+(opportunityMode?'&opportunity_kind='+mode:'')+(state.group?'&group_slug='+encodeURIComponent(state.group.slug):''));
     drawFeedMine(result);
   }
   async function loadFeed() {
     const request=++state.feedRequest;
     const params=new URLSearchParams(new FormData($('#feed-filter')));
     params.set('page',String(state.feedPage));if(!params.get('kind'))params.delete('kind');
+    if(state.group)params.set('group_slug',state.group.slug);
     if(opportunityMode){params.set('kind',mode);for(const key of ['intent','meeting_format','commitment'])if(!params.get(key))params.delete(key);}
     const result=await api((opportunityMode?'/api/community/opportunities?':'/api/community/feed?')+params);
     if(request!==state.feedRequest)return;
@@ -476,8 +479,10 @@
     const section=$('#feed-discussion');
     if(state.feedThreadId!==id||section.hidden){
       state.feedThreadId=id;section.hidden=false;
-      section.innerHTML='<div class="section-heading"><div><h2>Обсуждение</h2><p>'+esc(result.post.title)+'</p></div><button type="button" class="button secondary compact" data-action="close-feed-thread">Закрыть</button></div><div id="feed-comments"></div>'+(state.feedCanPublish?feedForm(true):'<p class="help">Комментировать могут участники с опубликованным профессиональным профилем.</p>');
-      if(state.feedCanPublish)bindFeedForm($('#feed-comment-form'),true);
+      const canComment=Boolean(result.can_comment);
+      const commentHint=result.post.group_slug&&state.feedCanPublish?'<p class="help">Для комментария вступите в группу. <a href="/community/groups">Открыть группы</a></p>':'<p class="help">Комментировать могут участники с опубликованным профессиональным профилем.</p>';
+      section.innerHTML='<div class="section-heading"><div><h2>Обсуждение</h2><p>'+esc(result.post.title)+'</p></div><button type="button" class="button secondary compact" data-action="close-feed-thread">Закрыть</button></div><div id="feed-comments"></div>'+(canComment?feedForm(true):commentHint);
+      if(canComment)bindFeedForm($('#feed-comment-form'),true);
       section.scrollIntoView({block:'start'});
     }
     state.feedThreadPage=page;
@@ -597,12 +602,19 @@
       $('#feed-reports-status').addEventListener('change',()=>{state.feedReportsPage=1;loadFeedReports().catch(error=>notice(error.message,'error'));});
       await Promise.all([loadFeedReview(),loadFeedReports()]);return;
     }
+    if(groupSlug){
+      const result=await api('/api/community/groups');
+      state.group=result.groups.find(group=>group.slug===groupSlug)||null;
+      if(!state.group){content.innerHTML=empty('Группа не найдена','Выберите существующую тематическую группу.','<a class="button primary" href="/community/groups">К группам</a>');return;}
+    }
     let mine=null;
-    if(state.user.role==='candidate')mine=await api('/api/community/feed/mine');
+    if(state.user.role==='candidate')mine=await api('/api/community/feed/mine'+(state.group?'?group_slug='+encodeURIComponent(state.group.slug):''));
     state.feedCanPublish=Boolean(mine?.can_publish);
-    content.innerHTML='<div class="section-heading"><div><h1>Профессиональная лента</h1><p>Делитесь опытом, задавайте вопросы, ищите партнёров и наставников.</p></div>'+(state.feedCanPublish?'<a class="button primary" href="#feed-compose-section">Написать публикацию</a>':'')+'</div><div class="feed-layout"><div class="feed-primary"><section class="panel" id="feed-alerts"><div class="section-heading"><h2>Новые комментарии</h2><button type="button" class="button secondary compact" data-action="refresh-feed-alerts">Обновить</button></div><div id="feed-alerts-list" aria-live="polite"></div></section><form id="feed-filter" class="panel feed-filter" role="search"><div class="field"><label for="feed-search">Поиск</label><input id="feed-search" name="q" maxlength="100" type="search" placeholder="Тема или ключевое слово"></div><div class="field"><label for="feed-category">Направление</label><select name="kind" id="feed-category">'+options(feedCategories,'','Все темы')+'</select></div><div class="field"><label for="feed-following">Авторы</label><select name="following" id="feed-following"><option value="false">Все участники</option><option value="true">Мои подписки</option></select></div><button class="button primary" type="submit">Найти</button></form><div id="feed-list" class="feed-list" aria-live="polite"><p role="status">Загружаем публикации…</p></div><section id="feed-discussion" class="panel feed-discussion" hidden></section></div><aside class="feed-side"><section class="panel"><h2>Мои подписки</h2><p class="help">Список виден только вам.</p><div id="feed-follows-list"></div></section>'+(state.feedCanPublish?'<section class="panel" id="feed-compose-section">'+feedForm()+'</section>':'<section class="panel"><h2>Участвуйте в обсуждениях</h2><p>Публикации доступны участникам с одобренным профессиональным профилем.</p>'+(state.user.role==='candidate'?'<a class="button primary" href="/community/profile">Мой профиль</a>':'<p class="help">Работодатели могут читать ленту.</p>')+'</section>')+(mine?'<section class="panel"><h2>Мои публикации и комментарии</h2><p class="help">Одобренные тексты видны при действующем профессиональном профиле; скрытие публикации скрывает её обсуждение.</p><button type="button" class="button secondary compact" data-action="refresh-feed-mine">Обновить статусы</button><div id="feed-mine-list" class="feed-list"></div></section>':'')+'</aside></div>';
+    const canCompose=state.feedCanPublish&&(!state.group||state.group.joined);
+    const groupIntro=state.group?'<section class="panel group-intro"><a href="/community/groups">← Все профессиональные группы</a><h2>'+esc(state.group.name)+'</h2><p>'+esc(state.group.description)+'</p><p class="help">'+(state.group.joined?'Вы вступили в группу.':'Вы можете читать обсуждения. Для публикаций и комментариев вступите в группу.')+' Обсуждения открыты зарегистрированным участникам, а не являются приватным чатом.</p><a class="button secondary" href="/community/groups">Управлять участием</a></section>':'';
+    content.innerHTML=groupIntro+'<div class="section-heading"><div><h1>'+(state.group?'Обсуждения группы':'Профессиональная лента')+'</h1><p>Делитесь опытом, задавайте вопросы, ищите партнёров и наставников.</p></div>'+(canCompose?'<a class="button primary" href="#feed-compose-section">Написать публикацию</a>':'')+'</div><div class="feed-layout"><div class="feed-primary"><section class="panel" id="feed-alerts"><div class="section-heading"><h2>Новые комментарии'+(state.group?' во всех темах':'')+'</h2><button type="button" class="button secondary compact" data-action="refresh-feed-alerts">Обновить</button></div><div id="feed-alerts-list" aria-live="polite"></div></section><form id="feed-filter" class="panel feed-filter" role="search"><div class="field"><label for="feed-search">Поиск</label><input id="feed-search" name="q" maxlength="100" type="search" placeholder="Тема или ключевое слово"></div><div class="field"><label for="feed-category">Направление</label><select name="kind" id="feed-category">'+options(feedCategories,'','Все темы')+'</select></div><div class="field"><label for="feed-following">Авторы</label><select name="following" id="feed-following"><option value="false">Все участники</option><option value="true">Мои подписки</option></select></div><button class="button primary" type="submit">Найти</button></form><div id="feed-list" class="feed-list" aria-live="polite"><p role="status">Загружаем публикации…</p></div><section id="feed-discussion" class="panel feed-discussion" hidden></section></div><aside class="feed-side"><section class="panel"><h2>Мои подписки</h2><p class="help">Список виден только вам.</p><div id="feed-follows-list"></div></section>'+(canCompose?'<section class="panel" id="feed-compose-section">'+feedForm()+'</section>':'<section class="panel"><h2>Участвуйте в обсуждениях</h2><p>Для публикации нужен одобренный профессиональный профиль'+(state.group?' и участие в группе':'')+'.</p>'+(state.user.role==='candidate'?(state.group&&!state.group.joined?'<a class="button primary" href="/community/groups">Вступить в группу</a>':'<a class="button primary" href="/community/profile">Мой профиль</a>'):'<p class="help">Работодатели могут читать ленту.</p>')+'</section>')+(mine?'<section class="panel"><h2>Мои публикации и комментарии</h2><p class="help">Одобренные тексты видны при действующем профессиональном профиле; скрытие публикации скрывает её обсуждение.</p><button type="button" class="button secondary compact" data-action="refresh-feed-mine">Обновить статусы</button><div id="feed-mine-list" class="feed-list"></div></section>':'')+'</aside></div>';
     $('#feed-filter').addEventListener('submit',event=>{event.preventDefault();state.feedPage=1;loadFeed().catch(error=>notice(error.message,'error'));});
-    if(state.feedCanPublish)bindFeedForm($('#feed-compose-form'));
+    if(canCompose)bindFeedForm($('#feed-compose-form'));
     if(mine)drawFeedMine(mine);
     const params=new URLSearchParams(location.search);
     if(params.get('following')==='true')$('#feed-following').value='true';
@@ -979,6 +991,8 @@
     try{
       if(action==='people-page'){state.directoryPage=Number(button.dataset.page);await loadPeople();}
       else if(action==='retry-people')await loadPeople();
+      else if(action==='refresh-groups')await loadGroups();
+      else if(['join-group','leave-group'].includes(action))await changeGroup(button);
       else if(action==='connections-page'){state.connectionPage=Number(button.dataset.page);await loadConnections();}
       else if(action==='attention-connections'||action==='all-connections'){
         state.connectionFilter=action==='attention-connections'?'attention':'';
@@ -1048,10 +1062,40 @@
       else if(action==='retry-community')await renderMode();
     }catch(error){notice(error.message,'error');}
   }
+  function groupCard(group,canJoin){
+    const id=esc(group.slug);
+    return '<article class="panel group-card" data-group-slug="'+id+'"><div class="status-line">'+(group.joined?'<span class="status-badge published">Вы участник</span>':'<span class="tag">Открытая группа</span>')+'</div><h2>'+esc(group.name)+'</h2><p>'+esc(group.description)+'</p><div class="actions"><a class="button primary" href="/community/feed?group='+encodeURIComponent(group.slug)+'">Открыть обсуждения</a>'+(canJoin?'<button type="button" class="button secondary" data-action="'+(group.joined?'leave-group':'join-group')+'" data-id="'+id+'">'+(group.joined?'Выйти':'Вступить')+'</button>':'')+'</div></article>';
+  }
+  async function loadGroups(){
+    const request=++state.groupsRequest;
+    const result=await api('/api/community/groups');
+    if(request!==state.groupsRequest)return;
+    const groups=result.groups.filter(group=>!state.groupsMine||group.joined);
+    $('#groups-list').innerHTML=groups.length?groups.map(group=>groupCard(group,result.can_join)).join(''):empty('Пока нет ваших групп','Вступите в интересующие вас профессиональные сообщества.');
+    $('#groups-summary').textContent='Ваши группы: '+result.groups.filter(group=>group.joined).length;
+  }
+  async function renderGroups(){
+    if(!state.user)return accountGate('Профессиональные группы');
+    if(state.user.role==='admin'){content.innerHTML=empty('Модерация тематических групп','Все публикации и комментарии проверяются в общей очереди ленты.','<a class="button primary" href="/community/feed">Модерация ленты</a>');return;}
+    content.innerHTML='<div class="section-heading"><div><h1>Профессиональные группы</h1><p>Выберите отрасли и направления, в которых хотите обмениваться опытом с коллегами.</p></div><a href="/community/feed" class="button secondary">Общая лента</a></div><section class="panel group-intro"><h2>Общение по профессиональным интересам</h2><p>Группы открыты для чтения зарегистрированным участникам. Вступление позволяет писать публикации и комментарии после одобрения вашего профиля. Все тексты проходят модерацию. Список ваших групп виден только вам.</p><p class="help">Выход из группы не удаляет ранее опубликованные тексты. Их можно скрыть отдельно в разделе «Мои публикации и комментарии».</p><div class="connections-toolbar"><label for="groups-filter">Показать<select id="groups-filter"><option value="all">Все группы</option><option value="mine">Мои группы</option></select></label><span id="groups-summary" class="help" role="status"></span><button type="button" class="button secondary" data-action="refresh-groups">Обновить</button></div></section><div id="groups-list" class="group-grid" aria-live="polite"></div>';
+    $('#groups-filter').value=state.groupsMine?'mine':'all';
+    $('#groups-filter').addEventListener('change',event=>{state.groupsMine=event.target.value==='mine';loadGroups().catch(error=>notice(error.message,'error'));});
+    await loadGroups();
+  }
+  async function changeGroup(button){
+    const join=button.dataset.action==='join-group',id=button.dataset.id;
+    await busy(button.closest('article'),async()=>{
+      await api('/api/community/groups/'+encodeURIComponent(id)+'/membership',{method:join?'PUT':'DELETE',body:{}});
+      notice(join?'Вы вступили в группу.':'Вы вышли из группы. Ранее опубликованные тексты сохранены.');
+      await loadGroups();
+    });
+  }
+
   async function renderMode() {
     try{
       if(mode==='directory')await renderDirectory();
       else if(mode==='feed')await renderFeed();
+      else if(mode==='groups')await renderGroups();
       else if(opportunityMode)await renderOpportunities();
       else if(mode==='discovery')await renderDiscovery();
       else if(mode==='saved')await renderSaved();
