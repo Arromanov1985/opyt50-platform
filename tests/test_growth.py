@@ -131,7 +131,7 @@ def test_growth_frontend_is_first_party_and_fails_open(tmp_path):
         assert 'data-growth-action="profile_click"' not in article.text
         assert 'href="/journal/paths/nayti-rabotu"' in article.text
         assert 'data-growth-action="jobs_click"' in article.text
-        assert '/static/journal.js?v=6' in article.text
+        assert '/static/journal.js?v=8' in article.text
         assert client.get("/static/growth-admin.css").status_code == 200
 
 
