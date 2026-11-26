@@ -54,6 +54,29 @@ COMMUNITY_DDL = (
         created_at TEXT NOT NULL,
         updated_at TEXT NOT NULL
     )""",
+    """CREATE TABLE IF NOT EXISTS community_portfolio_entries (
+        id TEXT PRIMARY KEY,
+        user_id INTEGER NOT NULL REFERENCES community_profiles(user_id) ON DELETE CASCADE,
+        client_key TEXT NOT NULL,
+        kind TEXT NOT NULL CHECK(kind IN ('project','achievement','experience')),
+        title TEXT NOT NULL,
+        period TEXT NOT NULL DEFAULT '',
+        contribution TEXT NOT NULL DEFAULT '',
+        result TEXT NOT NULL DEFAULT '',
+        status TEXT NOT NULL DEFAULT 'draft' CHECK(status IN ('draft','pending','published','rejected','hidden')),
+        version INTEGER NOT NULL DEFAULT 1 CHECK(version>=1),
+        consent_at TEXT,
+        consent_version TEXT,
+        reviewed_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+        reviewed_at TEXT,
+        published_at TEXT,
+        moderation_reason TEXT NOT NULL DEFAULT '',
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        UNIQUE(user_id,client_key)
+    )""",
+    "CREATE INDEX IF NOT EXISTS idx_community_portfolio_owner ON community_portfolio_entries(user_id,status,created_at,id)",
+    "CREATE INDEX IF NOT EXISTS idx_community_portfolio_review ON community_portfolio_entries(status,updated_at,id)",
     """CREATE TABLE IF NOT EXISTS community_profile_events (
         id TEXT PRIMARY KEY,
         user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -709,6 +732,13 @@ def install_community_routes(app) -> None:
             (_now(), user["id"], data.expected_version),
         )
         updated = _profile(db, user["id"])
+        # Explicit withdrawal also revokes separately submitted portfolio items.
+        db.execute(
+            """UPDATE community_portfolio_entries SET status='hidden',version=version+1,
+               consent_at=NULL,consent_version=NULL,published_at=NULL,updated_at=?
+               WHERE user_id=? AND status IN ('pending','published')""",
+            (_now(), user["id"]),
+        )
         _profile_event(db, updated, user["id"], "consent_withdrawn")
         return _committed(db, {"profile": _own_profile(updated)})
 
@@ -1059,3 +1089,6 @@ def install_community_routes(app) -> None:
 
     from .community_feed import install_feed_routes
     install_feed_routes(app, community_user, throttle, get_connection, allowed, record_security_event)
+
+    from .community_portfolio import install_portfolio_routes
+    install_portfolio_routes(app, community_user, throttle, get_connection, allowed, record_security_event)

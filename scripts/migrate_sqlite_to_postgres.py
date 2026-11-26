@@ -36,7 +36,7 @@ ORDER = (
 # silently omitted when it exists in a newer source database.
 OPTIONAL_ORDER = (
     "candidate_saved_searches", "community_actor_locks", "community_profiles",
-    "community_profile_events", "community_connections", "community_messages",
+    "community_profile_events", "community_portfolio_entries", "community_connections", "community_messages",
     "community_read_state", "community_reports", "community_feed_entries",
     "community_feed_follows", "community_feed_alert_reads", "community_feed_reports",
     "community_opportunities", "community_saved_entries", "community_discovery_preferences",
