@@ -144,6 +144,7 @@ def journal_index(articles: list[dict] | None = None) -> HTMLResponse:
         '<p>Попробуйте другую тему или уберите слова из поиска.</p>'
         '<button type="button" id="jr-reset-search">Показать все материалы</button></div>'
         '</section>'
+        '<aside class="jr-path-promo"><h2>Профессиональный навигатор</h2><p>Отраслевые новости, обучение и анонсы мероприятий — в отдельных разделах.</p><a class="jr-primary" href="/journal/guide/overview">Открыть навигатор →</a></aside>'
         '<aside class="jr-path-promo" aria-labelledby="jr-path-promo-heading">'
         '<span class="jr-kicker">НЕ ЗНАЕТЕ, С ЧЕГО НАЧАТЬ?</span>'
         '<h2 id="jr-path-promo-heading">Выберите цель — материалы уже собраны по шагам</h2>'
@@ -197,6 +198,8 @@ def journal_article(
         f'<div class="jr-grid">{job_cards}</div></section>'
         if job_cards else ""
     )
+    from .journal_guide import editorial_facts, date_label
+    published_date = str(article.get("published_at") or PUBLISHED)[:10]
     article_body = (
         '<div class="jr-breadcrumb"><a href="/">Главная</a>'
         '<span aria-hidden="true">/</span><a href="/journal">Журнал</a>'
@@ -205,9 +208,9 @@ def journal_article(
         f'<header><span class="jr-kicker">{_e(article["category"])}</span>'
         f'<h1>{_e(article["title"])}</h1>'
         f'<p class="jr-lead">{_e(article["description"])}</p>'
-        f'<p class="jr-meta">Редакция СТАЖНО · <time datetime="{PUBLISHED}">19 ноября 2026</time>'
+        f'<p class="jr-meta">Редакция СТАЖНО · <time datetime="{_e(published_date)}">{_e(date_label(published_date))}</time>'
         f' · {_e(article["read"])} чтения</p></header>'
-        + "".join(sections) + '</article>'
+        + editorial_facts(article) + "".join(sections) + '</article>'
         '<aside class="jr-aside"><h2>Следующий шаг</h2>'
         '<p>Профессиональный профиль помогает показать навыки и условия работы.'
         ' Контакты не публикуются автоматически.</p>'
@@ -247,7 +250,7 @@ def journal_highlights(request: Request) -> dict:
 def journal_renderer_sha256() -> str:
     """Identify the two fixed renderers without exposing code or local paths."""
     digest = hashlib.sha256(b"stazhno-journal-renderer-v1\0")
-    for name in ("journal.py", "journal_paths.py", "public_discovery.py", "vacancy_pages.py"):
+    for name in ("journal.py", "journal_paths.py", "journal_guide.py", "public_discovery.py", "vacancy_pages.py"):
         payload = Path(__file__).with_name(name).read_bytes()
         digest.update(name.encode("ascii") + b"\0" + len(payload).to_bytes(8, "big") + payload)
     return digest.hexdigest()
@@ -263,6 +266,9 @@ def journal_manifest(request: Request) -> dict:
     articles = _catalog(request)
     pages = {"/journal": hashlib.sha256(journal_index(articles).body).hexdigest()}
     from .journal_paths import path_detail, paths_index, visible_paths
+    from .journal_guide import SECTIONS, guide_page
+    for section in SECTIONS:
+        pages["/journal/guide/" + section] = hashlib.sha256(guide_page(section, articles).body).hexdigest()
     pages["/journal/paths"] = hashlib.sha256(paths_index(articles).body).hexdigest()
     for path in visible_paths(articles):
         pages["/journal/paths/" + path["slug"]] = hashlib.sha256(
@@ -292,9 +298,11 @@ def journal_sitemap(
     if articles is None:
         articles = ARTICLES
     from .journal_paths import visible_paths
+    from .journal_guide import GUIDE_PATHS
     paths = (
         ["/", "/employers", "/journal"]
         + ["/journal/" + article["slug"] for article in articles]
+        + list(GUIDE_PATHS)
         + ["/journal/paths"]
         + ["/journal/paths/" + path["slug"] for path in visible_paths(articles)]
         + (public_paths or [])
@@ -352,6 +360,12 @@ def install_journal_routes(app: FastAPI) -> None:
 
     app.add_api_route("/journal/paths", paths_http, methods=["GET"], include_in_schema=False)
     app.add_api_route("/journal/paths/{slug}", path_detail_http, methods=["GET"], include_in_schema=False)
+    from .journal_guide import guide_page
+
+    def guide_http(section: str, request: Request):
+        return guide_page(section, _catalog(request))
+
+    app.add_api_route("/journal/guide/{section}", guide_http, methods=["GET"], include_in_schema=False)
     app.add_api_route("/journal/{slug}", article_http, methods=["GET"], include_in_schema=False)
     from .journal_cms import install_journal_admin_routes
     install_journal_admin_routes(app)

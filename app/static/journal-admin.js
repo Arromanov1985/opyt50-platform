@@ -6,7 +6,9 @@
   const keys = {
     slug: $('article-slug'), title: $('article-title'),
     description: $('article-description'), category: $('article-category'),
-    read: $('article-read'), body_text: $('article-body')
+    read: $('article-read'), body_text: $('article-body'),
+    content_type: $('article-type'), source_name: $('article-source-name'), source_url: $('article-source-url'),
+    event_date: $('article-event-date'), event_format: $('article-event-format')
   };
   function notice(text, error=false) {
     const el = $('notice');
@@ -47,16 +49,25 @@
       ? 'Есть несохранённые изменения. Сначала сохраните текст, затем публикуйте.'
       : 'Публикация всегда отдельное действие. Скрытие удаляет статью из каталога и карты сайта.';
   }
+  function updateType(){
+    const kind=keys.content_type.value, event=kind==='event';
+    $('event-date-field').hidden=!event;$('event-format-field').hidden=!event;
+    keys.event_date.required=event;keys.event_format.required=event;
+    keys.source_name.required=kind==='news'||event;keys.source_url.required=kind==='news';
+  }
   function collect() {
     return {
       title: keys.title.value.trim(), description: keys.description.value.trim(),
       category: keys.category.value.trim(), read: keys.read.value.trim(),
-      body_text: keys.body_text.value.trim(), version: state.version
+      body_text: keys.body_text.value.trim(), version: state.version,
+      content_type: keys.content_type.value, source_name:keys.source_name.value.trim(), source_url:keys.source_url.value.trim(),
+      event_date:keys.content_type.value==='event'?keys.event_date.value||null:null,
+      event_format:keys.content_type.value==='event'?keys.event_format.value||null:null
     };
   }
   function clearForm() {
     for (const field of Object.values(keys)) field.value = '';
-    keys.read.value = '5 минут';
+    keys.read.value = '5 минут';keys.content_type.value='article';updateType();
     state.slug = null; state.version = 0; state.status = 'draft';
     $('editor-heading').textContent = 'Новая статья';
     $('article-preview').hidden = true;
@@ -97,7 +108,8 @@
       state.slug = article.slug;
       state.version = article.version;
       state.status = article.status;
-      for (const key of ['title','description','category','read','body_text']) keys[key].value = article[key] || '';
+      for (const key of Object.keys(keys).filter(key=>key!=='slug')) keys[key].value = article[key] || '';
+      keys.content_type.value=article.content_type||'article';updateType();
       keys.slug.value = article.slug;
       $('editor-heading').textContent = article.title;
       $('article-preview').hidden = true;
@@ -191,6 +203,7 @@
   for (const field of Object.values(keys)) {
     field.addEventListener('input', () => setDirty(true));
   }
+  keys.content_type.addEventListener('change',updateType);updateType();
   $('article-form').addEventListener('submit', save);
   $('new-article').addEventListener('click', () => {
     if (state.dirty && !window.confirm('Сбросить несохранённые изменения?')) return;

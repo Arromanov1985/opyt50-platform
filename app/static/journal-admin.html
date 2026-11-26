@@ -6,7 +6,7 @@
 <title>Редакция журнала — СТАЖНО</title>
 <link rel="icon" href="/static/favicon.svg" type="image/svg+xml">
 <link rel="stylesheet" href="/static/journal-admin.css?v=1">
-<script src="/static/journal-admin.js?v=1" defer></script>
+<script src="/static/journal-admin.js?v=2" defer></script>
 </head>
 <body>
 <a class="skip" href="#editor-main">К редактору</a>
@@ -32,7 +32,12 @@
 <label class="wide">Заголовок<input id="article-title" name="title" maxlength="180" minlength="8" required></label>
 <label class="wide">Краткое описание для каталога и поиска<textarea id="article-description" name="description" maxlength="350" minlength="25" rows="3" required></textarea></label>
 <label>Рубрика<input id="article-category" name="category" maxlength="55" minlength="3" required placeholder="Карьера"></label>
+<label>Тип материала<select id="article-type" name="content_type"><option value="article">Экспертная статья</option><option value="news">Отраслевая новость</option><option value="learning">Учебный материал</option><option value="event">Анонс мероприятия</option></select></label>
 <label>Время чтения<input id="article-read" name="read" maxlength="30" minlength="3" required placeholder="5 минут"></label>
+<label class="wide">Источник / организатор<input id="article-source-name" maxlength="180" placeholder="Название организации или источника"></label>
+<label class="wide">HTTPS-ссылка на источник<input id="article-source-url" type="url" maxlength="1500" placeholder="https://..."><small>Для новости обязательна. Для мероприятия — ссылка на организатора или официальный анонс, если есть.</small></label>
+<label id="event-date-field" hidden>Дата мероприятия<input id="article-event-date" type="date"></label>
+<label id="event-format-field" hidden>Формат<select id="article-event-format"><option value="">Выберите формат</option><option value="online">Онлайн</option><option value="offline">Очно</option><option value="hybrid">Гибридный</option></select></label>
 <label class="wide">Текст статьи
 <small>Заголовок раздела начинайте с <code>##</code>. Обычные абзацы разделяйте пустой строкой. Список — строки с <code>-</code>. Для публикации нужно хотя бы два раздела.</small>
 <textarea id="article-body" name="body" rows="15" minlength="200" maxlength="20000" required placeholder="## Первый раздел&#10;Опишите практический шаг...&#10;&#10;## Второй раздел&#10;Объясните следующий шаг..."></textarea></label>
