@@ -2132,3 +2132,102 @@ def test_opt_in_image_upload_and_sanitized_private_preview(community, monkeypatc
     assert mutate(author, "POST", "/api/account/privacy-requests", {"kind":"stop_processing"}).status_code == 201
     assert author.get(preview).status_code == 404
     assert author.post(target, headers=headers, content=raw).status_code == 409
+
+
+def test_private_rendition_preview_range_and_revocation(community, monkeypatch):
+    from copy import deepcopy
+    from hashlib import sha256
+    from io import BytesIO
+    from PIL import Image
+    from app.academy_media import StagedMedia
+    from app.academy_media_registry import reserve_media, record_staged
+    from app.academy_rendition_worker import process_conversion
+
+    app, clients, ids = community
+    author, outsider, visitor = (clients[key] for key in ("first","second","visitor"))
+    save(author)
+    course = mutate(author,"POST","/api/community/courses",{"client_key":str(uuid4())}).json()["course"]
+    slug=course["slug"]
+    own="/api/community/courses/"+slug
+    source=b"%PDF-1.7\\nsynthetic"
+    with database(app.state.db_path) as db:
+        reservation=reserve_media(db,{"id":ids["first"],"role":"candidate"},
+                                  slug,course["version"],"application/pdf",len(source))
+        key="academy/quarantine/"+reservation.id.hex
+        record_staged(db,reservation,StagedMedia(reservation.id,key,"document",
+                      "application/pdf",len(source),sha256(source).hexdigest()))
+    buffer=BytesIO()
+    Image.new("RGB",(32,32),"white").save(buffer,"JPEG")
+    page=buffer.getvalue()
+
+    class Storage:
+        def __init__(self):
+            self.objects={key:source}
+        def get_object(self, **kwargs):
+            value=self.objects[kwargs["Key"]]
+            return {"Body":BytesIO(value),"ContentLength":len(value)}
+        def put_object(self, **kwargs):
+            assert kwargs["IfNoneMatch"]=="*"
+            self.objects[kwargs["Key"]]=kwargs["Body"].read()
+
+    class Scanner:
+        def scan(self, stream):
+            stream.read()
+            return "clean"
+
+    def convert(stream, mime, directory):
+        assert stream.read()==source and mime=="application/pdf"
+        (directory/"page-001.jpg").write_bytes(page)
+        return {"renditions":[{"name":"page-001.jpg","content_type":"image/jpeg",
+                 "byte_count":len(page),"sha256":sha256(page).hexdigest(),
+                 "duration":None,"page":1}]}
+
+    storage=Storage()
+    assert process_conversion(app.state.db_path,reservation.id.hex,storage=storage,bucket="private",
+                              scanner=Scanner(),isolated_converter=convert)=="clean"
+    path=own+"/media/"+reservation.id.hex+"/renditions/1"
+    assert author.get(path).status_code==404  # not referenced by saved draft
+    data=deepcopy(COURSE_DRAFT)
+    data["lessons"][0]["media"]=[{"file_id":reservation.id.hex,"caption":"Документ",
+                                "description":"Учебная страница","transcript":""}]
+    result=mutate(author,"PUT",own,{**data,"expected_version":course["version"]})
+    assert result.status_code==200,result.text
+    info=result.json()["course"]
+    assert info["media_files"][0]["renditions"][0]["position"]==1
+    assert "object_key" not in result.text and "sha256" not in result.text
+    assert not info["rendition_preview_enabled"]
+    assert author.get(path).status_code==503
+
+    settings={"STORAGE_ENABLED":"1","IMAGE_UPLOAD_ENABLED":"1","RENDITION_PREVIEW_ENABLED":"1",
+              "S3_ENDPOINT":"https://objects.example.invalid","S3_REGION":"test",
+              "S3_BUCKET":"private-test-bucket","S3_ACCESS_KEY":"dummy","S3_SECRET_KEY":"dummy",
+              "CLAMD_SOCKET":"/run/clamav/clamd.sock"}
+    for name,value in settings.items():
+        monkeypatch.setenv("STAZHNO_ACADEMY_"+name,value)
+    monkeypatch.setattr("app.academy_media_routes.build_storage_client",lambda config:storage)
+    assert author.get(own).json()["course"]["rendition_preview_enabled"]
+    assert outsider.get(path).status_code==404
+    assert visitor.get(path).status_code==401
+    full=author.get(path)
+    assert full.status_code==200 and full.content==page
+    assert full.headers["content-type"]=="image/jpeg"
+    assert full.headers["cache-control"]=="no-store"
+    assert full.headers["accept-ranges"]=="bytes"
+    partial=author.get(path,headers={"Range":"bytes=1-10"})
+    assert partial.status_code==206 and partial.content==page[1:11]
+    assert partial.headers["content-range"]==f"bytes 1-10/{len(page)}"
+    assert partial.headers["content-length"]=="10"
+    suffix=author.get(path,headers={"Range":"bytes=-4"})
+    assert suffix.status_code==206 and suffix.content==page[-4:]
+    invalid=author.get(path,headers={"Range":"bytes=0-1,3-4"})
+    assert invalid.status_code==416 and invalid.headers["content-range"]==f"bytes */{len(page)}"
+    assert author.get(path[:-1]+"2").status_code==404
+    copy_key=next(k for k in storage.objects if k.startswith("academy/renditions/"))
+    storage.objects[copy_key]=b"x"*len(page)
+    assert author.get(path,headers={"Range":"bytes=0-9"}).status_code==503
+    storage.objects[copy_key]=page
+    # Publication is still explicitly gated; no new public media routes.
+    assert mutate(author,"POST",own+"/submit",{"expected_version":info["version"],"publish_consent":True}).status_code==422
+    assert visitor.get("/academy/"+slug).status_code==404
+    assert mutate(author,"POST","/api/account/privacy-requests",{"kind":"stop_processing"}).status_code==201
+    assert author.get(path).status_code==404
