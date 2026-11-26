@@ -262,6 +262,55 @@ def run_browser(browser, base, database):
 
         boris_profile = api_profile(boris, base, admin, "Борис Проекты", "Координатор проектов")
         outsider_profile = api_profile(outsider, base, admin, "Виктор Мастер", "Мастер производственного обучения")
+        # Curated groups: private membership, scoped moderation and safe exit.
+        anna.set_viewport_size({"width": 390, "height": 844})
+        anna.goto(base + "/community/groups", wait_until="networkidle")
+        group_card = anna.locator('[data-group-slug="engineering"]')
+        expect(group_card).to_contain_text("Инженерия и производство")
+        with anna.expect_response(lambda r: r.url.endswith("/groups/engineering/membership") and r.request.method == "PUT") as group_joined:
+            group_card.locator('[data-action="join-group"]').click()
+        assert checked(group_joined.value)["group"]["joined"] is True
+        expect(group_card).to_contain_text("Вы участник")
+        anna.locator("#groups-filter").select_option("mine")
+        expect(anna.locator("#groups-list [data-group-slug]")).to_have_count(1)
+        capture(anna, "community-groups-mobile.png")
+        group_card.locator('a[href*="group=engineering"]').click()
+        group_form = anna.locator("#feed-compose-form")
+        expect(group_form).to_be_visible()
+        group_form.locator('[name="title"]').fill("Технический обмен опытом")
+        group_form.locator('[name="body"]').fill("Практические вопросы организации производства")
+        group_form.locator('[name="publish_consent"]').check()
+        with anna.expect_response(lambda r: r.url.endswith("/api/community/feed") and r.request.method == "POST") as group_sent:
+            group_form.locator('[type="submit"]').click()
+        group_entry = checked(group_sent.value)["entry"]
+        group_id = group_entry["id"]
+        assert group_entry["group_slug"] == "engineering"
+        assert checked(boris.request.get(base + "/api/community/feed?group_slug=engineering"))["entries"] == []
+        admin.goto(base + "/community/feed", wait_until="networkidle")
+        group_review = admin.locator(f'#feed-review-list [data-feed-id="{group_id}"]')
+        expect(group_review).to_contain_text("Инженерия и производство")
+        group_review.locator('[data-action="approve-feed"]').click()
+        with admin.expect_response(lambda r: r.url.endswith("/api/admin/community/feed/" + group_id) and r.request.method == "PATCH") as group_approved:
+            admin.locator('#feed-review-form [type="submit"]').click()
+        group_entry = checked(group_approved.value)["entry"]
+        boris.goto(base + "/community/feed?group=engineering", wait_until="networkidle")
+        expect(boris.locator("#feed-compose-form")).to_have_count(0)
+        group_post = boris.locator(f'#feed-list [data-feed-id="{group_id}"]')
+        expect(group_post).to_contain_text("Технический обмен опытом")
+        group_post.locator('[data-action="open-feed-thread"]').click()
+        expect(boris.locator("#feed-discussion")).to_contain_text("вступите в группу")
+        expect(boris.locator("#feed-comment-form")).to_have_count(0)
+        assert checked(boris.request.get(base + "/api/community/feed?group_slug=sales"))["entries"] == []
+        anna.goto(base + "/community/groups", wait_until="networkidle")
+        group_card = anna.locator('[data-group-slug="engineering"]')
+        with anna.expect_response(lambda r: r.url.endswith("/groups/engineering/membership") and r.request.method == "DELETE") as group_left:
+            group_card.locator('[data-action="leave-group"]').click()
+        assert checked(group_left.value)["group"]["joined"] is False
+        assert checked(boris.request.get(base + "/api/community/feed?group_slug=engineering"))["entries"][0]["id"] == group_id
+        checked(anna.request.delete(base + "/api/community/feed/" + group_id, headers=HEADERS,
+                                    data={"expected_version": group_entry["version"]}))
+        assert checked(boris.request.get(base + "/api/community/feed?group_slug=engineering"))["entries"] == []
+
         # Professional feed: an explicit, moderated submission and discussion.
         anna.set_viewport_size({"width": 390, "height": 844})
         anna.goto(base + "/community/feed", wait_until="networkidle")
@@ -693,6 +742,7 @@ def run_browser(browser, base, database):
         # A stored published status is not permission to share an inaccessible profile.
         outsider.goto(base + "/community/profile", wait_until="networkidle")
         expect(outsider.locator('[data-action="share-profile"]')).to_be_visible()
+        checked(outsider.request.put(base + "/api/community/groups/engineering/membership", headers=HEADERS))
         privacy_request = outsider.request.post(base + "/api/account/privacy-requests", headers=HEADERS,
                                                data={"kind": "stop_processing"})
         assert privacy_request.status == 201, privacy_request.text()
@@ -710,6 +760,15 @@ def run_browser(browser, base, database):
         outsider.locator('[data-action="invite-colleague"]').click()
         expect(outsider.locator("#share-profile-url")).to_have_value(base + "/community")
         outsider.keyboard.press("Escape")
+        outsider.goto(base + "/community/groups", wait_until="networkidle")
+        restricted_group = outsider.locator('[data-group-slug="engineering"]')
+        expect(restricted_group.locator('[data-action="leave-group"]')).to_be_visible()
+        expect(restricted_group.locator('a[href*="group=engineering"]')).to_have_count(0)
+        expect(outsider.locator('[data-action="join-group"]')).to_have_count(0)
+        with outsider.expect_response(lambda r: r.url.endswith("/groups/engineering/membership") and r.request.method == "DELETE") as restricted_left:
+            restricted_group.locator('[data-action="leave-group"]').click()
+        assert checked(restricted_left.value)["group"]["joined"] is False
+        expect(restricted_group).to_have_count(0)
         assert not errors, "Uncaught browser errors: " + " | ".join(errors)
     except Exception:
         for index, context in enumerate(contexts):

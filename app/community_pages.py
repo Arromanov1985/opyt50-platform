@@ -95,6 +95,7 @@ def community_page(mode: str = "directory", person: dict | None = None,
         "portfolio": "Моё портфолио",
         "reputation": "Рекомендации коллег",
         "feed": "Профессиональная лента",
+        "groups": "Профессиональные группы",
         "mentoring": "Наставничество",
         "projects": "Совместные проекты",
         "discovery": "Рекомендации для меня",
@@ -119,7 +120,7 @@ def community_page(mode: str = "directory", person: dict | None = None,
 <nav aria-label="Основное меню"><a href="/#jobs">Вакансии</a><a href="/community" aria-current="page">Сообщество</a><a href="/journal">Журнал</a></nav>
 <div class="header-actions"><button id="reading-mode-toggle" class="text-button reading-toggle" type="button" aria-pressed="false" aria-label="Включить крупный текст">Аа <span>Крупный текст</span></button><a class="button secondary compact" href="/#account">Мой кабинет</a></div></div></header>
 <main id="community-main" class="wrap">{intro}
-<nav class="community-tabs" aria-label="Разделы сообщества"><a href="/community"{' aria-current="page"' if mode == 'directory' else ''}>Участники</a><a href="/community/feed"{' aria-current="page"' if mode == 'feed' else ''}>Лента <span id="feed-alert-badge" class="count" hidden></span></a><a href="/community/mentoring"{' aria-current="page"' if mode == 'mentoring' else ''}>Наставничество</a><a href="/community/projects"{' aria-current="page"' if mode == 'projects' else ''}>Проекты</a><a href="/community/recommendations"{' aria-current="page"' if mode in ('discovery', 'saved') else ''}>Для меня</a><a href="/community/profile"{' aria-current="page"' if mode in ('profile', 'portfolio', 'reputation') else ''}>Мой профиль</a><a href="/community/connections"{' aria-current="page"' if mode == 'connections' else ''}>Мои связи <span id="community-unread" class="count" hidden></span></a><a href="/community/moderation" id="moderation-nav" hidden>Модерация</a></nav>
+<nav class="community-tabs" aria-label="Разделы сообщества"><a href="/community"{' aria-current="page"' if mode == 'directory' else ''}>Участники</a><a href="/community/feed"{' aria-current="page"' if mode == 'feed' else ''}>Лента <span id="feed-alert-badge" class="count" hidden></span></a><a href="/community/groups"{' aria-current="page"' if mode == 'groups' else ''}>Группы</a><a href="/community/mentoring"{' aria-current="page"' if mode == 'mentoring' else ''}>Наставничество</a><a href="/community/projects"{' aria-current="page"' if mode == 'projects' else ''}>Проекты</a><a href="/community/recommendations"{' aria-current="page"' if mode in ('discovery', 'saved') else ''}>Для меня</a><a href="/community/profile"{' aria-current="page"' if mode in ('profile', 'portfolio', 'reputation') else ''}>Мой профиль</a><a href="/community/connections"{' aria-current="page"' if mode == 'connections' else ''}>Мои связи <span id="community-unread" class="count" hidden></span></a><a href="/community/moderation" id="moderation-nav" hidden>Модерация</a></nav>
 <p id="community-notice" class="notice" role="status" aria-live="polite" hidden></p>
 <div id="community-content">{content}</div>
 <noscript><div class="panel"><p>Для поиска участников и работы с профилем включите JavaScript. Публичный профиль можно прочитать без него.</p><a href="/journal">Перейти в журнал</a></div></noscript>
@@ -143,6 +144,10 @@ def install_community_pages(app) -> None:
     @app.get("/community/feed", include_in_schema=False)
     def professional_feed():
         return community_page("feed")
+
+    @app.get("/community/groups", include_in_schema=False)
+    def professional_groups():
+        return community_page("groups")
 
     @app.get("/community/mentoring", include_in_schema=False)
     def community_mentoring():

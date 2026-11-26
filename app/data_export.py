@@ -140,10 +140,16 @@ def build_personal_data_snapshot(db, user_id: int) -> dict:
                WHERE f.author_id=? ORDER BY f.created_at DESC,f.id DESC""",
         )
         section(
+            "my_community_groups",
+            """SELECT group_slug,created_at FROM community_group_memberships
+               WHERE user_id=? ORDER BY created_at DESC,group_slug""",
+        )
+        section(
             "my_community_feed",
-            """SELECT id,parent_id,kind,title,body,status,consent_at,consent_version,
-                      moderation_reason,created_at,updated_at,published_at
-               FROM community_feed_entries WHERE author_id=? ORDER BY created_at DESC,id DESC""",
+            """SELECT f.id,f.parent_id,f.kind,f.title,f.body,f.status,f.consent_at,f.consent_version,
+                      f.moderation_reason,f.created_at,f.updated_at,f.published_at,g.group_slug
+               FROM community_feed_entries f LEFT JOIN community_group_posts g ON g.entry_id=COALESCE(f.parent_id,f.id)
+               WHERE f.author_id=? ORDER BY f.created_at DESC,f.id DESC""",
         )
         data["candidate_profile"] = _single(
             db,

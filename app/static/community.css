@@ -140,3 +140,8 @@
 @media(max-width:480px){.portfolio-intro .actions,.portfolio-card .actions,.portfolio-editor .actions{display:grid;grid-template-columns:1fr}.portfolio-intro .button,.portfolio-card .button,.portfolio-editor .button{width:100%}}
 .comfortable-view .portfolio-public-grid,.comfortable-view .portfolio-list{grid-template-columns:1fr}
 .reputation-toolbar{margin-top:24px}.reputation-toolbar+.portfolio-list{margin-top:12px}.status-badge.offered{background:#f5ecdc;color:#795019}.portfolio-card .actions a.button{min-height:44px}
+/* Curated thematic group catalogue. Keep large touch targets and no horizontal overflow. */
+.group-intro{margin:0 0 22px}.group-intro h2{margin-top:8px}.group-intro .connections-toolbar{margin:18px 0 0}.group-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:20px}.group-card{min-width:0;display:flex;flex-direction:column;overflow-wrap:anywhere}.group-card h2{margin:14px 0 8px;font-size:1.25em}.group-card .actions{margin-top:auto;padding-top:12px}.group-tag{color:var(--green-dark);text-decoration:underline;text-underline-offset:2px}.feed-meta{flex-wrap:wrap}.group-card .button{min-height:44px}
+@media(max-width:760px){.group-grid{grid-template-columns:1fr}.group-card .actions{gap:10px}}
+@media(max-width:480px){.group-card .actions{display:grid;grid-template-columns:1fr}.group-card .button{width:100%}}
+.comfortable-view .group-grid{grid-template-columns:1fr}
