@@ -1541,3 +1541,117 @@ def test_reputation_decline_revision_block_and_profile_privacy(community):
         assert preview["counts"]["community_recommendations"] == 3
         assert preview["automatic_deletion"] is False
 
+
+def test_recommendation_and_portfolio_withdrawal_remain_available_under_privacy_restriction(community):
+    app, clients, ids = community
+    first, second, admin, visitor = (clients[k] for k in ("first", "second", "admin", "visitor"))
+    a = publish(clients, "first")
+    b = publish(clients, "second", public_name="Коллега")
+    cid = connect(clients, b["public_id"])["id"]
+    assert mutate(second, "POST", "/api/community/connections/" + cid + "/respond",
+                  {"decision": "accept"}).status_code == 200
+    entry = approve_reputation(admin, accept_reputation(second, offer_reputation(first, cid)))
+    portfolio = approve_portfolio(admin, submit_portfolio(first, create_portfolio(first)))
+    public = "/api/community/people/" + b["public_id"] + "/reputation"
+    assert visitor.get(public).json()["entries"][0]["id"] == entry["id"]
+    request = mutate(first, "POST", "/api/account/privacy-requests", {"kind": "stop_processing"})
+    assert request.status_code == 201, request.text
+    assert visitor.get(public).json()["entries"] == []
+    assert mutate(first, "POST", "/api/community/reputation", reputation_payload(cid)).status_code == 409
+    withdrawn = mutate(first, "DELETE", "/api/community/reputation/" + entry["id"] + "/publication",
+                       {"expected_version": entry["version"]})
+    assert withdrawn.status_code == 200, withdrawn.text
+    assert withdrawn.json()["entry"]["status"] == "hidden"
+    assert withdrawn.json()["entry"]["author_consent_at"] is None
+    assert withdrawn.json()["entry"]["recipient_consent_at"] is None
+    hidden = mutate(first, "DELETE", "/api/community/portfolio/" + portfolio["id"] + "/publication",
+                    {"expected_version": portfolio["version"]})
+    assert hidden.status_code == 200, hidden.text
+    assert hidden.json()["entry"]["consent_at"] is None
+    # Simulate resolution of the privacy request in the isolated DB. Neither
+    # withdrawn publication may reappear when the temporary restriction ends.
+    with database(app.state.db_path) as db:
+        db.execute("UPDATE privacy_rights_requests SET status='declined' WHERE user_id=?", (ids["first"],))
+    assert visitor.get(public).json()["entries"] == []
+    assert visitor.get("/api/community/people/" + a["public_id"] + "/portfolio").json()["entries"] == []
+
+
+def test_groups_private_membership_and_moderated_discussions(community):
+    app, clients, ids = community
+    first, second, employer, admin, visitor = (
+        clients[k] for k in ("first", "second", "employer", "admin", "visitor"))
+    groups, feed = "/api/community/groups", "/api/community/feed"
+    engineering = groups + "/engineering/membership"
+    sales = groups + "/sales/membership"
+    assert visitor.get(groups).status_code == 401
+    catalog = first.get(groups).json()
+    assert len(catalog["groups"]) == 8 and catalog["can_join"]
+    assert all(set(item) == {"slug", "name", "description", "joined"} for item in catalog["groups"])
+    assert not employer.get(groups).json()["can_join"]
+    assert mutate(employer, "PUT", engineering).status_code == 403
+    assert mutate(first, "PUT", groups + "/unknown/membership").status_code == 404
+    joined = mutate(first, "PUT", engineering)
+    assert joined.status_code == 200 and joined.json()["group"]["joined"]
+    assert mutate(first, "PUT", engineering).json() == joined.json()
+    assert all(not item["joined"] for item in second.get(groups).json()["groups"])
+    assert mutate(first, "POST", feed, feed_payload(group_slug="engineering")).status_code == 403
+    publish(clients, "first")
+    publish(clients, "second")
+    assert mutate(first, "POST", feed, feed_payload(group_slug="sales")).status_code == 403
+    assert mutate(first, "POST", feed, feed_payload(group_slug="unknown")).status_code == 404
+    assert mutate(first, "PUT", sales).status_code == 200
+    payload = feed_payload(group_slug="engineering", title="Практика производства")
+    posted = mutate(first, "POST", feed, payload)
+    assert posted.status_code == 200, posted.text
+    entry = posted.json()["entry"]
+    assert entry["group_slug"] == "engineering" and entry["status"] == "pending"
+    assert mutate(first, "POST", feed, payload).json()["entry"] == entry
+    assert mutate(first, "POST", feed, {**payload, "group_slug": "sales"}).status_code == 409
+    assert second.get(feed + "?group_slug=engineering").json()["entries"] == []
+    assert admin.get("/api/admin/community/feed").json()["entries"][0]["group_slug"] == "engineering"
+    published = moderate_feed(admin, entry)
+    general = moderate_feed(admin, submit_feed(first, title="Общая тема"))
+    sales_post = moderate_feed(admin, submit_feed(first, group_slug="sales", title="Клиентский опыт"))
+    assert {item["id"] for item in second.get(feed).json()["entries"]} == {entry["id"], general["id"], sales_post["id"]}
+    scoped = second.get(feed + "?group_slug=engineering")
+    assert scoped.status_code == 200 and "no-store" in scoped.headers["cache-control"]
+    assert [item["id"] for item in scoped.json()["entries"]] == [entry["id"]]
+    assert scoped.json()["entries"][0]["group_name"] == "Инженерия и производство"
+    assert second.get(feed + "?group_slug=unknown").status_code == 404
+    assert employer.get(feed + "?group_slug=engineering").json()["entries"][0]["id"] == entry["id"]
+    discussion = feed + "/" + entry["id"] + "/comments"
+    assert second.get(discussion).json()["can_comment"] is False
+    comment = feed_payload(parent_id=entry["id"], kind="comment", title="", body="Практический вопрос")
+    assert mutate(second, "POST", feed, comment).status_code == 403
+    assert mutate(second, "PUT", engineering).status_code == 200
+    assert second.get(discussion).json()["can_comment"] is True
+    assert mutate(second, "POST", feed, {**comment, "group_slug": "sales"}).status_code == 422
+    reply = mutate(second, "POST", feed, comment)
+    assert reply.status_code == 200, reply.text
+    reply = reply.json()["entry"]
+    assert reply["group_slug"] == "engineering"
+    moderate_feed(admin, reply)
+    assert first.get(discussion).json()["entries"][0]["id"] == reply["id"]
+    assert first.get(discussion).json()["entries"][0]["group_slug"] == "engineering"
+    assert [item["id"] for item in second.get(feed + "/mine?group_slug=engineering").json()["entries"]] == [reply["id"]]
+    assert mutate(second, "DELETE", engineering).json()["group"]["joined"] is False
+    assert second.get(discussion).json()["can_comment"] is False
+    assert len(second.get(discussion).json()["entries"]) == 1
+    assert mutate(second, "POST", feed, {**comment, "client_key": str(uuid4())}).status_code == 403
+    export = first.get("/api/account/data-export").json()["sections"]
+    assert {item["group_slug"] for item in export["my_community_groups"]} == {"engineering", "sales"}
+    assert {item["group_slug"] for item in export["my_community_feed"]} == {None, "engineering", "sales"}
+    assert second.get("/api/account/data-export").json()["sections"]["my_community_groups"] == []
+    request = mutate(first, "POST", "/api/account/privacy-requests", {"kind": "stop_processing"})
+    assert request.status_code == 201
+    assert second.get(feed + "?group_slug=engineering").json()["entries"] == []
+    assert mutate(first, "PUT", engineering).status_code == 409
+    assert mutate(first, "DELETE", engineering).status_code == 200
+    from app.privacy_disposal import impact_preview
+    with database(app.state.db_path) as db:
+        row = db.execute("SELECT request_key FROM privacy_rights_requests WHERE user_id=?",
+                         (ids["first"],)).fetchone()
+        preview = impact_preview(db, row["request_key"])
+        assert preview["counts"]["community_group_memberships"] == 1
+        assert preview["counts"]["community_group_posts"] == 2
+

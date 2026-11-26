@@ -38,6 +38,11 @@ def marketplace_action_restricted(db, user_id: int, method: str, path: str) -> b
         # creating or extending a public professional identity or conversation.
         safety_action = (
             (method == "DELETE" and path == "/api/community/profile/publication")
+            or (method == "DELETE" and len(path.split("/")) == 6
+                and path.split("/")[3] in {"portfolio", "reputation"}
+                and path.endswith("/publication"))
+            or (method == "DELETE" and len(path.split("/")) == 6
+                and path.split("/")[3] == "groups" and path.endswith("/membership"))
             or (method == "POST" and path == "/api/community/reports")
             or (method == "POST" and path.startswith("/api/community/connections/")
                 and path.rsplit("/", 1)[-1] in {"cancel", "block"})

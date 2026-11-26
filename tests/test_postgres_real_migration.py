@@ -84,6 +84,8 @@ def sample(tmp_path):
             """INSERT INTO community_profiles(user_id,public_id,public_name,headline,created_at,updated_at)
                VALUES(1,'feed-profile','Test name','Test headline','2026-01-01','2026-01-01')"""
         )
+        conn.execute("INSERT INTO community_group_memberships VALUES(1,'engineering','2026-01-03')")
+        conn.execute("INSERT INTO community_group_posts VALUES('z-parent','engineering')")
         conn.execute("INSERT INTO community_opportunities VALUES('z-parent','offer','online','regular')")
         conn.execute(
             "INSERT INTO users(id,email,password_hash,role,name) VALUES(6,?,?,?,?)",
@@ -136,6 +138,7 @@ def test_import_preserves_ids_consents_and_relations(target, sample):
     assert counts["community_read_state"] == 1
     assert counts["community_feed_entries"] == 2
     assert counts["community_opportunities"] == 1
+    assert counts["community_group_memberships"] == counts["community_group_posts"] == 1
     assert counts["community_portfolio_entries"] == 1
     assert counts["community_saved_entries"] == counts["community_discovery_preferences"] == 1
     assert counts["community_feed_follows"] == counts["community_feed_alert_reads"] == counts["community_feed_reports"] == 1
@@ -163,6 +166,8 @@ def test_import_preserves_ids_consents_and_relations(target, sample):
         assert conn.execute(
             "SELECT id,author_id,recipient_id,author_consent_at,recipient_consent_at FROM community_recommendations"
         ).fetchone() == ("recommendation-1", 1, 6, "2026-01-01", "2026-01-02")
+        assert conn.execute("SELECT user_id,group_slug FROM community_group_memberships").fetchone() == (1, "engineering")
+        assert conn.execute("SELECT entry_id,group_slug FROM community_group_posts").fetchone() == ("z-parent", "engineering")
     assert sample.read_bytes() == before
 
 
