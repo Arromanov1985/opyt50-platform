@@ -1235,3 +1235,147 @@ def test_saved_pagination_and_linked_privacy_impact(community):
         preview = impact_preview(db, row["request_key"])
         assert preview["counts"]["community_saved_entries_affected"] == 21
         assert preview["automatic_deletion"] is False
+
+
+def portfolio_payload(**changes):
+    return {"client_key": str(uuid4()), "kind": "project", "title": "Внедрение складского учёта",
+            "period": "2020–2024", "contribution": "Разработал понятный порядок учёта и обучил коллег.",
+            "result": "Снизили количество ошибок.", **changes}
+
+
+def create_portfolio(client, **changes):
+    response = mutate(client, "POST", "/api/community/portfolio", portfolio_payload(**changes))
+    assert response.status_code == 200, response.text
+    return response.json()["entry"]
+
+
+def submit_portfolio(client, entry):
+    response = mutate(client, "POST", "/api/community/portfolio/" + entry["id"] + "/submit",
+                      {"expected_version": entry["version"], "publish_consent": True})
+    assert response.status_code == 200, response.text
+    return response.json()["entry"]
+
+
+def approve_portfolio(admin, entry):
+    response = mutate(admin, "PATCH", "/api/admin/community/portfolio/" + entry["id"],
+                      {"expected_version": entry["version"], "decision": "approve"})
+    assert response.status_code == 200, response.text
+    return response.json()["entry"]
+
+
+def test_portfolio_separate_drafts_consent_moderation_and_public_profile(community):
+    app, clients, ids = community
+    first, second, admin, visitor = (clients[key] for key in ("first", "second", "admin", "visitor"))
+    url = "/api/community/portfolio"
+    queue = "/api/admin/community/portfolio"
+    assert visitor.get(url).status_code == 401
+    assert clients["employer"].get(url).status_code == 403
+    assert second.get(queue).status_code == 403
+    assert first.get(url).json()["has_profile"] is False
+    assert mutate(first, "POST", url, portfolio_payload()).status_code == 409
+    draft_profile = save(first)
+    assert first.get(url).json()["can_publish"] is False
+    public_url = "/api/community/people/" + draft_profile["public_id"] + "/portfolio"
+    page = "/people/" + draft_profile["public_id"]
+    assert visitor.get(public_url).status_code == 404
+    assert mutate(first, "POST", url, portfolio_payload(result="Пишите на test@example.invalid")).status_code == 422
+    payload = portfolio_payload(contribution="Мой личный вклад. <img src=x onerror=window.portfolioXss=1>")
+    response = mutate(first, "POST", url, payload)
+    assert response.status_code == 200, response.text
+    draft = response.json()["entry"]
+    assert draft["status"] == "draft"
+    assert mutate(first, "POST", url, payload).json()["entry"] == draft
+    assert mutate(first, "POST", url, {**payload, "title": "Другой текст"}).status_code == 409
+    assert second.get(url).json()["entries"] == []
+    assert admin.get(queue).json()["entries"] == []
+    assert mutate(admin, "PATCH", queue + "/" + draft["id"],
+                  {"expected_version": draft["version"], "decision": "approve"}).status_code == 409
+    assert mutate(first, "POST", url + "/" + draft["id"] + "/submit",
+                  {"expected_version": draft["version"], "publish_consent": True}).status_code == 409
+    profile = approve(admin, submit(first, draft_profile))
+    assert first.get(url).json()["can_publish"] is True
+    assert visitor.get(public_url).json()["entries"] == []
+    assert draft["title"] not in visitor.get(page).text
+    assert mutate(first, "POST", url + "/" + draft["id"] + "/submit",
+                  {"expected_version": draft["version"], "publish_consent": False}).status_code == 400
+    assert mutate(first, "POST", url + "/" + draft["id"] + "/submit",
+                  {"expected_version": draft["version"], "publish_consent": "true"}).status_code == 422
+    assert mutate(second, "DELETE", url + "/" + draft["id"] + "/publication",
+                  {"expected_version": draft["version"]}).status_code == 404
+    pending = submit_portfolio(first, draft)
+    assert visitor.get(public_url).json()["entries"] == []
+    assert admin.get(queue).json()["entries"][0]["id"] == draft["id"]
+    published = approve_portfolio(admin, pending)
+    assert published["status"] == "published"
+    public = visitor.get(public_url)
+    assert public.status_code == 200 and "no-store" in public.headers["cache-control"]
+    entry = public.json()["entries"][0]
+    assert set(entry) == {"id", "kind", "title", "period", "contribution", "result"}
+    assert entry["id"] == draft["id"]
+    html = visitor.get(page).text
+    assert draft["title"] in html and "&lt;img" in html
+    assert "<img src=x onerror=window.portfolioXss=1>" not in html
+    assert "first@community.example.invalid" not in html
+    assert "share-person" in html
+    assert first.get("/api/community/profile").json()["profile"] == profile
+    assert first.get("/api/account/data-export").json()["sections"]["my_community_portfolio"][0]["id"] == draft["id"]
+    assert second.get("/api/account/data-export").json()["sections"]["my_community_portfolio"] == []
+    assert mutate(first, "PUT", url + "/" + draft["id"],
+                  {**{k: published[k] for k in ("kind", "title", "period", "contribution", "result")},
+                   "expected_version": draft["version"]}).status_code == 409
+    fields = {k: published[k] for k in ("kind", "title", "period", "contribution", "result")}
+    edited = mutate(first, "PUT", url + "/" + draft["id"], {
+        **fields, "result": "Новый результат работы", "expected_version": published["version"]})
+    assert edited.status_code == 200, edited.text
+    current = edited.json()["entry"]
+    assert current["status"] == "draft" and current["consent_at"] is None
+    assert visitor.get(public_url).json()["entries"] == []
+    assert visitor.get(page).status_code == 200
+    assert first.get("/api/community/profile").json()["profile"] == profile
+    assert admin.get(queue).json()["entries"] == []
+    assert admin.get(queue + "?status=published").json()["entries"] == []
+
+
+def test_portfolio_parent_withdrawal_privacy_and_no_draft_profile_leak(community):
+    app, clients, ids = community
+    first, admin, visitor = (clients[key] for key in ("first", "admin", "visitor"))
+    profile = publish(clients, "first")
+    public_url = "/api/community/people/" + profile["public_id"] + "/portfolio"
+    url = "/api/community/portfolio"
+    queue = "/api/admin/community/portfolio"
+    a = approve_portfolio(admin, submit_portfolio(first, create_portfolio(first)))
+    b = submit_portfolio(first, create_portfolio(first, kind="achievement", title="Обучил команду"))
+    draft = save(first, public_name="Непубличный черновик имени", headline="Непубличная профессия")
+    assert visitor.get(public_url).status_code == 404
+    pending = admin.get(queue).json()["entries"][0]
+    assert pending["id"] == b["id"]
+    assert pending["public_name"] is None and pending["headline"] is None
+    assert mutate(admin, "PATCH", queue + "/" + b["id"],
+                  {"expected_version": b["version"], "decision": "approve"}).status_code == 409
+    profile = approve(admin, submit(first, draft))
+    assert visitor.get(public_url).json()["entries"][0]["id"] == a["id"]
+    b = approve_portfolio(admin, b)
+    assert len(visitor.get(public_url).json()["entries"]) == 2
+    response = mutate(first, "DELETE", "/api/community/profile/publication",
+                      {"expected_version": profile["version"]})
+    assert response.status_code == 200, response.text
+    assert visitor.get(public_url).status_code == 404
+    entries = first.get(url).json()["entries"]
+    assert {entry["status"] for entry in entries} == {"hidden"}
+    assert all(entry["consent_at"] is None for entry in entries)
+    profile = approve(admin, submit(first, response.json()["profile"]))
+    assert visitor.get(public_url).json()["entries"] == []
+    a = next(entry for entry in entries if entry["id"] == a["id"])
+    a = approve_portfolio(admin, submit_portfolio(first, a))
+    assert len(visitor.get(public_url).json()["entries"]) == 1
+    request = mutate(first, "POST", "/api/account/privacy-requests", {"kind": "deletion"})
+    assert request.status_code == 201, request.text
+    assert visitor.get(public_url).status_code == 404
+    assert first.get(url).status_code == 403
+    from app.privacy_disposal import impact_preview
+    with database(app.state.db_path) as db:
+        row = db.execute("SELECT request_key FROM privacy_rights_requests WHERE user_id=?",
+                         (ids["first"],)).fetchone()
+        preview = impact_preview(db, row["request_key"])
+        assert preview["counts"]["community_portfolio_entries"] == 2
+        assert preview["automatic_deletion"] is False

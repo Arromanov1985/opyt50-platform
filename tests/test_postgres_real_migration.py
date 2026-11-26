@@ -85,6 +85,12 @@ def sample(tmp_path):
                VALUES(1,'feed-profile','Test name','Test headline','2026-01-01','2026-01-01')"""
         )
         conn.execute("INSERT INTO community_opportunities VALUES('z-parent','offer','online','regular')")
+        conn.execute(
+            """INSERT INTO community_portfolio_entries(id,user_id,client_key,kind,title,period,
+               contribution,result,created_at,updated_at)
+               VALUES('portfolio-1',1,'portfolio-client','project','Test project','2020–2024',
+               'Personal contribution','Test result','2026-01-03','2026-01-03')"""
+        )
         conn.execute("INSERT INTO community_saved_entries VALUES(2,'z-parent','2026-01-03')")
         conn.execute("INSERT INTO community_discovery_preferences VALUES(2,'Test topic','','mentoring','rev-1','2026-01-03')")
         conn.execute("INSERT INTO community_feed_follows VALUES(2,1,'2026-01-01')")
@@ -109,6 +115,7 @@ def test_import_preserves_ids_consents_and_relations(target, sample):
     assert counts["community_read_state"] == 1
     assert counts["community_feed_entries"] == 2
     assert counts["community_opportunities"] == 1
+    assert counts["community_portfolio_entries"] == 1
     assert counts["community_saved_entries"] == counts["community_discovery_preferences"] == 1
     assert counts["community_feed_follows"] == counts["community_feed_alert_reads"] == counts["community_feed_reports"] == 1
     with psycopg.connect(target) as conn:
@@ -130,6 +137,8 @@ def test_import_preserves_ids_consents_and_relations(target, sample):
         assert conn.execute("SELECT reporter_id,entry_id FROM community_feed_reports").fetchone() == (2, "z-parent")
         assert conn.execute("SELECT user_id,entry_id FROM community_saved_entries").fetchone() == (2, "z-parent")
         assert conn.execute("SELECT user_id,keyword,focus FROM community_discovery_preferences").fetchone() == (2, "Test topic", "mentoring")
+        assert conn.execute("SELECT id,user_id,kind,title FROM community_portfolio_entries").fetchone() == (
+            "portfolio-1", 1, "project", "Test project")
     assert sample.read_bytes() == before
 
 

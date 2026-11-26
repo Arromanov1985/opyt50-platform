@@ -116,6 +116,12 @@ def build_personal_data_snapshot(db, user_id: int) -> dict:
         )
     if role == "candidate":
         section(
+            "my_community_portfolio",
+            """SELECT id,kind,title,period,contribution,result,status,version,consent_at,consent_version,
+                      moderation_reason,created_at,updated_at,published_at
+               FROM community_portfolio_entries WHERE user_id=? ORDER BY created_at DESC,id DESC""",
+        )
+        section(
             "my_community_opportunities",
             """SELECT o.entry_id,o.intent,o.meeting_format,o.commitment
                FROM community_opportunities o JOIN community_feed_entries f ON f.id=o.entry_id

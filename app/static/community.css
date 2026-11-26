@@ -120,3 +120,22 @@
 @media(max-width:760px){.discovery-form,.discovery-people-grid{grid-template-columns:1fr}}
 @media(max-width:480px){.discovery-nav{display:grid;grid-template-columns:1fr}.discovery-form .actions{display:grid;grid-template-columns:1fr}.discovery-form .button{width:100%}}
 .comfortable-view .discovery-form,.comfortable-view .discovery-people-grid{grid-template-columns:1fr}
+/* Optional portfolio records preserve the large-type, mobile-first profile. */
+.person-share{margin-top:18px;padding-top:16px;border-top:1px solid var(--line)}
+.person-share .help{margin:8px 0 0}
+.person-portfolio{grid-column:1/-1;min-width:0}
+.portfolio-public-grid,.portfolio-list{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:18px}
+.portfolio-public-card{padding:20px;border:1px solid var(--line);border-radius:12px;min-width:0}
+.portfolio-public-card h3,.portfolio-card h3{font-size:1.25em;line-height:1.35;margin:12px 0}
+.portfolio-public-card h4,.portfolio-card h4,.portfolio-consent-preview h4{font-size:1em;margin:16px 0 6px}
+.portfolio-public-card p,.portfolio-card p{margin:6px 0 14px;overflow-wrap:anywhere}
+.portfolio-card{min-width:0;overflow-wrap:anywhere}
+.portfolio-facts{display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin-top:10px}
+.portfolio-editor,.portfolio-list{margin-top:22px}
+.portfolio-editor{scroll-margin-top:20px;max-width:900px}
+.portfolio-intro .actions,.portfolio-card .actions{margin-top:16px}
+.portfolio-consent-preview{border:1px solid var(--line);border-radius:12px;padding:16px;margin-bottom:20px;max-height:42vh;overflow:auto;overflow-wrap:anywhere}
+#share-profile-url{width:100%}
+@media(max-width:760px){.portfolio-public-grid,.portfolio-list{grid-template-columns:1fr}.person-portfolio{grid-column:auto}}
+@media(max-width:480px){.portfolio-intro .actions,.portfolio-card .actions,.portfolio-editor .actions{display:grid;grid-template-columns:1fr}.portfolio-intro .button,.portfolio-card .button,.portfolio-editor .button{width:100%}}
+.comfortable-view .portfolio-public-grid,.comfortable-view .portfolio-list{grid-template-columns:1fr}

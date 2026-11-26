@@ -637,3 +637,50 @@ def test_feed_engagement_runtime_postgresql(runtime_db):
         assert client.get(url + "/" + root["id"] + "/comments").json()["entries"] == []
         assert client.get(url + "?following=true").json()["entries"][0]["id"] == root["id"]
 
+
+def test_professional_portfolio_runtime_postgresql(runtime_db):
+    from fastapi.testclient import TestClient
+    from app.main import create_app, active_user
+    from uuid import uuid4
+
+    app = create_app("unused-with-DATABASE_URL")
+    actor = {"id": 1, "role": "candidate"}
+    app.dependency_overrides[active_user] = lambda: actor
+    with TestClient(app) as client:
+        with postgres_database(runtime_db) as db:
+            admin_id = db.execute(
+                "INSERT INTO users(email,password_hash,role,name) VALUES(?,?,'admin','Admin')",
+                ("portfolio-moderator@example.invalid", "test-hash"),
+            ).lastrowid
+            db.execute(
+                """INSERT INTO community_profiles(user_id,public_id,public_name,headline,
+                   status,consent_at,consent_content_version,reviewed_content_version,created_at,updated_at)
+                   VALUES(1,'pg-portfolio','Коллега','Наставник','published',
+                   '2026-01-01',1,1,'2026-01-01','2026-01-01')"""
+            )
+        url = "/api/community/portfolio"
+        public = "/api/community/people/pg-portfolio/portfolio"
+        headers = {"X-Requested-With": "OPYT50"}
+        response = client.post(url, headers=headers, json={
+            "client_key": str(uuid4()), "kind": "project", "title": "Внедрение учёта",
+            "contribution": "Организовал процесс и обучил команду", "result": "Новый порядок работы",
+        })
+        assert response.status_code == 200, response.text
+        item = response.json()["entry"]
+        assert client.get(public).json()["entries"] == []
+        submitted = client.post(url + "/" + item["id"] + "/submit", headers=headers,
+                                json={"expected_version": item["version"], "publish_consent": True})
+        assert submitted.status_code == 200, submitted.text
+        pending = submitted.json()["entry"]
+        actor.update(id=admin_id, role="admin")
+        approved = client.patch("/api/admin/community/portfolio/" + item["id"], headers=headers,
+                                json={"expected_version": pending["version"], "decision": "approve"})
+        assert approved.status_code == 200, approved.text
+        assert client.get(public).json()["entries"][0]["id"] == item["id"]
+        actor.update(id=1, role="candidate")
+        hidden = client.request("DELETE", "/api/community/profile/publication", headers=headers,
+                                json={"expected_version": 1})
+        assert hidden.status_code == 200, hidden.text
+        assert client.get(public).status_code == 404
+        assert client.get(url).json()["entries"][0]["status"] == "hidden"
+
