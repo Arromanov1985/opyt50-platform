@@ -742,6 +742,7 @@ def run_browser(browser, base, database):
         # A stored published status is not permission to share an inaccessible profile.
         outsider.goto(base + "/community/profile", wait_until="networkidle")
         expect(outsider.locator('[data-action="share-profile"]')).to_be_visible()
+        checked(outsider.request.put(base + "/api/community/groups/engineering/membership", headers=HEADERS))
         privacy_request = outsider.request.post(base + "/api/account/privacy-requests", headers=HEADERS,
                                                data={"kind": "stop_processing"})
         assert privacy_request.status == 201, privacy_request.text()
@@ -759,6 +760,15 @@ def run_browser(browser, base, database):
         outsider.locator('[data-action="invite-colleague"]').click()
         expect(outsider.locator("#share-profile-url")).to_have_value(base + "/community")
         outsider.keyboard.press("Escape")
+        outsider.goto(base + "/community/groups", wait_until="networkidle")
+        restricted_group = outsider.locator('[data-group-slug="engineering"]')
+        expect(restricted_group.locator('[data-action="leave-group"]')).to_be_visible()
+        expect(restricted_group.locator('a[href*="group=engineering"]')).to_have_count(0)
+        expect(outsider.locator('[data-action="join-group"]')).to_have_count(0)
+        with outsider.expect_response(lambda r: r.url.endswith("/groups/engineering/membership") and r.request.method == "DELETE") as restricted_left:
+            restricted_group.locator('[data-action="leave-group"]').click()
+        assert checked(restricted_left.value)["group"]["joined"] is False
+        expect(restricted_group).to_have_count(0)
         assert not errors, "Uncaught browser errors: " + " | ".join(errors)
     except Exception:
         for index, context in enumerate(contexts):
