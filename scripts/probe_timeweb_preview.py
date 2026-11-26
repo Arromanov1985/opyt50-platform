@@ -11,10 +11,14 @@ import re
 import socket
 import ssl
 import sys
+import time
 from pathlib import Path
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, build_opener, HTTPRedirectHandler
 
+
+JOURNAL_PROBE_SECONDS = 90
+JOURNAL_PROBE_BYTES = 64 * 1024 * 1024
 
 DEFAULT_BASE = "https://arromanov1985-opyt50-platform-fdd8.twc1.net"
 BASE = os.getenv("STAZHNO_PREVIEW_URL", DEFAULT_BASE).rstrip("/")
@@ -37,6 +41,8 @@ COMMUNITY_PRIVATE_ROUTES = {
     "moderation_portfolio": "/api/admin/community/portfolio",
     "moderation_reputation": "/api/admin/community/reputation",
     "groups": "/api/community/groups",
+    "author_articles": "/api/community/author-articles",
+    "moderation_author_articles": "/api/admin/community/author-articles",
 }
 
 
@@ -241,7 +247,7 @@ def probe_public_journal_pages():
     root = str(Path(__file__).resolve().parents[1])
     if root not in sys.path:
         sys.path.insert(0, root)
-    from app.journal import ARTICLES, journal_index, journal_article, journal_renderer_sha256
+    from app.journal import ARTICLES, journal_index, journal_article, journal_renderer_sha256, catalog_page_count, catalog_page_path
     from app.journal_paths import PATHS, path_detail, paths_index, visible_paths
     from app.journal_guide import GUIDE_PATHS, SECTIONS, guide_page
 
@@ -273,18 +279,20 @@ def probe_public_journal_pages():
     )
     try:
         with build_opener(NoRedirect).open(manifest_request, timeout=12) as response:
-            raw = response.read(40_001)
-            if len(raw) > 40_000:
+            # Bound the response by bytes, not an arbitrary count of articles.
+            raw = response.read(4_000_001)
+            if len(raw) > 4_000_000:
                 raise ValueError("Editorial manifest too large")
             manifest = json.loads(raw)
         if not isinstance(manifest, dict):
             raise ValueError("Invalid editorial manifest")
         pages = manifest.get("pages")
-        if not isinstance(pages, dict) or not 1 <= len(pages) <= 56:
+        if not isinstance(pages, dict) or not pages:
             raise ValueError("Invalid editorial manifest")
         if not all(
             path in {"/journal", "/journal/paths", "/sitemap.xml"} or path in GUIDE_PATHS
             or path in route_urls or _journal_article_slug(path)
+            or re.fullmatch(r"/journal(?:/guide/(?:personal|learning|news|events))?/page/[1-9][0-9]{0,5}", path)
             for path in pages
         ) or not all(
             isinstance(digest,str) and len(digest)==64
@@ -293,6 +301,15 @@ def probe_public_journal_pages():
         ):
             raise ValueError("Invalid editorial page digests")
         published_slugs = {slug for path in pages if (slug := _journal_article_slug(path))}
+        # Main and personal catalogs contain all published articles.
+        # Other sections contain a subset; any additional pages must be contiguous.
+        count = catalog_page_count(len(published_slugs))
+        for base in ("/journal", "/journal/guide/personal", "/journal/guide/learning",
+                     "/journal/guide/news", "/journal/guide/events"):
+            actual = {path for path in pages if path.startswith(base + "/page/")}
+            size = count if base in {"/journal", "/journal/guide/personal"} else len(actual) + 1
+            if size > count or actual != {catalog_page_path(base, page) for page in range(2, size + 1)}:
+                raise ValueError("Invalid editorial catalog pagination")
         required_routes = {
             "/journal/paths/" + item["slug"] for item in PATHS
             if any(slug in published_slugs for slug, _label in item["steps"])
@@ -319,7 +336,14 @@ def probe_public_journal_pages():
         manifest_result = "unavailable-or-invalid"
 
     results = {}
+    # Bound total work without imposing an arbitrary number of articles.
+    # A partially checked catalog must never be reported as published.
+    deadline = time.monotonic() + JOURNAL_PROBE_SECONDS
+    bytes_read = 0
     for path, fingerprint in expected.items():
+        remaining = deadline - time.monotonic()
+        if remaining <= 0 or bytes_read >= JOURNAL_PROBE_BYTES:
+            break
         request = Request(
             BASE + path + "?revision_check=" + fingerprint[:16],
             headers={"User-Agent":"Stazhno-Preview-ReadOnly-Probe/1.0",
@@ -327,9 +351,13 @@ def probe_public_journal_pages():
             method="GET",
         )
         try:
-            with build_opener(NoRedirect).open(request, timeout=12) as response:
-                payload = response.read(250_001)
-                if len(payload) > 250_000:
+            with build_opener(NoRedirect).open(request, timeout=min(12, remaining)) as response:
+                limit = min(250_001, JOURNAL_PROBE_BYTES - bytes_read)
+                payload = response.read(limit)
+                bytes_read += len(payload)
+                if time.monotonic() >= deadline or (limit < 250_001 and len(payload) == limit):
+                    item = {"status":response.status,"result":"budget-exhausted"}
+                elif len(payload) > 250_000:
                     item = {"status":response.status,"result":"html-too-large"}
                 elif not response.headers.get("Content-Type", "").lower().startswith("text/html"):
                     item = {"status":response.status,"result":"not-html"}
@@ -349,9 +377,14 @@ def probe_public_journal_pages():
     return {
         "result": "exact-match" if (
             renderer["result"] == "exact-match" and manifest_result == "accepted"
+            and len(results) == len(expected)
             and all(item["result"] == "exact-match" for item in results.values())
         ) else "unverified",
         "catalog_source":source,"manifest_result":manifest_result,"renderer":renderer,"pages":results,
+        "unprobed_pages":len(expected) - len(results),
+        "budget_exhausted":len(results) < len(expected) or any(
+            item["result"] == "budget-exhausted" for item in results.values()
+        ),
     }
 
 

@@ -1695,3 +1695,143 @@ def test_profile_share_visibility_matches_public_routes_under_restriction(commun
     assert first.get(own).json()["public_visible"] is True
     assert visitor.get(public).status_code == 200
 
+
+AUTHOR_BODY = "## Постановка рабочей задачи\nМы разбирали типичные ошибки при подготовке новых сотрудников. Сначала составили список операций и описали, на что нужно обращать внимание во время работы.\n\n## Практический результат\nСотрудники получили понятную последовательность шагов. Теперь наставнику проще объяснять процесс, а новичок может сверить результат с учебным примером."
+
+
+def author_payload(**changes):
+    return {"kind": "case", "title": "Как организовать обучение новых сотрудников",
+            "description": "Практический пример подготовки учебных материалов для команды.",
+            "body_text": AUTHOR_BODY, "topics": ["education", "management"], **changes}
+
+
+def test_author_articles_require_consent_and_editorial_review(community):
+    import hashlib
+    app, clients, ids = community
+    first, second, admin, visitor, employer = (
+        clients[key] for key in ("first", "second", "admin", "visitor", "employer"))
+    url = "/api/community/author-articles"
+    queue = "/api/admin/community/author-articles"
+    payload = author_payload(client_key=str(uuid4()))
+    assert visitor.get(url).status_code == 401
+    assert employer.get(url).status_code == 403
+    assert first.get(queue).status_code == 403
+    assert mutate(first, "POST", url, payload).status_code == 409
+    profile = save(first)
+    assert mutate(first, "POST", url, {**payload, "body_text": AUTHOR_BODY + " mail@example.invalid"}).status_code == 422
+    assert mutate(first, "POST", url, {**payload, "topics": ["unsupported"]}).status_code == 422
+    assert mutate(first, "POST", url, {**payload, "body_text": "Нет разделов " * 30}).status_code == 422
+    created = mutate(first, "POST", url, payload)
+    assert created.status_code == 200, created.text
+    draft = created.json()["entry"]
+    assert draft["status"] == "draft" and draft["public_path"] is None
+    assert mutate(first, "POST", url, payload).json()["entry"] == draft
+    assert mutate(first, "POST", url, {**payload, "title": "Другой текст статьи"}).status_code == 409
+    key = draft["id"]
+    path = "/journal/author-" + key
+    item = url + "/" + key
+    decision = queue + "/" + key
+    assert visitor.get(path).status_code == 404
+    assert "author-" + key not in visitor.get("/journal").text
+    assert "author-" + key not in visitor.get("/sitemap.xml").text
+    assert second.get(url).json()["entries"] == []
+    assert admin.get(queue).json()["entries"] == []
+    assert mutate(second, "PUT", item, author_payload(expected_version=draft["version"])).status_code == 404
+    assert mutate(first, "POST", item + "/submit",
+                  {"expected_version": draft["version"], "publish_consent": True}).status_code == 409
+    profile = approve(admin, submit(first, profile))
+    assert mutate(first, "POST", item + "/submit",
+                  {"expected_version": draft["version"], "publish_consent": False}).status_code == 400
+    pending = mutate(first, "POST", item + "/submit",
+                     {"expected_version": draft["version"], "publish_consent": True})
+    assert pending.status_code == 200, pending.text
+    pending = pending.json()["entry"]
+    assert pending["status"] == "pending"
+    assert visitor.get(path).status_code == 404
+    assert admin.get(queue).json()["entries"][0]["id"] == key
+    assert mutate(second, "PATCH", decision, {"expected_version": pending["version"], "decision": "approve"}).status_code == 403
+    assert mutate(admin, "PATCH", decision, {"expected_version": draft["version"], "decision": "approve"}).status_code == 409
+    rejected = mutate(admin, "PATCH", decision, {"expected_version": pending["version"],
+                      "decision": "reject", "reason": "Добавьте практический результат"})
+    assert rejected.status_code == 200, rejected.text
+    rejected = rejected.json()["entry"]
+    assert rejected["consent_at"] is None and rejected["status"] == "rejected"
+    edited = mutate(first, "PUT", item, author_payload(expected_version=rejected["version"],
+                    body_text=AUTHOR_BODY + " <img src=x onerror=window.authorXss=1>"))
+    assert edited.status_code == 200, edited.text
+    edited = edited.json()["entry"]
+    pending = mutate(first, "POST", item + "/submit",
+                     {"expected_version": edited["version"], "publish_consent": True}).json()["entry"]
+    result = mutate(admin, "PATCH", decision, {"expected_version": pending["version"], "decision": "approve"})
+    assert result.status_code == 200, result.text
+    published = result.json()["entry"]
+    assert published["status"] == "published" and published["public_path"] == path
+    live = visitor.get(path)
+    assert live.status_code == 200 and live.headers["cache-control"] == "no-store"
+    assert 'href="/people/' + profile["public_id"] + '"' in live.text
+    assert "Автор сообщества" in live.text and profile["public_name"] in live.text
+    assert "&lt;img" in live.text and "<img src=x" not in live.text
+    assert "first@community.example.invalid" not in live.text
+    assert path in visitor.get("/journal").text
+    assert path in visitor.get("/journal/guide/personal").text
+    assert path in visitor.get("/sitemap.xml").text
+    assert visitor.get("/api/public/journal/manifest").json()["pages"][path] == hashlib.sha256(live.content).hexdigest()
+    assert admin.get("/api/admin/journal/author-" + key).status_code == 404
+    export = first.get("/api/account/data-export").json()["sections"]
+    assert export["my_author_articles"][0]["id"] == key
+    assert second.get("/api/account/data-export").json()["sections"]["my_author_articles"] == []
+    assert mutate(first, "POST", "/api/account/privacy-requests", {"kind": "stop_processing"}).status_code == 201
+    assert visitor.get(path).status_code == 404
+    assert path not in visitor.get("/journal").text
+    assert admin.get(queue + "?status=published").json()["entries"] == []
+    history = first.get(url).json()
+    assert history["restricted"] is True and history["entries"][0]["public_path"] is None
+    assert mutate(first, "PUT", item, author_payload(expected_version=published["version"])).status_code == 409
+    assert mutate(second, "DELETE", item + "/publication", {"expected_version": published["version"]}).status_code == 404
+    hidden = mutate(first, "DELETE", item + "/publication", {"expected_version": published["version"]})
+    assert hidden.status_code == 200, hidden.text
+    assert hidden.json()["entry"]["consent_at"] is None
+    from app.privacy_disposal import impact_preview
+    with database(app.state.db_path) as db:
+        row = db.execute("SELECT request_key FROM privacy_rights_requests WHERE user_id=?", (ids["first"],)).fetchone()
+        assert impact_preview(db, row["request_key"])["counts"]["community_author_articles"] == 1
+        db.execute("UPDATE privacy_rights_requests SET status='declined' WHERE user_id=?", (ids["first"],))
+    assert visitor.get(path).status_code == 404
+    assert path not in visitor.get("/api/public/journal/manifest").json()["pages"]
+    assert first.get(url).json()["entries"][0]["status"] == "hidden"
+
+
+def test_author_material_reconsent_after_profile_changes(community):
+    app, clients, ids = community
+    first, admin, visitor = (clients[key] for key in ("first", "admin", "visitor"))
+    profile = publish(clients, "first")
+    url = "/api/community/author-articles"
+    created = mutate(first, "POST", url, author_payload(client_key=str(uuid4()), kind="learning"))
+    assert created.status_code == 200, created.text
+    item = created.json()["entry"]
+    own = url + "/" + item["id"]
+    public = "/journal/author-" + item["id"]
+    review = "/api/admin/community/author-articles/" + item["id"]
+    pending = mutate(first, "POST", own + "/submit",
+                     {"expected_version": item["version"], "publish_consent": True}).json()["entry"]
+    published = mutate(admin, "PATCH", review,
+                       {"expected_version": pending["version"], "decision": "approve"})
+    assert published.status_code == 200, published.text
+    assert public in visitor.get("/journal/guide/learning").text
+    draft = save(first, public_name="Новое публичное имя")
+    assert visitor.get(public).status_code == 404
+    assert first.get(url).json()["entries"][0]["status"] == "hidden"
+    profile = approve(admin, submit(first, draft))
+    assert visitor.get(public).status_code == 404
+    current = first.get(url).json()["entries"][0]
+    pending = mutate(first, "POST", own + "/submit",
+                     {"expected_version": current["version"], "publish_consent": True}).json()["entry"]
+    approved = mutate(admin, "PATCH", review,
+                      {"expected_version": pending["version"], "decision": "approve"})
+    assert approved.status_code == 200, approved.text
+    assert "Новое публичное имя" in visitor.get(public).text
+    withdrawn = mutate(first, "DELETE", "/api/community/profile/publication", {"expected_version": profile["version"]})
+    assert withdrawn.status_code == 200, withdrawn.text
+    assert first.get(url).json()["entries"][0]["consent_at"] is None
+    assert visitor.get(public).status_code == 404
+

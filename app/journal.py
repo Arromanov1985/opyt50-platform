@@ -39,7 +39,7 @@ def _layout(title: str, description: str, path: str, body: str) -> str:
         f"<meta property=\"og:description\" content=\"{_e(description)}\">"
         f"<meta property=\"og:url\" content=\"{_e(canonical)}\">"
         "<link rel=\"stylesheet\" href=\"/static/journal.css?v=7\">"
-        "<script src=\"/static/journal.js?v=7\" defer></script>"
+        "<script src=\"/static/journal.js?v=8\" defer></script>"
         "</head><body class=\"jr-page\">"
         "<a class=\"jr-skip\" href=\"#jr-content\">К основному содержанию</a>"
         "<header class=\"jr-header\"><div class=\"jr-wrap jr-top\">"
@@ -115,11 +115,45 @@ def _catalog(request: Request) -> list[dict]:
         return public_articles(db)
 
 
-def journal_index(articles: list[dict] | None = None) -> HTMLResponse:
+CATALOG_PAGE_SIZE = 24
+
+
+def catalog_page_count(total: int) -> int:
+    return max(1, (total + CATALOG_PAGE_SIZE - 1) // CATALOG_PAGE_SIZE)
+
+
+def catalog_page_path(base: str, page: int) -> str:
+    return base if page == 1 else base + "/page/" + str(page)
+
+
+def catalog_slice(items: list, page: int) -> list:
+    if not 1 <= page <= catalog_page_count(len(items)):
+        raise HTTPException(404, "Страница каталога не найдена")
+    start = (page - 1) * CATALOG_PAGE_SIZE
+    return items[start:start + CATALOG_PAGE_SIZE]
+
+
+def catalog_navigation(base: str, page: int, total: int) -> str:
+    pages = catalog_page_count(total)
+    if pages == 1:
+        return ""
+    links = ['<nav class="jr-category-filters" aria-label="Страницы каталога">']
+    if page > 1:
+        links.append('<a class="jr-secondary" href="' + catalog_page_path(base, page - 1) + '">← Назад</a>')
+    links.append(f'<span class="jr-results-count" aria-current="page">Страница {page} из {pages} · Всего: {total}</span>')
+    if page < pages:
+        links.append('<a class="jr-secondary" href="' + catalog_page_path(base, page + 1) + '">Далее →</a>')
+    links.append('</nav>')
+    return "".join(links)
+
+
+def journal_index(articles: list[dict] | None = None, page: int = 1) -> HTMLResponse:
     if articles is None:
         articles = ARTICLES
-    cards = "".join(_article_card(item) for item in articles)
-    categories = list(dict.fromkeys(article["category"] for article in articles))
+    page_items = catalog_slice(articles, page)
+    cards = "".join(_article_card(item) for item in page_items)
+    categories = list(dict.fromkeys(article["category"] for article in page_items))
+    pagination = catalog_navigation("/journal", page, len(articles))
     buttons = '<button type="button" data-jr-category-filter="all" aria-pressed="true">Все темы</button>' + "".join(
         f'<button type="button" data-jr-category-filter="{_e(category)}" aria-pressed="false">{_e(category)}</button>'
         for category in categories
@@ -133,18 +167,19 @@ def journal_index(articles: list[dict] | None = None) -> HTMLResponse:
         + _prelaunch_note() +
         '<section class="jr-list" aria-label="Статьи"><h2 class="jr-list-title">Начните с полезного</h2>'
         '<div class="jr-discovery" role="search" aria-label="Поиск материалов журнала">'
-        '<label for="jr-article-search">Поиск по статьям</label>'
+        '<label for="jr-article-search">Поиск по статьям на этой странице</label>'
         '<input type="search" id="jr-article-search" maxlength="100" autocomplete="off"'
         ' placeholder="Например, собеседование или навыки">'
         f'<div class="jr-category-filters" role="group" aria-label="Темы материалов">{buttons}</div>'
-        f'<p class="jr-results-count" id="jr-results-count" role="status" aria-live="polite">Материалов: {len(articles)}</p>'
+        f'<p class="jr-results-count" id="jr-results-count" role="status" aria-live="polite">Материалов на странице: {len(page_items)}</p>'
         '</div>'
         f'<div class="jr-grid" id="jr-article-grid">{cards}</div>'
         '<div id="jr-no-results" class="jr-no-results" hidden><strong>По вашему запросу материалов нет</strong>'
         '<p>Попробуйте другую тему или уберите слова из поиска.</p>'
-        '<button type="button" id="jr-reset-search">Показать все материалы</button></div>'
+        '<button type="button" id="jr-reset-search">Показать все материалы страницы</button></div>'
+        + pagination +
         '</section>'
-        '<aside class="jr-path-promo"><h2>Профессиональный навигатор</h2><p>Отраслевые новости, обучение и анонсы мероприятий — в отдельных разделах.</p><a class="jr-primary" href="/journal/guide/overview">Открыть навигатор →</a><a class="jr-secondary" href="/journal/guide/personal">Моя подборка и закладки →</a></aside>'
+        '<aside class="jr-path-promo"><h2>Профессиональный навигатор</h2><p>Отраслевые новости, обучение и анонсы мероприятий — в отдельных разделах.</p><a class="jr-primary" href="/journal/guide/overview">Открыть навигатор →</a><a class="jr-secondary" href="/journal/guide/personal">Моя подборка и закладки →</a><a class="jr-secondary" href="/community/author-articles">Стать автором журнала →</a></aside>'
         '<aside class="jr-path-promo" aria-labelledby="jr-path-promo-heading">'
         '<span class="jr-kicker">НЕ ЗНАЕТЕ, С ЧЕГО НАЧАТЬ?</span>'
         '<h2 id="jr-path-promo-heading">Выберите цель — материалы уже собраны по шагам</h2>'
@@ -162,7 +197,7 @@ def journal_index(articles: list[dict] | None = None) -> HTMLResponse:
     )
     return HTMLResponse(_layout("Журнал: работа и новые возможности после 50",
                                "Практические статьи СТАЖНО о профессиональном опыте, работе, проектах и безопасности.",
-                               "/journal", body), headers={"Cache-Control": "public, max-age=300"})
+                               catalog_page_path("/journal", page), body), headers={"Cache-Control": "no-store"})
 
 
 def journal_article(
@@ -184,7 +219,7 @@ def journal_article(
         sections.append('<section>' + content + '</section>')
     related_items = sorted(
         (item for item in articles if item["slug"] != slug),
-        key=lambda item: (item["category"] != article["category"], articles.index(item)),
+        key=lambda item: item["category"] != article["category"],
     )[:2]
     related_cards = "".join(_article_card(item) for item in related_items)
     from .public_discovery import related_jobs
@@ -200,6 +235,8 @@ def journal_article(
     )
     from .journal_guide import editorial_facts, date_label, save_button
     published_date = str(article.get("published_at") or PUBLISHED)[:10]
+    byline = ('<a href="/people/' + _e(article["author_public_id"]) + '">' + _e(article["author_public_name"]) + "</a> · Автор сообщества"
+              if article.get("author_public_id") else "Редакция СТАЖНО")
     article_body = (
         '<div class="jr-breadcrumb"><a href="/">Главная</a>'
         '<span aria-hidden="true">/</span><a href="/journal">Журнал</a>'
@@ -208,7 +245,7 @@ def journal_article(
         f'<header><span class="jr-kicker">{_e(article["category"])}</span>'
         f'<h1>{_e(article["title"])}</h1>'
         f'<p class="jr-lead">{_e(article["description"])}</p>'
-        f'<p class="jr-meta">Редакция СТАЖНО · <time datetime="{_e(published_date)}">{_e(date_label(published_date))}</time>'
+        f'<p class="jr-meta">{byline} · <time datetime="{_e(published_date)}">{_e(date_label(published_date))}</time>'
         f' · {_e(article["read"])} чтения</p></header>'
         + editorial_facts(article) + "".join(sections) + '</article>'
         '<aside class="jr-aside"><h2>Следующий шаг</h2>'
@@ -232,7 +269,7 @@ def journal_article(
         '<p class="jr-back"><a href="/journal/paths">Маршруты чтения</a> · '
         '<a href="/journal">← Все статьи журнала</a></p>'
     )
-    cache_control = "no-store" if jobs is not None else "public, max-age=300"
+    cache_control = "no-store" if jobs is not None or article.get("author_public_id") else "public, max-age=300"
     return HTMLResponse(_layout(article["title"], article["description"],
                                "/journal/" + slug, article_body),
                         headers={"Cache-Control": cache_control})
@@ -252,7 +289,7 @@ def journal_highlights(request: Request) -> dict:
 def journal_renderer_sha256() -> str:
     """Identify the two fixed renderers without exposing code or local paths."""
     digest = hashlib.sha256(b"stazhno-journal-renderer-v1\0")
-    for name in ("journal.py", "journal_paths.py", "journal_guide.py", "public_discovery.py", "vacancy_pages.py"):
+    for name in ("journal.py", "journal_paths.py", "journal_guide.py", "community_author.py", "public_discovery.py", "vacancy_pages.py"):
         payload = Path(__file__).with_name(name).read_bytes()
         digest.update(name.encode("ascii") + b"\0" + len(payload).to_bytes(8, "big") + payload)
     return digest.hexdigest()
@@ -266,11 +303,14 @@ def journal_manifest(request: Request) -> dict:
     the public JS/CSS bytes are checked separately by the release probe.
     """
     articles = _catalog(request)
-    pages = {"/journal": hashlib.sha256(journal_index(articles).body).hexdigest()}
+    pages = {catalog_page_path("/journal", page): hashlib.sha256(journal_index(articles, page).body).hexdigest()
+             for page in range(1, catalog_page_count(len(articles)) + 1)}
     from .journal_paths import path_detail, paths_index, visible_paths
-    from .journal_guide import SECTIONS, guide_page
+    from .journal_guide import SECTIONS, guide_page, guide_page_count
     for section in SECTIONS:
-        pages["/journal/guide/" + section] = hashlib.sha256(guide_page(section, articles).body).hexdigest()
+        for page in range(1, guide_page_count(section, articles) + 1):
+            path = catalog_page_path("/journal/guide/" + section, page)
+            pages[path] = hashlib.sha256(guide_page(section, articles, page).body).hexdigest()
     pages["/journal/paths"] = hashlib.sha256(paths_index(articles).body).hexdigest()
     for path in visible_paths(articles):
         pages["/journal/paths/" + path["slug"]] = hashlib.sha256(
@@ -344,12 +384,18 @@ def install_journal_routes(app: FastAPI) -> None:
     def index_http(request: Request):
         return journal_index(_catalog(request))
 
+    def index_page_http(page: int, request: Request):
+        if page < 2:
+            raise HTTPException(404, "Страница каталога не найдена")
+        return journal_index(_catalog(request), page)
+
     def article_http(slug: str, request: Request):
         return journal_article(slug, _catalog(request), _public_jobs(request))
 
     app.add_api_route("/robots.txt", journal_robots, methods=["GET"], include_in_schema=False)
     app.add_api_route("/sitemap.xml", sitemap_http, methods=["GET"], include_in_schema=False)
     app.add_api_route("/journal", index_http, methods=["GET"], include_in_schema=False)
+    app.add_api_route("/journal/page/{page}", index_page_http, methods=["GET"], include_in_schema=False)
     app.add_api_route("/api/public/journal/highlights", journal_highlights, methods=["GET"], include_in_schema=False)
     app.add_api_route("/api/public/journal/manifest", journal_manifest, methods=["GET"], include_in_schema=False)
     from .journal_paths import paths_index, path_detail
@@ -367,7 +413,13 @@ def install_journal_routes(app: FastAPI) -> None:
     def guide_http(section: str, request: Request):
         return guide_page(section, _catalog(request))
 
+    def guide_page_http(section: str, page: int, request: Request):
+        if page < 2:
+            raise HTTPException(404, "Страница каталога не найдена")
+        return guide_page(section, _catalog(request), page)
+
     app.add_api_route("/journal/guide/{section}", guide_http, methods=["GET"], include_in_schema=False)
+    app.add_api_route("/journal/guide/{section}/page/{page}", guide_page_http, methods=["GET"], include_in_schema=False)
     app.add_api_route("/journal/{slug}", article_http, methods=["GET"], include_in_schema=False)
     from .journal_cms import install_journal_admin_routes
     install_journal_admin_routes(app)

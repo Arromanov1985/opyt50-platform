@@ -113,6 +113,12 @@ def sample(tmp_path):
                VALUES('portfolio-1',1,'portfolio-client','project','Test project','2020–2024',
                'Personal contribution','Test result','2026-01-03','2026-01-03')"""
         )
+        conn.execute(
+            """INSERT INTO community_author_articles(id,user_id,client_key,kind,title,description,body_text,
+               topics_json,status,consent_at,consent_version,profile_content_version,created_at,updated_at)
+               VALUES('author-test',1,'author-key','case','Test article','Test description','Test body',
+               '["education"]','pending','2026-01-02','test-consent',1,'2026-01-01','2026-01-02')"""
+        )
         conn.execute("INSERT INTO community_saved_entries VALUES(2,'z-parent','2026-01-03')")
         conn.execute("INSERT INTO community_discovery_preferences VALUES(2,'Test topic','','mentoring','rev-1','2026-01-03')")
         conn.execute("INSERT INTO community_feed_follows VALUES(2,1,'2026-01-01')")
@@ -140,6 +146,7 @@ def test_import_preserves_ids_consents_and_relations(target, sample):
     assert counts["community_opportunities"] == 1
     assert counts["community_group_memberships"] == counts["community_group_posts"] == 1
     assert counts["community_portfolio_entries"] == 1
+    assert counts["community_author_articles"] == 1
     assert counts["community_saved_entries"] == counts["community_discovery_preferences"] == 1
     assert counts["community_feed_follows"] == counts["community_feed_alert_reads"] == counts["community_feed_reports"] == 1
     with psycopg.connect(target) as conn:
@@ -168,6 +175,8 @@ def test_import_preserves_ids_consents_and_relations(target, sample):
         ).fetchone() == ("recommendation-1", 1, 6, "2026-01-01", "2026-01-02")
         assert conn.execute("SELECT user_id,group_slug FROM community_group_memberships").fetchone() == (1, "engineering")
         assert conn.execute("SELECT entry_id,group_slug FROM community_group_posts").fetchone() == ("z-parent", "engineering")
+        assert conn.execute("SELECT id,user_id,kind,status,consent_at FROM community_author_articles").fetchone() == (
+            "author-test", 1, "case", "pending", "2026-01-02")
     assert sample.read_bytes() == before
 
 

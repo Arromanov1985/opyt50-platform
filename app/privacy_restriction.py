@@ -39,7 +39,7 @@ def marketplace_action_restricted(db, user_id: int, method: str, path: str) -> b
         safety_action = (
             (method == "DELETE" and path == "/api/community/profile/publication")
             or (method == "DELETE" and len(path.split("/")) == 6
-                and path.split("/")[3] in {"portfolio", "reputation"}
+                and path.split("/")[3] in {"portfolio", "reputation", "author-articles"}
                 and path.endswith("/publication"))
             or (method == "DELETE" and len(path.split("/")) == 6
                 and path.split("/")[3] == "groups" and path.endswith("/membership"))
