@@ -1978,3 +1978,60 @@ def test_editorial_course_seed_is_editable_and_never_reseeded_after_hide(communi
     assert visitor.get("/academy").status_code == 200
     assert visitor.get("/api/public/journal/manifest").json()["academy_courses"] == {}
 
+
+
+def test_course_media_draft_isolation_and_publication_gate(community):
+    from copy import deepcopy
+    from app.academy_media_registry import reserve_media
+    app, clients, ids = community
+    first, second, admin, visitor = (clients[key] for key in ("first", "second", "admin", "visitor"))
+    publish(clients, "first")
+    publish(clients, "second")
+    url = "/api/community/courses"
+    first_course = mutate(first, "POST", url, {"client_key": str(uuid4())}).json()["course"]
+    second_course = mutate(second, "POST", url, {"client_key": str(uuid4())}).json()["course"]
+    own = url + "/" + first_course["slug"]
+    public = "/academy/" + first_course["slug"]
+    text = deepcopy(COURSE_DRAFT)
+    saved = mutate(first, "PUT", own, {**text, "expected_version": first_course["version"]})
+    assert saved.status_code == 200, saved.text
+    entry = saved.json()["course"]
+    pending = mutate(first, "POST", own + "/submit",
+                     {"expected_version": entry["version"], "publish_consent": True}).json()["course"]
+    reviewed = mutate(admin, "PATCH", "/api/admin/community/courses/" + first_course["slug"],
+                      {"expected_version": pending["version"], "decision": "approve"})
+    assert reviewed.status_code == 200, reviewed.text
+    entry = first.get(own).json()["course"]
+    with database(app.state.db_path) as db:
+        own_file = reserve_media(db, {"id": ids["first"], "role": "candidate"},
+                                 first_course["slug"], entry["version"], "image/png", 100)
+        foreign = reserve_media(db, {"id": ids["second"], "role": "candidate"},
+                                second_course["slug"], second_course["version"], "image/png", 100)
+    metadata = first.get(own).json()["course"]["media_files"]
+    assert [row["id"] for row in metadata] == [own_file.id.hex]
+    assert "object_key" not in metadata[0] and "sha256" not in metadata[0]
+    data = deepcopy(text)
+    block = {"file_id": foreign.id.hex, "caption": "Схема", "description": "Учебная таблица", "transcript": ""}
+    data["lessons"][0]["media"] = [block]
+    assert mutate(first, "PUT", own, {**data, "expected_version": entry["version"]}).status_code == 422
+    block["file_id"] = own_file.id.hex
+    saved = mutate(first, "PUT", own, {**data, "expected_version": entry["version"]})
+    assert saved.status_code == 200, saved.text
+    changed = saved.json()["course"]
+    assert changed["draft"]["lessons"][0]["media"] == [block]
+    assert any("мультимедиа" in issue for issue in changed["issues"])
+    assert changed["has_publication"]
+    assert admin.get(own).json()["course"]["media_files"] == []
+    assert second.get(own).status_code == 404
+    assert visitor.get(public + "/first-lesson").status_code == 200
+    assert own_file.id.hex not in visitor.get(public + "/first-lesson").text
+    with database(app.state.db_path) as db:
+        db.execute("UPDATE academy_media SET state='clean',sha256=? WHERE id=?",
+                   ("a"*64, own_file.id.hex))
+    assert mutate(first, "POST", own + "/submit",
+                  {"expected_version": changed["version"], "publish_consent": True}).status_code == 422
+    data["lessons"][0].pop("media")
+    removed = mutate(first, "PUT", own, {**data, "expected_version": changed["version"]})
+    assert removed.status_code == 200 and not removed.json()["course"]["issues"]
+    assert removed.json()["course"]["draft"] == text
+    assert removed.json()["course"]["media_files"][0]["id"] == own_file.id.hex

@@ -74,6 +74,32 @@ def upload_reserved(reservation: Reservation, stream, *, storage, private_bucket
                         expected_bytes=reservation.byte_count)
 
 
+def media_ids(draft: dict) -> set[str]:
+    return {block["file_id"] for lesson in draft.get("lessons", [])
+            for block in lesson.get("media", [])}
+
+
+def course_media_metadata(db, course_slug: str, draft: dict | None = None) -> list[dict]:
+    """Metadata only, never a storage key, checksum, signed URL or binary."""
+    selected = None if draft is None else media_ids(draft)
+    rows = db.execute(
+        """SELECT id,kind,content_type,byte_count,state FROM academy_media
+           WHERE course_slug=? ORDER BY created_at,id""", (course_slug,)
+    ).fetchall()
+    return [dict(row) for row in rows if selected is None or row["id"] in selected]
+
+
+def validate_media_references(db, course_slug: str, draft: dict) -> None:
+    wanted = media_ids(draft)
+    if not wanted:
+        return
+    available = {row["id"] for row in course_media_metadata(db, course_slug)
+                 if row["state"] != "purge_pending"}
+    if not wanted <= available:
+        # Do not disclose whether a foreign or missing file exists.
+        raise HTTPException(422, "Учебный файл недоступен для этого курса")
+
+
 def record_staged(db, reservation: Reservation, media: StagedMedia) -> None:
     """Internal completion, never approves a file for reading/publication."""
     from .community import _now

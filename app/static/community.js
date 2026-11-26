@@ -1114,7 +1114,7 @@
   const studioEditable=()=>studio.entry?.can_edit&&!studio.entry?.restricted;
   const studioClone=value=>JSON.parse(JSON.stringify(value));
   const newStudioQuestion=()=>({text:'',options:['','',''],correct:null,feedback:''});
-  const newStudioLesson=()=>({slug:'lesson-'+crypto.randomUUID(),title:'',minutes:10,goal:'',sections:[['','']],example:'',practice:'',questions:[newStudioQuestion()]});
+  const newStudioLesson=()=>({slug:'lesson-'+crypto.randomUUID(),title:'',minutes:10,goal:'',sections:[['','']],example:'',practice:'',questions:[newStudioQuestion()],media:[]});
   function studioField(label,path,value,{area=false,max=600,rows=3,help='',type='text',placeholder=''}={}){
     const id='studio-'+path.replaceAll('.','-'),attr='id="'+id+'" data-studio-path="'+path+'" '+(type==='number'?'type="number" min="1" max="180"':'maxlength="'+max+'"')+' placeholder="'+esc(placeholder)+'"';
     return '<div class="studio-field"><label for="'+id+'">'+esc(label)+'</label>'+
@@ -1167,6 +1167,37 @@
       '<div class="studio-field"><label for="studio-outcomes">Результаты обучения</label><p class="help">Один результат на строку, до 12 строк. Например: «Составлять простой отчёт в таблице».</p><textarea id="studio-outcomes" data-studio-list="outcomes" rows="5" maxlength="6000">'+esc(d.outcomes.join('\n'))+'</textarea></div>'+
       '<div class="actions">'+studioButton('next','Перейти к урокам →','primary')+'</div></section>';
   }
+  const studioMediaKinds={image:'Изображение',audio:'Аудио',video:'Видео',document:'Документ',presentation:'Презентация'};
+  const studioMediaStates={reserved:'Ожидает загрузки',pending:'На проверке',clean:'Проверен',rejected:'Не прошёл проверку',failed:'Ошибка проверки',purge_pending:'Удаляется'};
+  function studioMediaLabel(file){
+    return (studioMediaKinds[file.kind]||'Файл')+' · '+(file.byte_count/1048576).toFixed(2)+' МиБ · '+(studioMediaStates[file.state]||'Недоступен');
+  }
+  function studioMediaEditor(lesson,prefix){
+    const blocks=lesson.media||[];
+    const files=studio.entry.media_files||[];
+    const available=files.filter(file=>file.state!=='purge_pending'&&!blocks.some(block=>block.file_id===file.id));
+    const cards=blocks.map((block,i)=>{
+      const file=files.find(item=>item.id===block.file_id),p=prefix+'.media.'+i;
+      return '<section class="studio-block"><div class="studio-side-heading"><h4>Материал '+(i+1)+'</h4><div class="studio-small-actions">'+
+        studioButton('media-up','↑','secondary','data-index="'+i+'" aria-label="Переместить материал выше" '+(i===0?'disabled':''))+
+        studioButton('media-down','↓','secondary','data-index="'+i+'" aria-label="Переместить материал ниже" '+(i===blocks.length-1?'disabled':''))+
+        studioButton('remove-media','Убрать из урока','secondary','data-index="'+i+'"')+'</div></div><p class="help">'+esc(file?studioMediaLabel(file):'Файл недоступен')+'</p>'+
+        studioField('Название материала',p+'.caption',block.caption,{max:180})+
+        studioField('Описание / альтернативный текст',p+'.description',block.description,{area:true,max:1000,help:'Объясните, что показывает материал. Это важно для доступности.'})+
+        studioField('Расшифровка или текстовое содержание',p+'.transcript',block.transcript,{area:true,max:12000,rows:5,help:'Для аудио и видео подготовьте текстовую расшифровку.'})+'</section>';
+    }).join('');
+    return '<h3>Учебные файлы</h3><p class="notice warning">Загрузка и публикация файлов пока не подключены. Можно подготовить расположение и описание материалов из реестра курса.</p>'+
+      cards+(available.length&&blocks.length<12?'<div class="studio-field"><label for="studio-media-picker">Выберите файл курса</label><select id="studio-media-picker">'+available.map(file=>'<option value="'+esc(file.id)+'">'+esc(studioMediaLabel(file)+' · '+file.id.slice(0,8))+'</option>').join('')+'</select></div>'+studioButton('add-media','+ Добавить материал'):'<p class="help">'+(blocks.length>=12?'До 12 материалов на урок.':'Нет дополнительных файлов в реестре.')+'</p>');
+  }
+  function studioMediaPreview(lesson){
+    const files=studio.entry.media_files||[];
+    if(!(lesson.media||[]).length)return '';
+    return '<h3>Учебные материалы</h3>'+lesson.media.map(block=>{
+      const file=files.find(item=>item.id===block.file_id);
+      return '<section class="studio-block"><h4>'+esc(block.caption||'Материал без названия')+'</h4><p class="help">'+esc(file?studioMediaLabel(file):'Файл недоступен')+'</p><p class="multiline">'+esc(block.description)+'</p>'+
+        (block.transcript?'<details><summary>Текст материала</summary><p class="multiline">'+esc(block.transcript)+'</p></details>':'')+'<p class="help">Воспроизведение пока недоступно.</p></section>';
+    }).join('');
+  }
   function studioLessons(){
     const lessons=studio.draft.lessons,lesson=lessons[studio.lesson];
     const sidebar='<aside class="panel studio-lessons-nav"><div class="studio-side-heading"><h2>Программа</h2>'+studioButton('add-lesson','+ Урок','secondary',lessons.length>=30?'disabled':'')+'</div>'+
@@ -1182,7 +1213,8 @@
         lesson.sections.map((section,index)=>'<section class="studio-block"><div class="studio-side-heading"><h4>Блок '+(index+1)+'</h4>'+studioButton('remove-block','Удалить','secondary','data-index="'+index+'"')+'</div>'+
           studioField('Заголовок блока',prefix+'.sections.'+index+'.0',section[0],{max:4000,placeholder:'Название темы'})+
           '<div class="studio-field"><label for="studio-body-'+index+'">Текст</label><textarea id="studio-body-'+index+'" rows="6" data-studio-block="'+index+'" maxlength="32000">'+esc(section.slice(1).join('\n\n'))+'</textarea><p class="help">Пустая строка отделяет абзацы (до восьми на блок).</p></div></section>').join('')+
-        studioButton('add-block','+ Добавить текстовый блок','secondary',lesson.sections.length>=12?'disabled':'');
+        studioButton('add-block','+ Добавить текстовый блок','secondary',lesson.sections.length>=12?'disabled':'')+
+        studioMediaEditor(lesson,prefix);
     }else if(studio.lessonStep==='practice'){
       body=studioField('Практический пример',prefix+'.example',lesson.example,{area:true,rows:6,max:4000,help:'Покажите образец решения или конкретную ситуацию.'})+
         studioField('Самостоятельное задание',prefix+'.practice',lesson.practice,{area:true,rows:6,max:4000,help:'Опишите, что выполнить и как проверить результат. Не запрашивайте личные данные.'});
@@ -1207,7 +1239,7 @@
     return '<section class="panel studio-panel"><span class="eyebrow">ПРЕДПРОСМОТР · НЕ ОПУБЛИКОВАНО</span><h2>'+esc(d.title||'Курс без названия')+'</h2><p>'+esc(d.description||'Описание ещё не заполнено')+'</p><p class="help">'+esc(d.audience)+'</p><h3>Результаты обучения</h3><ul>'+d.outcomes.filter(Boolean).map(item=>'<li>'+esc(item)+'</li>').join('')+'</ul><h3>Программа</h3><ol>'+d.lessons.map((item,index)=>'<li>'+studioButton('preview-lesson',esc(item.title||'Урок '+(index+1))+' · '+item.minutes+' мин.',index===studio.lesson?'primary':'secondary','data-index="'+index+'"')+'</li>').join('')+'</ol></section>'+
       (lesson?'<section class="panel studio-panel studio-preview"><span class="eyebrow">УРОК '+(studio.lesson+1)+'</span><h2>'+esc(lesson.title||'Урок без названия')+'</h2><p>'+esc(lesson.goal)+'</p>'+
       lesson.sections.map(section=>'<section><h3>'+esc(section[0]||'Заголовок блока')+'</h3>'+section.slice(1).map(p=>'<p class="multiline">'+esc(p)+'</p>').join('')+'</section>').join('')+
-      '<h3>Практический пример</h3><div class="studio-example multiline">'+esc(lesson.example)+'</div><h3>Попробуйте сами</h3><p class="multiline">'+esc(lesson.practice)+'</p><h3>Вопросы для самопроверки</h3>'+
+      studioMediaPreview(lesson)+'<h3>Практический пример</h3><div class="studio-example multiline">'+esc(lesson.example)+'</div><h3>Попробуйте сами</h3><p class="multiline">'+esc(lesson.practice)+'</p><h3>Вопросы для самопроверки</h3>'+
       lesson.questions.map((q,index)=>'<section class="studio-block"><h4>'+(index+1)+'. '+esc(q.text)+'</h4><ul>'+q.options.map((value,i)=>'<li>'+esc(value)+(q.correct===i?' <strong>✓ Правильный ответ</strong>':'')+'</li>').join('')+'</ul><p class="help">'+esc(q.feedback)+'</p></section>').join('')+'</section>':'')+
       '<div class="actions">'+studioButton('next','К проверке готовности →','primary')+'</div>';
   }
@@ -1301,6 +1333,19 @@
         const to=studio.lesson+(action==='move-up'?-1:1);
         if(to>=0&&to<studio.draft.lessons.length){studio.draft.lessons.splice(studio.lesson,1);studio.draft.lessons.splice(to,0,lesson);studio.lesson=to;structural();}
       }else if(action==='remove-lesson')confirmAction('Удалить урок?','Все материалы, задания и вопросы этого урока будут удалены из черновика.','Удалить',async()=>{studio.draft.lessons.splice(studio.lesson,1);studio.lesson=Math.max(0,Math.min(studio.lesson,studio.draft.lessons.length-1));structural();});
+      else if(action==='add-media'&&lesson){
+        const id=$('#studio-media-picker')?.value;
+        const files=studio.entry.media_files||[];
+        lesson.media=lesson.media||[];
+        if(id&&lesson.media.length<12&&files.some(file=>file.id===id&&file.state!=='purge_pending')&&!lesson.media.some(block=>block.file_id===id)){
+          lesson.media.push({file_id:id,caption:'',description:'',transcript:''});structural();
+        }
+      }
+      else if(action==='remove-media'&&lesson?.media&&index>=0&&index<lesson.media.length)confirmAction('Убрать учебный материал?','Связь с уроком будет удалена из черновика. Файл останется в реестре курса.','Убрать',async()=>{lesson.media.splice(index,1);structural();});
+      else if((action==='media-up'||action==='media-down')&&lesson?.media&&index>=0&&index<lesson.media.length){
+        const to=index+(action==='media-up'?-1:1);
+        if(to>=0&&to<lesson.media.length){const [block]=lesson.media.splice(index,1);lesson.media.splice(to,0,block);structural();}
+      }
       else if(action==='add-block'&&lesson.sections.length<12){lesson.sections.push(['','']);structural();}
       else if(action==='remove-block')confirmAction('Удалить текстовый блок?','Текст будет удалён из черновика.','Удалить',async()=>{lesson.sections.splice(index,1);structural();});
       else if(action==='add-question'&&lesson.questions.length<10){lesson.questions.push(newStudioQuestion());structural();}
