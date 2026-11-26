@@ -685,7 +685,8 @@ def install_community_routes(app) -> None:
     @app.get("/api/community/profile")
     def own_profile(user: dict = Depends(community_user), db=Depends(get_connection)):
         allowed(user, "candidate")
-        return {"profile": _own_profile(_profile(db, user["id"]))}
+        return {"profile": _own_profile(_profile(db, user["id"])),
+                "public_visible": _is_published(db, user["id"])}
 
     @app.put("/api/community/profile")
     def save_profile(data: ProfileInput, user: dict = Depends(community_user), db=Depends(get_connection)):
