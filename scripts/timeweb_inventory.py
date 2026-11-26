@@ -114,8 +114,8 @@ def inventory(fetch, explicit_project=""):
                         result[dest] = value
     except InventoryError:
         pass
-    if not result["target_app_found"]:
-        return result
+    # Project selection has already been validated. App lookup and project
+    # resource permissions are independent; retain partial diagnostics.
     for label, suffix, key, presence in (
         ("s3_http", "buckets", "buckets", "s3_resources_present"),
         ("servers_http", "servers", "servers", "server_resources_present"),

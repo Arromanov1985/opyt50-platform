@@ -57,7 +57,9 @@ def test_incomplete_projects_or_duplicate_app_do_not_select_implicitly():
     report, calls = run({"/api/v1/projects": (200, {**PROJECTS, "meta": {"total": 2}})})
     assert not complete(report) and len(calls) == 1
     report, calls = run({"/api/v1/apps": (200, {"apps": APPS["apps"] * 2, "meta": {"total": 2}})})
-    assert not complete(report) and len(calls) == 2
+    assert not complete(report) and len(calls) == 4
+    assert report["s3_resources_present"] is False
+    assert report["server_resources_present"] is True
 
 
 def test_invalid_resource_schema_is_unknown():
@@ -73,3 +75,14 @@ def test_unsupported_app_fields_are_not_printed():
     assert complete(report)
     assert all(report[key] is None for key in
                ("app_cpu_cores", "app_ram_mb", "app_auto_deploy", "app_branch_main"))
+
+
+def test_app_access_denial_does_not_hide_project_inventory():
+    report, calls = run({"/api/v1/apps": (403, None)})
+    assert not complete(report)
+    assert report["apps_http"] == 403
+    assert report["target_app_found"] is False
+    assert report["s3_http"] == report["servers_http"] == 200
+    assert report["s3_resources_present"] is False
+    assert report["server_resources_present"] is True
+    assert len(calls) == 4
