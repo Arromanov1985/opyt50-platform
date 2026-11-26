@@ -39,14 +39,16 @@ def install_group_routes(app, community_user, throttle, get_connection, reader, 
 
     @app.get("/api/community/groups")
     def list_groups(user: dict = Depends(community_user), db=Depends(get_connection)):
-        reader(user, db)
+        active = _active_account(db, user["id"])
+        if active or user["role"] != "candidate":
+            reader(user, db)
         memberships = db.execute(
             "SELECT group_slug FROM community_group_memberships WHERE user_id=?", (user["id"],),
         ).fetchall()
         joined = {row["group_slug"] for row in memberships}
         return _private({"groups": [{**group_info(slug), "joined": slug in joined}
-                                    for slug in GROUPS],
-                         "can_join": user["role"] == "candidate"})
+                                    for slug in GROUPS if active or slug in joined],
+                         "can_join": active and user["role"] == "candidate"})
 
     @app.put("/api/community/groups/{slug}/membership")
     def join(slug: str, user: dict = Depends(community_user), db=Depends(get_connection)):
