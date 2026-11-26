@@ -38,8 +38,8 @@ def _layout(title: str, description: str, path: str, body: str) -> str:
         f"<meta property=\"og:title\" content=\"{_e(title)}\">"
         f"<meta property=\"og:description\" content=\"{_e(description)}\">"
         f"<meta property=\"og:url\" content=\"{_e(canonical)}\">"
-        "<link rel=\"stylesheet\" href=\"/static/journal.css?v=7\">"
-        "<script src=\"/static/journal.js?v=8\" defer></script>"
+        "<link rel=\"stylesheet\" href=\"/static/journal.css?v=8\">"
+        "<script src=\"/static/journal.js?v=9\" defer></script>"
         "</head><body class=\"jr-page\">"
         "<a class=\"jr-skip\" href=\"#jr-content\">К основному содержанию</a>"
         "<header class=\"jr-header\"><div class=\"jr-wrap jr-top\">"
@@ -47,7 +47,7 @@ def _layout(title: str, description: str, path: str, body: str) -> str:
         "<img src=\"/static/brand-symbol.svg\" alt=\"\" width=\"36\" height=\"36\">"
         "стажно<span>.</span>ру</a>"
         "<nav class=\"jr-nav\" aria-label=\"Основное меню\">"
-        "<a href=\"/journal\">Журнал</a><a href=\"/community\">Сообщество</a><a href=\"/employers\">Работодатели</a><a href=\"/#jobs\">Вакансии</a>"
+        "<a href=\"/journal\">Журнал</a><a href=\"/academy\">Обучение</a><a href=\"/community\">Сообщество</a><a href=\"/employers\">Работодатели</a><a href=\"/#jobs\">Вакансии</a>"
         "<a href=\"/#candidate-path\">Соискателям</a></nav>"
         "<button class=\"jr-text-toggle\" id=\"reading-mode-toggle\" aria-pressed=\"false\" "
         "type=\"button\" aria-label=\"Включить крупный текст\">Аа <span>Крупный текст</span></button>"
@@ -144,7 +144,7 @@ def journal_index(articles: list[dict] | None = None) -> HTMLResponse:
         '<p>Попробуйте другую тему или уберите слова из поиска.</p>'
         '<button type="button" id="jr-reset-search">Показать все материалы</button></div>'
         '</section>'
-        '<aside class="jr-path-promo"><h2>Профессиональный навигатор</h2><p>Отраслевые новости, обучение и анонсы мероприятий — в отдельных разделах.</p><a class="jr-primary" href="/journal/guide/overview">Открыть навигатор →</a><a class="jr-secondary" href="/journal/guide/personal">Моя подборка и закладки →</a><a class="jr-secondary" href="/community/author-articles">Стать автором журнала →</a></aside>'
+        '<aside class="jr-path-promo"><h2>Профессиональный навигатор</h2><p>Отраслевые новости, обучение и анонсы мероприятий — в отдельных разделах.</p><a class="jr-primary" href="/journal/guide/overview">Открыть навигатор →</a><a class="jr-secondary" href="/journal/guide/personal">Моя подборка и закладки →</a><a class="jr-secondary" href="/community/author-articles">Стать автором журнала →</a><a class="jr-secondary" href="/academy">Бесплатные курсы Академии →</a></aside>'
         '<aside class="jr-path-promo" aria-labelledby="jr-path-promo-heading">'
         '<span class="jr-kicker">НЕ ЗНАЕТЕ, С ЧЕГО НАЧАТЬ?</span>'
         '<h2 id="jr-path-promo-heading">Выберите цель — материалы уже собраны по шагам</h2>'
@@ -254,7 +254,7 @@ def journal_highlights(request: Request) -> dict:
 def journal_renderer_sha256() -> str:
     """Identify the two fixed renderers without exposing code or local paths."""
     digest = hashlib.sha256(b"stazhno-journal-renderer-v1\0")
-    for name in ("journal.py", "journal_paths.py", "journal_guide.py", "community_author.py", "public_discovery.py", "vacancy_pages.py"):
+    for name in ("journal.py", "journal_paths.py", "journal_guide.py", "community_author.py", "academy.py", "academy_content.py", "public_discovery.py", "vacancy_pages.py"):
         payload = Path(__file__).with_name(name).read_bytes()
         digest.update(name.encode("ascii") + b"\0" + len(payload).to_bytes(8, "big") + payload)
     return digest.hexdigest()
@@ -273,6 +273,8 @@ def journal_manifest(request: Request) -> dict:
     from .journal_guide import SECTIONS, guide_page
     for section in SECTIONS:
         pages["/journal/guide/" + section] = hashlib.sha256(guide_page(section, articles).body).hexdigest()
+    from .academy import academy_pages
+    pages.update({path: hashlib.sha256(page.body).hexdigest() for path, page in academy_pages().items()})
     pages["/journal/paths"] = hashlib.sha256(paths_index(articles).body).hexdigest()
     for path in visible_paths(articles):
         pages["/journal/paths/" + path["slug"]] = hashlib.sha256(
@@ -303,10 +305,12 @@ def journal_sitemap(
         articles = ARTICLES
     from .journal_paths import visible_paths
     from .journal_guide import GUIDE_PATHS
+    from .academy import academy_pages
     paths = (
         ["/", "/employers", "/journal"]
         + ["/journal/" + article["slug"] for article in articles]
         + list(GUIDE_PATHS)
+        + list(academy_pages())
         + ["/journal/paths"]
         + ["/journal/paths/" + path["slug"] for path in visible_paths(articles)]
         + (public_paths or [])
@@ -373,3 +377,5 @@ def install_journal_routes(app: FastAPI) -> None:
     app.add_api_route("/journal/{slug}", article_http, methods=["GET"], include_in_schema=False)
     from .journal_cms import install_journal_admin_routes
     install_journal_admin_routes(app)
+    from .academy import install_academy_routes
+    install_academy_routes(app)

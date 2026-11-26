@@ -252,6 +252,9 @@ def guide_page(section: str, articles: list[dict]) -> HTMLResponse:
             body += ('<p class="jr-analytics-note">Анонсы упорядочены по дате. Уточняйте актуальность, время, '
                      'стоимость и условия участия у организатора. СТАЖНО не принимает заявки и оплату.</p>')
         items = materials(section, articles)
+        if section == 'learning':
+            body += ('<aside class="jr-path-promo"><h2>Академия СТАЖНО</h2><p>Бесплатные последовательные курсы, практические задания и самопроверка.</p>'
+                     '<a class="jr-primary" href="/academy">Выбрать курс →</a></aside>')
         body += '<section class="jr-list">' + (_events_section(items) if section == 'events' else _cards(items, section)) + '</section>'
     body += ('<aside class="jr-bottom"><h2>Продолжите профессиональное развитие</h2>'
              '<p>Выберите учебный маршрут или найдите коллег для обмена практическим опытом.</p>'

@@ -246,6 +246,8 @@ def probe_public_journal_pages():
     from app.journal import ARTICLES, journal_index, journal_article, journal_renderer_sha256
     from app.journal_paths import PATHS, path_detail, paths_index, visible_paths
     from app.journal_guide import GUIDE_PATHS, SECTIONS, guide_page
+    from app.academy import academy_pages
+    academy = academy_pages()
 
     route_urls = {"/journal/paths/" + item["slug"] for item in PATHS}
 
@@ -263,6 +265,7 @@ def probe_public_journal_pages():
     })
     static_expected.update({"/journal/guide/" + section: hashlib.sha256(guide_page(section, ARTICLES).body).hexdigest()
                             for section in SECTIONS})
+    static_expected.update({path: hashlib.sha256(page.body).hexdigest() for path, page in academy.items()})
     expected = static_expected
     source = "seed-catalog"
     manifest_result = "unavailable"
@@ -286,7 +289,7 @@ def probe_public_journal_pages():
         if not isinstance(pages, dict) or not pages:
             raise ValueError("Invalid editorial manifest")
         if not all(
-            path in {"/journal", "/journal/paths", "/sitemap.xml"} or path in GUIDE_PATHS
+            path in {"/journal", "/journal/paths", "/sitemap.xml"} or path in GUIDE_PATHS or path in academy
             or path in route_urls or _journal_article_slug(path)
             for path in pages
         ) or not all(
@@ -300,7 +303,7 @@ def probe_public_journal_pages():
             "/journal/paths/" + item["slug"] for item in PATHS
             if any(slug in published_slugs for slug, _label in item["steps"])
         }
-        if not ({"/journal", "/journal/paths"} | set(GUIDE_PATHS)) <= pages.keys() or (
+        if not ({"/journal", "/journal/paths"} | set(GUIDE_PATHS) | set(academy)) <= pages.keys() or (
             route_urls.intersection(pages) != required_routes
         ):
             raise ValueError("Editorial manifest omitted or added a journey")
