@@ -38,8 +38,8 @@ def _layout(title: str, description: str, path: str, body: str) -> str:
         f"<meta property=\"og:title\" content=\"{_e(title)}\">"
         f"<meta property=\"og:description\" content=\"{_e(description)}\">"
         f"<meta property=\"og:url\" content=\"{_e(canonical)}\">"
-        "<link rel=\"stylesheet\" href=\"/static/journal.css?v=6\">"
-        "<script src=\"/static/journal.js?v=6\" defer></script>"
+        "<link rel=\"stylesheet\" href=\"/static/journal.css?v=7\">"
+        "<script src=\"/static/journal.js?v=7\" defer></script>"
         "</head><body class=\"jr-page\">"
         "<a class=\"jr-skip\" href=\"#jr-content\">К основному содержанию</a>"
         "<header class=\"jr-header\"><div class=\"jr-wrap jr-top\">"
@@ -144,7 +144,7 @@ def journal_index(articles: list[dict] | None = None) -> HTMLResponse:
         '<p>Попробуйте другую тему или уберите слова из поиска.</p>'
         '<button type="button" id="jr-reset-search">Показать все материалы</button></div>'
         '</section>'
-        '<aside class="jr-path-promo"><h2>Профессиональный навигатор</h2><p>Отраслевые новости, обучение и анонсы мероприятий — в отдельных разделах.</p><a class="jr-primary" href="/journal/guide/overview">Открыть навигатор →</a></aside>'
+        '<aside class="jr-path-promo"><h2>Профессиональный навигатор</h2><p>Отраслевые новости, обучение и анонсы мероприятий — в отдельных разделах.</p><a class="jr-primary" href="/journal/guide/overview">Открыть навигатор →</a><a class="jr-secondary" href="/journal/guide/personal">Моя подборка и закладки →</a></aside>'
         '<aside class="jr-path-promo" aria-labelledby="jr-path-promo-heading">'
         '<span class="jr-kicker">НЕ ЗНАЕТЕ, С ЧЕГО НАЧАТЬ?</span>'
         '<h2 id="jr-path-promo-heading">Выберите цель — материалы уже собраны по шагам</h2>'
@@ -198,7 +198,7 @@ def journal_article(
         f'<div class="jr-grid">{job_cards}</div></section>'
         if job_cards else ""
     )
-    from .journal_guide import editorial_facts, date_label
+    from .journal_guide import editorial_facts, date_label, save_button
     published_date = str(article.get("published_at") or PUBLISHED)[:10]
     article_body = (
         '<div class="jr-breadcrumb"><a href="/">Главная</a>'
@@ -212,6 +212,8 @@ def journal_article(
         f' · {_e(article["read"])} чтения</p></header>'
         + editorial_facts(article) + "".join(sections) + '</article>'
         '<aside class="jr-aside"><h2>Следующий шаг</h2>'
+        + save_button(slug) + '<p id="jr-reading-status" class="jr-results-count" role="status" aria-live="polite"></p>'
+        '<p><a href="/journal/guide/personal">Моя подборка и закладки</a></p>'
         '<p>Профессиональный профиль помогает показать навыки и условия работы.'
         ' Контакты не публикуются автоматически.</p>'
         + (

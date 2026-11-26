@@ -320,6 +320,71 @@ def exercise(browser, base, receipts_path):
             expect(admin.locator("body")).to_have_class(re.compile(r".*comfortable-view.*"))
             no_overflow(admin)
         capture(admin, "growth-report-mobile-large")
+        # Explicit local reading selections, bookmarks and calendar filtering.
+        page.set_viewport_size({"width": 390, "height": 844})
+        page.goto(base + "/journal/guide/personal", wait_until="networkidle")
+        expect(page.locator("#jr-personal-controls")).to_be_visible()
+        topic = page.locator('[data-jr-topic][value="technology"]')
+        topic.check()
+        material = page.locator('[data-jr-material="cifrovye-navyki-dlya-raboty"]')
+        expect(material).to_be_visible()
+        expect(page.locator('[data-jr-material="sobesedovanie-posle-50"]')).to_be_hidden()
+        assert page.evaluate("localStorage.getItem('stazhno-reading-topics-v1')") is None
+        page.locator("#jr-remember-topics").click()
+        material.locator("[data-jr-save]").click()
+        expect(material.locator("[data-jr-save]")).to_have_attribute("aria-pressed", "true")
+        page.reload(wait_until="networkidle")
+        expect(topic).to_be_checked()
+        expect(material.locator("[data-jr-save]")).to_have_attribute("aria-pressed", "true")
+        page.locator("#jr-personal-saved").check()
+        expect(page.locator("[data-jr-material]:visible")).to_have_count(1)
+        capture(page, "personal-reading-mobile")
+        material.locator("a.jr-card").click()
+        save = page.locator('[data-jr-save="cifrovye-navyki-dlya-raboty"]')
+        expect(save).to_have_attribute("aria-pressed", "true")
+        save.click()
+        expect(save).to_have_attribute("aria-pressed", "false")
+        page.goto(base + "/journal/guide/personal", wait_until="networkidle")
+        page.locator("#jr-personal-saved").check()
+        expect(page.locator("#jr-personal-empty")).to_be_visible()
+        page.once("dialog", lambda dialog: dialog.accept())
+        page.locator("#jr-clear-reading").click()
+        expect(topic).not_to_be_checked()
+        assert page.evaluate("localStorage.getItem('stazhno-reading-topics-v1')") is None
+        assert page.evaluate("localStorage.getItem('stazhno-reading-saved-v1')") is None
+        if page.locator("#reading-mode-toggle").get_attribute("aria-pressed") != "true":
+            page.locator("#reading-mode-toggle").click()
+        page.set_viewport_size({"width": 320, "height": 844})
+        capture(page, "personal-reading-mobile-large")
+        # Synthetic events exist only in the isolated test DB.
+        for slug, date, event_format in (("test-past-event", "2000-01-01", "offline"),
+                                         ("test-future-event", "2099-01-01", "online")):
+            payload = {
+                "slug": slug, "title": "Тестовое мероприятие " + slug,
+                "description": "Учебная проверка календаря профессиональных мероприятий.",
+                "category": "Обучение", "read": "3 минуты", "content_type": "event",
+                "event_date": date, "event_format": event_format, "source_name": "Тестовый организатор",
+                "body_text": ("## Первый раздел программы\nОписание учебного примера и целей мероприятия. "
+                              "Здесь нет действительного приглашения. Только тест.\n\n"
+                              "## Второй раздел программы\nОписание формата и условий вымышленного события. "
+                              "Этот материал создаётся только в изолированной базе тестирования."),
+            }
+            event = checked(admin.request.post(base + "/api/admin/journal", headers=HEADERS, data=payload))
+            checked(admin.request.post(base + "/api/admin/journal/" + slug + "/publish",
+                                       headers=HEADERS, data={"version": event["version"]}))
+        page.goto(base + "/journal/guide/events", wait_until="networkidle")
+        upcoming = page.locator('#jr-events-grid a[href="/journal/test-future-event"]')
+        past = page.locator('#jr-events-grid a[href="/journal/test-past-event"]')
+        expect(upcoming).to_be_visible()
+        expect(past).to_be_hidden()
+        page.locator("#jr-event-period").select_option("past")
+        expect(past).to_be_visible()
+        expect(upcoming).to_be_hidden()
+        page.locator("#jr-event-format").select_option("online")
+        expect(page.locator("#jr-event-empty")).to_be_visible()
+        page.locator("#jr-event-period").select_option("all")
+        expect(upcoming).to_be_visible()
+        capture(page, "event-calendar-mobile-large")
         assert not errors, "Uncaught browser errors: " + " | ".join(errors)
     except Exception:
         for name, active in (("visitor", page), ("admin", admin)):

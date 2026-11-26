@@ -59,6 +59,7 @@ class ArticleInput(BaseModel):
     source_url: str = Field(default='', max_length=1500)
     event_date: date | None = None
     event_format: Literal['online', 'offline', 'hybrid'] | None = None
+    topics: list[Literal['career', 'management', 'sales', 'engineering', 'technology', 'finance', 'operations', 'education', 'safety']] | None = Field(default=None, max_length=9)
 
 
 class ArticleCreate(ArticleInput):
@@ -152,6 +153,9 @@ def normalize_article(slug: str, data: ArticleInput) -> dict:
     }
     if data.content_type != "article":
         result["content_type"] = data.content_type
+    if data.topics is not None:
+        from .journal_guide import TOPICS
+        result["topics"] = [topic for topic in TOPICS if topic in data.topics]
     if name:
         result["source_name"] = name
     if url:
@@ -264,11 +268,13 @@ def install_journal_admin_routes(app: FastAPI) -> None:
         admin_only(user)
         row = _entry(db, slug)
         article = json.loads(row["draft_json"])
+        from .journal_guide import article_topics
         return {"article": {
             **_summary(row), "description": article["description"], "read": article["read"],
             "body_text": sections_to_text(article["sections"]),
             "source_name": article.get("source_name", ""), "source_url": article.get("source_url", ""),
             "event_date": article.get("event_date"), "event_format": article.get("event_format"),
+            "topics": article_topics(article),
         }}
 
     @app.post("/api/admin/journal", status_code=201)

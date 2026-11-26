@@ -97,3 +97,32 @@ body.comfortable-view .jr-results-count{font-size:1rem}
 .jr-prelaunch-inline{font-size:0.98rem;line-height:1.5;color:#3B634E}
 body.comfortable-view .jr-prelaunch-note,body.comfortable-view .jr-prelaunch-inline{font-size:1.15rem}
 @media(max-width:480px){.jr-prelaunch-note{padding:15px 16px;margin:16px 0}}
+
+
+/* Device-local reading workspace and calendar, usable on narrow screens. */
+.jr-personal-controls[hidden],.jr-event-controls[hidden],.jr-personal-card[hidden],.jr-save-button[hidden]{display:none!important}
+.jr-personal-controls,.jr-event-controls{margin:22px 0}
+.jr-topic-fieldset{min-width:0;border:1px solid #d3e3d7;border-radius:12px;padding:14px;margin:0 0 18px}
+.jr-topic-fieldset legend{font-size:1em;font-weight:700;padding:0 8px}
+.jr-topic-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
+.jr-topic-choice{display:flex!important;align-items:center;gap:10px;min-height:48px;min-width:0;padding:8px;line-height:1.4}
+.jr-topic-choice input{width:21px!important;height:21px!important;flex:none;padding:0;accent-color:#14664b;margin:0}
+.jr-personal-filters{display:flex;flex-wrap:wrap;align-items:flex-end;gap:18px;margin-bottom:18px}
+.jr-personal-filters>label{flex:1 1 180px;min-width:0}
+.jr-personal-filters select{display:block;width:100%;font:inherit;color:#19352e;background:white;border:1px solid #bfcfc4;border-radius:10px;min-height:46px;padding:9px;margin-top:5px}
+.jr-local-actions{display:flex;flex-wrap:wrap;gap:10px;margin:14px 0}
+.jr-save-button{font:inherit;font-weight:700;font-size:.92em;border:1px solid #b8d4c1;background:#f6fbf7;color:#17553e;border-radius:10px;padding:10px 14px;min-height:44px;cursor:pointer;max-width:100%;white-space:normal;overflow-wrap:anywhere}
+.jr-save-button[aria-pressed=true]{background:#14664b;border-color:#14664b;color:#fff}
+.jr-personal-card{min-width:0;display:flex;flex-direction:column;border:1px solid #dce8df;border-radius:19px;background:white;padding:0 0 16px}
+.jr-personal-card .jr-card{flex:1;min-height:0;border:0;box-shadow:none;background:transparent}
+.jr-personal-card .jr-topic-labels{font-size:.88em;margin:0 16px 12px;color:#526b5c;overflow-wrap:anywhere}
+.jr-personal-card>.jr-save-button{margin:auto 16px 0}
+.jr-aside>.jr-save-button{width:100%;margin:8px 0}
+.jr-aside #jr-reading-status:empty,#jr-reading-status:empty{display:none}
+.jr-category-filters a[aria-current=page]{font-weight:800;text-decoration:underline;text-underline-offset:5px}
+@media(max-width:780px){.jr-topic-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:480px){.jr-topic-grid{grid-template-columns:1fr}.jr-personal-filters,.jr-local-actions{display:grid;grid-template-columns:minmax(0,1fr);gap:12px}.jr-local-actions button{width:100%}}
+body.comfortable-view .jr-topic-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
+@media(max-width:620px){body.comfortable-view .jr-topic-grid{grid-template-columns:1fr}}
+/* Guide disclosures are on light backgrounds, unlike footer notes. */
+#jr-content .jr-analytics-note{color:#385648}

@@ -62,7 +62,7 @@ def test_cms_admin_auth_seed_and_assets(tmp_path: Path):
         assert panel.status_code == 200
         assert panel.headers["cache-control"] == "no-store"
         assert 'id="article-form"' in panel.text
-        assert 'href="/static/journal-admin.css?v=2"' in panel.text
+        assert 'href="/static/journal-admin.css?v=3"' in panel.text
         assert 'id="article-type"' in panel.text
         result = editor.get("/api/admin/journal")
         assert result.status_code == 200
@@ -245,4 +245,47 @@ def test_editorial_navigator_news_learning_events_use_only_published_versions(tm
             assert "https://stazhno.ru" + path in sitemap
         assert "test-editorial-event" not in sitemap
         assert "editor@cms.example.invalid" not in public.get(guide + "overview").text
+
+
+def test_personal_guide_uses_explicit_editorial_topics_and_published_catalog(tmp_path):
+    import hashlib
+    app = create_app(str(tmp_path / "personal-guide.db"))
+    with TestClient(app) as public, TestClient(app) as editor:
+        setup_admin(app, editor)
+        path = "/journal/guide/personal"
+        original = public.get(path)
+        assert original.status_code == 200 and original.headers["cache-control"] == "no-store"
+        assert 'data-jr-topic value="technology"' in original.text
+        assert 'data-jr-material="cifrovye-navyki-dlya-raboty"' in original.text
+        assert 'data-jr-kind="learning"' in original.text
+        assert 'data-jr-save="cifrovye-navyki-dlya-raboty"' in original.text
+        assert "не синхронизируются между устройствами" in original.text
+        seed = editor.get("/api/admin/journal/cifrovye-navyki-dlya-raboty").json()["article"]
+        assert seed["topics"] == ["technology", "education"]
+        payload = {**draft("test-topic-learning"), "content_type": "learning",
+                   "title": "Тестовое обучение работе с клиентами",
+                   "topics": ["sales", "technology", "sales"]}
+        assert request(editor, "POST", "/api/admin/journal", {**payload, "topics": ["unknown"]}).status_code == 422
+        assert request(editor, "POST", "/api/admin/journal", payload).status_code == 201
+        assert payload["title"] not in public.get(path).text
+        assert request(editor, "POST", "/api/admin/journal/test-topic-learning/publish",
+                       {"version": 1}).status_code == 200
+        details = editor.get("/api/admin/journal/test-topic-learning").json()["article"]
+        assert details["topics"] == ["sales", "technology"]
+        live = public.get(path)
+        assert payload["title"] in live.text
+        assert 'data-jr-material="test-topic-learning" data-jr-kind="learning" data-jr-topics="sales technology"' in live.text
+        assert 'data-jr-save="test-topic-learning"' in public.get("/journal/test-topic-learning").text
+        updated = {**payload, "version": 2, "topics": ["finance"], "title": "Неопубликованный текст"}
+        assert request(editor, "PUT", "/api/admin/journal/test-topic-learning", updated).status_code == 200
+        assert updated["title"] not in public.get(path).text
+        assert 'data-jr-topics="sales technology"' in public.get(path).text
+        assert request(editor, "POST", "/api/admin/journal/test-topic-learning/hide",
+                       {"version": 3}).status_code == 200
+        hidden = public.get(path)
+        assert 'data-jr-material="test-topic-learning"' not in hidden.text
+        assert public.get("/journal/test-topic-learning").status_code == 404
+        manifest = public.get("/api/public/journal/manifest").json()["pages"]
+        assert manifest[path] == hashlib.sha256(hidden.content).hexdigest()
+        assert "https://stazhno.ru" + path in public.get("/sitemap.xml").text
 

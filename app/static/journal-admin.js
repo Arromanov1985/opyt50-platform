@@ -10,6 +10,7 @@
     content_type: $('article-type'), source_name: $('article-source-name'), source_url: $('article-source-url'),
     event_date: $('article-event-date'), event_format: $('article-event-format')
   };
+  const topicInputs = Array.from(document.querySelectorAll('[data-editor-topic]'));
   function notice(text, error=false) {
     const el = $('notice');
     el.textContent = text;
@@ -62,12 +63,14 @@
       body_text: keys.body_text.value.trim(), version: state.version,
       content_type: keys.content_type.value, source_name:keys.source_name.value.trim(), source_url:keys.source_url.value.trim(),
       event_date:keys.content_type.value==='event'?keys.event_date.value||null:null,
-      event_format:keys.content_type.value==='event'?keys.event_format.value||null:null
+      event_format:keys.content_type.value==='event'?keys.event_format.value||null:null,
+      topics:topicInputs.filter(input=>input.checked).map(input=>input.value)
     };
   }
   function clearForm() {
     for (const field of Object.values(keys)) field.value = '';
     keys.read.value = '5 минут';keys.content_type.value='article';updateType();
+    topicInputs.forEach(input=>{input.checked=false;});
     state.slug = null; state.version = 0; state.status = 'draft';
     $('editor-heading').textContent = 'Новая статья';
     $('article-preview').hidden = true;
@@ -110,6 +113,7 @@
       state.status = article.status;
       for (const key of Object.keys(keys).filter(key=>key!=='slug')) keys[key].value = article[key] || '';
       keys.content_type.value=article.content_type||'article';updateType();
+      topicInputs.forEach(input=>{input.checked=(article.topics||[]).includes(input.value);});
       keys.slug.value = article.slug;
       $('editor-heading').textContent = article.title;
       $('article-preview').hidden = true;
@@ -203,6 +207,7 @@
   for (const field of Object.values(keys)) {
     field.addEventListener('input', () => setDirty(true));
   }
+  topicInputs.forEach(input=>input.addEventListener('change',()=>setDirty(true)));
   keys.content_type.addEventListener('change',updateType);updateType();
   $('article-form').addEventListener('submit', save);
   $('new-article').addEventListener('click', () => {
