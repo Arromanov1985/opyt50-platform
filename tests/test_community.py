@@ -1533,7 +1533,8 @@ def test_reputation_decline_revision_block_and_profile_privacy(community):
     assert visitor.get(other_public).json()["entries"] == []
     request = mutate(first, "POST", "/api/account/privacy-requests", {"kind": "deletion"})
     assert request.status_code == 201, request.text
-    assert first.get(url).status_code == 403
+    assert first.get(url).status_code == 200
+    assert first.get(url).json()["restricted"] is True
     from app.privacy_disposal import impact_preview
     with database(app.state.db_path) as db:
         row = db.execute("SELECT request_key FROM privacy_rights_requests WHERE user_id=?",
