@@ -95,3 +95,16 @@ def test_anonymous_network_failure_is_not_a_privacy_pass():
             raise OSError("network unavailable")
     result=run(Storage(),anonymous=Offline())
     assert not result["anonymous_denied"] and result["cleanup"]
+
+
+def test_initial_conflict_never_deletes_preexisting_object():
+    class Collision(Storage):
+        def put_object(self, **kwargs):
+            self.writes.append(kwargs["Key"])
+            self.objects[kwargs["Key"]]=b"existing"
+            raise S3Error("PreconditionFailed")
+    storage=Collision()
+    result=run(storage)
+    assert not result["conditional_write"]
+    assert not storage.deletes
+    assert storage.objects[storage.writes[0]]==b"existing"

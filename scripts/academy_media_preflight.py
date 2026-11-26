@@ -60,7 +60,15 @@ def check_storage(*, client, anonymous, bucket: str, payload: bytes) -> dict:
     attempted=False
     try:
         attempted=True
-        put()
+        try:
+            put()
+        except Exception as exc:
+            # A collision is improbable but must not delete an existing key
+            # that this probe did not create. Ambiguous network failures
+            # still require reconciliation of our random key.
+            if _error_code(exc) in ("PreconditionFailed","412","ConditionalRequestConflict","409"):
+                attempted=False
+            raise
         try:
             put()
         except Exception as exc:
