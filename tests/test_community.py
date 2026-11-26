@@ -1541,3 +1541,37 @@ def test_reputation_decline_revision_block_and_profile_privacy(community):
         assert preview["counts"]["community_recommendations"] == 3
         assert preview["automatic_deletion"] is False
 
+
+def test_recommendation_and_portfolio_withdrawal_remain_available_under_privacy_restriction(community):
+    app, clients, ids = community
+    first, second, admin, visitor = (clients[k] for k in ("first", "second", "admin", "visitor"))
+    a = publish(clients, "first")
+    b = publish(clients, "second", public_name="Коллега")
+    cid = connect(clients, b["public_id"])["id"]
+    assert mutate(second, "POST", "/api/community/connections/" + cid + "/respond",
+                  {"decision": "accept"}).status_code == 200
+    entry = approve_reputation(admin, accept_reputation(second, offer_reputation(first, cid)))
+    portfolio = approve_portfolio(admin, submit_portfolio(first, create_portfolio(first)))
+    public = "/api/community/people/" + b["public_id"] + "/reputation"
+    assert visitor.get(public).json()["entries"][0]["id"] == entry["id"]
+    request = mutate(first, "POST", "/api/account/privacy-requests", {"kind": "stop_processing"})
+    assert request.status_code == 201, request.text
+    assert visitor.get(public).json()["entries"] == []
+    assert mutate(first, "POST", "/api/community/reputation", reputation_payload(cid)).status_code == 409
+    withdrawn = mutate(first, "DELETE", "/api/community/reputation/" + entry["id"] + "/publication",
+                       {"expected_version": entry["version"]})
+    assert withdrawn.status_code == 200, withdrawn.text
+    assert withdrawn.json()["entry"]["status"] == "hidden"
+    assert withdrawn.json()["entry"]["author_consent_at"] is None
+    assert withdrawn.json()["entry"]["recipient_consent_at"] is None
+    hidden = mutate(first, "DELETE", "/api/community/portfolio/" + portfolio["id"] + "/publication",
+                    {"expected_version": portfolio["version"]})
+    assert hidden.status_code == 200, hidden.text
+    assert hidden.json()["entry"]["consent_at"] is None
+    # Simulate resolution of the privacy request in the isolated DB. Neither
+    # withdrawn publication may reappear when the temporary restriction ends.
+    with database(app.state.db_path) as db:
+        db.execute("UPDATE privacy_rights_requests SET status='rejected' WHERE user_id=?", (ids["first"],))
+    assert visitor.get(public).json()["entries"] == []
+    assert visitor.get("/api/community/people/" + a["public_id"] + "/portfolio").json()["entries"] == []
+
