@@ -85,7 +85,7 @@ def install_portfolio_routes(app, community_user, throttle, get_connection, allo
 
     @app.get("/api/community/portfolio")
     def mine(user: dict = Depends(community_user), db=Depends(get_connection)):
-        candidate(user, db)
+        allowed(user, "candidate")
         rows = db.execute(
             """SELECT * FROM community_portfolio_entries WHERE user_id=?
                ORDER BY updated_at DESC,id DESC LIMIT ?""", (user["id"], PORTFOLIO_LIMIT),
@@ -93,7 +93,8 @@ def install_portfolio_routes(app, community_user, throttle, get_connection, allo
         profile = _profile(db, user["id"])
         return _private({"entries": [_dto(row) for row in rows], "has_profile": profile is not None,
                          "can_publish": _is_published(db, user["id"]), "limit": PORTFOLIO_LIMIT,
-                         "public_id": profile["public_id"] if profile else None})
+                         "public_id": profile["public_id"] if profile else None,
+                         "restricted": not _active_account(db, user["id"])})
 
     @app.get("/api/community/people/{public_id}/portfolio")
     def portfolio(public_id: str, db=Depends(get_connection)):
