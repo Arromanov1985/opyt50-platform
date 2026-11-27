@@ -144,3 +144,22 @@ Before activation:
 
 The public upload, preview and publication flags remain unchanged. No server,
 bucket or credentials are created by the worker implementation.
+
+
+### Worker watchdog and interrupted jobs
+
+The supplied oneshot unit runs with `--mode all --limit 1`: at most one image
+and one rich source per invocation. A 30-page document can require 32
+antivirus scans including the image and original (32 x 180 seconds = 96
+minutes), in addition to up to 20 minutes of conversion, storage reads,
+conditional writes and database transactions. The service watchdog allows
+six hours for that batch; this is a conservative operational ceiling, not
+a guaranteed end-to-end deadline. Do not increase the batch size without
+reviewing the watchdog and storage/network limits. Retain shorter per-step
+timeouts. No overlapping timer invocation may run while the unit is active.
+
+An abrupt shutdown or exhausted watchdog can still leave durable
+reservations or ambiguous object writes. Do not automatically delete or
+requeue them: stop the worker, confirm the converter is gone, verify the
+reserved objects privately against the registry, and reconcile the complete
+batch before restarting. Never expose a partially completed batch.

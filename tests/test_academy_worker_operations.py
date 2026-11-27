@@ -113,3 +113,19 @@ def test_existing_source_is_never_removed(tmp_path,monkeypatch):
     with pytest.raises(FileExistsError):
         instance(BytesIO(b"other"),"video/mp4",output)
     assert source.read_bytes()==b"existing"
+
+
+def test_service_watchdog_covers_slowest_supported_scan_batch():
+    # The supplied service processes one image and one rich document.
+    # A document may generate 30 derivative scans, plus the two originals.
+    from configparser import ConfigParser
+
+    unit = Path(__file__).resolve().parents[1] / "deploy" / "academy-worker" / "academy-worker.service"
+    parser = ConfigParser(interpolation=None)
+    parser.read(unit, encoding="utf-8")
+    service = parser["Service"]
+    assert service["ExecStart"].endswith("--mode all --limit 1")
+    # Allow a generous budget beyond scan, conversion and S3 retry time.
+    timeout = service["TimeoutStartSec"]
+    assert timeout.endswith("h")
+    assert int(timeout[:-1]) * 3600 >= 32 * 180 + 1200 + 30 * 2 * 65 + 3600
