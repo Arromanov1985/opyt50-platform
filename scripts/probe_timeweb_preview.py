@@ -47,6 +47,84 @@ COMMUNITY_PRIVATE_ROUTES = {
 }
 
 
+# Private account, hiring and operational endpoints must never disclose
+# their response bodies to this anonymous diagnostic, even on HTTP 200.
+CORE_PRIVATE_ROUTES = {
+    "account_export": "/api/account/data-export",
+    "account_privacy": "/api/account/privacy-requests",
+    "candidate_invitations": "/api/candidate/invitations",
+    "employer_vacancies": "/api/employer/vacancies",
+    "employer_invitations": "/api/employer/invitations",
+    "admin_security": "/api/admin/security-status",
+    "admin_privacy": "/api/admin/privacy-requests",
+    "admin_growth": "/api/admin/growth",
+    "admin_mail": "/api/admin/mail-diagnostics",
+}
+
+
+def probe_health():
+    """Require a real health JSON response, not merely HTTP 200."""
+    request = Request(BASE + "/api/health", method="GET",
+                      headers={"User-Agent": "Stazhno-Preview-ReadOnly-Probe/1.0",
+                               "Cache-Control": "no-cache"})
+    try:
+        with build_opener(NoRedirect).open(request, timeout=10) as response:
+            if response.status != 200 or not response.headers.get("Content-Type", "").lower().startswith("application/json"):
+                return {"status": response.status, "result": "invalid-health-response"}
+            payload = response.read(4097)
+            if len(payload) > 4096:
+                return {"status": response.status, "result": "invalid-health-response"}
+            data = json.loads(payload)
+            healthy = isinstance(data, dict) and data.get("status") == "ok"
+            return {"status": response.status, "result": "healthy" if healthy else "invalid-health-response"}
+    except HTTPError as error:
+        return {"status": error.code, "result": "http-error"}
+    except (ValueError, TypeError, UnicodeError):
+        return {"result": "invalid-health-response"}
+    except (URLError, OSError, ssl.SSLError, TimeoutError):
+        return {"result": "connection-error"}
+
+
+def probe_prelaunch_guard():
+    """Observe the deployed read-only registration notice and indexing guard.
+
+    This is not a live POST test and cannot certify server enforcement.
+    The latter is covered by isolated production-mode API regression tests.
+    Never send credentials, registration data or mutation requests.
+    """
+    root = str(Path(__file__).resolve().parents[1])
+    if root not in sys.path:
+        sys.path.insert(0, root)
+    from app.legal_config import legal_approved
+    if legal_approved():
+        return {"result": "not-required-approved-source",
+                "note": "Legal and owner launch approval still require independent acceptance"}
+    request = Request(BASE + "/", method="GET",
+                      headers={"User-Agent": "Stazhno-Preview-ReadOnly-Probe/1.0",
+                               "Cache-Control": "no-cache", "Pragma": "no-cache"})
+    try:
+        with build_opener(NoRedirect).open(request, timeout=12) as response:
+            if response.status != 200 or not response.headers.get("Content-Type", "").lower().startswith("text/html"):
+                return {"status": response.status, "result": "invalid-home-response"}
+            payload = response.read(1_000_001)
+            if len(payload) > 1_000_000:
+                return {"status": response.status, "result": "invalid-home-response"}
+            html = payload.decode("utf-8", errors="replace")
+            checks = {
+                "signup_closed_marker": 'name="prelaunch-signup-closed" content="yes"' in html,
+                "visible_prelaunch_notice": 'id="prelaunch-public-notice"' in html and "Регистрация закрыта" in html,
+                "noindex": "noindex" in response.headers.get("X-Robots-Tag", "").lower(),
+                "nofollow": "nofollow" in response.headers.get("X-Robots-Tag", "").lower(),
+                "no_store": "no-store" in response.headers.get("Cache-Control", "").lower(),
+            }
+            return {"status": response.status, "result": "prelaunch-markers-confirmed" if all(checks.values())
+                    else "prelaunch-markers-missing", "checks": checks}
+    except HTTPError as error:
+        return {"status": error.code, "result": "http-error"}
+    except (URLError, OSError, ssl.SSLError, TimeoutError):
+        return {"result": "connection-error"}
+
+
 def git_blob_revision(path):
     payload = path.read_bytes()
     return hashlib.sha1(
@@ -544,8 +622,12 @@ def main():
     except OSError:
         result["dns"] = "resolution-failed"
     if result["dns"] == "resolved":
-        for path in ("/api/health", "/"):
-            result["paths"][path] = probe(path)
+        result["paths"]["/api/health"] = probe_health()
+        result["paths"]["/"] = probe("/")
+        result["prelaunch_guard"] = probe_prelaunch_guard()
+        result["core_private_api"] = {
+            name: probe_private_route(path) for name, path in CORE_PRIVATE_ROUTES.items()
+        }
         result["deployed_assets"] = {
             name: probe_asset("/static/" + name, STATIC / name)
             for name in CHECKED_ASSETS
@@ -570,6 +652,10 @@ def main():
             "/api/health": {"result": "not-tested-dns-failure"},
             "/": {"result": "not-tested-dns-failure"},
         }
+        result["prelaunch_guard"] = {"result": "not-tested-dns-failure"}
+        result["core_private_api"] = {
+            name: {"result": "not-tested-dns-failure"} for name in CORE_PRIVATE_ROUTES
+        }
         result["deployed_assets"] = {
             name: {"result": "not-tested-dns-failure"} for name in CHECKED_ASSETS
         }
@@ -589,7 +675,7 @@ def main():
         }
     result["assessment"] = (
         "preview-health-reachable"
-        if result["paths"]["/api/health"].get("status") == 200
+        if result["paths"]["/api/health"].get("result") == "healthy"
         else "preview-unverified"
     )
     asset_results = [item["result"] for item in result["deployed_assets"].values()]
@@ -609,8 +695,21 @@ def main():
         item["result"] == "route-present-method-protected"
         for item in result["backend_routes"].values()
     )
-    if frontend_matches and backend_matches and journal_matches and search_matches and community_matches:
+    prelaunch_matches = result["prelaunch_guard"]["result"] in {
+        "prelaunch-markers-confirmed", "not-required-approved-source"
+    }
+    core_matches = all(item["result"] == "present-and-protected"
+                       for item in result["core_private_api"].values())
+    health_matches = result["paths"]["/api/health"]["result"] == "healthy"
+    if (frontend_matches and backend_matches and journal_matches and search_matches
+            and community_matches and core_matches and prelaunch_matches and health_matches):
         result["release_evidence"] = "frontend-and-backend-match"
+    elif not health_matches:
+        result["release_evidence"] = "health-unverified"
+    elif not core_matches:
+        result["release_evidence"] = "private-api-unverified"
+    elif not prelaunch_matches:
+        result["release_evidence"] = "prelaunch-guard-unverified"
     elif "mismatch" in asset_results or html_result == "mismatch":
         result["release_evidence"] = "frontend-version-mismatch"
     elif frontend_matches and not backend_matches:

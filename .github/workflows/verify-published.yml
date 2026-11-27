@@ -66,6 +66,12 @@ jobs:
               lines.append(f"| Защищённый API сообщества: {name} | {item.get('result', 'unknown')} |")
           lines.append(f"| robots.txt и sitemap.xml | {report.get('search_metadata', {}).get('result', 'unknown')} |")
           lines.append(f"| Защищённый API | {report.get('drafts_api', {}).get('result', 'unknown')} |")
+          lines.append(f"| Health JSON | {report.get('paths', {}).get('/api/health', {}).get('result', 'unknown')} |")
+          lines.append(f"| Признаки закрытой регистрации | {report.get('prelaunch_guard', {}).get('result', 'unknown')} |")
+          for name, item in report.get("core_private_api", {}).items():
+              lines.append(f"| Защищённый API кабинетов: {name} | {item.get('result', 'unknown')} |")
+          lines.append("")
+          lines.append("Проверка регистрации на стенде выполняется только по GET-маркерам. Запрет POST подтверждается в изолированном CI. Этот отчёт не является юридическим допуском.")
           for name, item in report.get("backend_routes", {}).items():
               lines.append(f"| Backend {name} | {item.get('result', 'unknown')} |")
           with open(os.environ["GITHUB_STEP_SUMMARY"], "a", encoding="utf-8") as summary:

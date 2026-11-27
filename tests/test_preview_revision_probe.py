@@ -417,7 +417,7 @@ def test_community_probe_requires_exact_public_shell_without_fetching_profiles(
         assert result["expected_sha256"] == result["observed_sha256"]
 
 
-@pytest.mark.parametrize("route", probe.COMMUNITY_PRIVATE_ROUTES.values())
+@pytest.mark.parametrize("route", [*probe.COMMUNITY_PRIVATE_ROUTES.values(), *probe.CORE_PRIVATE_ROUTES.values()])
 def test_private_community_probe_never_reads_response_content_or_uses_session(monkeypatch, route):
     requests = []
 
@@ -569,3 +569,49 @@ def test_approved_program_manifest_is_probed_and_unknown_program_rejected(monkey
     assert result["result"] == "unverified"
     assert result["manifest_result"] == "unavailable-or-invalid"
     assert unsafe not in requests
+
+
+
+@pytest.mark.parametrize("body,mime,expected", [
+    (b'{"status":"ok"}', "application/json", "healthy"),
+    (b'{"status":"error"}', "application/json", "invalid-health-response"),
+    (b'<html>OK</html>', "text/html", "invalid-health-response"),
+    (b'invalid', "application/json", "invalid-health-response"),
+    (b'[]', "application/json", "invalid-health-response"),
+    (b'{"status":"ok"}' + b" " * 4097, "application/json", "invalid-health-response"),
+])
+def test_health_requires_bounded_json_not_just_http_200(monkeypatch, body, mime, expected):
+    monkeypatch.setattr(probe, "build_opener", lambda *a: FakeOpener(FakeResponse(body, mime)))
+    assert probe.probe_health()["result"] == expected
+
+
+@pytest.mark.parametrize("missing", [None, "signup", "notice", "noindex", "nofollow", "cache"])
+def test_prelaunch_requires_real_server_markers(monkeypatch, missing):
+    from app import legal_config
+    monkeypatch.setattr(legal_config, "legal_approved", lambda: False)
+    html = (
+        '<meta name="prelaunch-signup-closed" content="yes">'
+        '<div id="prelaunch-public-notice">Регистрация закрыта</div>'
+    )
+    if missing == "signup":
+        html = html.replace("prelaunch-signup-closed", "other")
+    if missing == "notice":
+        html = html.replace("Регистрация закрыта", "Другая информация")
+    response = FakeResponse(html.encode(), "text/html; charset=utf-8")
+    response.headers["X-Robots-Tag"] = {"noindex": "nofollow", "nofollow": "noindex"}.get(missing, "noindex, nofollow")
+    response.headers["Cache-Control"] = "public" if missing == "cache" else "no-store"
+    class AnonymousOpener(FakeOpener):
+        def open(self, request, timeout=10):
+            assert request.get_header("Authorization") is None
+            assert request.get_header("Cookie") is None
+            assert request.get_method() == "GET"
+            return super().open(request, timeout)
+    monkeypatch.setattr(probe,"build_opener",lambda *a:AnonymousOpener(response))
+    result = probe.probe_prelaunch_guard()
+    assert result["result"] == ("prelaunch-markers-confirmed" if missing is None else "prelaunch-markers-missing")
+
+
+def test_approved_source_does_not_claim_legal_launch_ready(monkeypatch):
+    from app import legal_config
+    monkeypatch.setattr(legal_config, "legal_approved", lambda: True)
+    assert probe.probe_prelaunch_guard()["result"] == "not-required-approved-source"

@@ -2,6 +2,7 @@ name: PostgreSQL migration integration
 on:
   push:
     branches:
+      - main
       - feature/postgres-02-transfer
   pull_request:
 permissions:
