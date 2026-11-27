@@ -118,39 +118,76 @@ class CourseSave(CourseDraft):
     expected_version: int = Field(ge=1)
 
 
-def readiness(draft: dict) -> list[str]:
+def readiness_details(draft: dict) -> list[dict]:
+    """One authoritative checklist, with navigation targets for the editor."""
     issues = []
+
+    def add(message, step, field, lesson=None, lesson_step=None):
+        issues.append({"message": message, "step": step, "field": field,
+                       "lesson": lesson, "lesson_step": lesson_step})
+
     for field, name, size in (("title", "Название", 5), ("description", "Описание", 20), ("audience", "Для кого курс", 10)):
         if len(draft.get(field, "")) < size:
-            issues.append(name + ": заполните поле")
+            add(name + ": заполните поле", "info", "studio-" + field)
     if not any(len(value) >= 5 for value in draft["outcomes"]):
-        issues.append("Добавьте хотя бы один результат обучения")
+        add("Добавьте хотя бы один результат обучения", "info", "studio-outcomes")
     if not draft["lessons"]:
-        issues.append("Добавьте хотя бы один урок")
-    for index, lesson in enumerate(draft["lessons"], 1):
-        prefix = "Урок " + str(index) + ": "
+        add("Добавьте хотя бы один урок", "lessons", "add-lesson")
+    for index, lesson in enumerate(draft["lessons"]):
+        prefix = "Урок " + str(index + 1) + ": "
+        base = "studio-lessons-" + str(index) + "-"
         if len(lesson["title"]) < 3 or len(lesson["goal"]) < 10:
-            issues.append(prefix + "укажите название и цель")
+            add(prefix + "укажите название и цель", "lessons",
+                base + ("title" if len(lesson["title"]) < 3 else "goal"), index, "content")
         if not lesson["sections"] or any(len(section)<2 or not section[0] or not any(section[1:]) for section in lesson["sections"]):
-            issues.append(prefix + "заполните заголовки и текст блоков")
+            field = "add-block"
+            for section_index, section in enumerate(lesson["sections"]):
+                if not section or not section[0]:
+                    field = base + "sections-" + str(section_index) + "-0"
+                    break
+                if len(section) < 2 or not any(section[1:]):
+                    field = "studio-body-" + str(section_index)
+                    break
+            add(prefix + "заполните заголовки и текст блоков", "lessons", field, index, "content")
         if not lesson["example"] or not lesson["practice"]:
-            issues.append(prefix + "добавьте пример и практическое задание")
+            add(prefix + "добавьте пример и практическое задание", "lessons",
+                base + ("example" if not lesson["example"] else "practice"), index, "practice")
         if lesson.get("media"):
-            # No quarantine object is yet deliverable. Keep the previous text
-            # publication unchanged until the safe delivery subsystem exists.
-            issues.append(prefix + "публикация мультимедиа пока недоступна")
-            for block in lesson["media"]:
+            # Keep public multimedia publication blocked until safe activation.
+            add(prefix + "публикация мультимедиа пока недоступна", "lessons",
+                "studio-workspace", index, "content")
+            for block_index, block in enumerate(lesson["media"]):
                 if not block["caption"].strip() or not block["description"].strip():
-                    issues.append(prefix + "добавьте название и описание учебного файла")
+                    add(prefix + "добавьте название и описание учебного файла", "lessons",
+                        base + "media-" + str(block_index) + "-" +
+                        ("caption" if not block["caption"].strip() else "description"), index, "content")
         if not lesson["questions"]:
-            issues.append(prefix + "добавьте хотя бы один вопрос")
-        for qindex, q in enumerate(lesson["questions"], 1):
+            add(prefix + "добавьте хотя бы один вопрос", "lessons", "add-question", index, "quiz")
+        for qindex, q in enumerate(lesson["questions"]):
             options = q["options"]
             if (not q["text"] or len(options)<2 or any(not item for item in options)
                     or len(set(options)) != len(options) or q["correct"] is None
                     or q["correct"] >= len(options) or not q["feedback"]):
-                issues.append(prefix + "заполните вопрос " + str(qindex) + ", варианты, правильный ответ и пояснение")
+                qbase = base + "questions-" + str(qindex) + "-"
+                field = qbase + "text"
+                if q["text"]:
+                    if len(options) < 2:
+                        field = qbase + "text"
+                    elif any(not item for item in options):
+                        field = qbase + "options-" + str(next(i for i, item in enumerate(options) if not item))
+                    elif len(set(options)) != len(options):
+                        field = qbase + "options-0"
+                    elif q["correct"] is None or q["correct"] >= len(options):
+                        field = "correct-" + str(qindex)
+                    else:
+                        field = qbase + "feedback"
+                add(prefix + "заполните вопрос " + str(qindex + 1) + ", варианты, правильный ответ и пояснение",
+                    "lessons", field, index, "quiz")
     return issues
+
+
+def readiness(draft: dict) -> list[str]:
+    return [issue["message"] for issue in readiness_details(draft)]
 
 
 def _encoded(data):
@@ -261,7 +298,9 @@ def _detail(db, row, user, full=True):
         dto["image_upload_enabled"] = bool(mine and active and image_upload_ready())
         dto["image_preview_enabled"] = bool(private_view and image_upload_ready())
         dto["rendition_preview_enabled"] = bool(private_view and rendition_preview_ready())
-        dto.update(draft={key:draft[key] for key in DRAFT_FIELDS},issues=readiness(draft),
+        checklist = readiness_details(draft)
+        dto.update(draft={key:draft[key] for key in DRAFT_FIELDS},
+                   issues=[issue["message"] for issue in checklist], issue_locations=checklist,
                    restricted=user["role"]=="candidate" and not _active_account(db,user["id"]),
                    can_submit=user["role"]=="admin" or _is_published(db,user["id"]))
     return dto

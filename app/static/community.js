@@ -1121,6 +1121,37 @@
       (help?'<p class="help">'+esc(help)+'</p>':'')+
       (area?'<textarea '+attr+' rows="'+rows+'">'+esc(value??'')+'</textarea>':'<input '+attr+' value="'+esc(value??'')+'">')+'</div>';
   }
+  // Live completion is only a writing aid; publication always uses the
+  // saved server checklist, including validation and media publication gates.
+  function studioLessonCompletion(lesson){
+    const text=value=>String(value??'').trim();
+    const content=text(lesson.title).length>=3&&text(lesson.goal).length>=10&&
+      lesson.sections.length>0&&lesson.sections.every(section=>text(section[0])&&section.slice(1).some(p=>text(p)));
+    const practice=Boolean(text(lesson.example)&&text(lesson.practice));
+    const quiz=lesson.questions.length>0&&lesson.questions.every(q=>{
+      const options=q.options.map(text);
+      return Boolean(text(q.text)&&options.length>=2&&options.every(Boolean)&&new Set(options).size===options.length&&
+        Number.isInteger(q.correct)&&q.correct>=0&&q.correct<options.length&&text(q.feedback));
+    });
+    return {content:Boolean(content),practice,quiz};
+  }
+  function studioCompletionLabel(lesson){
+    return Object.values(studioLessonCompletion(lesson)).filter(Boolean).length+' из 3 разделов';
+  }
+  function studioRefreshCompletion(){
+    studio.draft.lessons.forEach((item,index)=>{
+      const label=$('[data-studio-completion="'+index+'"]');
+      if(label)label.textContent=studioCompletionLabel(item);
+    });
+    const lesson=studio.draft.lessons[studio.lesson];
+    if(lesson){
+      const completion=studioLessonCompletion(lesson);
+      for(const [key,done] of Object.entries(completion)){
+        const label=$('[data-studio-section-completion="'+key+'"]');
+        if(label)label.textContent=done?'Заполнено':'Не заполнено';
+      }
+    }
+  }
   function studioChange(){
     state.builderDirty=true;
     const badge=$('#studio-save-status');if(badge)badge.textContent='Есть несохранённые изменения';
@@ -1129,6 +1160,7 @@
     const lesson=studio.draft.lessons[studio.lesson];
     const label=$('[data-studio-lesson-label="'+studio.lesson+'"]');if(label&&lesson)label.textContent=lesson.title||'Урок без названия';
     const time=$('#studio-total-time');if(time)time.textContent=studio.draft.lessons.length+' уроков · '+studio.draft.lessons.reduce((sum,item)=>sum+(Number(item.minutes)||0),0)+' мин.';
+    studioRefreshCompletion();
   }
   function studioSet(path,value){
     const parts=path.split('.');
@@ -1262,8 +1294,8 @@
   }
   function studioLessons(){
     const lessons=studio.draft.lessons,lesson=lessons[studio.lesson];
-    const sidebar='<aside class="panel studio-lessons-nav"><div class="studio-side-heading"><h2>Программа</h2>'+studioButton('add-lesson','+ Урок','secondary',lessons.length>=30?'disabled':'')+'</div>'+
-      (lessons.length?'<ol>'+lessons.map((item,index)=>'<li><button type="button" class="studio-lesson-select'+(index===studio.lesson?' selected':'')+'" data-studio="lesson" data-index="'+index+'" aria-current="'+(index===studio.lesson?'step':'false')+'"><span class="studio-num">'+(index+1)+'</span><span data-studio-lesson-label="'+index+'">'+esc(item.title||'Урок без названия')+'</span></button></li>').join('')+'</ol>':'<p class="help">Добавьте первый урок. Его название и содержание можно заполнить позже.</p>')+'</aside>';
+    const sidebar='<aside class="panel studio-lessons-nav"><div class="studio-side-heading"><h2>Программа</h2>'+studioButton('add-lesson','+ Урок','secondary',lessons.length>=30?'disabled':'')+'</div><p class="help">Заполнение текста и теста. Готовность к публикации проверяется сервером после сохранения.</p>'+
+      (lessons.length?'<ol>'+lessons.map((item,index)=>'<li><button type="button" class="studio-lesson-select'+(index===studio.lesson?' selected':'')+'" data-studio="lesson" data-index="'+index+'" aria-current="'+(index===studio.lesson?'step':'false')+'"><span class="studio-num">'+(index+1)+'</span><span class="studio-lesson-caption"><span data-studio-lesson-label="'+index+'">'+esc(item.title||'Урок без названия')+'</span><small data-studio-completion="'+index+'">'+studioCompletionLabel(item)+'</small></span></button></li>').join('')+'</ol>':'<p class="help">Добавьте первый урок. Его название и содержание можно заполнить позже.</p>')+'</aside>';
     if(!lesson)return '<div class="studio-lesson-layout">'+sidebar+'<section class="panel studio-panel"><h2>Добавьте первый урок</h2><p>Каждый урок состоит из объяснения, практики и вопросов для самопроверки.</p>'+studioButton('add-lesson','+ Добавить урок','primary')+'</section></div>';
     const prefix='lessons.'+studio.lesson;
     let body='';
@@ -1293,7 +1325,7 @@
         }).join('')+studioButton('add-question','+ Добавить вопрос','secondary',lesson.questions.length>=10?'disabled':'');
     }
     return '<div class="studio-lesson-layout">'+sidebar+'<section class="panel studio-panel"><div class="studio-side-heading"><h2>Урок '+(studio.lesson+1)+' из '+lessons.length+'</h2><div class="studio-small-actions">'+studioButton('move-up','↑','secondary','aria-label="Переместить урок выше" '+(studio.lesson===0?'disabled':''))+studioButton('move-down','↓','secondary','aria-label="Переместить урок ниже" '+(studio.lesson===lessons.length-1?'disabled':''))+studioButton('duplicate-lesson','Копировать','secondary',lessons.length>=30?'disabled':'')+studioButton('remove-lesson','Удалить','secondary')+'</div></div>'+
-      '<nav class="studio-tabs" aria-label="Содержание урока">'+[['content','Материал'],['practice','Практика'],['quiz','Тест']].map(([key,label])=>studioButton('lesson-step',label,key===studio.lessonStep?'primary':'secondary','data-step="'+key+'" aria-pressed="'+(key===studio.lessonStep)+'"')).join('')+'</nav>'+body+
+      '<nav class="studio-tabs" aria-label="Содержание урока">'+[['content','Материал'],['practice','Практика'],['quiz','Тест']].map(([key,label])=>studioButton('lesson-step',label+'<small data-studio-section-completion="'+key+'">'+(studioLessonCompletion(lesson)[key]?'Заполнено':'Не заполнено')+'</small>',key===studio.lessonStep?'primary':'secondary','data-step="'+key+'" aria-pressed="'+(key===studio.lessonStep)+'"')).join('')+'</nav>'+body+
       '<div class="actions">'+studioButton('lesson-next',studio.lessonStep==='content'?'К практическому заданию →':studio.lessonStep==='practice'?'К тесту →':'Предпросмотр курса →','primary')+'</div></section></div>';
   }
   function studioPreview(){
@@ -1309,6 +1341,7 @@
     const entry=studio.entry,editable=studioEditable();
     const dirty=state.builderDirty;
     const issues=entry.issues||[];
+    const locations=entry.issue_locations||[];
     let actions='';
     if(editable){
       actions=dirty?studioButton('save','Сохранить и проверить','primary'):entry.state==='pending'?'<p class="help">Материал передан в редакцию. Изменение черновика отменит текущую проверку.</p>':entry.state==='published'?'<p class="help">Эта версия опубликована. Измените черновик, чтобы подготовить новую.</p>':!issues.length&&entry.can_submit?studioButton('submit',state.user.role==='admin'?'Опубликовать курс':'Отправить в редакцию','primary'):!entry.can_submit?'<p class="help">Перед отправкой курса опубликуйте <a href="/community/profile">профессиональный профиль</a>.</p>':'';
@@ -1321,7 +1354,7 @@
     return '<section class="panel studio-panel"><h2>4. Проверка и публикация</h2><div class="status-line">'+statusBadge(entry.state,studioStates)+(entry.has_publication?'<span class="tag">Предыдущая версия доступна</span>':'')+'</div>'+
       (entry.moderation_reason?'<p class="notice warning">Редакция: '+esc(entry.moderation_reason)+'</p>':'')+
       '<p>Проверьте точность, авторские права, безопасность данных и качество заданий. После публикации новой версии прогресс ученика для старой версии не переносится автоматически.</p>'+
-      (dirty?'<p class="notice warning">Сохраните черновик, чтобы сервер проверил его готовность.</p>':issues.length?'<h3>Что необходимо заполнить ('+issues.length+')</h3><ul class="studio-issues">'+issues.map(issue=>'<li>'+esc(issue)+'</li>').join('')+'</ul>':'<p class="studio-ready">✓ Обязательные поля заполнены. Проверьте смысл и качество материалов в предпросмотре.</p>')+
+      (dirty?'<p class="notice warning">Сохраните черновик, чтобы сервер проверил его готовность.</p>':issues.length?'<h3>Что необходимо заполнить ('+issues.length+')</h3><ul class="studio-issues">'+issues.map((issue,index)=>'<li>'+esc(issue)+(editable&&locations[index]?studioButton('fix-issue','Перейти к полю','secondary','data-index="'+index+'" aria-label="'+esc('Исправить: '+issue)+'"'):'')+'</li>').join('')+'</ul>':'<p class="studio-ready">✓ Обязательные поля заполнены. Проверьте смысл и качество материалов в предпросмотре.</p>')+
       '<div class="actions">'+actions+'</div></section>';
   }
   function studioRender(){
@@ -1393,6 +1426,25 @@
       });
       else if(['approve','reject','hide'].includes(action))studioReview(action);
       else if(!studioEditable())return;
+      else if(action==='fix-issue'&&!state.builderDirty){
+        const issue=studio.entry.issue_locations?.[index];
+        if(!issue||!['info','lessons'].includes(issue.step))return;
+        studio.step=issue.step;
+        if(issue.step==='lessons'){
+          studio.lesson=Number.isInteger(issue.lesson)?Math.max(0,Math.min(issue.lesson,studio.draft.lessons.length-1)):0;
+          studio.lessonStep=['content','practice','quiz'].includes(issue.lesson_step)?issue.lesson_step:'content';
+        }
+        studioRender();
+        const field=issue.field||'';
+        let target=document.getElementById(field);
+        if(!target&&['add-lesson','add-block','add-question'].includes(field))target=$('[data-studio="'+field+'"]');
+        if(!target&&/^correct-[0-9]+$/.test(field))target=$('[data-studio-correct="'+field.slice(8)+'"]');
+        if(!target)target=$('#studio-workspace h2');
+        if(target){
+          if(!target.matches('input,textarea,button,select,a[href]'))target.tabIndex=-1;
+          target.focus({preventScroll:true});target.scrollIntoView({block:'center'});
+        }
+      }
       else if(action==='lesson'){studio.lesson=index;studio.lessonStep='content';studioRender();}
       else if(action==='lesson-step'){studio.lessonStep=button.dataset.step;studioRender();}
       else if(action==='lesson-next'){if(studio.lessonStep==='content')studio.lessonStep='practice';else if(studio.lessonStep==='practice')studio.lessonStep='quiz';else studio.step='preview';studioRender();}

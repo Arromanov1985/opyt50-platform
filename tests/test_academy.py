@@ -51,3 +51,16 @@ def test_academy_is_free_public_and_includes_release_manifest(tmp_path):
         assert lesson.count('data-ac-correct="true"') == 2
         assert "не является сертификатом" in lesson
         assert "не передаётся на сервер" in lesson
+
+
+def test_editor_checklist_targets_and_legacy_readiness_match():
+    from app.academy_builder import CourseDraft, readiness, readiness_details
+    draft = CourseDraft(lessons=[{"slug": "lesson-one"}]).model_dump()
+    details = readiness_details(draft)
+    assert readiness(draft) == [item["message"] for item in details]
+    assert details[0]["field"] == "studio-title"
+    assert any(item["lesson"] == 0 and item["lesson_step"] == "practice"
+               and item["field"] == "studio-lessons-0-example" for item in details)
+    assert any(item["lesson_step"] == "quiz" and item["field"] == "add-question" for item in details)
+    ready = {key: COURSES[0][key] for key in ("title","description","audience","outcomes","lessons")}
+    assert readiness_details(ready) == []
