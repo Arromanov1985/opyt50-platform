@@ -2321,3 +2321,51 @@ def test_assistant_validates_only_and_preserves_draft_and_access(community):
     assert single.json()["lesson"]["title"] == draft["lessons"][0]["title"]
     assert first.get(own).json()["course"] == initial
     assert visitor.get("/academy/" + initial["slug"]).status_code == 404
+
+
+def test_course_overview_counts_and_filters_only_authorized_own_courses(community):
+    from copy import deepcopy
+
+    app, clients, ids = community
+    first, second, admin, visitor, employer = (
+        clients[key] for key in ("first", "second", "admin", "visitor", "employer"))
+    publish(clients, "first")
+    publish(clients, "second")
+    url = "/api/community/courses"
+
+    def create(client, title):
+        draft = mutate(client, "POST", url, {"client_key": str(uuid4())}).json()["course"]
+        payload = deepcopy(COURSE_DRAFT)
+        payload["title"] = title
+        saved = mutate(client, "PUT", url + "/" + draft["slug"],
+                       {**payload, "expected_version": draft["version"]})
+        assert saved.status_code == 200, saved.text
+        return saved.json()["course"]
+
+    one = create(first, "Работа с таблицами")
+    two = create(first, "Основы наставничества")
+    other = create(second, "Работа с таблицами — чужой курс")
+    pending = mutate(first, "POST", url + "/" + two["slug"] + "/submit",
+                     {"expected_version": two["version"], "publish_consent": True})
+    assert pending.status_code == 200, pending.text
+
+    result = first.get(url).json()
+    assert result["overview"] == {"total": 2, "statuses": {
+        "draft": 1, "pending": 1, "published": 0, "rejected": 0, "hidden": 0,
+    }, "matching": 2}
+    by_title = first.get(url, params={"q": "  ТАБЛИЦАМИ  "}).json()
+    assert by_title["overview"]["matching"] == 1
+    assert [course["slug"] for course in by_title["courses"]] == [one["slug"]]
+    assert by_title["overview"]["total"] == 2
+    assert by_title["can_create"] == result["can_create"]
+    by_status = first.get(url, params={"status": "pending"}).json()
+    assert [course["slug"] for course in by_status["courses"]] == [two["slug"]]
+    combined = first.get(url, params={"q": "таблицами", "status": "pending"}).json()
+    assert combined["overview"]["matching"] == 0 and combined["courses"] == []
+    assert first.get(url, params={"q": "таблицами", "page": 2}).json()["courses"] == []
+    assert other["slug"] not in str(result)
+    assert first.get(url, params={"view": "review", "q": "таблицами"}).status_code == 403
+    assert admin.get(url, params={"view": "review", "q": "таблицами"}).status_code == 422
+    assert admin.get(url, params={"view": "review"}).json()["overview"] is None
+    assert visitor.get(url).status_code == 401
+    assert employer.get(url).status_code == 403

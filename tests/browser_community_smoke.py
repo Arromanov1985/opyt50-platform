@@ -728,6 +728,16 @@ def run_browser(browser, base, database):
         admin.set_viewport_size({"width": 390, "height": 844})
         admin.goto(base + "/community/courses", wait_until="networkidle")
         expect(admin.locator(".studio-catalog")).to_contain_text("Искусственный интеллект с нуля")
+        expect(admin.locator(".studio-overview")).to_be_visible()
+        admin.locator("#studio-query").fill("неизвестное название учебного курса")
+        with admin.expect_response(lambda r: "/api/community/courses?" in r.url and r.request.method == "GET") as searched:
+            admin.locator('#studio-filter-form button[type="submit"]').click()
+        assert checked(searched.value)["overview"]["matching"] == 0
+        expect(admin.locator(".studio-catalog")).to_contain_text("Курсы не найдены")
+        expect(admin.locator("#studio-match-count")).to_contain_text("Найдено: 0")
+        admin.locator('[data-studio="filter-reset"]').click()
+        expect(admin.locator(".studio-catalog")).to_contain_text("Искусственный интеллект с нуля")
+        capture(admin, "course-studio-overview-mobile.png")
         with admin.expect_response(lambda r: r.url.endswith("/api/community/courses") and r.request.method == "POST") as made:
             admin.locator('[data-studio="new"]').click()
         course = checked(made.value)["course"]

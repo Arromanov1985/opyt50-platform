@@ -421,6 +421,8 @@ def install_builder_routes(app, community_user, throttle, get_connection, allowe
     @app.get("/api/community/courses")
     def list_courses(page: int = Query(default=1,ge=1,le=10000),
                      view: Literal["own","review","published"] = "own",
+                     q: str = Query(default="",max_length=120),
+                     status: Literal["all","draft","pending","published","rejected","hidden"] = "all",
                      user: dict = Depends(community_user),db=Depends(get_connection)):
         access(user)
         if user["role"]=="candidate":
@@ -446,17 +448,36 @@ def install_builder_routes(app, community_user, throttle, get_connection, allowe
                 (view,view,PAGE_SIZE+1,(page-1)*PAGE_SIZE),
             ).fetchall()
         restricted=user["role"]=="candidate" and not _active_account(db,user["id"])
+        # Summaries and filters are calculated only within the already
+        # authorized own-course collection, before pagination. Published
+        # and editorial review views retain their existing access rules.
+        total = len(rows)
+        overview = None
         if view=="own":
-            more=len(rows)>page*PAGE_SIZE
-            selected=rows[(page-1)*PAGE_SIZE:page*PAGE_SIZE]
+            counts = {key: 0 for key in ("draft","pending","published","rejected","hidden")}
+            for row in rows:
+                if row["state"] in counts:
+                    counts[row["state"]] += 1
+            query = q.strip().casefold()
+            filtered = [
+                row for row in rows
+                if (status == "all" or row["state"] == status)
+                and (not query or query in str(json.loads(row["draft_json"]).get("title") or "Курс без названия").casefold())
+            ]
+            overview = {"total": total, "statuses": counts, "matching": len(filtered)}
+            more=len(filtered)>page*PAGE_SIZE
+            selected=filtered[(page-1)*PAGE_SIZE:page*PAGE_SIZE]
         else:
+            if q.strip() or status != "all":
+                raise HTTPException(422,"Фильтры доступны только для собственных курсов")
             more=len(rows)>PAGE_SIZE
             selected=rows[:PAGE_SIZE]
         return _private({"courses":[_detail(db,row,user,False) for row in selected],"page":page,"has_more":more,
                          "can_create":not restricted and view=="own" and
-                           (user["role"]=="admin" or (_profile(db,user["id"]) is not None and len(rows)<LIMIT)),
+                           (user["role"]=="admin" or (_profile(db,user["id"]) is not None and total<LIMIT)),
                          "restricted":restricted,"limit":None if user["role"]=="admin" else LIMIT,
-                         "templates":course_template_options() if view=="own" and not restricted else []})
+                         "templates":course_template_options() if view=="own" and not restricted else [],
+                         "overview":overview})
 
     @app.get("/api/community/courses/{slug}")
     def get_course(slug: str,user: dict=Depends(community_user),db=Depends(get_connection)):

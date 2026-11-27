@@ -1105,7 +1105,7 @@
 
   // A structured course studio. No user HTML, no markup syntax or hidden autosave.
   // The same in-memory draft survives tab changes and unsuccessful requests.
-  const studio={entry:null,draft:null,step:'info',lesson:0,lessonStep:'content',view:'own',page:1,key:null,createTemplate:'blank',loading:false,bound:false,previewPages:new Map(),previewMode:'author',previewAnswers:new Map(),previewChecked:false};
+  const studio={entry:null,draft:null,step:'info',lesson:0,lessonStep:'content',view:'own',page:1,query:'',status:'all',key:null,createTemplate:'blank',loading:false,bound:false,previewPages:new Map(),previewMode:'author',previewAnswers:new Map(),previewChecked:false};
   const studioApi='/api/community/courses';
   const studioStates={draft:'Черновик',pending:'На проверке',published:'Опубликован',rejected:'На доработке',hidden:'Скрыт'};
   const studioSteps=[['info','Карточка курса'],['lessons','Уроки и задания'],['preview','Предпросмотр'],['publish','Публикация']];
@@ -1183,19 +1183,37 @@
       '<p class="help">Шаблон задаёт структуру уроков. Наполнение, задания и ответы создаёт автор. Курс остаётся черновиком.</p>'+
       studioButton('new',studio.key?'Повторить создание':'+ Новый курс','primary')+'</div>';
   }
-  async function studioList(){
-    const result=await api(studioApi+'?view='+studio.view+'&page='+studio.page);
+  function studioOverview(result){
+    const overview=result.overview;
+    if(!overview)return '';
+    return '<section class="panel studio-overview" aria-label="Обзор курсов"><h2>Обзор курсов</h2><p class="help">Статус относится к текущей версии курса. Предыдущая публикация может оставаться доступной ученикам.</p>'+
+      '<div class="studio-metrics">'+[['all','Всего',overview.total],...Object.entries(studioStates).map(([key,label])=>[key,label,overview.statuses[key]||0])].map(([key,label,count])=>
+        '<button type="button" class="studio-metric" data-studio="filter-status" data-status="'+key+'" aria-pressed="'+(studio.status===key)+'"><strong>'+count+'</strong><span>'+esc(label)+'</span></button>').join('')+'</div>'+
+      '<form id="studio-filter-form" class="studio-filter"><div class="studio-field"><label for="studio-query">Найти по названию</label><input id="studio-query" name="query" maxlength="120" value="'+esc(studio.query)+'" placeholder="Название курса"></div>'+
+      '<div class="studio-field"><label for="studio-status">Статус</label><select id="studio-status" name="status"><option value="all" '+(studio.status==='all'?'selected':'')+'>Все статусы</option>'+
+      Object.entries(studioStates).map(([key,label])=>'<option value="'+key+'" '+(studio.status===key?'selected':'')+'>'+esc(label)+'</option>').join('')+'</select></div>'+
+      '<div class="actions"><button type="submit" class="button primary">Найти</button>'+studioButton('filter-reset','Сбросить')+'</div></form>'+
+      '<p class="help" id="studio-match-count" role="status">Найдено: '+overview.matching+' из '+overview.total+'</p></section>';
+  }
+  async function studioList(next={}){
+    const request={view:next.view??studio.view,page:next.page??studio.page,
+      query:next.query??studio.query,status:next.status??studio.status};
+    const params=new URLSearchParams({view:request.view,page:String(request.page)});
+    if(request.view==='own'){params.set('q',request.query);params.set('status',request.status);}
+    const result=await api(studioApi+'?'+params.toString());
+    Object.assign(studio,request);
     studio.entry=null;studio.draft=null;studioResetQuiz();studio.previewMode='author';state.builderDirty=false;
     content.innerHTML='<section class="section-heading"><div><span class="eyebrow">АКАДЕМИЯ СТАЖНО</span><h1>Конструктор курсов</h1><p>Создавайте понятные учебные программы: уроки, практику и самопроверку.</p></div><a class="button secondary" href="/academy">Открыть Академию ↗</a></section>'+
       '<section class="panel studio-list-intro"><div><h2>'+(state.user.role==='admin'?'Редакция Академии':'Ваши курсы')+'</h2><p>Черновики видны только автору. Изменения опубликованного курса появятся после утверждения новой версии.</p></div>'+
       (result.can_create?studioCreateControls(result):'')+
       (result.restricted?'<p class="notice warning">Обработка данных ограничена. Можно просматривать свои курсы и отзывать публикации.</p>':!result.can_create&&state.user.role==='candidate'?'<p class="help">Для создания курса сохраните профессиональный профиль. Максимум 10 курсов. <a href="/community/profile">Мой профиль</a></p>':'')+'</section>'+
       (state.user.role==='admin'?'<nav class="studio-tabs" aria-label="Курсы редакции">'+[['own','Курсы СТАЖНО'],['review','На проверке'],['published','Курсы участников']].map(([key,label])=>studioButton('view',label,studio.view===key?'primary':'secondary','data-view="'+key+'" aria-pressed="'+(studio.view===key)+'"')).join('')+'</nav>':'')+
+      studioOverview(result)+
       '<div class="studio-catalog">'+(result.courses.length?result.courses.map(course=>
         '<article class="panel studio-catalog-card"><div class="status-line">'+statusBadge(course.state,studioStates)+(course.has_publication?'<span class="tag">Версия доступна ученикам</span>':'')+'</div><h2>'+esc(course.title)+'</h2><p class="help">'+course.lesson_count+' уроков · '+course.minutes+' мин.</p>'+
         (course.moderation_reason?'<p class="notice warning">'+esc(course.moderation_reason)+'</p>':'')+
         '<div class="actions">'+studioButton('open',course.can_edit?'Открыть редактор':'Проверить курс','primary','data-slug="'+esc(course.slug)+'"')+
-        (course.has_publication?'<a class="button secondary" href="/academy/'+encodeURIComponent(course.slug)+'">Открыть курс</a>':'')+'</div></article>').join(''):empty('Пока нет курсов',studio.view==='review'?'Новые курсы участников появятся здесь после отправки на проверку.':'Создайте курс с нуля и добавьте первый урок.'))+'</div>'+
+        (course.has_publication?'<a class="button secondary" href="/academy/'+encodeURIComponent(course.slug)+'">Открыть курс</a>':'')+'</div></article>').join(''):(studio.view==='own'&&result.overview?.total&&(studio.query||studio.status!=='all')?empty('Курсы не найдены','Измените название или статус, либо сбросьте фильтры.'):empty('Пока нет курсов',studio.view==='review'?'Новые курсы участников появятся здесь после отправки на проверку.':'Создайте курс с нуля и добавьте первый урок.')))+'</div>'+
       (studio.page>1||result.has_more?'<div class="actions">'+studioButton('page','← Назад','secondary','data-page="'+(studio.page-1)+'" '+(studio.page===1?'disabled':''))+'<span>Страница '+studio.page+'</span>'+studioButton('page','Далее →','secondary','data-page="'+(studio.page+1)+'" '+(!result.has_more?'disabled':''))+'</div>':'');
   }
   function studioLoadEntry(entry){
@@ -1537,8 +1555,16 @@
         studio.loading=true;
         const result=await api(studioApi+'/'+encodeURIComponent(button.dataset.slug));studioLoadEntry(result.course);
       }else if(action==='back'){await studioLeave(async()=>{await studioList();});}
-      else if(action==='view'){studio.loading=true;studio.view=button.dataset.view;studio.page=1;await studioList();}
-      else if(action==='page'){studio.loading=true;studio.page=Number(button.dataset.page);await studioList();}
+      else if(action==='view'){studio.loading=true;await studioList({view:button.dataset.view,page:1,query:'',status:'all'});}
+      else if(action==='page'){studio.loading=true;await studioList({page:Number(button.dataset.page)});}
+      else if(action==='filter-status'&&!studio.entry&&studio.view==='own'){
+        const status=button.dataset.status;
+        if(status!=='all'&&!Object.hasOwn(studioStates,status))return;
+        studio.loading=true;await busy(content,()=>studioList({page:1,status}));
+      }
+      else if(action==='filter-reset'&&!studio.entry&&studio.view==='own'){
+        studio.loading=true;await busy(content,()=>studioList({page:1,query:'',status:'all'}));
+      }
       else if(action==='step'){studio.step=button.dataset.step;studioRender();}
       else if(action==='next'){studio.step=studio.step==='info'?'lessons':'publish';studioRender();}
       else if(action==='preview-lesson'){
@@ -1677,10 +1703,19 @@
       studio.draft.lessons[studio.lesson].questions[Number(node.dataset.studioCorrect)].correct=Number(node.value);studioChange();
     }
   }
+  async function studioFilterSubmit(event){
+    if(event.target.id!=='studio-filter-form'||mode!=='courses')return;
+    event.preventDefault();
+    if(studio.loading||studio.entry||studio.view!=='own')return;
+    const form=event.target,query=form.elements.query.value.trim(),status=form.elements.status.value;
+    if(status!=='all'&&!Object.hasOwn(studioStates,status))return;
+    studio.loading=true;
+    try{await busy(form,()=>studioList({page:1,query,status}));}finally{studio.loading=false;}
+  }
   async function renderCourseBuilder(){
     if(!state.user)return accountGate('Конструктор курсов');
     if(!['candidate','admin'].includes(state.user.role)){content.innerHTML=empty('Конструктор курсов','Создавать курсы могут авторы сообщества и редакция.','<a class="button primary" href="/academy">Открыть Академию</a>');return;}
-    if(!studio.bound){content.addEventListener('click',studioAction);content.addEventListener('input',studioInput);studio.bound=true;}
+    if(!studio.bound){content.addEventListener('click',studioAction);content.addEventListener('input',studioInput);content.addEventListener('submit',studioFilterSubmit);studio.bound=true;}
     await studioList();
   }
 
