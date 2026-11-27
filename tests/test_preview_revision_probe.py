@@ -526,3 +526,31 @@ def test_journal_probe_stops_when_deadline_expires(monkeypatch):
     assert result["budget_exhausted"]
     assert result["unprobed_pages"] == len(bodies)
     assert len(requests) == 1
+
+
+def test_approved_program_manifest_is_probed_and_unknown_program_rejected(monkeypatch):
+    import hashlib
+    from app import academy_programs
+
+    monkeypatch.setattr(academy_programs,"PROGRAMS",({
+        "slug":"digital-work","steps":(("ai-basics",1),("course-second",4)),
+    },))
+    bodies, manifest = published_journal_fixture()
+    # A full public catalog with the second course and its approved program.
+    manifest["academy_courses"]["course-second"] = ["lesson-one"]
+    path = "/academy/programs/digital-work"
+    manifest["academy_programs"] = {"digital-work":["ai-basics","course-second"]}
+    for route in ("/academy/course-second","/academy/course-second/lesson-one",path):
+        bodies[route] = b"<html>Published fixture</html>"
+        manifest["pages"][route] = hashlib.sha256(bodies[route]).hexdigest()
+    requests = install_journal_opener(monkeypatch,bodies,manifest)
+    assert probe.probe_public_journal_pages()["result"] == "exact-match"
+    assert path in requests
+    manifest["academy_programs"]["unapproved"] = ["ai-basics","course-second"]
+    unsafe = "/academy/programs/unapproved"
+    manifest["pages"][unsafe] = "0" * 64
+    requests = install_journal_opener(monkeypatch,bodies,manifest)
+    result = probe.probe_public_journal_pages()
+    assert result["result"] == "unverified"
+    assert result["manifest_result"] == "unavailable-or-invalid"
+    assert unsafe not in requests

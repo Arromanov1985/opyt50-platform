@@ -25,6 +25,14 @@ ROOT = Path(__file__).resolve().parents[1]
 HEADERS = {"X-Requested-With": "OPYT50"}
 OUTPUT = Path(os.getenv("STAZHNO_COMMUNITY_REVIEW_DIR", "community-review"))
 PASSWORD = "DemoPass2026!"
+PROGRAM_COURSE_KEY = "f2b83525-0a9d-48ed-9f01-21a3288922c0"
+PROGRAM_TEST_SLUG = "course-f2b835250a9d48ed9f0121a3288922c0"
+PROGRAM_FIXTURE = {
+    "slug":"test-digital-work", "title":"Учебная программа цифровых навыков",
+    "description":"Два опубликованных курса для проверки последовательного обучения.",
+    "goal":"Научиться применять цифровые инструменты.",
+    "steps":(("ai-basics",1),(PROGRAM_TEST_SLUG,4)),
+}
 
 
 def checked(response, statuses=(200, 201)):
@@ -738,9 +746,18 @@ def run_browser(browser, base, database):
         admin.locator('[data-studio="filter-reset"]').click()
         expect(admin.locator(".studio-catalog")).to_contain_text("Искусственный интеллект с нуля")
         capture(admin, "course-studio-overview-mobile.png")
+        # Pin the fictional course ID for the test-only editorial program.
+        def fixed_course_key(route):
+            payload = route.request.post_data_json
+            payload["client_key"] = PROGRAM_COURSE_KEY
+            route.continue_(post_data=json.dumps(payload))
+        admin.route(base + "/api/community/courses", fixed_course_key, times=1)
         with admin.expect_response(lambda r: r.url.endswith("/api/community/courses") and r.request.method == "POST") as made:
             admin.locator('[data-studio="new"]').click()
         course = checked(made.value)["course"]
+        assert course["slug"] == PROGRAM_TEST_SLUG
+        program_url = base + "/academy/programs/test-digital-work"
+        assert visitor.request.get(program_url).status == 404
         course_url = base + "/academy/" + course["slug"]
         admin.locator("#studio-title").fill("Работа с учебной таблицей")
         admin.locator("#studio-description").fill("Научитесь проверять данные и оформлять простой учебный отчёт.")
@@ -836,7 +853,13 @@ def run_browser(browser, base, database):
         admin.locator('#studio-consent-form input[name="consent"]').check()
         with admin.expect_response(lambda r: r.url.endswith("/courses/" + course["slug"] + "/submit")) as course_published:
             admin.locator('#studio-consent-form button[type="submit"]').click()
-        assert checked(course_published.value)["course"]["state"] == "published"
+        published_course = checked(course_published.value)["course"]
+        assert published_course["state"] == "published"
+        assert published_course["version"] == PROGRAM_FIXTURE["steps"][1][1]
+        visitor.goto(program_url, wait_until="networkidle")
+        expect(visitor.locator("[data-ac-program-progress]")).to_contain_text("Курсов пройдено: 0 из 2")
+        expect(visitor.locator("[data-ac-program-resume]")).to_have_attribute("href", "/academy/ai-basics")
+        expect(visitor.locator(".ac-program-step")).to_have_count(2)
         visitor.goto(course_url, wait_until="networkidle")
         expect(visitor.locator("h1")).to_have_text("Работа с учебной таблицей")
         visitor.locator("[data-ac-resume]").click()
@@ -866,6 +889,27 @@ def run_browser(browser, base, database):
         expect(created).to_be_visible()
         expect(builtin).to_be_hidden()
         expect(visitor.locator('[data-ac-filter="complete"]')).to_contain_text("(1)")
+        program_page = visitor.context.new_page()
+        try:
+            program_page.goto(program_url, wait_until="networkidle")
+            expect(program_page.locator("[data-ac-program-progress]")).to_contain_text("Курсов пройдено: 1 из 2")
+            expect(program_page.locator("[data-ac-program-resume]")).to_have_attribute("href", "/academy/ai-basics/clear-prompts")
+            all_lessons = builtin.get_attribute("data-ac-lessons").split()
+            visitor.evaluate("([key, lessons]) => localStorage.setItem(key, JSON.stringify(lessons))",
+                             [builtin_key, all_lessons])
+            expect(program_page.locator("[data-ac-program-progress]")).to_contain_text("Курсов пройдено: 2 из 2")
+            expect(program_page.locator("[data-ac-program-resume]")).to_contain_text("Повторить программу")
+            visitor.evaluate("([key, lesson]) => localStorage.setItem(key, JSON.stringify([lesson]))",
+                             [builtin_key, first_lesson])
+            expect(program_page.locator("[data-ac-program-resume]")).to_have_attribute("href", "/academy/ai-basics/clear-prompts")
+            for width in (360,390,768,1280):
+                program_page.set_viewport_size({"width":width,"height":844})
+                assert program_page.locator("[data-ac-program]").evaluate(
+                    "node => node.scrollWidth <= node.clientWidth + 2")
+            program_page.set_viewport_size({"width":390,"height":844})
+            capture(program_page,"academy-program-mobile.png")
+        finally:
+            program_page.close()
         # Discovery combines with learning status, searches case-insensitively
         # and never modifies browser progress or sends search terms to a server.
         visitor.locator("#ac-category").select_option("digital")
@@ -894,7 +938,9 @@ def run_browser(browser, base, database):
             admin.locator("#confirm-community-action").click()
         assert checked(course_hidden.value)["course"]["state"] == "hidden"
         assert visitor.request.get(course_url).status == 404
+        assert visitor.request.get(program_url).status == 404
         visitor.reload(wait_until="networkidle")
+        expect(visitor.locator("#ac-programs")).to_have_count(0)
         expect(created).to_have_count(0)
         expect(visitor.locator('[data-ac-filter="complete"]')).to_contain_text("(0)")
         expect(visitor.locator('[data-ac-filter="all"]')).to_contain_text("(1)")
@@ -1139,7 +1185,10 @@ def main():
         log_path = Path(temporary) / "uvicorn.log"
         with log_path.open("w", encoding="utf-8") as log:
             server = subprocess.Popen(
-                [sys.executable, "-m", "uvicorn", "app.main:app", "--host", "127.0.0.1", "--port", str(port)],
+                [sys.executable, "-c",
+                 "from app import academy_programs; import uvicorn; academy_programs.PROGRAMS = "
+                 + repr((PROGRAM_FIXTURE,)) +
+                 "; uvicorn.run('app.main:app', host='127.0.0.1', port=" + str(port) + ")"],
                 cwd=ROOT, env=env, stdout=log, stderr=subprocess.STDOUT,
             )
             try:

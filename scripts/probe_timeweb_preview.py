@@ -304,6 +304,17 @@ def probe_public_journal_pages():
                 raise ValueError("Invalid academy lesson list")
             academy_routes.add("/academy/" + slug)
             academy_routes.update("/academy/" + slug + "/" + lesson for lesson in lessons)
+        from app.academy_programs import configured_programs
+        definitions = {program["slug"]: [slug for slug, _revision in program["steps"]]
+                       for program in configured_programs()}
+        declared_programs = manifest.get("academy_programs", {})
+        if not isinstance(declared_programs, dict) or any(
+            slug not in definitions or steps != definitions[slug]
+            or not all(course_slug in declared_courses for course_slug in steps)
+            for slug, steps in declared_programs.items()
+        ):
+            raise ValueError("Invalid academy program list")
+        academy_routes.update("/academy/programs/" + slug for slug in declared_programs)
         if not all(
             path in {"/journal", "/journal/paths", "/sitemap.xml"} or path in GUIDE_PATHS or path in academy_routes
             or path in route_urls or _journal_article_slug(path)
