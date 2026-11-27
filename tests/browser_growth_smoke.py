@@ -393,6 +393,13 @@ def exercise(browser, base, receipts_path):
         page.on("request", observe_academy)
         page.goto(base + "/academy", wait_until="networkidle")
         expect(page.locator("h1")).to_contain_text("Новые навыки")
+        expect(page.locator("#ac-learning")).to_be_visible()
+        expect(page.locator('[data-ac-filter="all"]')).to_have_attribute("aria-pressed", "true")
+        page.locator('[data-ac-filter="active"]').click()
+        expect(page.locator("#ac-learning-empty")).to_contain_text("Нет начатых курсов")
+        expect(page.locator(".ac-course-card:visible")).to_have_count(0)
+        page.locator('[data-ac-show-all]').click()
+        expect(page.locator('[data-ac-filter="all"]')).to_be_focused()
         page.locator('a[data-ac-start]').click()
         expect(page.locator("h1")).to_have_text("Искусственный интеллект с нуля")
         expect(page.locator("[data-ac-progress-label]")).to_contain_text("0 из 6")
@@ -415,6 +422,121 @@ def exercise(browser, base, receipts_path):
         expect(page.locator("[data-ac-resume]")).to_have_attribute("href", "/academy/ai-basics/clear-prompts")
         expect(page.locator('[data-ac-lesson-state="what-ai-does"]')).to_contain_text("Пройден")
         capture(page, "academy-course-mobile-large")
+        page.goto(base + "/academy", wait_until="networkidle")
+        page.locator('[data-ac-filter="active"]').click()
+        expect(page.locator('[data-ac-filter="active"]')).to_contain_text("(1)")
+        expect(page.locator('a[data-ac-start]')).to_have_attribute("href", "/academy/ai-basics/clear-prompts")
+        expect(page.locator('a[data-ac-start]')).to_contain_text("Продолжить обучение")
+        capture(page, "academy-my-learning-mobile")
+        for width in (360, 390, 768, 1280):
+            page.set_viewport_size({"width": width, "height": 844})
+            assert page.locator("#ac-learning").evaluate(
+                "(node) => node.scrollWidth <= node.clientWidth + 2"
+            ), f"Learning controls overflow at {width}px"
+        page.set_viewport_size({"width": 390, "height": 844})
+        page.locator('a[data-ac-start]').click()
+        assert page.url.endswith("/academy/ai-basics/clear-prompts")
+        # Use fictional local progress for full-completion and revision handling.
+        page.goto(base + "/academy", wait_until="networkidle")
+        card = page.locator(".ac-course-card")
+        revision = card.get_attribute("data-ac-revision")
+        key = "stazhno-academy-v1:ai-basics:" + revision
+        lessons = card.get_attribute("data-ac-lessons").split()
+        page.evaluate("([key, lessons]) => localStorage.setItem(key, JSON.stringify([...lessons, 'unknown', lessons[0]]))",
+                      [key, lessons])
+        page.reload(wait_until="networkidle")
+        page.locator('[data-ac-filter="complete"]').click()
+        expect(page.locator('[data-ac-filter="complete"]')).to_contain_text("(1)")
+        expect(page.locator('a[data-ac-start]')).to_have_attribute("href", "/academy/ai-basics")
+        expect(page.locator('a[data-ac-start]')).to_contain_text("Повторить курс")
+        page.evaluate("([key, lessons]) => {localStorage.setItem(key + '-old', JSON.stringify(lessons)); localStorage.setItem(key, '{broken');}",
+                      [key, lessons])
+        page.reload(wait_until="networkidle")
+        expect(page.locator('[data-ac-filter="complete"]')).to_contain_text("(0)")
+        page.locator('[data-ac-filter="active"]').click()
+        expect(page.locator("#ac-learning-empty")).to_be_visible()
+        # A second tab can update local progress without a page reload.
+        other = context.new_page()
+        try:
+            other.goto(base + "/academy", wait_until="networkidle")
+            other.evaluate("([key, lesson]) => localStorage.setItem(key, JSON.stringify([lesson]))", [key, lessons[0]])
+            expect(page.locator('[data-ac-filter="active"]')).to_contain_text("(1)")
+            expect(page.locator("#ac-learning-empty")).to_be_hidden()
+        finally:
+            other.close()
+        restricted = browser.new_context(viewport={"width":390,"height":844}, locale="ru-RU")
+        try:
+            restricted.add_init_script("Object.defineProperty(window, 'localStorage', {get() {throw new Error('blocked');}});")
+            blocked = restricted.new_page()
+            blocked.goto(base + "/academy", wait_until="networkidle")
+            expect(blocked.locator("#ac-learning-storage")).to_be_visible()
+            blocked.locator('[data-ac-filter="active"]').click()
+            expect(blocked.locator("#ac-learning-empty")).to_contain_text("Прогресс недоступен")
+            blocked.locator('[data-ac-show-all]').click()
+            expect(blocked.locator("a[data-ac-start]")).to_be_visible()
+        finally:
+            restricted.close()
+        # Read-only storage still shows previously saved progress, but must
+        # warn that new results might not be saved.
+        readonly = browser.new_context(viewport={"width":390,"height":844}, locale="ru-RU")
+        try:
+            readonly.add_init_script("""(() => {
+                const saved = """ + json.dumps([key, lessons[0]]) + """;
+                localStorage.setItem(saved[0], JSON.stringify([saved[1]]));
+                const set = Storage.prototype.setItem;
+                Storage.prototype.setItem = function(k, v) {
+                    if (this === localStorage && k.startsWith('stazhno-academy-v1:'))
+                        throw new DOMException('Read only', 'QuotaExceededError');
+                    return set.call(this, k, v);
+                };
+            })();""")
+            read_page = readonly.new_page()
+            read_page.goto(base + "/academy", wait_until="networkidle")
+            expect(read_page.locator("#ac-learning-storage")).to_be_visible()
+            expect(read_page.locator('[data-ac-filter="active"]')).to_contain_text("(1)")
+            expect(read_page.locator('a[data-ac-start]')).to_have_attribute("href", "/academy/ai-basics/clear-prompts")
+        finally:
+            readonly.close()
+        # A small probe may fit even when the actual progress write fails.
+        # Keep the diagnostic in the tab across navigation without storing answers.
+        quota = browser.new_context(viewport={"width":390,"height":844}, locale="ru-RU")
+        try:
+            quota.add_init_script("""(() => {
+                const set = Storage.prototype.setItem;
+                Storage.prototype.setItem = function(k, v) {
+                    if (this === localStorage && k.startsWith('stazhno-academy-v1:')
+                        && k !== 'stazhno-academy-v1:storage-probe')
+                        throw new DOMException('Quota exceeded', 'QuotaExceededError');
+                    return set.call(this, k, v);
+                };
+            })();""")
+            quota_page = quota.new_page()
+            quota_page.goto(base + "/academy", wait_until="networkidle")
+            expect(quota_page.locator("#ac-learning-storage")).to_be_hidden()
+            quota_page.goto(base + "/academy/ai-basics/what-ai-does", wait_until="networkidle")
+            quiz = quota_page.locator("#ac-quiz")
+            quiz.locator('input[name="q1"][value="1"]').check()
+            quiz.locator('input[name="q2"][value="2"]').check()
+            quiz.locator('button[type="submit"]').click()
+            expect(quota_page.locator("#ac-quiz-result")).to_contain_text("Браузер не сохранил прогресс")
+            quota_page.goto(base + "/academy", wait_until="networkidle")
+            expect(quota_page.locator("#ac-learning-storage")).to_be_visible()
+            expect(quota_page.locator('[data-ac-filter="active"]')).to_contain_text("(0)")
+            assert quota_page.evaluate("key => localStorage.getItem(key)", key) is None
+            assert quota_page.evaluate("localStorage.getItem('stazhno-academy-v1:storage-probe')") is None
+        finally:
+            quota.close()
+        no_script = browser.new_context(java_script_enabled=False)
+        try:
+            basic = no_script.new_page()
+            basic.goto(base + "/academy", wait_until="load")
+            expect(basic.locator("#ac-learning")).to_be_hidden()
+            expect(basic.locator("a[data-ac-start]")).to_have_attribute("href", "/academy/ai-basics")
+            basic.locator("a[data-ac-start]").click()
+            expect(basic.locator("h1")).to_have_text("Искусственный интеллект с нуля")
+        finally:
+            no_script.close()
+        page.goto(base + "/academy/ai-basics", wait_until="networkidle")
         page.once("dialog", lambda dialog: dialog.accept())
         page.locator("[data-ac-reset]").click()
         expect(page.locator("[data-ac-progress-label]")).to_contain_text("0 из 6")

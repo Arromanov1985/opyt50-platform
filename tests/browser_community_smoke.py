@@ -838,11 +838,41 @@ def run_browser(browser, base, database):
         expect(visitor.locator("h1")).to_have_text("Работа с учебной таблицей")
         visitor.locator("[data-ac-resume]").click()
         expect(visitor.locator("#ac-quiz")).to_contain_text("Что нужно сделать сначала?")
+        # Exercise the real catalog with two simultaneously published courses.
+        # Only the isolated test browser receives these progress records.
+        quiz = visitor.locator("#ac-quiz")
+        quiz.locator('input[data-ac-correct="true"]').check()
+        quiz.locator('button[type="submit"]').click()
+        expect(visitor.locator("#ac-quiz-result")).to_contain_text("Урок пройден")
+        visitor.goto(base + "/academy", wait_until="networkidle")
+        builtin = visitor.locator('.ac-course-card[data-ac-course="ai-basics"]')
+        created = visitor.locator('.ac-course-card[data-ac-course="' + course["slug"] + '"]')
+        expect(builtin).to_be_visible()
+        expect(created).to_be_visible()
+        builtin_key = "stazhno-academy-v1:ai-basics:" + builtin.get_attribute("data-ac-revision")
+        first_lesson = builtin.get_attribute("data-ac-lessons").split()[0]
+        visitor.evaluate("([key, lesson]) => localStorage.setItem(key, JSON.stringify([lesson]))",
+                         [builtin_key, first_lesson])
+        visitor.reload(wait_until="networkidle")
+        expect(visitor.locator('[data-ac-filter="all"]')).to_contain_text("(2)")
+        visitor.locator('[data-ac-filter="active"]').click()
+        expect(builtin).to_be_visible()
+        expect(created).to_be_hidden()
+        expect(visitor.locator('[data-ac-filter="active"]')).to_contain_text("(1)")
+        visitor.locator('[data-ac-filter="complete"]').click()
+        expect(created).to_be_visible()
+        expect(builtin).to_be_hidden()
+        expect(visitor.locator('[data-ac-filter="complete"]')).to_contain_text("(1)")
         admin.locator('[data-studio="withdraw"]').click()
         with admin.expect_response(lambda r: r.url.endswith("/courses/" + course["slug"] + "/publication") and r.request.method == "DELETE") as course_hidden:
             admin.locator("#confirm-community-action").click()
         assert checked(course_hidden.value)["course"]["state"] == "hidden"
         assert visitor.request.get(course_url).status == 404
+        visitor.reload(wait_until="networkidle")
+        expect(created).to_have_count(0)
+        expect(visitor.locator('[data-ac-filter="complete"]')).to_contain_text("(0)")
+        expect(visitor.locator('[data-ac-filter="all"]')).to_contain_text("(1)")
+        visitor.evaluate("key => localStorage.removeItem(key)", builtin_key)
 
         # A ready-made outline is still private and incomplete, even for an administrator.
         admin.locator('[data-studio="back"]').click()
@@ -887,6 +917,76 @@ def run_browser(browser, base, database):
         expect(admin.locator("#studio-lessons-4-title")).to_have_value("Дополнительный урок")
         expect(admin.locator("#studio-save")).to_be_enabled()
         assert visitor.request.get(base + "/academy/" + outline["slug"]).status == 404
+
+        # Full AI course replacement: cancel, invalidate checked source, explicitly
+        # apply, try both preview lessons, recover from offline save and reopen.
+        endpoint = base + "/api/community/courses/" + outline["slug"]
+        lesson_payload = {"title":"Новый первый урок","minutes":15,
+                          "goal":"Научиться проверять учебный результат",
+                          "sections":[["Проверка","Сверьте исходные данные."]],
+                          "example":"Вымышленная таблица.","practice":"Сверьте две строки.",
+                          "questions":[{"text":"Что проверить?","options":["Данные","Цвет"],
+                                        "correct":0,"feedback":"Нужно сверить данные."}]}
+        full_payload = {"title":"Новый учебный курс","description":"Практические задания по проверке данных.",
+                        "audience":"Начинающие","outcomes":["Проверять учебные данные"],
+                        "lessons":[lesson_payload, {**lesson_payload,"title":"Новый второй урок"}]}
+        full_source = json.dumps(full_payload, ensure_ascii=False)
+        admin.locator('[data-studio="assistant"]').click()
+        assistant.locator("#studio-ai-kind").select_option("course")
+        assistant.locator("#studio-ai-source").fill(full_source)
+        admin.context.set_offline(True)
+        assistant.locator('button[type="submit"]').click()
+        expect(assistant.locator(".form-error")).to_contain_text("Не удалось связаться с сервером")
+        expect(assistant.locator("#studio-ai-apply")).to_be_disabled()
+        expect(assistant.locator("#studio-ai-source")).to_have_value(full_source)
+        admin.context.set_offline(False)
+        assistant.locator('button[type="submit"]').click()
+        expect(assistant.locator("#studio-ai-replace-note")).to_contain_text("несохранённые изменения")
+        assistant.locator("#studio-ai-confirm").check()
+        expect(assistant.locator("#studio-ai-apply")).to_be_enabled()
+        assistant.locator("#studio-ai-source").fill(full_source + " ")
+        expect(assistant.locator("#studio-ai-apply")).to_be_disabled()
+        expect(assistant.locator("#studio-ai-preview")).to_be_hidden()
+        admin.keyboard.press("Escape")
+        expect(admin.locator("#community-dialog")).to_be_hidden()
+        expect(admin.locator(".studio-lesson-select")).to_have_count(5)
+        assert checked(admin.request.get(endpoint))["course"] == outline
+        admin.locator('[data-studio="assistant"]').click()
+        assistant.locator("#studio-ai-source").fill(full_source)
+        assistant.locator('button[type="submit"]').click()
+        expect(assistant.locator("#studio-ai-summary")).to_contain_text("Новый второй урок")
+        assistant.locator("#studio-ai-confirm").check()
+        assistant.locator("#studio-ai-apply").click()
+        expect(admin.locator("#studio-title")).to_have_value(full_payload["title"])
+        assert checked(admin.request.get(endpoint))["course"] == outline
+        admin.locator('[data-studio="step"][data-step="preview"]').click()
+        admin.locator('[data-studio="preview-mode"][data-mode="student"]').click()
+        admin.locator('[data-studio-trial="0"][value="0"]').check()
+        admin.locator('[data-studio="trial-check"]').click()
+        expect(admin.locator("#studio-trial-result")).to_contain_text("Все ответы верны")
+        admin.locator('.studio-preview-navigation [data-index="1"]').click()
+        expect(admin.locator(".studio-preview h2")).to_have_text("Новый второй урок")
+        expect(admin.locator('[data-studio-trial="0"]:checked')).to_have_count(0)
+        admin.locator('.studio-preview-navigation [data-index="0"]').click()
+        expect(admin.locator('[data-studio-trial="0"]:checked')).to_have_count(0)
+        admin.context.set_offline(True)
+        admin.locator("#studio-save").click()
+        expect(admin.locator(".form-error:visible")).to_contain_text("Не удалось связаться с сервером")
+        expect(admin.locator("#studio-course-title")).to_have_text(full_payload["title"])
+        admin.context.set_offline(False)
+        with admin.expect_response(lambda r: r.url == endpoint and r.request.method == "PUT") as full_saved:
+            admin.locator("#studio-save").click()
+        saved_full = checked(full_saved.value)["course"]
+        assert saved_full["draft"]["title"] == full_payload["title"]
+        assert len(saved_full["draft"]["lessons"]) == 2
+        assert not saved_full["issues"], saved_full["issues"]
+        assert visitor.request.get(base + "/academy/" + outline["slug"]).status == 404
+        admin.reload(wait_until="networkidle")
+        admin.locator('[data-studio="open"][data-slug="'+outline["slug"]+'"]').click()
+        expect(admin.locator("#studio-title")).to_have_value(full_payload["title"])
+        admin.locator('[data-studio="next"]').click()
+        expect(admin.locator(".studio-lesson-select")).to_have_count(2)
+        expect(admin.locator(".studio-lesson-select").last).to_contain_text("Новый второй урок")
 
         # Author contribution: save, submit exact text, editorial approval and revoke.
         anna.set_viewport_size({"width": 390, "height": 844})
