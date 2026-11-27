@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import json
 from typing import Literal
-from uuid import UUID
+from uuid import UUID, uuid4
 
 from fastapi import Depends, HTTPException, Query, Request
 from pydantic import Field, field_validator, model_validator
@@ -110,12 +110,113 @@ class CourseDraft(CommunityModel):
         return self
 
 
+TemplateKey = Literal["blank", "workshop", "professional", "mentoring"]
+
+# Built-in outlines, not finished learning content. Each lesson requires
+# original text, a goal, a practical exercise and a real self-check.
+COURSE_TEMPLATES = {
+    "blank": ("С нуля", ()),
+    "workshop": ("Короткий практикум", (
+        ("Основы и пример решения", 15, ("Что нужно знать", "Пример решения")),
+        ("Самостоятельная практика", 15, ("Порядок действий", "Как проверить результат")),
+    )),
+    "professional": ("Профессиональный курс", (
+        ("Введение в тему", 15, ("Основные понятия", "Где применяется навык")),
+        ("Инструменты и методы работы", 20, ("Подготовка к работе", "Основные инструменты")),
+        ("Рабочие ситуации", 25, ("Разбор ситуации", "Типичные ошибки")),
+        ("Итоговая практика", 20, ("Самостоятельная работа", "Критерии результата")),
+    )),
+    "mentoring": ("Программа наставничества", (
+        ("Цели и план обучения", 15, ("Ожидаемый результат", "Порядок обучения")),
+        ("Передача опыта", 20, ("Ключевые принципы", "Разбор опыта")),
+        ("Практика с наставником", 25, ("Образец выполнения", "Обратная связь")),
+        ("Самостоятельное выполнение", 25, ("План работы", "Самостоятельная проверка")),
+        ("Подведение итогов", 15, ("Что получилось", "Следующие шаги")),
+    )),
+}
+
+
+def course_template_options() -> list[dict]:
+    return [{"id": key, "label": label, "lesson_count": len(lessons),
+             "minutes": sum(minutes for _, minutes, _ in lessons)}
+            for key, (label, lessons) in COURSE_TEMPLATES.items()]
+
+
+def new_course_draft(template: TemplateKey) -> CourseDraft:
+    _, lessons = COURSE_TEMPLATES[template]
+    return CourseDraft(lessons=[
+        Lesson(slug=f"lesson-{index}", title=title, minutes=minutes,
+               sections=[[heading, ""] for heading in headings],
+               questions=[Question(options=["", "", ""])])
+        for index, (title, minutes, headings) in enumerate(lessons, 1)
+    ])
+
+
 class CourseCreate(CommunityModel):
     client_key: UUID
+    template: TemplateKey = "blank"
 
 
 class CourseSave(CourseDraft):
     expected_version: int = Field(ge=1)
+
+
+class AssistantImport(CommunityModel):
+    expected_version: int = Field(ge=1)
+    kind: Literal["course", "lesson"]
+    source: str = Field(min_length=2, max_length=180000)
+
+
+ASSISTANT_LESSON_FIELDS = {
+    "title", "minutes", "goal", "sections", "example", "practice", "questions",
+}
+
+
+def _unique_json_object(pairs):
+    result = {}
+    for key, value in pairs:
+        if key in result:
+            raise ValueError("Duplicate JSON field")
+        result[key] = value
+    return result
+
+
+def _reject_json_constant(value):
+    raise ValueError("Invalid JSON constant")
+
+
+def assistant_draft(data: AssistantImport) -> dict:
+    """Validate manually pasted text only; no AI, file, URL or storage access."""
+    try:
+        if len(data.source.encode("utf-8")) > 180000:
+            raise ValueError("Import exceeds byte budget")
+        payload = json.loads(data.source, object_pairs_hook=_unique_json_object,
+                             parse_constant=_reject_json_constant)
+        if data.kind == "course":
+            if type(payload) is not dict or set(payload) != set(DRAFT_FIELDS):
+                raise ValueError("Unexpected course fields")
+            raw_lessons = payload["lessons"]
+            if type(raw_lessons) is not list or not 1 <= len(raw_lessons) <= 12:
+                raise ValueError("Invalid lesson count")
+        else:
+            raw_lessons = [payload]
+        lessons = []
+        for raw in raw_lessons:
+            # Never accept existing IDs, media, owner, state, consent or version
+            # from a model response. Server generates independent lesson IDs.
+            if type(raw) is not dict or set(raw) != ASSISTANT_LESSON_FIELDS:
+                raise ValueError("Unexpected lesson fields")
+            lesson = Lesson.model_validate({**raw, "slug": "lesson-" + uuid4().hex}, strict=True)
+            lessons.append(lesson.model_dump(exclude={"media"}))
+        if data.kind == "lesson":
+            return {"lesson": lessons[0]}
+        draft = CourseDraft.model_validate({**payload, "lessons": lessons}, strict=True).model_dump()
+        for lesson in draft["lessons"]:
+            lesson.pop("media", None)
+        return {"draft": draft, "issues": readiness(draft)}
+    except (ValueError, TypeError, RecursionError, UnicodeError):
+        # Do not include pasted content or raw model-validation errors.
+        raise HTTPException(422, "Ответ не соответствует формату. Проверьте JSON, обязательные поля, длину текста и отсутствие контактов и ссылок.") from None
 
 
 def readiness_details(draft: dict) -> list[dict]:
@@ -320,6 +421,8 @@ def install_builder_routes(app, community_user, throttle, get_connection, allowe
     @app.get("/api/community/courses")
     def list_courses(page: int = Query(default=1,ge=1,le=10000),
                      view: Literal["own","review","published"] = "own",
+                     q: str = Query(default="",max_length=120),
+                     status: Literal["all","draft","pending","published","rejected","hidden"] = "all",
                      user: dict = Depends(community_user),db=Depends(get_connection)):
         access(user)
         if user["role"]=="candidate":
@@ -345,16 +448,36 @@ def install_builder_routes(app, community_user, throttle, get_connection, allowe
                 (view,view,PAGE_SIZE+1,(page-1)*PAGE_SIZE),
             ).fetchall()
         restricted=user["role"]=="candidate" and not _active_account(db,user["id"])
+        # Summaries and filters are calculated only within the already
+        # authorized own-course collection, before pagination. Published
+        # and editorial review views retain their existing access rules.
+        total = len(rows)
+        overview = None
         if view=="own":
-            more=len(rows)>page*PAGE_SIZE
-            selected=rows[(page-1)*PAGE_SIZE:page*PAGE_SIZE]
+            counts = {key: 0 for key in ("draft","pending","published","rejected","hidden")}
+            for row in rows:
+                if row["state"] in counts:
+                    counts[row["state"]] += 1
+            query = q.strip().casefold()
+            filtered = [
+                row for row in rows
+                if (status == "all" or row["state"] == status)
+                and (not query or query in str(json.loads(row["draft_json"]).get("title") or "Курс без названия").casefold())
+            ]
+            overview = {"total": total, "statuses": counts, "matching": len(filtered)}
+            more=len(filtered)>page*PAGE_SIZE
+            selected=filtered[(page-1)*PAGE_SIZE:page*PAGE_SIZE]
         else:
+            if q.strip() or status != "all":
+                raise HTTPException(422,"Фильтры доступны только для собственных курсов")
             more=len(rows)>PAGE_SIZE
             selected=rows[:PAGE_SIZE]
         return _private({"courses":[_detail(db,row,user,False) for row in selected],"page":page,"has_more":more,
                          "can_create":not restricted and view=="own" and
-                           (user["role"]=="admin" or (_profile(db,user["id"]) is not None and len(rows)<LIMIT)),
-                         "restricted":restricted,"limit":None if user["role"]=="admin" else LIMIT})
+                           (user["role"]=="admin" or (_profile(db,user["id"]) is not None and total<LIMIT)),
+                         "restricted":restricted,"limit":None if user["role"]=="admin" else LIMIT,
+                         "templates":course_template_options() if view=="own" and not restricted else [],
+                         "overview":overview})
 
     @app.get("/api/community/courses/{slug}")
     def get_course(slug: str,user: dict=Depends(community_user),db=Depends(get_connection)):
@@ -382,12 +505,23 @@ def install_builder_routes(app, community_user, throttle, get_connection, allowe
         db.execute(
             """INSERT INTO academy_courses(slug,owner_id,draft_json,created_at,updated_at)
                VALUES(?,?,?,?,?) ON CONFLICT(slug) DO NOTHING""",
-            (slug,owner,_encoded(CourseDraft().model_dump()),stamp,stamp),
+            (slug,owner,_encoded(new_course_draft(data.template).model_dump()),stamp,stamp),
         )
         row=_row(db,slug)
         if not _is_editor(user,row):
             raise HTTPException(409,"Запрос уже использован")
         return _committed(db,{"course":_detail(db,row,user)})
+
+    @app.post("/api/community/courses/{slug}/assistant/validate")
+    def validate_assistant(slug: str, data: AssistantImport, user: dict=Depends(community_user),
+                           db=Depends(get_connection)):
+        access(user)
+        row = _row(db, slug)
+        editable(user, db, row)
+        _version(row, data.expected_version)
+        # Validation is deliberately non-mutating. Normal draft save and
+        # separate publication consent remain authoritative.
+        return _private(assistant_draft(data))
 
     @app.put("/api/community/courses/{slug}")
     def save(slug: str,data: CourseSave,user: dict=Depends(community_user),db=Depends(get_connection)):

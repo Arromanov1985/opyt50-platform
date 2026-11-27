@@ -728,6 +728,16 @@ def run_browser(browser, base, database):
         admin.set_viewport_size({"width": 390, "height": 844})
         admin.goto(base + "/community/courses", wait_until="networkidle")
         expect(admin.locator(".studio-catalog")).to_contain_text("Искусственный интеллект с нуля")
+        expect(admin.locator(".studio-overview")).to_be_visible()
+        admin.locator("#studio-query").fill("неизвестное название учебного курса")
+        with admin.expect_response(lambda r: "/api/community/courses?" in r.url and r.request.method == "GET") as searched:
+            admin.locator('#studio-filter-form button[type="submit"]').click()
+        assert checked(searched.value)["overview"]["matching"] == 0
+        expect(admin.locator(".studio-catalog")).to_contain_text("Курсы не найдены")
+        expect(admin.locator("#studio-match-count")).to_contain_text("Найдено: 0")
+        admin.locator('[data-studio="filter-reset"]').click()
+        expect(admin.locator(".studio-catalog")).to_contain_text("Искусственный интеллект с нуля")
+        capture(admin, "course-studio-overview-mobile.png")
         with admin.expect_response(lambda r: r.url.endswith("/api/community/courses") and r.request.method == "POST") as made:
             admin.locator('[data-studio="new"]').click()
         course = checked(made.value)["course"]
@@ -777,6 +787,36 @@ def run_browser(browser, base, database):
         admin.locator('[data-studio="step"][data-step="preview"]').click()
         expect(admin.locator(".studio-preview")).to_contain_text("Проверить данные")
         expect(admin.locator(".studio-preview")).to_contain_text("Правильный ответ")
+        admin.locator('[data-studio="preview-mode"][data-mode="student"]').click()
+        expect(admin.locator(".studio-preview")).not_to_contain_text("Правильный ответ")
+        expect(admin.locator('[data-studio="trial-check"]')).to_be_disabled()
+        admin.locator('[data-studio-trial="0"][value="1"]').check()
+        admin.locator('[data-studio="trial-check"]').click()
+        expect(admin.locator("#studio-trial-result")).to_contain_text("Верных ответов: 0 из 1")
+        expect(admin.locator('[data-studio-feedback="0"]')).to_contain_text("Попробуйте ещё раз")
+        admin.locator('[data-studio-trial="0"][value="0"]').check()
+        expect(admin.locator('[data-studio-feedback="0"]')).to_be_hidden()
+        admin.locator('[data-studio="trial-check"]').click()
+        expect(admin.locator("#studio-trial-result")).to_contain_text("Все ответы верны")
+        capture(admin, "course-studio-student-preview-mobile.png")
+        # Leaving preview via numbered steps or the forward button must
+        # discard trial answers, without changing the real draft.
+        admin.locator('[data-studio="step"][data-step="info"]').click()
+        admin.locator('[data-studio="step"][data-step="preview"]').click()
+        expect(admin.locator('[data-studio-trial="0"]:checked')).to_have_count(0)
+        expect(admin.locator("#studio-trial-result")).to_have_text("")
+        admin.locator('[data-studio-trial="0"][value="0"]').check()
+        admin.locator('[data-studio="trial-check"]').click()
+        admin.locator('[data-studio="next"]').click()
+        admin.locator('[data-studio="step"][data-step="preview"]').click()
+        expect(admin.locator('[data-studio-trial="0"]:checked')).to_have_count(0)
+        expect(admin.locator("#studio-trial-result")).to_have_text("")
+        admin.locator('[data-studio-trial="0"][value="1"]').check()
+        admin.locator('[data-studio="trial-reset"]').click()
+        expect(admin.locator('[data-studio="trial-check"]')).to_be_disabled()
+        expect(admin.locator('[data-studio-trial="0"]:checked')).to_have_count(0)
+        admin.locator('[data-studio="preview-mode"][data-mode="author"]').click()
+        expect(admin.locator(".studio-preview")).to_contain_text("Правильный ответ")
         admin.context.set_offline(True)
         admin.locator("#studio-save").click()
         expect(admin.locator(".form-error:visible")).to_contain_text("Не удалось связаться с сервером")
@@ -803,6 +843,50 @@ def run_browser(browser, base, database):
             admin.locator("#confirm-community-action").click()
         assert checked(course_hidden.value)["course"]["state"] == "hidden"
         assert visitor.request.get(course_url).status == 404
+
+        # A ready-made outline is still private and incomplete, even for an administrator.
+        admin.locator('[data-studio="back"]').click()
+        expect(admin.locator("#studio-template")).to_be_visible()
+        admin.locator("#studio-template").select_option("professional")
+        admin.context.set_offline(True)
+        admin.locator('[data-studio="new"]').click()
+        expect(admin.locator(".form-error:visible")).to_contain_text("Не удалось связаться с сервером")
+        expect(admin.locator("#studio-template")).to_be_disabled()
+        expect(admin.locator('[data-studio="new"]')).to_have_text("Повторить создание")
+        admin.context.set_offline(False)
+        with admin.expect_response(lambda r: r.url.endswith("/api/community/courses") and r.request.method == "POST") as templated:
+            admin.locator('[data-studio="new"]').click()
+        outline = checked(templated.value)["course"]
+        assert outline["state"] == "draft" and outline["issues"] and outline["lesson_count"] == 4
+        assert visitor.request.get(base + "/academy/" + outline["slug"]).status == 404
+        admin.locator('[data-studio="next"]').click()
+        expect(admin.locator(".studio-lesson-select")).to_have_count(4)
+        expect(admin.locator(".studio-lesson-select").first).to_contain_text("Введение в тему")
+        expect(admin.locator('[data-studio-completion="0"]')).to_have_text("0 из 3 разделов")
+        capture(admin, "course-studio-template-mobile.png")
+        # Manual AI assistant: no external call, checked JSON and explicit append.
+        admin.locator('[data-studio="assistant"]').click()
+        assistant = admin.locator("#studio-assistant-form")
+        assistant.locator("#studio-ai-kind").select_option("lesson")
+        assistant.locator("#studio-ai-topic").fill("Проверка учебной таблицы")
+        assistant.locator("#studio-ai-audience").fill("Начинающие")
+        assistant.locator("#studio-ai-generate").click()
+        expect(assistant.locator("#studio-ai-prompt")).to_have_value(re.compile("Подготовь черновик одного учебного урока"))
+        assistant.locator("#studio-ai-source").fill("bad json")
+        assistant.locator('button[type="submit"]').click()
+        expect(assistant.locator(".form-error")).to_be_visible()
+        assistant.locator("#studio-ai-source").fill('{"title":"Дополнительный урок","minutes":15,"goal":"Научиться проверять учебный результат","sections":[["Проверка","Сверьте исходные данные."]],"example":"Вымышленная таблица.","practice":"Сверьте две строки.","questions":[{"text":"Что проверить?","options":["Данные","Цвет"],"correct":0,"feedback":"Нужно сверить данные."}]}')
+        with admin.expect_response(lambda r: r.url.endswith("/assistant/validate") and r.request.method == "POST") as imported:
+            assistant.locator('button[type="submit"]').click()
+        assert checked(imported.value)["lesson"]["title"] == "Дополнительный урок"
+        expect(assistant.locator("#studio-ai-summary")).to_contain_text("Дополнительный урок")
+        expect(assistant.locator("#studio-ai-apply")).to_be_disabled()
+        assistant.locator("#studio-ai-confirm").check()
+        assistant.locator("#studio-ai-apply").click()
+        expect(admin.locator(".studio-lesson-select")).to_have_count(5)
+        expect(admin.locator("#studio-lessons-4-title")).to_have_value("Дополнительный урок")
+        expect(admin.locator("#studio-save")).to_be_enabled()
+        assert visitor.request.get(base + "/academy/" + outline["slug"]).status == 404
 
         # Author contribution: save, submit exact text, editorial approval and revoke.
         anna.set_viewport_size({"width": 390, "height": 844})

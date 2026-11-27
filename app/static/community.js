@@ -1105,7 +1105,7 @@
 
   // A structured course studio. No user HTML, no markup syntax or hidden autosave.
   // The same in-memory draft survives tab changes and unsuccessful requests.
-  const studio={entry:null,draft:null,step:'info',lesson:0,lessonStep:'content',view:'own',page:1,key:null,loading:false,bound:false,previewPages:new Map()};
+  const studio={entry:null,draft:null,step:'info',lesson:0,lessonStep:'content',view:'own',page:1,query:'',status:'all',key:null,createTemplate:'blank',loading:false,bound:false,previewPages:new Map(),previewMode:'author',previewAnswers:new Map(),previewChecked:false};
   const studioApi='/api/community/courses';
   const studioStates={draft:'Черновик',pending:'На проверке',published:'Опубликован',rejected:'На доработке',hidden:'Скрыт'};
   const studioSteps=[['info','Карточка курса'],['lessons','Уроки и задания'],['preview','Предпросмотр'],['publish','Публикация']];
@@ -1153,6 +1153,7 @@
     }
   }
   function studioChange(){
+    studioResetQuiz();
     state.builderDirty=true;
     const badge=$('#studio-save-status');if(badge)badge.textContent='Есть несохранённые изменения';
     const save=$('#studio-save');if(save)save.disabled=false;
@@ -1172,23 +1173,139 @@
     if(state.builderDirty)confirmAction('Есть несохранённые изменения','Если продолжить, введённый текст будет потерян. Сначала можно сохранить черновик.','Выйти без сохранения',action);
     else return action();
   }
-  async function studioList(){
-    const result=await api(studioApi+'?view='+studio.view+'&page='+studio.page);
-    studio.entry=null;studio.draft=null;state.builderDirty=false;
+  function studioCreateControls(result){
+    const templates=Array.isArray(result.templates)?result.templates:[];
+    const selection=studio.key?studio.createTemplate:'blank';
+    return '<div class="studio-create"><label for="studio-template">Начать курс</label>'+
+      (templates.length?'<select id="studio-template" '+(studio.key?'disabled':'')+'>'+
+        templates.map(item=>'<option value="'+esc(item.id)+'" '+(item.id===selection?'selected':'')+'>'+
+          esc(item.label+(item.lesson_count?' · '+item.lesson_count+' уроков · '+item.minutes+' мин.':''))+'</option>').join('')+'</select>':'')+
+      '<p class="help">Шаблон задаёт структуру уроков. Наполнение, задания и ответы создаёт автор. Курс остаётся черновиком.</p>'+
+      studioButton('new',studio.key?'Повторить создание':'+ Новый курс','primary')+'</div>';
+  }
+  function studioOverview(result){
+    const overview=result.overview;
+    if(!overview)return '';
+    return '<section class="panel studio-overview" aria-label="Обзор курсов"><h2>Обзор курсов</h2><p class="help">Статус относится к текущей версии курса. Предыдущая публикация может оставаться доступной ученикам.</p>'+
+      '<div class="studio-metrics">'+[['all','Всего',overview.total],...Object.entries(studioStates).map(([key,label])=>[key,label,overview.statuses[key]||0])].map(([key,label,count])=>
+        '<button type="button" class="studio-metric" data-studio="filter-status" data-status="'+key+'" aria-pressed="'+(studio.status===key)+'"><strong>'+count+'</strong><span>'+esc(label)+'</span></button>').join('')+'</div>'+
+      '<form id="studio-filter-form" class="studio-filter"><div class="studio-field"><label for="studio-query">Найти по названию</label><input id="studio-query" name="query" maxlength="120" value="'+esc(studio.query)+'" placeholder="Название курса"></div>'+
+      '<div class="studio-field"><label for="studio-status">Статус</label><select id="studio-status" name="status"><option value="all" '+(studio.status==='all'?'selected':'')+'>Все статусы</option>'+
+      Object.entries(studioStates).map(([key,label])=>'<option value="'+key+'" '+(studio.status===key?'selected':'')+'>'+esc(label)+'</option>').join('')+'</select></div>'+
+      '<div class="actions"><button type="submit" class="button primary">Найти</button>'+studioButton('filter-reset','Сбросить')+'</div></form>'+
+      '<p class="help" id="studio-match-count" role="status">Найдено: '+overview.matching+' из '+overview.total+'</p></section>';
+  }
+  async function studioList(next={}){
+    const request={view:next.view??studio.view,page:next.page??studio.page,
+      query:next.query??studio.query,status:next.status??studio.status};
+    const params=new URLSearchParams({view:request.view,page:String(request.page)});
+    if(request.view==='own'){params.set('q',request.query);params.set('status',request.status);}
+    const result=await api(studioApi+'?'+params.toString());
+    Object.assign(studio,request);
+    studio.entry=null;studio.draft=null;studioResetQuiz();studio.previewMode='author';state.builderDirty=false;
     content.innerHTML='<section class="section-heading"><div><span class="eyebrow">АКАДЕМИЯ СТАЖНО</span><h1>Конструктор курсов</h1><p>Создавайте понятные учебные программы: уроки, практику и самопроверку.</p></div><a class="button secondary" href="/academy">Открыть Академию ↗</a></section>'+
       '<section class="panel studio-list-intro"><div><h2>'+(state.user.role==='admin'?'Редакция Академии':'Ваши курсы')+'</h2><p>Черновики видны только автору. Изменения опубликованного курса появятся после утверждения новой версии.</p></div>'+
-      (result.can_create?studioButton('new','+ Новый курс','primary'):'')+
+      (result.can_create?studioCreateControls(result):'')+
       (result.restricted?'<p class="notice warning">Обработка данных ограничена. Можно просматривать свои курсы и отзывать публикации.</p>':!result.can_create&&state.user.role==='candidate'?'<p class="help">Для создания курса сохраните профессиональный профиль. Максимум 10 курсов. <a href="/community/profile">Мой профиль</a></p>':'')+'</section>'+
       (state.user.role==='admin'?'<nav class="studio-tabs" aria-label="Курсы редакции">'+[['own','Курсы СТАЖНО'],['review','На проверке'],['published','Курсы участников']].map(([key,label])=>studioButton('view',label,studio.view===key?'primary':'secondary','data-view="'+key+'" aria-pressed="'+(studio.view===key)+'"')).join('')+'</nav>':'')+
+      studioOverview(result)+
       '<div class="studio-catalog">'+(result.courses.length?result.courses.map(course=>
         '<article class="panel studio-catalog-card"><div class="status-line">'+statusBadge(course.state,studioStates)+(course.has_publication?'<span class="tag">Версия доступна ученикам</span>':'')+'</div><h2>'+esc(course.title)+'</h2><p class="help">'+course.lesson_count+' уроков · '+course.minutes+' мин.</p>'+
         (course.moderation_reason?'<p class="notice warning">'+esc(course.moderation_reason)+'</p>':'')+
         '<div class="actions">'+studioButton('open',course.can_edit?'Открыть редактор':'Проверить курс','primary','data-slug="'+esc(course.slug)+'"')+
-        (course.has_publication?'<a class="button secondary" href="/academy/'+encodeURIComponent(course.slug)+'">Открыть курс</a>':'')+'</div></article>').join(''):empty('Пока нет курсов',studio.view==='review'?'Новые курсы участников появятся здесь после отправки на проверку.':'Создайте курс с нуля и добавьте первый урок.'))+'</div>'+
+        (course.has_publication?'<a class="button secondary" href="/academy/'+encodeURIComponent(course.slug)+'">Открыть курс</a>':'')+'</div></article>').join(''):(studio.view==='own'&&result.overview?.total&&(studio.query||studio.status!=='all')?empty('Курсы не найдены','Измените название или статус, либо сбросьте фильтры.'):empty('Пока нет курсов',studio.view==='review'?'Новые курсы участников появятся здесь после отправки на проверку.':'Создайте курс с нуля и добавьте первый урок.')))+'</div>'+
       (studio.page>1||result.has_more?'<div class="actions">'+studioButton('page','← Назад','secondary','data-page="'+(studio.page-1)+'" '+(studio.page===1?'disabled':''))+'<span>Страница '+studio.page+'</span>'+studioButton('page','Далее →','secondary','data-page="'+(studio.page+1)+'" '+(!result.has_more?'disabled':''))+'</div>':'');
   }
   function studioLoadEntry(entry){
-    studio.previewPages.clear();studio.entry=entry;studio.draft=studioClone(entry.draft);studio.step=entry.can_edit?'info':'preview';studio.lesson=0;studio.lessonStep='content';state.builderDirty=false;studioRender();
+    studio.previewPages.clear();studioResetQuiz();studio.previewMode='author';studio.entry=entry;studio.draft=studioClone(entry.draft);studio.step=entry.can_edit?'info':'preview';studio.lesson=0;studio.lessonStep='content';state.builderDirty=false;studioRender();
+  }
+  function studioAssistantPrompt(kind,topic,audience,count,minutes){
+    const lesson={title:'Название урока',minutes,goal:'Конкретный результат обучения',
+      sections:[['Заголовок блока','Учебный текст']],example:'Вымышленный пример',
+      practice:'Задание и способ проверки результата',
+      questions:[{text:'Вопрос',options:['Вариант 1','Вариант 2','Вариант 3'],correct:0,feedback:'Почему ответ верен'}]};
+    const schema=kind==='course'?{title:'Название курса',description:'Описание курса',audience:'Для кого курс',
+      outcomes:['Результат обучения'],lessons:[lesson]}:lesson;
+    return 'Подготовь черновик '+(kind==='course'?'учебного курса из '+count+' уроков':'одного учебного урока')+
+      ' для взрослой аудитории.\nТема: '+topic+'\nАудитория: '+audience+'\nПримерная длительность каждого урока: '+minutes+' мин.\n'+
+      'Используй понятный русский язык, практические примеры и самостоятельные задания. Не выдумывай факты, ссылки, квалификации или гарантии. Если факт нужно проверить, укажи это в тексте. Не включай персональные данные, контакты, ссылки, пароли, коммерческие тайны, чужие защищённые материалы. Примеры только вымышленные.\n'+
+      'Верни только один JSON-объект без Markdown и комментариев. Сохрани точные имена полей и типы, не добавляй идентификаторы, media или другие поля. '+
+      'sections: список блоков, каждый блок — массив из заголовка и одного-восьми абзацев; до 12 блоков. '+
+      'questions: один-десять вопросов, по два-пять разных вариантов; correct — индекс верного ответа с нуля; feedback — пояснение. '+
+      'Название до 180 символов, цель и описание до 600, абзац, пример и практика до 4000, вопрос и вариант до 500, пояснение до 1000. '+
+      'Для курса добавь результаты обучения (до 12, каждый до 500 символов). Заполни содержимое вместо примера структуры.\n'+JSON.stringify(schema,null,2);
+  }
+  function studioAssistant(){
+    if(!studioEditable())return;
+    const courseSlug=studio.entry.slug,version=studio.entry.version;
+    let validated=null;
+    openDialog('Помощник преподавателя','<p>Подготовьте запрос для выбранного вами ИИ, затем вставьте полученный ответ. СТАЖНО не подключается к внешним ИИ и не отправляет им данные автоматически.</p>'+
+      '<p class="notice warning">Не передавайте внешнему ИИ личные данные, контакты, документы, пароли или рабочую конфиденциальную информацию. Автор проверяет факты, права и ответы перед сохранением и публикацией.</p>'+
+      '<form id="studio-assistant-form" class="dialog-form"><div class="studio-field"><label for="studio-ai-kind">Что подготовить</label><select id="studio-ai-kind" name="kind"><option value="course">Курс целиком</option><option value="lesson">Новый урок (добавить)</option></select></div>'+
+      '<div class="studio-field"><label for="studio-ai-topic">Тема без личных данных</label><input id="studio-ai-topic" name="topic" maxlength="180" placeholder="Например, основы работы с таблицами"></div>'+
+      '<div class="studio-field"><label for="studio-ai-audience">Для кого</label><input id="studio-ai-audience" name="audience" maxlength="180" placeholder="Например, начинающие"></div>'+
+      '<div class="studio-ai-numbers"><div class="studio-field"><label for="studio-ai-count">Уроков в курсе</label><input id="studio-ai-count" name="count" type="number" min="1" max="12" value="4"></div><div class="studio-field"><label for="studio-ai-minutes">Минут на урок</label><input id="studio-ai-minutes" name="minutes" type="number" min="1" max="180" value="15"></div></div>'+
+      '<button type="button" class="button primary" id="studio-ai-generate">Подготовить запрос</button>'+
+      '<div class="studio-field"><label for="studio-ai-prompt">Готовый запрос</label><textarea id="studio-ai-prompt" rows="6" readonly></textarea><button type="button" class="button secondary" id="studio-ai-copy">Скопировать запрос</button><p id="studio-ai-copy-status" role="status" class="help"></p></div>'+
+      '<div class="studio-field"><label for="studio-ai-source">Вставьте ответ ИИ (JSON)</label><p class="help">Текст передаётся только на сервер СТАЖНО для проверки структуры. Не вставляйте реальные личные данные.</p><textarea id="studio-ai-source" name="source" rows="8" maxlength="180000"></textarea></div>'+
+      '<button type="submit" class="button secondary">Проверить структуру</button>'+
+      '<section id="studio-ai-preview" class="studio-ai-preview" hidden><h3>Результат проверки</h3><p id="studio-ai-summary" role="status"></p><p id="studio-ai-replace-note" class="notice warning"></p>'+
+      '<label class="consent-label"><input type="checkbox" id="studio-ai-confirm"><span>Я проверил текст, факты и права на материалы; хочу перенести этот результат в редактируемый черновик.</span></label>'+
+      '<button type="button" class="button primary" id="studio-ai-apply" disabled>Перенести в черновик</button></section><p class="form-error notice error" role="alert" hidden></p></form>');
+    const form=$('#studio-assistant-form'),kind=form.elements.kind,source=form.elements.source,confirm=$('#studio-ai-confirm'),apply=$('#studio-ai-apply');
+    const reset=()=>{validated=null;confirm.checked=false;apply.disabled=true;$('#studio-ai-preview').hidden=true;};
+    const refresh=()=>{apply.disabled=!validated||!confirm.checked;};
+    const clearError=()=>{const error=$('.form-error',form);if(error)error.hidden=true;};
+    kind.addEventListener('change',()=>{reset();$('#studio-ai-prompt').value='';form.elements.count.disabled=kind.value==='lesson';});
+    source.addEventListener('input',reset);
+    confirm.addEventListener('change',refresh);
+    $('#studio-ai-generate').addEventListener('click',()=>{
+      clearError();
+      const topic=form.elements.topic.value.trim(),audience=form.elements.audience.value.trim();
+      const count=Number(form.elements.count.value),minutes=Number(form.elements.minutes.value);
+      if(!topic||!audience||!Number.isInteger(minutes)||minutes<1||minutes>180||(kind.value==='course'&&(!Number.isInteger(count)||count<1||count>12))){
+        inlineError(form,'Укажите тему, аудиторию и допустимое количество уроков и минут.');return;
+      }
+      $('#studio-ai-prompt').value=studioAssistantPrompt(kind.value,topic,audience,count,minutes);
+      $('#studio-ai-copy-status').textContent='Запрос готов. Проверьте его перед копированием.';
+    });
+    $('#studio-ai-copy').addEventListener('click',async()=>{
+      const prompt=$('#studio-ai-prompt'),status=$('#studio-ai-copy-status');
+      if(!prompt.value){status.textContent='Сначала подготовьте запрос.';return;}
+      try{await navigator.clipboard.writeText(prompt.value);status.textContent='Запрос скопирован.';}
+      catch{prompt.focus();prompt.select();status.textContent='Выделен запрос. Скопируйте его вручную.';}
+    });
+    form.addEventListener('submit',async event=>{
+      event.preventDefault();reset();clearError();
+      const type=kind.value,text=source.value.trim();
+      if(!text){inlineError(form,'Вставьте JSON-ответ.');return;}
+      if(type==='course'&&studio.draft.lessons.some(item=>(item.media||[]).length)){inlineError(form,'Нельзя заменить курс с прикреплёнными файлами. Выберите добавление отдельного урока.');return;}
+      await busy(form,async()=>{
+        const result=await api(studioPath()+'/assistant/validate',{method:'POST',body:{expected_version:version,kind:type,source:text}});
+        validated={type,result};
+        const items=type==='course'?result.draft.lessons:[result.lesson];
+        $('#studio-ai-summary').textContent='Структура принята: '+items.length+' уроков. '+items.map(item=>item.title||'Без названия').join(' · ')+(type==='course'?' · Незакрытых пунктов проверки: '+result.issues.length:'')+'. Это не подтверждение достоверности.';
+        $('#studio-ai-replace-note').textContent=type==='course'?'Перенос заменит текущую карточку и программу в этой вкладке, включая несохранённые изменения. Сохранённая версия и публикация пока не изменятся.':'Урок будет добавлен в конец программы. Остальные уроки не изменятся.';
+        $('#studio-ai-preview').hidden=false;
+      });
+      refresh();
+      form.elements.count.disabled=kind.value==='lesson';
+    });
+    apply.addEventListener('click',()=>{
+      if(!validated||!confirm.checked||!studioEditable()||studio.entry.slug!==courseSlug||studio.entry.version!==version)return;
+      const {type,result}=validated;
+      let draft;
+      if(type==='course'){
+        if(studio.draft.lessons.some(item=>(item.media||[]).length)){inlineError(form,'Курс содержит прикреплённые файлы.');return;}
+        draft=studioClone(result.draft);
+      }else{
+        if(studio.draft.lessons.length>=30){inlineError(form,'В курсе уже 30 уроков.');return;}
+        draft=studioClone(studio.draft);draft.lessons.push(studioClone(result.lesson));
+      }
+      if(new TextEncoder().encode(JSON.stringify(draft)).length>180000){inlineError(form,'Курс слишком велик. Сократите текст.');return;}
+      studio.draft=draft;studio.step=type==='course'?'info':'lessons';studio.lesson=type==='course'?0:draft.lessons.length-1;studio.lessonStep='content';
+      studio.previewPages.clear();studioChange();closeDialog();studioRender();notice('Материал перенесён. Проверьте и сохраните черновик.');
+    });
   }
   function studioInfo(){
     const d=studio.draft;
@@ -1328,13 +1445,33 @@
       '<nav class="studio-tabs" aria-label="Содержание урока">'+[['content','Материал'],['practice','Практика'],['quiz','Тест']].map(([key,label])=>studioButton('lesson-step',label+'<small data-studio-section-completion="'+key+'">'+(studioLessonCompletion(lesson)[key]?'Заполнено':'Не заполнено')+'</small>',key===studio.lessonStep?'primary':'secondary','data-step="'+key+'" aria-pressed="'+(key===studio.lessonStep)+'"')).join('')+'</nav>'+body+
       '<div class="actions">'+studioButton('lesson-next',studio.lessonStep==='content'?'К практическому заданию →':studio.lessonStep==='practice'?'К тесту →':'Предпросмотр курса →','primary')+'</div></section></div>';
   }
+  function studioResetQuiz(){
+    studio.previewAnswers.clear();studio.previewChecked=false;
+  }
+  function studioQuizReady(lesson){
+    return studioLessonCompletion(lesson).quiz;
+  }
+  function studioPreviewQuiz(lesson){
+    if(studio.previewMode==='author'){
+      return lesson.questions.map((q,index)=>'<section class="studio-block"><h4>'+(index+1)+'. '+esc(q.text)+'</h4><ul>'+q.options.map((value,i)=>'<li>'+esc(value)+(q.correct===i?' <strong>✓ Правильный ответ</strong>':'')+'</li>').join('')+'</ul><p class="help">'+esc(q.feedback)+'</p></section>').join('');
+    }
+    if(!studioQuizReady(lesson))return '<p class="notice warning">Сначала заполните все вопросы, варианты и пояснения в редакторе. После этого тест можно пройти.</p>';
+    const answered=lesson.questions.every((q,i)=>studio.previewAnswers.has(i));
+    const right=lesson.questions.filter((q,i)=>studio.previewAnswers.get(i)===q.correct).length;
+    return '<div class="studio-student-quiz"><p class="help">Выберите один ответ на каждый вопрос. Результат пробного прохождения не сохраняется и не влияет на публикацию.</p>'+
+      lesson.questions.map((q,index)=>'<fieldset class="studio-block studio-trial-question"><legend>'+(index+1)+'. '+esc(q.text)+'</legend>'+
+        q.options.map((value,i)=>'<label class="studio-trial-option"><input type="radio" name="studio-trial-'+index+'" data-studio-trial="'+index+'" value="'+i+'" '+(studio.previewAnswers.get(index)===i?'checked':'')+'><span>'+esc(value)+'</span></label>').join('')+
+        '<p class="studio-trial-feedback" data-studio-feedback="'+index+'" '+(!studio.previewChecked?'hidden':'')+'>'+ (studio.previewChecked?esc((studio.previewAnswers.get(index)===q.correct?'Верно. ':'Попробуйте ещё раз. ')+q.feedback):'')+'</p></fieldset>').join('')+
+      '<div class="actions">'+studioButton('trial-check','Проверить ответы','primary',answered?'':'disabled')+studioButton('trial-reset','Начать заново')+'</div>'+
+      '<p id="studio-trial-result" role="status" tabindex="-1">'+(studio.previewChecked?(right===lesson.questions.length?'Все ответы верны! ':'Верных ответов: '+right+' из '+lesson.questions.length+'. ')+'Это пробное прохождение.':'')+'</p></div>';
+  }
   function studioPreview(){
     const d=studio.draft,lesson=d.lessons[studio.lesson];
     return '<section class="panel studio-panel"><span class="eyebrow">ПРЕДПРОСМОТР · НЕ ОПУБЛИКОВАНО</span><h2>'+esc(d.title||'Курс без названия')+'</h2><p>'+esc(d.description||'Описание ещё не заполнено')+'</p><p class="help">'+esc(d.audience)+'</p><h3>Результаты обучения</h3><ul>'+d.outcomes.filter(Boolean).map(item=>'<li>'+esc(item)+'</li>').join('')+'</ul><h3>Программа</h3><ol>'+d.lessons.map((item,index)=>'<li>'+studioButton('preview-lesson',esc(item.title||'Урок '+(index+1))+' · '+item.minutes+' мин.',index===studio.lesson?'primary':'secondary','data-index="'+index+'"')+'</li>').join('')+'</ol></section>'+
-      (lesson?'<section class="panel studio-panel studio-preview"><span class="eyebrow">УРОК '+(studio.lesson+1)+'</span><h2>'+esc(lesson.title||'Урок без названия')+'</h2><p>'+esc(lesson.goal)+'</p>'+
+      (lesson?'<section class="panel studio-panel studio-preview"><span class="eyebrow">УРОК '+(studio.lesson+1)+' ИЗ '+d.lessons.length+' · '+lesson.minutes+' МИН.</span><div class="studio-tabs" aria-label="Режим предпросмотра">'+[['author','Как автор'],['student','Как ученик']].map(([key,label])=>studioButton('preview-mode',label,studio.previewMode===key?'primary':'secondary','data-mode="'+key+'" aria-pressed="'+(studio.previewMode===key)+'"')).join('')+'</div><h2>'+esc(lesson.title||'Урок без названия')+'</h2><p>'+esc(lesson.goal)+'</p>'+
       lesson.sections.map(section=>'<section><h3>'+esc(section[0]||'Заголовок блока')+'</h3>'+section.slice(1).map(p=>'<p class="multiline">'+esc(p)+'</p>').join('')+'</section>').join('')+
       studioMediaPreview(lesson)+'<h3>Практический пример</h3><div class="studio-example multiline">'+esc(lesson.example)+'</div><h3>Попробуйте сами</h3><p class="multiline">'+esc(lesson.practice)+'</p><h3>Вопросы для самопроверки</h3>'+
-      lesson.questions.map((q,index)=>'<section class="studio-block"><h4>'+(index+1)+'. '+esc(q.text)+'</h4><ul>'+q.options.map((value,i)=>'<li>'+esc(value)+(q.correct===i?' <strong>✓ Правильный ответ</strong>':'')+'</li>').join('')+'</ul><p class="help">'+esc(q.feedback)+'</p></section>').join('')+'</section>':'')+
+      studioPreviewQuiz(lesson)+'<nav class="studio-preview-navigation" aria-label="Переход между уроками">'+studioButton('preview-lesson','← Предыдущий урок','secondary','data-index="'+(studio.lesson-1)+'" '+(studio.lesson===0?'disabled':''))+studioButton('preview-lesson','Следующий урок →','secondary','data-index="'+(studio.lesson+1)+'" '+(studio.lesson===d.lessons.length-1?'disabled':''))+'</nav></section>':'')+
       '<div class="actions">'+studioButton('next','К проверке готовности →','primary')+'</div>';
   }
   function studioPublication(){
@@ -1361,7 +1498,7 @@
     const d=studio.draft,e=studio.entry,editable=studioEditable();
     if(!editable&&['info','lessons'].includes(studio.step))studio.step='preview';
     content.innerHTML='<div class="studio-top"><div><button type="button" class="button secondary compact" data-studio="back">← Все курсы</button><span class="eyebrow">КОНСТРУКТОР КУРСОВ</span><h1 id="studio-course-title">'+esc(d.title||'Курс без названия')+'</h1><div class="status-line">'+statusBadge(e.state,studioStates)+'<span class="help" id="studio-total-time">'+d.lessons.length+' уроков · '+d.lessons.reduce((sum,l)=>sum+(Number(l.minutes)||0),0)+' мин.</span></div></div><div class="studio-save-area"><p class="help" id="studio-save-status" role="status">'+(state.builderDirty?'Есть несохранённые изменения':'Черновик сохранён')+'</p>'+
-      (editable?'<button type="button" class="button primary" id="studio-save" data-studio="save" '+(!state.builderDirty?'disabled':'')+'>Сохранить черновик</button>':'')+
+      (editable?'<button type="button" class="button primary" id="studio-save" data-studio="save" '+(!state.builderDirty?'disabled':'')+'>Сохранить черновик</button>'+studioButton('assistant','Помощник преподавателя'):'')+
       (e.has_publication?'<a class="button secondary" href="/academy/'+encodeURIComponent(e.slug)+'">Опубликованная версия ↗</a>':'')+'</div></div>'+
       (e.restricted?'<p class="notice warning">Доступны просмотр и отзыв согласия. Редактирование ограничено.</p>':'')+
       '<nav class="studio-steps" aria-label="Этапы создания курса">'+studioSteps.map(([key,label],i)=>'<button type="button" class="studio-step'+(key===studio.step?' current':'')+'" data-studio="step" data-step="'+key+'" '+(key===studio.step?'aria-current="step"':'')+' '+(!editable&&['info','lessons'].includes(key)?'disabled':'')+'><span class="studio-num">'+(i+1)+'</span><span>'+label+'</span></button>').join('')+'</nav>'+
@@ -1370,7 +1507,7 @@
   async function studioSave(){
     if(!studioEditable()||!state.builderDirty)return;
     const result=await api(studioPath(),{method:'PUT',body:{...studio.draft,expected_version:studio.entry.version}});
-    studio.entry=result.course;studio.draft=studioClone(result.course.draft);state.builderDirty=false;studioRender();notice('Черновик сохранён. Опубликованная версия не изменена.');
+    studio.entry=result.course;studio.draft=studioClone(result.course.draft);studioResetQuiz();state.builderDirty=false;studioRender();notice('Черновик сохранён. Опубликованная версия не изменена.');
   }
   function studioSubmit(){
     if(state.builderDirty||!studioEditable())return;
@@ -1398,17 +1535,63 @@
     };
     try{
       if(action==='new'){
-        studio.loading=true;studio.key=studio.key||crypto.randomUUID();
-        await busy(content,async()=>{const result=await api(studioApi,{method:'POST',body:{client_key:studio.key}});studio.key=null;studioLoadEntry(result.course);});
+        studio.loading=true;
+        if(!studio.key){
+          studio.key=crypto.randomUUID();
+          studio.createTemplate=$('#studio-template')?.value||'blank';
+        }
+        await busy(content,async()=>{
+          const result=await api(studioApi,{method:'POST',body:{client_key:studio.key,template:studio.createTemplate}});
+          studio.key=null;studio.createTemplate='blank';studioLoadEntry(result.course);
+        });
+        // A lost response may mean the draft already exists. Keep the same
+        // request ID AND template on retry rather than creating another draft.
+        if(studio.key){
+          const selector=$('#studio-template');
+          if(selector){selector.value=studio.createTemplate;selector.disabled=true;}
+          if(button.isConnected)button.textContent='Повторить создание';
+        }
       }else if(action==='open'){
         studio.loading=true;
         const result=await api(studioApi+'/'+encodeURIComponent(button.dataset.slug));studioLoadEntry(result.course);
       }else if(action==='back'){await studioLeave(async()=>{await studioList();});}
-      else if(action==='view'){studio.loading=true;studio.view=button.dataset.view;studio.page=1;await studioList();}
-      else if(action==='page'){studio.loading=true;studio.page=Number(button.dataset.page);await studioList();}
-      else if(action==='step'){studio.step=button.dataset.step;studioRender();}
-      else if(action==='next'){studio.step=studio.step==='info'?'lessons':'publish';studioRender();}
-      else if(action==='preview-lesson'){studio.lesson=index;studioRender();}
+      else if(action==='view'){studio.loading=true;await studioList({view:button.dataset.view,page:1,query:'',status:'all'});}
+      else if(action==='page'){studio.loading=true;await studioList({page:Number(button.dataset.page)});}
+      else if(action==='filter-status'&&!studio.entry&&studio.view==='own'){
+        const status=button.dataset.status;
+        if(status!=='all'&&!Object.hasOwn(studioStates,status))return;
+        studio.loading=true;await busy(content,()=>studioList({page:1,status}));
+      }
+      else if(action==='filter-reset'&&!studio.entry&&studio.view==='own'){
+        studio.loading=true;await busy(content,()=>studioList({page:1,query:'',status:'all'}));
+      }
+      else if(action==='step'){
+        const target=button.dataset.step;
+        if(!studioSteps.some(([key])=>key===target))return;
+        if(!studioEditable()&&['info','lessons'].includes(target))return;
+        if(studio.step==='preview'&&target!=='preview')studioResetQuiz();
+        studio.step=target;studioRender();
+      }
+      else if(action==='next'){
+        if(studio.step==='preview')studioResetQuiz();
+        studio.step=studio.step==='info'?'lessons':'publish';studioRender();
+      }
+      else if(action==='preview-lesson'){
+        if(Number.isInteger(index)&&index>=0&&index<studio.draft.lessons.length){
+          studio.lesson=index;studioResetQuiz();studioRender();
+        }
+      }
+      else if(action==='preview-mode'&&studio.step==='preview'&&['author','student'].includes(button.dataset.mode)){
+        studio.previewMode=button.dataset.mode;studioResetQuiz();studioRender();
+        $('[data-studio="preview-mode"][aria-pressed="true"]')?.focus();
+      }
+      else if(action==='trial-check'&&studio.step==='preview'&&studio.previewMode==='student'&&lesson&&studioQuizReady(lesson)){
+        if(!lesson.questions.every((q,i)=>studio.previewAnswers.has(i)))return;
+        studio.previewChecked=true;studioRender();$('#studio-trial-result')?.focus();
+      }
+      else if(action==='trial-reset'&&studio.step==='preview'&&studio.previewMode==='student'){
+        studioResetQuiz();studioRender();$('[data-studio-trial]')?.focus();
+      }
       else if(action==='media-page'){
         const id=button.dataset.fileId,page=Number(button.dataset.page);
         const file=studio.entry.media_files?.find(item=>item.id===id);
@@ -1426,10 +1609,12 @@
       });
       else if(['approve','reject','hide'].includes(action))studioReview(action);
       else if(!studioEditable())return;
+      else if(action==='assistant')studioAssistant();
       else if(action==='fix-issue'&&!state.builderDirty){
         const issue=studio.entry.issue_locations?.[index];
         if(!issue||!['info','lessons'].includes(issue.step))return;
         studio.step=issue.step;
+        studioResetQuiz();
         if(issue.step==='lessons'){
           studio.lesson=Number.isInteger(issue.lesson)?Math.max(0,Math.min(issue.lesson,studio.draft.lessons.length-1)):0;
           studio.lessonStep=['content','practice','quiz'].includes(issue.lesson_step)?issue.lesson_step:'content';
@@ -1445,7 +1630,7 @@
           target.focus({preventScroll:true});target.scrollIntoView({block:'center'});
         }
       }
-      else if(action==='lesson'){studio.lesson=index;studio.lessonStep='content';studioRender();}
+      else if(action==='lesson'){studio.lesson=index;studioResetQuiz();studio.lessonStep='content';studioRender();}
       else if(action==='lesson-step'){studio.lessonStep=button.dataset.step;studioRender();}
       else if(action==='lesson-next'){if(studio.lessonStep==='content')studio.lessonStep='practice';else if(studio.lessonStep==='practice')studio.lessonStep='quiz';else studio.step='preview';studioRender();}
       else if(action==='add-lesson'&&studio.draft.lessons.length<30){studio.draft.lessons.push(newStudioLesson());studio.lesson=studio.draft.lessons.length-1;studio.lessonStep='content';structural();}
@@ -1504,8 +1689,18 @@
     }catch(error){notice(error.message,'error');}finally{studio.loading=false;}
   }
   function studioInput(event){
-    if(mode!=='courses'||!studioEditable()||studio.loading)return;
+    if(mode!=='courses'||studio.loading)return;
     const node=event.target;
+    if(node.dataset.studioTrial!==undefined&&studio.step==='preview'&&studio.previewMode==='student'){
+      const lesson=studio.draft?.lessons[studio.lesson],index=Number(node.dataset.studioTrial),answer=Number(node.value);
+      if(!node.checked||!lesson||!studioQuizReady(lesson)||!Number.isInteger(index)||index<0||index>=lesson.questions.length||!Number.isInteger(answer)||answer<0||answer>=lesson.questions[index].options.length)return;
+      studio.previewAnswers.set(index,answer);studio.previewChecked=false;
+      content.querySelectorAll('[data-studio-feedback]').forEach(label=>{label.hidden=true;label.textContent='';});
+      const result=$('#studio-trial-result');if(result)result.textContent='';
+      const check=$('[data-studio="trial-check"]');if(check)check.disabled=!lesson.questions.every((q,i)=>studio.previewAnswers.has(i));
+      return;
+    }
+    if(!studioEditable())return;
     if(node.dataset.studioPath){
       const value=node.type==='number'?Number(node.value):node.value;
       studioSet(node.dataset.studioPath,value);
@@ -1517,10 +1712,19 @@
       studio.draft.lessons[studio.lesson].questions[Number(node.dataset.studioCorrect)].correct=Number(node.value);studioChange();
     }
   }
+  async function studioFilterSubmit(event){
+    if(event.target.id!=='studio-filter-form'||mode!=='courses')return;
+    event.preventDefault();
+    if(studio.loading||studio.entry||studio.view!=='own')return;
+    const form=event.target,query=form.elements.query.value.trim(),status=form.elements.status.value;
+    if(status!=='all'&&!Object.hasOwn(studioStates,status))return;
+    studio.loading=true;
+    try{await busy(form,()=>studioList({page:1,query,status}));}finally{studio.loading=false;}
+  }
   async function renderCourseBuilder(){
     if(!state.user)return accountGate('Конструктор курсов');
     if(!['candidate','admin'].includes(state.user.role)){content.innerHTML=empty('Конструктор курсов','Создавать курсы могут авторы сообщества и редакция.','<a class="button primary" href="/academy">Открыть Академию</a>');return;}
-    if(!studio.bound){content.addEventListener('click',studioAction);content.addEventListener('input',studioInput);studio.bound=true;}
+    if(!studio.bound){content.addEventListener('click',studioAction);content.addEventListener('input',studioInput);content.addEventListener('submit',studioFilterSubmit);studio.bound=true;}
     await studioList();
   }
 

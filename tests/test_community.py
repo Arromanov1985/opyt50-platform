@@ -2231,3 +2231,147 @@ def test_private_rendition_preview_range_and_revocation(community, monkeypatch):
     assert visitor.get("/academy/"+slug).status_code==404
     assert mutate(author,"POST","/api/account/privacy-requests",{"kind":"stop_processing"}).status_code==201
     assert author.get(path).status_code==404
+
+
+def test_course_templates_are_private_editable_and_idempotent(community):
+    app, clients, ids = community
+    first, second, admin, visitor, employer = (
+        clients[key] for key in ("first", "second", "admin", "visitor", "employer"))
+    url = "/api/community/courses"
+    assert mutate(first, "POST", url, {"client_key": str(uuid4()), "template": "workshop"}).status_code == 409
+    publish(clients, "first")
+    options = first.get(url).json()["templates"]
+    assert {item["id"]: item["lesson_count"] for item in options} == {
+        "blank": 0, "workshop": 2, "professional": 4, "mentoring": 5,
+    }
+    assert mutate(first, "POST", url, {"client_key": str(uuid4()), "template": "unknown"}).status_code == 422
+    for item in options:
+        key = str(uuid4())
+        created = mutate(first, "POST", url, {"client_key": key, "template": item["id"]})
+        assert created.status_code == 200, created.text
+        course = created.json()["course"]
+        slug = course["slug"]
+        own = url + "/" + slug
+        assert course["state"] == "draft"
+        assert course["issues"]
+        assert course["lesson_count"] == item["lesson_count"] and course["minutes"] == item["minutes"]
+        assert course["draft"]["title"] == ""
+        assert visitor.get("/academy/" + slug).status_code == 404
+        assert second.get(own).status_code == 404
+        assert admin.get(own).status_code == 404
+        assert mutate(first, "POST", own + "/submit",
+                      {"expected_version": course["version"], "publish_consent": True}).status_code == 422
+        lessons = course["draft"]["lessons"]
+        assert len({lesson["slug"] for lesson in lessons}) == len(lessons)
+        for lesson in lessons:
+            assert lesson["title"] and not lesson["goal"]
+            assert not lesson["example"] and not lesson["practice"]
+            assert all(section[0] and section[1] == "" for section in lesson["sections"])
+            assert lesson["questions"][0]["correct"] is None
+            assert lesson["questions"][0]["options"] == ["", "", ""]
+        edited = mutate(first, "PUT", own, {**course["draft"], "title": "Мой собственный курс",
+                                          "expected_version": course["version"]})
+        assert edited.status_code == 200, edited.text
+        retry = mutate(first, "POST", url, {"client_key": key, "template": item["id"]})
+        assert retry.status_code == 200
+        assert retry.json()["course"]["slug"] == slug
+        assert retry.json()["course"]["draft"]["title"] == "Мой собственный курс"
+    assert len(first.get(url).json()["courses"]) == 4
+
+
+def test_assistant_validates_only_and_preserves_draft_and_access(community):
+    from copy import deepcopy
+    import json
+
+    app, clients, ids = community
+    first, second, admin, visitor, employer = (
+        clients[key] for key in ("first", "second", "admin", "visitor", "employer"))
+    publish(clients, "first")
+    url = "/api/community/courses"
+    initial = mutate(first, "POST", url, {"client_key": str(uuid4()), "template": "workshop"}).json()["course"]
+    own = url + "/" + initial["slug"]
+    endpoint = own + "/assistant/validate"
+    draft = deepcopy(COURSE_DRAFT)
+    draft["lessons"][0].pop("slug")
+    body = {"expected_version": initial["version"], "kind": "course", "source": json.dumps(draft)}
+    response = mutate(first, "POST", endpoint, body)
+    assert response.status_code == 200, response.text
+    assert response.headers["cache-control"] == "no-store"
+    result = response.json()
+    assert not result["issues"]
+    assert result["draft"]["lessons"][0]["slug"].startswith("lesson-")
+    assert "media" not in result["draft"]["lessons"][0]
+    assert mutate(second, "POST", endpoint, body).status_code == 404
+    assert mutate(admin, "POST", endpoint, body).status_code == 404
+    assert mutate(employer, "POST", endpoint, body).status_code == 403
+    assert mutate(first, "POST", endpoint, {**body, "expected_version": initial["version"]+1}).status_code == 409
+    for bad in (
+        "not JSON",
+        '{"title":"duplicate","title":"value"}',
+        json.dumps({**draft, "state": "published"}),
+        json.dumps({**draft, "title": "Contact name@example.invalid"}),
+        json.dumps({**draft, "lessons": [{**draft["lessons"][0], "media": []}]}),
+        json.dumps({**draft, "lessons": [{**draft["lessons"][0], "slug": "existing-lesson"}]}),
+        json.dumps({**draft, "lessons": [{**draft["lessons"][0], "minutes": "15"}]}),
+        json.dumps({**draft, "lessons": [draft["lessons"][0]] * 13}),
+        json.dumps({**draft, "lessons": [{**draft["lessons"][0], "questions": [
+            {**draft["lessons"][0]["questions"][0], "correct": "0"}
+        ]}]}),
+        json.dumps(draft).replace('"minutes": 15', '"minutes": 15, "minutes": 20'),
+    ):
+        invalid = mutate(first, "POST", endpoint, {**body, "source": bad})
+        assert invalid.status_code == 422
+        assert "example.invalid" not in invalid.text
+    single = mutate(first, "POST", endpoint, {**body, "kind": "lesson", "source": json.dumps(draft["lessons"][0])})
+    assert single.status_code == 200
+    assert single.json()["lesson"]["title"] == draft["lessons"][0]["title"]
+    assert first.get(own).json()["course"] == initial
+    assert visitor.get("/academy/" + initial["slug"]).status_code == 404
+
+
+def test_course_overview_counts_and_filters_only_authorized_own_courses(community):
+    from copy import deepcopy
+
+    app, clients, ids = community
+    first, second, admin, visitor, employer = (
+        clients[key] for key in ("first", "second", "admin", "visitor", "employer"))
+    publish(clients, "first")
+    publish(clients, "second")
+    url = "/api/community/courses"
+
+    def create(client, title):
+        draft = mutate(client, "POST", url, {"client_key": str(uuid4())}).json()["course"]
+        payload = deepcopy(COURSE_DRAFT)
+        payload["title"] = title
+        saved = mutate(client, "PUT", url + "/" + draft["slug"],
+                       {**payload, "expected_version": draft["version"]})
+        assert saved.status_code == 200, saved.text
+        return saved.json()["course"]
+
+    one = create(first, "Работа с таблицами")
+    two = create(first, "Основы наставничества")
+    other = create(second, "Работа с таблицами — чужой курс")
+    pending = mutate(first, "POST", url + "/" + two["slug"] + "/submit",
+                     {"expected_version": two["version"], "publish_consent": True})
+    assert pending.status_code == 200, pending.text
+
+    result = first.get(url).json()
+    assert result["overview"] == {"total": 2, "statuses": {
+        "draft": 1, "pending": 1, "published": 0, "rejected": 0, "hidden": 0,
+    }, "matching": 2}
+    by_title = first.get(url, params={"q": "  ТАБЛИЦАМИ  "}).json()
+    assert by_title["overview"]["matching"] == 1
+    assert [course["slug"] for course in by_title["courses"]] == [one["slug"]]
+    assert by_title["overview"]["total"] == 2
+    assert by_title["can_create"] == result["can_create"]
+    by_status = first.get(url, params={"status": "pending"}).json()
+    assert [course["slug"] for course in by_status["courses"]] == [two["slug"]]
+    combined = first.get(url, params={"q": "таблицами", "status": "pending"}).json()
+    assert combined["overview"]["matching"] == 0 and combined["courses"] == []
+    assert first.get(url, params={"q": "таблицами", "page": 2}).json()["courses"] == []
+    assert other["slug"] not in str(result)
+    assert first.get(url, params={"view": "review", "q": "таблицами"}).status_code == 403
+    assert admin.get(url, params={"view": "review", "q": "таблицами"}).status_code == 422
+    assert admin.get(url, params={"view": "review"}).json()["overview"] is None
+    assert visitor.get(url).status_code == 401
+    assert employer.get(url).status_code == 403
