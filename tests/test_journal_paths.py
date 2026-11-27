@@ -25,6 +25,10 @@ def test_reading_paths_are_accessible_and_step_by_step(tmp_path: Path):
             assert page.status_code == 200
             assert path["title"] in page.text
             assert '<ol class="jr-path-steps">' in page.text
+            assert page.headers["cache-control"] == "no-store"
+            assert 'data-jr-journey-progress hidden' in page.text
+            assert page.text.count('data-jr-journey-check="') == len(path["steps"])
+            assert page.text.count("Что сделать:") == len(path["steps"])
             assert 'href="' + path["href"] + '"' in page.text
             expected_action = "community_click" if path["href"] == "/community" else "jobs_click"
             assert 'data-growth-action="' + expected_action + '"' in page.text
@@ -80,3 +84,19 @@ def test_paths_prelaunch_status_does_not_block_reading(tmp_path: Path):
             assert "регистрация закрыта" in response.text
             assert 'type="password"' not in response.text
         assert 'href="/#jobs" data-growth-action="jobs_click"' in detail.text
+
+def test_step_keys_bind_to_current_editorial_content_and_not_other_steps():
+    from copy import deepcopy
+    from app.journal import ARTICLES
+    original = visible_paths(ARTICLES)
+    modified = deepcopy(ARTICLES)
+    article = next(item for item in modified if item["slug"] == "kak-proverit-vakansiyu")
+    article["description"] += " Новая редакция."
+    updated = visible_paths(modified)
+    old_keys = {step["article"]["slug"]: step["key"] for path in original for step in path["steps"]}
+    new_keys = {step["article"]["slug"]: step["key"] for path in updated for step in path["steps"]}
+    assert old_keys.keys() == new_keys.keys()
+    assert old_keys["kak-proverit-vakansiyu"] != new_keys["kak-proverit-vakansiyu"]
+    assert all(old_keys[slug] == new_keys[slug] for slug in old_keys if slug != "kak-proverit-vakansiyu")
+    hidden = visible_paths([item for item in modified if item["slug"] != "kak-proverit-vakansiyu"])
+    assert all(step["article"]["slug"] != "kak-proverit-vakansiyu" for path in hidden for step in path["steps"])

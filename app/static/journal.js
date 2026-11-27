@@ -520,3 +520,102 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 });
 
+
+// Practical reading routes: explicit checkmarks, scoped to published revisions.
+// No progress request, cookie, account identifier or free-text input.
+document.addEventListener('DOMContentLoaded', () => {
+  const panels = [...document.querySelectorAll('[data-jr-journey]')];
+  if (!panels.length) return;
+  const journeys = new Map();
+  for (const panel of panels) {
+    const slug = panel.dataset.jrJourney;
+    const steps = (panel.dataset.jrJourneySteps || '').split(' ').filter(
+      item => /^[a-z0-9]+(?:-[a-z0-9]+)*:[a-f0-9]{24}$/.test(item));
+    if (!/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(slug) || !steps.length ||
+        steps.length > 32 || new Set(steps).size !== steps.length) continue;
+    const key = 'stazhno-journey-v1:' + slug;
+    const checks = [...panel.querySelectorAll('[data-jr-journey-check]')];
+    const detail = checks.length > 0;
+    let completed = new Set(), failed = false;
+    const read = () => {
+      try {
+        const raw = localStorage.getItem(key);
+        if (!raw || raw.length > 4096) return new Set();
+        let parsed;
+        try { parsed = JSON.parse(raw); } catch { return new Set(); }
+        return new Set(Array.isArray(parsed) ? parsed.filter(item =>
+          typeof item === 'string' && steps.includes(item)) : []);
+      } catch { return null; }
+    };
+    const refresh = () => {
+      if (failed) return;
+      const saved = read();
+      if (saved === null) failed = true;
+      else completed = saved;
+    };
+    const warning = panel.querySelector('[data-jr-journey-warning]');
+    const count = panel.querySelector('[data-jr-journey-count]');
+    const progress = panel.querySelector('progress');
+    const resume = panel.querySelector('[data-jr-journey-resume]');
+    const reset = panel.querySelector('[data-jr-journey-reset]');
+    const draw = () => {
+      count.textContent = 'Выполнено: ' + completed.size + ' из ' + steps.length;
+      progress.value = completed.size;
+      for (const check of checks) {
+        check.checked = completed.has(check.dataset.jrJourneyCheck);
+        check.closest('[data-jr-journey-step]')?.classList.toggle('jr-journey-done', check.checked);
+      }
+      const next = steps.findIndex(item => !completed.has(item));
+      const base = detail ? '' : '/journal/paths/' + slug;
+      if (next < 0) {
+        resume.setAttribute('href', detail ? '#jr-journey-next' : base);
+        resume.textContent = detail ? 'Перейти к следующему действию →' : 'План выполнен · открыть →';
+      } else {
+        const anchor = '#step-' + steps[next].split(':')[0];
+        resume.setAttribute('href', !detail && !completed.size ? base : base + anchor);
+        resume.textContent = completed.size ? 'Продолжить с шага ' + (next + 1) + ' →'
+          : detail ? 'Начать с первого шага →' : 'Выбрать маршрут →';
+      }
+      if (reset) reset.disabled = completed.size === 0 && !failed;
+      warning.hidden = !failed;
+      if (failed) warning.textContent = detail
+        ? 'Браузер не сохранил или не открыл отметки. Изменения могут остаться только на этой странице.'
+        : 'Сохранённые отметки в этом браузере недоступны.';
+    };
+    const persist = () => {
+      try {
+        if (completed.size) localStorage.setItem(key, JSON.stringify([...completed]));
+        else localStorage.removeItem(key);
+        failed = false;
+      } catch { failed = true; }
+      draw();
+    };
+    refresh();
+    for (const check of checks) {
+      check.closest('[data-jr-journey-control]').hidden = false;
+      check.addEventListener('change', () => {
+        const selected = check.checked;
+        // Re-read the latest tab state before applying this one explicit change.
+        refresh();
+        if (selected) completed.add(check.dataset.jrJourneyCheck);
+        else completed.delete(check.dataset.jrJourneyCheck);
+        persist();
+      });
+    }
+    reset?.addEventListener('click', () => {
+      completed.clear(); persist();
+      resume.focus();
+    });
+    panel.querySelector('[data-jr-journey-progress]').hidden = false;
+    draw();
+    journeys.set(key, () => { refresh(); draw(); });
+  }
+  window.addEventListener('storage', event => {
+    for (const [key, update] of journeys) if (event.key === null || event.key === key) update();
+  });
+  // Re-fetch currently published steps rather than restoring outdated editorial
+  // markup from back-forward cache. The persisted marks are read on the new page.
+  window.addEventListener('pageshow', event => {
+    if (event.persisted) window.location.reload();
+  });
+});

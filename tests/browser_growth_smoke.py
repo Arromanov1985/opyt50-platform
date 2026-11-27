@@ -554,6 +554,90 @@ def exercise(browser, base, receipts_path):
         admin_context.close()
 
 
+def exercise_action_plans(browser, base):
+    url = base + "/journal/paths/nayti-rabotu"
+    context = browser.new_context(viewport={"width": 390, "height": 844}, locale="ru-RU")
+    errors = []
+    unexpected = []
+    # Existing anonymous aggregate view counters are not part of local progress.
+    # Do not change the separate growth report's fixture counts.
+    context.route("**/api/growth/event", lambda route: route.fulfill(status=204))
+    context.on("request", lambda request: unexpected.append(request.url)
+               if request.method != "GET" and not request.url.endswith("/api/growth/event") else None)
+    try:
+        page = context.new_page()
+        page.on("pageerror", lambda error: errors.append(str(error)))
+        page.goto(url, wait_until="networkidle")
+        checks = page.locator("[data-jr-journey-check]")
+        expect(checks).to_have_count(4)
+        expect(page.locator("[data-jr-journey-count]")).to_have_text("Выполнено: 0 из 4")
+        assert not page.evaluate("localStorage.getItem('stazhno-journey-v1:nayti-rabotu')")
+        checks.nth(0).focus()
+        checks.nth(0).press("Space")
+        expect(checks.nth(0)).to_be_checked()
+        expect(page.locator("[data-jr-journey-count]")).to_have_text("Выполнено: 1 из 4")
+        other = context.new_page()
+        other.goto(url, wait_until="networkidle")
+        expect(other.locator("[data-jr-journey-check]").first).to_be_checked()
+        other.locator("[data-jr-journey-check]").nth(1).check()
+        expect(checks.nth(1)).to_be_checked()
+        expect(page.locator("[data-jr-journey-count]")).to_have_text("Выполнено: 2 из 4")
+        page.goto(base + "/journal/paths", wait_until="networkidle")
+        card = page.locator('[data-jr-journey="nayti-rabotu"]')
+        expect(card.locator("[data-jr-journey-count]")).to_have_text("Выполнено: 2 из 4")
+        expect(card.locator("[data-jr-journey-resume]")).to_have_attribute("href", "/journal/paths/nayti-rabotu#step-sobesedovanie-posle-50")
+        expect(page.locator('[data-jr-journey="novye-navyki"] [data-jr-journey-count]')).to_have_text("Выполнено: 0 из 3")
+        card.locator("[data-jr-journey-resume]").click()
+        expect(page).to_have_url(url + "#step-sobesedovanie-posle-50")
+        page.locator("[data-jr-journey-check]").nth(2).check()
+        page.locator("[data-jr-journey-check]").nth(3).check()
+        expect(page.locator("[data-jr-journey-resume]")).to_have_attribute("href", "#jr-journey-next")
+        for width in (320, 390, 768, 1280):
+            page.set_viewport_size({"width": width, "height": 844})
+            if page.locator("#reading-mode-toggle").get_attribute("aria-pressed") != "true":
+                page.locator("#reading-mode-toggle").click()
+            no_overflow(page)
+        capture(page, "journey-completed-large")
+        page.locator("[data-jr-journey-reset]").click()
+        expect(page.locator("[data-jr-journey-count]")).to_have_text("Выполнено: 0 из 4")
+        expect(other.locator("[data-jr-journey-count]")).to_have_text("Выполнено: 0 из 4")
+        assert page.evaluate("localStorage.getItem('stazhno-journey-v1:nayti-rabotu')") is None
+        page.evaluate("localStorage.setItem('stazhno-journey-v1:nayti-rabotu', '[\\"obsolete:123\\",42]')")
+        page.reload(wait_until="networkidle")
+        expect(page.locator("[data-jr-journey-count]")).to_have_text("Выполнено: 0 из 4")
+        page.evaluate("localStorage.setItem('stazhno-journey-v1:nayti-rabotu', 'invalid')")
+        page.reload(wait_until="networkidle")
+        expect(page.locator("[data-jr-journey-count]")).to_have_text("Выполнено: 0 из 4")
+        assert not unexpected, unexpected
+        assert not errors, errors
+    finally:
+        context.close()
+
+    restricted = browser.new_context(viewport={"width":390,"height":844}, locale="ru-RU")
+    try:
+        restricted.route("**/api/growth/event", lambda route: route.fulfill(status=204))
+        restricted.add_init_script("Object.defineProperty(window, 'localStorage', {get() {throw new Error('blocked');}});")
+        page = restricted.new_page()
+        page.goto(url, wait_until="networkidle")
+        expect(page.locator("[data-jr-journey-warning]")).to_be_visible()
+        page.locator("[data-jr-journey-check]").first.check()
+        expect(page.locator("[data-jr-journey-count]")).to_have_text("Выполнено: 1 из 4")
+        expect(page.locator("[data-jr-journey-warning]")).to_be_visible()
+    finally:
+        restricted.close()
+
+    no_script = browser.new_context(java_script_enabled=False)
+    try:
+        page = no_script.new_page()
+        page.goto(url, wait_until="load")
+        expect(page.locator("[data-jr-journey-progress]")).to_be_hidden()
+        expect(page.locator(".jr-journey-task")).to_have_count(4)
+        expect(page.locator(".jr-journey-task").first).to_be_visible()
+        expect(page.locator(".jr-path-step").first.locator('a').first).to_have_attribute("href", "/journal/kak-pokazat-opyt-v-profile")
+    finally:
+        no_script.close()
+
+
 def main():
     OUTPUT.mkdir(parents=True, exist_ok=True)
     with socket.socket() as port_socket:
@@ -592,6 +676,7 @@ def main():
                         options["executable_path"] = os.environ["PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH"]
                     browser = playwright.chromium.launch(**options)
                     try:
+                        exercise_action_plans(browser, base)
                         exercise(browser, base, receipts_path)
                     finally:
                         browser.close()
