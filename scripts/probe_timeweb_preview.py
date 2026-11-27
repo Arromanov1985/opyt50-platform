@@ -95,11 +95,15 @@ def probe_prelaunch_guard():
     root = str(Path(__file__).resolve().parents[1])
     if root not in sys.path:
         sys.path.insert(0, root)
-    from app.legal_config import legal_approved
-    if legal_approved():
-        return {"result": "not-required-approved-source",
-                "note": "Legal and owner launch approval still require independent acceptance"}
-    request = Request(BASE + "/", method="GET",
+    from app.legal_config import legal_approved, legal_release_sha256
+    from urllib.parse import urlsplit
+
+    approved = legal_approved()
+    expected_revision = legal_release_sha256()
+    canonical = urlsplit(BASE).hostname in {"stazhno.ru", "www.stazhno.ru"}
+    # Even after approval the technical host remains non-indexable.
+    block_indexing = not approved or not canonical
+    request = Request(BASE + "/?legal_revision_check=" + expected_revision[:16], method="GET",
                       headers={"User-Agent": "Stazhno-Preview-ReadOnly-Probe/1.0",
                                "Cache-Control": "no-cache", "Pragma": "no-cache"})
     try:
@@ -110,15 +114,31 @@ def probe_prelaunch_guard():
             if len(payload) > 1_000_000:
                 return {"status": response.status, "result": "invalid-home-response"}
             html = payload.decode("utf-8", errors="replace")
+            observed_revision = response.headers.get("X-Stazhno-Legal-Revision", "")
+            ready = 'yes' if approved else 'no'
+            signup_closed = 'name="prelaunch-signup-closed"' in html
+            notice_present = 'id="prelaunch-public-notice"' in html
+            robots = {token.strip() for token in response.headers.get("X-Robots-Tag", "").lower().split(",")}
+            cache = {token.strip() for token in response.headers.get("Cache-Control", "").lower().split(",")}
             checks = {
-                "signup_closed_marker": 'name="prelaunch-signup-closed" content="yes"' in html,
-                "visible_prelaunch_notice": 'id="prelaunch-public-notice"' in html and "Регистрация закрыта" in html,
-                "noindex": "noindex" in response.headers.get("X-Robots-Tag", "").lower(),
-                "nofollow": "nofollow" in response.headers.get("X-Robots-Tag", "").lower(),
-                "no_store": "no-store" in response.headers.get("Cache-Control", "").lower(),
+                "legal_revision": observed_revision == expected_revision,
+                "legal_profile_marker": f'name="legal-profile-ready" content="{ready}"' in html
+                    and f'name="legal-profile-ready" content="{"no" if approved else "yes"}"' not in html,
+                "signup_state": (not signup_closed) if approved else
+                    'name="prelaunch-signup-closed" content="yes"' in html,
+                "visible_notice_state": (not notice_present) if approved else
+                    notice_present and "Регистрация закрыта" in html,
+                "index_policy": ({"noindex", "nofollow"} <= robots) if block_indexing else
+                    not ({"noindex", "nofollow"} & robots),
+                "no_store": "no-store" in cache,
             }
-            return {"status": response.status, "result": "prelaunch-markers-confirmed" if all(checks.values())
-                    else "prelaunch-markers-missing", "checks": checks}
+            if not checks["legal_revision"]:
+                result = "legal-revision-mismatch"
+            elif not all(checks.values()):
+                result = "approved-markers-missing" if approved else "prelaunch-markers-missing"
+            else:
+                result = "approved-markers-confirmed" if approved else "prelaunch-markers-confirmed"
+            return {"status": response.status, "result": result, "checks": checks}
     except HTTPError as error:
         return {"status": error.code, "result": "http-error"}
     except (URLError, OSError, ssl.SSLError, TimeoutError):
@@ -544,10 +564,11 @@ def probe_public_search_metadata():
     if root not in sys.path:
         sys.path.insert(0, root)
     from app.journal import journal_sitemap
+    from app.legal_config import legal_approved
     from urllib.parse import urlsplit
 
     host = urlsplit(BASE).hostname
-    is_canonical = host in {"stazhno.ru", "www.stazhno.ru"}
+    is_canonical = host in {"stazhno.ru", "www.stazhno.ru"} and legal_approved()
     robots = (
         "User-agent: *\nDisallow: /api/\nSitemap: https://stazhno.ru/sitemap.xml\n"
         if is_canonical else "User-agent: *\nDisallow: /\n"
@@ -696,12 +717,14 @@ def main():
         for item in result["backend_routes"].values()
     )
     prelaunch_matches = result["prelaunch_guard"]["result"] in {
-        "prelaunch-markers-confirmed", "not-required-approved-source"
+        "prelaunch-markers-confirmed", "approved-markers-confirmed"
     }
     core_matches = all(item["result"] == "present-and-protected"
                        for item in result["core_private_api"].values())
     health_matches = result["paths"]["/api/health"]["result"] == "healthy"
-    if (frontend_matches and backend_matches and journal_matches and search_matches
+    if result["dns"] != "resolved":
+        result["release_evidence"] = "unverified"
+    elif (frontend_matches and backend_matches and journal_matches and search_matches
             and community_matches and core_matches and prelaunch_matches and health_matches):
         result["release_evidence"] = "frontend-and-backend-match"
     elif not health_matches:

@@ -49,7 +49,7 @@ from .db import database, init_db
 from .matching import lead_price, match_candidate, taxonomy_payload
 from .journal import install_journal_routes
 from .legal_pages import install_legal_draft_routes
-from .legal_config import render_template as render_legal_template, legal_approved, legal_profile
+from .legal_config import render_template as render_legal_template, legal_approved, legal_profile, legal_release_sha256
 from .privacy_rights import (
     requests_for_user, submit_request, admin_request_list, admin_change_status,
 )
@@ -1019,6 +1019,9 @@ def create_app(db_path: str | None = None) -> FastAPI:
             )
         response = HTMLResponse(page)
         response.headers["Cache-Control"] = "no-store, max-age=0"
+        # Non-secret version evidence for the read-only release verifier.
+        # Never put signoff text, paths, credentials or personal records here.
+        response.headers["X-Stazhno-Legal-Revision"] = legal_release_sha256()
         if prelaunch:
             response.headers["X-Robots-Tag"] = "noindex, nofollow"
         return response

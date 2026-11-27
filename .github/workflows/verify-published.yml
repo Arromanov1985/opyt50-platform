@@ -67,7 +67,7 @@ jobs:
           lines.append(f"| robots.txt и sitemap.xml | {report.get('search_metadata', {}).get('result', 'unknown')} |")
           lines.append(f"| Защищённый API | {report.get('drafts_api', {}).get('result', 'unknown')} |")
           lines.append(f"| Health JSON | {report.get('paths', {}).get('/api/health', {}).get('result', 'unknown')} |")
-          lines.append(f"| Признаки закрытой регистрации | {report.get('prelaunch_guard', {}).get('result', 'unknown')} |")
+          lines.append(f"| Юридическая версия и состояние регистрации | {report.get('prelaunch_guard', {}).get('result', 'unknown')} |")
           for name, item in report.get("core_private_api", {}).items():
               lines.append(f"| Защищённый API кабинетов: {name} | {item.get('result', 'unknown')} |")
           lines.append("")
