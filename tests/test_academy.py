@@ -41,6 +41,12 @@ def test_academy_is_free_public_and_includes_release_manifest(tmp_path):
             assert result.content == expected.body
             assert manifest[path] == hashlib.sha256(result.content).hexdigest()
             assert "https://stazhno.ru" + path in sitemap
+        catalog = visitor.get("/academy").text
+        assert 'id="ac-learning"' in catalog and "Моё обучение" in catalog
+        for name in ("all", "active", "complete"):
+            assert f'data-ac-filter="{name}"' in catalog
+        assert catalog.count('class="ac-course-card"') == len(COURSES)
+        assert 'href="/academy/ai-basics"' in catalog
         assert visitor.get("/academy/unknown").status_code == 404
         assert visitor.get("/academy/ai-basics/unknown").status_code == 404
         assert visitor.post("/academy/ai-basics/what-ai-does", json={}).status_code == 405
