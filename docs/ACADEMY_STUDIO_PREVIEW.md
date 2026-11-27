@@ -40,3 +40,9 @@ visit warns even if a small probe succeeds. Successfully saved progress
 clears the diagnostic. Previously readable records still display. Tests cover
 blocked reads, blocked writes, a probe succeeding while the real save fails,
 and the no-JavaScript catalog fallback.
+
+The browser acceptance also creates and publishes a second course in the isolated
+test database, checks the active/completed filters across both courses, and
+withdraws the course to verify that stale local progress cannot keep a removed
+course in the catalog. The CI Python compilation gate runs before dependency
+installation and includes all browser test scripts.

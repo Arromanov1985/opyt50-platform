@@ -838,11 +838,41 @@ def run_browser(browser, base, database):
         expect(visitor.locator("h1")).to_have_text("Работа с учебной таблицей")
         visitor.locator("[data-ac-resume]").click()
         expect(visitor.locator("#ac-quiz")).to_contain_text("Что нужно сделать сначала?")
+        # Exercise the real catalog with two simultaneously published courses.
+        # Only the isolated test browser receives these progress records.
+        quiz = visitor.locator("#ac-quiz")
+        quiz.locator('input[data-ac-correct="true"]').check()
+        quiz.locator('button[type="submit"]').click()
+        expect(visitor.locator("#ac-quiz-result")).to_contain_text("Урок пройден")
+        visitor.goto(base + "/academy", wait_until="networkidle")
+        builtin = visitor.locator('.ac-course-card[data-ac-course="ai-basics"]')
+        created = visitor.locator('.ac-course-card[data-ac-course="' + course["slug"] + '"]')
+        expect(builtin).to_be_visible()
+        expect(created).to_be_visible()
+        builtin_key = "stazhno-academy-v1:ai-basics:" + builtin.get_attribute("data-ac-revision")
+        first_lesson = builtin.get_attribute("data-ac-lessons").split()[0]
+        visitor.evaluate("([key, lesson]) => localStorage.setItem(key, JSON.stringify([lesson]))",
+                         [builtin_key, first_lesson])
+        visitor.reload(wait_until="networkidle")
+        expect(visitor.locator('[data-ac-filter="all"]')).to_contain_text("(2)")
+        visitor.locator('[data-ac-filter="active"]').click()
+        expect(builtin).to_be_visible()
+        expect(created).to_be_hidden()
+        expect(visitor.locator('[data-ac-filter="active"]')).to_contain_text("(1)")
+        visitor.locator('[data-ac-filter="complete"]').click()
+        expect(created).to_be_visible()
+        expect(builtin).to_be_hidden()
+        expect(visitor.locator('[data-ac-filter="complete"]')).to_contain_text("(1)")
         admin.locator('[data-studio="withdraw"]').click()
         with admin.expect_response(lambda r: r.url.endswith("/courses/" + course["slug"] + "/publication") and r.request.method == "DELETE") as course_hidden:
             admin.locator("#confirm-community-action").click()
         assert checked(course_hidden.value)["course"]["state"] == "hidden"
         assert visitor.request.get(course_url).status == 404
+        visitor.reload(wait_until="networkidle")
+        expect(created).to_have_count(0)
+        expect(visitor.locator('[data-ac-filter="complete"]')).to_contain_text("(0)")
+        expect(visitor.locator('[data-ac-filter="all"]')).to_contain_text("(1)")
+        visitor.evaluate("key => localStorage.removeItem(key)", builtin_key)
 
         # A ready-made outline is still private and incomplete, even for an administrator.
         admin.locator('[data-studio="back"]').click()

@@ -433,7 +433,7 @@ def exercise(browser, base, receipts_path):
             assert page.locator("#ac-learning").evaluate(
                 "(node) => node.scrollWidth <= node.clientWidth + 2"
             ), f"Learning controls overflow at {width}px"
-        page.set_viewport_size({"width": 390, "height": 844"})
+        page.set_viewport_size({"width": 390, "height": 844})
         page.locator('a[data-ac-start]').click()
         assert page.url.endswith("/academy/ai-basics/clear-prompts")
         # Use fictional local progress for full-completion and revision handling.
