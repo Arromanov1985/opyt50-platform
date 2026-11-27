@@ -2025,6 +2025,21 @@ def test_course_media_draft_isolation_and_publication_gate(community):
     assert second.get(own).status_code == 404
     assert visitor.get(public + "/first-lesson").status_code == 200
     assert own_file.id.hex not in visitor.get(public + "/first-lesson").text
+    # Full-course AI import cannot discard attached media, even through direct
+    # API calls. Validation of a separate new lesson remains non-mutating.
+    import json
+    source = deepcopy(text)
+    source["lessons"][0].pop("slug")
+    assistant = {"expected_version":changed["version"],"kind":"course",
+                 "source":json.dumps(source)}
+    endpoint = own + "/assistant/validate"
+    blocked = mutate(first,"POST",endpoint,assistant)
+    assert blocked.status_code == 409 and "файлы" in blocked.json()["detail"]
+    appended = mutate(first,"POST",endpoint,{**assistant,"kind":"lesson",
+                                             "source":json.dumps(source["lessons"][0])})
+    assert appended.status_code == 200 and appended.json()["lesson"]["title"] == source["lessons"][0]["title"]
+    assert first.get(own).json()["course"] == changed
+    assert own_file.id.hex not in visitor.get(public + "/first-lesson").text
     with database(app.state.db_path) as db:
         db.execute("UPDATE academy_media SET state='clean',sha256=? WHERE id=?",
                    ("a"*64, own_file.id.hex))
@@ -2035,6 +2050,14 @@ def test_course_media_draft_isolation_and_publication_gate(community):
     assert removed.status_code == 200 and not removed.json()["course"]["issues"]
     assert removed.json()["course"]["draft"] == text
     assert removed.json()["course"]["media_files"][0]["id"] == own_file.id.hex
+    detached = removed.json()["course"]
+    # Detaching and saving is the intentional recovery path. Stale versions
+    # are rejected; the still-published text snapshot remains untouched.
+    assert mutate(first,"POST",endpoint,assistant).status_code == 409
+    accepted = mutate(first,"POST",endpoint,{**assistant,"expected_version":detached["version"]})
+    assert accepted.status_code == 200 and not accepted.json()["issues"]
+    assert first.get(own).json()["course"] == detached
+    assert visitor.get(public + "/first-lesson").status_code == 200
 
 
 def test_opt_in_image_upload_and_sanitized_private_preview(community, monkeypatch):
@@ -2430,3 +2453,56 @@ def test_course_classification_is_versioned_and_compatible_with_old_clients(comm
                      {"expected_version":changed["version"],"publish_consent":True}).json()["course"]
     assert mutate(admin, "PATCH", moderation, {"expected_version":pending["version"],"decision":"approve"}).status_code == 200
     assert "Цифровые навыки · Начальный" in visitor.get(public).text
+
+
+def test_admin_editorial_course_import_is_private_idempotent_and_program_gated(community):
+    from copy import deepcopy
+
+    app, clients, ids = community
+    author, admin, visitor, employer = (clients[key] for key in ("first", "admin", "visitor", "employer"))
+    url = "/api/community/courses"
+    own = url + "/spreadsheets-basics"
+    public = "/academy/spreadsheets-basics"
+    program = "/academy/programs/digital-work"
+    publish(clients, "first")
+    assert visitor.get(public).status_code == 404
+    assert visitor.get(program).status_code == 404
+    assert "editorial-spreadsheets" not in {option["id"] for option in author.get(url).json()["templates"]}
+    assert "editorial-spreadsheets" in {option["id"] for option in admin.get(url).json()["templates"]}
+    payload = {"client_key":str(uuid4()),"template":"editorial-spreadsheets"}
+    assert mutate(author,"POST",url,payload).status_code == 403
+    assert mutate(employer,"POST",url,payload).status_code == 403
+    result = mutate(admin,"POST",url,payload)
+    assert result.status_code == 200,result.text
+    course = result.json()["course"]
+    assert course["slug"] == "spreadsheets-basics" and course["state"] == "draft"
+    assert course["version"] == 1 and not course["issues"] and course["lesson_count"] == 6
+    assert course["classification"] == {"category":"digital","level":"beginner"}
+    assert author.get(own).status_code == 404
+    assert visitor.get(public).status_code == 404
+    assert visitor.get(program).status_code == 404
+    assert mutate(admin,"POST",url,{**payload,"client_key":str(uuid4())}).json()["course"] == course
+    assert mutate(admin,"POST",own+"/submit",{"expected_version":course["version"],"publish_consent":False}).status_code == 400
+    published = mutate(admin,"POST",own+"/submit",{"expected_version":course["version"],"publish_consent":True})
+    assert published.status_code == 200,published.text
+    course = published.json()["course"]
+    assert course["state"] == "published" and course["version"] == 2
+    assert visitor.get(public).status_code == 200
+    assert visitor.get(program).status_code == 200
+    assert visitor.get("/api/public/journal/manifest").json()["academy_programs"] == {
+        "digital-work":["spreadsheets-basics","ai-basics"]}
+    # Saving a new draft leaves the approved public snapshot available.
+    data = deepcopy(course["draft"])
+    data["title"] = "Обновлённый курс по таблицам"
+    changed = mutate(admin,"PUT",own,{**data,"expected_version":course["version"]})
+    assert changed.status_code == 200,changed.text
+    course = changed.json()["course"]
+    assert visitor.get(program).status_code == 200
+    assert mutate(admin,"POST",url,{**payload,"client_key":str(uuid4())}).json()["course"] == course
+    assert mutate(admin,"POST",own+"/submit",{"expected_version":course["version"],"publish_consent":True}).status_code == 200
+    assert visitor.get(program).status_code == 404
+    course = admin.get(own).json()["course"]
+    assert mutate(admin,"DELETE",own+"/publication",{"expected_version":course["version"]}).status_code == 200
+    hidden = mutate(admin,"POST",url,{**payload,"client_key":str(uuid4())}).json()["course"]
+    assert hidden["state"] == "hidden" and hidden["draft"]["title"] == data["title"]
+    assert visitor.get(public).status_code == 404

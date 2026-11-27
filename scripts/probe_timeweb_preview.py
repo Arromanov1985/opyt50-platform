@@ -304,6 +304,22 @@ def probe_public_journal_pages():
                 raise ValueError("Invalid academy lesson list")
             academy_routes.add("/academy/" + slug)
             academy_routes.update("/academy/" + slug + "/" + lesson for lesson in lessons)
+        # Derive every required program from the exact public course revisions.
+        # An omitted eligible program must not silently shrink the release probe.
+        revisions = manifest.get("academy_revisions")
+        if (not isinstance(revisions, dict) or revisions.keys() != declared_courses.keys()
+                or any(type(revision) is not int or revision < 1 for revision in revisions.values())):
+            raise ValueError("Invalid academy revision list")
+        from app.academy_programs import configured_programs
+        expected_programs = {
+            program["slug"]: [slug for slug, _revision in program["steps"]]
+            for program in configured_programs()
+            if all(revisions.get(slug) == revision for slug, revision in program["steps"])
+        }
+        declared_programs = manifest.get("academy_programs")
+        if declared_programs != expected_programs:
+            raise ValueError("Missing or invalid academy program list")
+        academy_routes.update("/academy/programs/" + slug for slug in declared_programs)
         if not all(
             path in {"/journal", "/journal/paths", "/sitemap.xml"} or path in GUIDE_PATHS or path in academy_routes
             or path in route_urls or _journal_article_slug(path)

@@ -4,6 +4,7 @@ COPY requirements.txt requirements-postgres.txt ./
 RUN pip install --no-cache-dir -r requirements-postgres.txt
 COPY app ./app
 COPY scripts ./scripts
+COPY docs/academy-drafts/spreadsheets-basics.json ./docs/academy-drafts/spreadsheets-basics.json
 RUN useradd -r -u 10001 opyt
 USER opyt
 EXPOSE 8000

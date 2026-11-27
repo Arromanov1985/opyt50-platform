@@ -215,7 +215,9 @@ def published_journal_fixture(articles=None):
     bodies.update({path: page.body for path, page in academy_pages().items()})
     manifest = {"pages": {path: hashlib.sha256(body).hexdigest() for path, body in bodies.items()},
                 "renderer_sha256": journal_renderer_sha256(),
-                "academy_courses": {"ai-basics": [path.rsplit("/",1)[1] for path in bodies if path.startswith("/academy/ai-basics/")]}}
+                "academy_courses": {"ai-basics": [path.rsplit("/",1)[1] for path in bodies if path.startswith("/academy/ai-basics/")]},
+                "academy_revisions": {"ai-basics": 1},
+                "academy_programs": {}}
     return bodies, manifest
 
 
@@ -492,6 +494,7 @@ def test_edited_academy_catalog_does_not_require_hidden_seed_course(monkeypatch)
             del bodies[path]
             del manifest["pages"][path]
     manifest["academy_courses"] = {"course-new": ["lesson-one"]}
+    manifest["academy_revisions"] = {"course-new": 1}
     for path in ("/academy/course-new", "/academy/course-new/lesson-one"):
         bodies[path] = b"<html>New published course</html>"
         manifest["pages"][path] = hashlib.sha256(bodies[path]).hexdigest()
@@ -526,3 +529,43 @@ def test_journal_probe_stops_when_deadline_expires(monkeypatch):
     assert result["budget_exhausted"]
     assert result["unprobed_pages"] == len(bodies)
     assert len(requests) == 1
+
+
+def test_approved_program_manifest_is_probed_and_unknown_program_rejected(monkeypatch):
+    import hashlib
+    from app import academy_programs
+
+    monkeypatch.setattr(academy_programs,"PROGRAMS",({
+        "slug":"digital-work","steps":(("ai-basics",1),("course-second",4)),
+    },))
+    bodies, manifest = published_journal_fixture()
+    # A full public catalog with the second course and its approved program.
+    manifest["academy_courses"]["course-second"] = ["lesson-one"]
+    manifest["academy_revisions"]["course-second"] = 4
+    path = "/academy/programs/digital-work"
+    manifest["academy_programs"] = {"digital-work":["ai-basics","course-second"]}
+    for route in ("/academy/course-second","/academy/course-second/lesson-one",path):
+        bodies[route] = b"<html>Published fixture</html>"
+        manifest["pages"][route] = hashlib.sha256(bodies[route]).hexdigest()
+    requests = install_journal_opener(monkeypatch,bodies,manifest)
+    assert probe.probe_public_journal_pages()["result"] == "exact-match"
+    assert path in requests
+    # Even a self-consistent but incomplete manifest cannot omit an eligible program.
+    from copy import deepcopy
+    missing = deepcopy(manifest)
+    del missing["academy_programs"]["digital-work"]
+    del missing["pages"][path]
+    install_journal_opener(monkeypatch,bodies,missing)
+    assert probe.probe_public_journal_pages()["result"] == "unverified"
+    # A newly published, unapproved revision legitimately makes the program invisible.
+    missing["academy_revisions"]["course-second"] = 5
+    install_journal_opener(monkeypatch,bodies,missing)
+    assert probe.probe_public_journal_pages()["result"] == "exact-match"
+    manifest["academy_programs"]["unapproved"] = ["ai-basics","course-second"]
+    unsafe = "/academy/programs/unapproved"
+    manifest["pages"][unsafe] = "0" * 64
+    requests = install_journal_opener(monkeypatch,bodies,manifest)
+    result = probe.probe_public_journal_pages()
+    assert result["result"] == "unverified"
+    assert result["manifest_result"] == "unavailable-or-invalid"
+    assert unsafe not in requests

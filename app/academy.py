@@ -8,6 +8,7 @@ from fastapi.responses import HTMLResponse
 
 from .academy_content import COURSES
 from .academy_catalog import CATEGORIES, LEVELS, catalog_classification
+from .academy_programs import visible_programs
 
 
 def _e(value) -> str:
@@ -66,9 +67,72 @@ def _catalog_options(options, all_label):
     )
 
 
-def academy_index(courses=None):
+def _program_url(program):
+    return "/academy/programs/" + _e(program["slug"])
+
+
+def _program_cards(courses):
     cards = []
-    for course in (COURSES if courses is None else courses):
+    for program in visible_programs(courses):
+        minutes = sum(lesson["minutes"] for course in program["courses"] for lesson in course["lessons"])
+        cards.append(
+            '<article class="ac-course-card"><p class="ac-eyebrow">Учебная программа · Бесплатно</p>'
+            '<h3><a href="' + _program_url(program) + '">' + _e(program["title"]) + '</a></h3>'
+            '<p>' + _e(program["description"]) + '</p><p class="ac-small">Курсов: ' +
+            str(len(program["courses"])) + ' · около ' + str(minutes) + ' минут</p>'
+            '<a class="jr-primary" href="' + _program_url(program) + '">Открыть программу →</a></article>')
+    return ('<section class="jr-list" id="ac-programs"><h2 class="jr-list-title">Образовательные программы</h2>'
+            '<div class="ac-course-grid">' + "".join(cards) + '</div></section>') if cards else ""
+
+
+def _program_links(course, courses):
+    programs = [program for program in visible_programs(courses)
+                if any(item["slug"] == course["slug"] for item in program["courses"])]
+    if not programs:
+        return ""
+    return ('<aside class="ac-panel"><h2>Курс входит в программу</h2><ul>' +
+            "".join('<li><a href="' + _program_url(program) + '">' + _e(program["title"]) + '</a></li>'
+                    for program in programs) +
+            '</ul><p class="ac-small">Вернитесь к программе, чтобы продолжить обучение по порядку.</p></aside>')
+
+
+def academy_program(slug, courses=None):
+    courses = COURSES if courses is None else courses
+    program = next((item for item in visible_programs(courses) if item["slug"] == slug), None)
+    if program is None:
+        raise HTTPException(404, "Программа не найдена")
+    rows = []
+    for index, course in enumerate(program["courses"], 1):
+        rows.append(
+            '<li class="ac-lesson-row ac-program-step"' + _progress_attrs(course) + '>'
+            '<span class="ac-number" aria-hidden="true">' + str(index) + '</span><div>'
+            '<h3><a href="' + _url(course) + '">' + _e(course["title"]) + '</a></h3>'
+            '<p>' + _e(course["description"]) + '</p><p class="ac-small">' +
+            _e(_classification_label(course)) + ' · ' + str(sum(lesson["minutes"] for lesson in course["lessons"])) +
+            ' мин.</p><p data-ac-progress-label class="ac-small" hidden></p>'
+            '<a class="jr-primary" data-ac-start href="' + _url(course) + '">Открыть курс →</a></div></li>')
+    minutes = sum(lesson["minutes"] for course in program["courses"] for lesson in course["lessons"])
+    body = (
+        '<div class="jr-breadcrumb"><a href="/academy">Академия</a> / Образовательная программа</div>'
+        '<section class="jr-hero"><span class="jr-kicker">БЕСПЛАТНАЯ ПРОГРАММА · САМОСТОЯТЕЛЬНО</span>'
+        '<h1>' + _e(program["title"]) + '</h1><p>' + _e(program["description"]) + '</p></section>'
+        '<section class="jr-list" data-ac-program><div class="ac-panel ac-program-summary">'
+        '<h2>Что вы освоите</h2><p>' + _e(program["goal"]) + '</p>'
+        '<p>Курсов: ' + str(len(program["courses"])) + ' · около ' + str(minutes) + ' минут</p>'
+        '<p class="ac-small">Рекомендуем проходить курсы по порядку. Все уроки доступны самостоятельно. '
+        'Прогресс хранится в этом браузере, может быть виден другим пользователям общего устройства и не является сертификатом.</p>'
+        '<p data-ac-program-progress role="status" hidden></p>'
+        '<p data-ac-program-storage role="status" class="ac-small" hidden>Браузер может не сохранять новые результаты.</p>'
+        '<a class="jr-primary" data-ac-program-resume href="' + _url(program["courses"][0]) + '">Начать программу →</a></div>'
+        '<h2 class="jr-list-title ac-program-heading">Курсы по порядку</h2><ol class="ac-lesson-list">' +
+        "".join(rows) + '</ol></section><p class="jr-back"><a href="/academy">← Все курсы</a></p>')
+    return _page(program["title"], program["description"], _program_url(program), body)
+
+
+def academy_index(courses=None):
+    courses = COURSES if courses is None else courses
+    cards = []
+    for course in courses:
         classification = catalog_classification(course)
         searchable = " ".join([course["title"], course["description"], course["audience"],
                                *course["outcomes"], _classification_label(course)])
@@ -88,7 +152,8 @@ def academy_index(courses=None):
         '<div class="jr-breadcrumb"><a href="/">Главная</a> / Обучение</div>'
         '<section class="jr-hero"><span class="jr-kicker">АКАДЕМИЯ СТАЖНО</span>'
         '<h1>Новые навыки — в вашем темпе</h1><p>Бесплатные практические курсы. Читайте уроки, '
-        'выполняйте упражнения и проверяйте себя без регистрации.</p></section>'
+        'выполняйте упражнения и проверяйте себя без регистрации.</p></section>' +
+        _program_cards(courses) +
         '<section class="jr-list" id="ac-catalog"><h2 class="jr-list-title">Доступные курсы</h2>'
         '<section class="ac-panel ac-learning" id="ac-learning" aria-labelledby="ac-learning-title" hidden>'
         '<h2 id="ac-learning-title">Моё обучение</h2>'
@@ -140,7 +205,8 @@ def academy_course(slug: str, courses=None):
         '</p><p>' + (_e(course["author_public_name"]) + ' · <a href="/people/' + _e(course["author_public_id"]) + '">Профиль автора</a>' if course.get("author_public_id") else 'Редакционный курс СТАЖНО') + '</p><p>Выполняйте задания самостоятельно. Курсы не подтверждают квалификацию.</p><a class="jr-primary" data-ac-resume href="' +
         _lesson_url(course, course["lessons"][0]) + '">Начать обучение →</a></section>' +
         _progress_panel(course) + '</div><section class="jr-list"><h2 class="jr-list-title">Программа курса</h2>'
-        '<ol class="ac-lesson-list"' + _progress_attrs(course) + '>' + rows + '</ol></section>')
+        '<ol class="ac-lesson-list"' + _progress_attrs(course) + '>' + rows + '</ol></section>' +
+        _program_links(course, COURSES if courses is None else courses))
     return _page(course["title"], course["description"], _url(course), body)
 
 
@@ -192,7 +258,7 @@ def academy_lesson(slug: str, lesson_slug: str, courses=None):
         '<p id="ac-quiz-result" role="status" aria-live="polite"></p></form>'
         '<noscript><p>Для проверки ответов включите JavaScript. Урок и упражнения доступны без него.</p></noscript></section>' +
         _progress_panel(course) + '<nav class="ac-lesson-nav" aria-label="Переход между уроками">' +
-        previous + onward + '</nav></div>')
+        previous + onward + '</nav>' + _program_links(course, COURSES if courses is None else courses) + '</div>')
     return _page(lesson["title"], lesson["goal"], _lesson_url(course, lesson), body)
 
 
@@ -203,6 +269,8 @@ def academy_pages(courses=None) -> dict[str, HTMLResponse]:
         pages[_url(course)] = academy_course(course["slug"], courses)
         for lesson in course["lessons"]:
             pages[_lesson_url(course, lesson)] = academy_lesson(course["slug"], lesson["slug"], courses)
+    for program in visible_programs(courses):
+        pages[_program_url(program)] = academy_program(program["slug"], courses)
     return pages
 
 
@@ -218,6 +286,10 @@ def install_academy_routes(app):
     def lesson(slug: str, lesson_slug: str, request: Request):
         return academy_lesson(slug, lesson_slug, public_catalog(request))
 
+    def program(slug: str, request: Request):
+        return academy_program(slug, public_catalog(request))
+
+    app.add_api_route("/academy/programs/{slug}", program, methods=["GET"], include_in_schema=False)
     app.add_api_route("/academy", index, methods=["GET"], include_in_schema=False)
     app.add_api_route("/academy/{slug}", detail, methods=["GET"], include_in_schema=False)
     app.add_api_route("/academy/{slug}/{lesson_slug}", lesson, methods=["GET"], include_in_schema=False)

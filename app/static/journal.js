@@ -351,6 +351,30 @@ document.addEventListener('DOMContentLoaded', () => {
     }
     learning.hidden = false;
   }
+  const programPanels = [...document.querySelectorAll('[data-ac-program]')];
+  function drawPrograms() {
+    for (const panel of programPanels) {
+      const ordered = [...panel.querySelectorAll('.ac-program-step[data-ac-course]')]
+        .map(node=>courses.get(node.dataset.acCourse));
+      if (!ordered.length || ordered.some(course=>!course)) continue;
+      const count = ordered.filter(course=>learningState(course)==='complete').length;
+      const total = ordered.reduce((n,course)=>n+course.lessons.length,0);
+      const completed = ordered.reduce((n,course)=>n+course.completed.size,0);
+      const next = ordered.find(course=>learningState(course)!=='complete');
+      const progress = panel.querySelector('[data-ac-program-progress]');
+      const link = panel.querySelector('[data-ac-program-resume]');
+      progress.textContent = 'Курсов пройдено: '+count+' из '+ordered.length+
+        ' · Уроков: '+completed+' из '+total;
+      progress.hidden = false;
+      panel.querySelector('[data-ac-program-storage]').hidden =
+        storageWritable && !writeFailed && !ordered.some(course=>course.storageUnavailable);
+      const target = next || ordered[0];
+      const base = '/academy/'+encodeURIComponent(target.slug);
+      const lesson = next?.lessons.find(item=>!next.completed.has(item));
+      link.href = completed && next && lesson ? base+'/'+encodeURIComponent(lesson) : base;
+      link.textContent = !next ? 'Повторить программу →' : completed ? 'Продолжить программу →' : 'Начать программу →';
+    }
+  }
   function say(course,message) {
     course.nodes.forEach(node => {
       const status=node.querySelector('[data-ac-storage-status]');
@@ -407,6 +431,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }));
   }
   drawLearning();
+  drawPrograms();
   for (const button of filters) {
     button.addEventListener('click', () => {
       learningFilter = button.dataset.acFilter;
@@ -428,12 +453,16 @@ document.addEventListener('DOMContentLoaded', () => {
   window.addEventListener('storage',event=>{
     let changed=false;
     for(const course of courses.values())if(event.key===course.key||event.key===null){course.completed=read(course);draw(course);changed=true;}
-    if(changed)drawLearning();
+    if(changed){drawLearning();drawPrograms();}
   });
   // Back/forward cache may restore an old catalog after finishing a lesson.
   // Re-read only the current revision of each still-listed course.
   window.addEventListener('pageshow',event=>{
-    if(!event.persisted||!learning)return;
+    if(!event.persisted)return;
+    // Revalidate course availability and pinned revisions after restoring a
+    // program page from back/forward cache. A withdrawn program must not linger.
+    if(programPanels.length){window.location.reload();return;}
+    if(!learning)return;
     storageWritable=canWriteProgress();
     writeFailed=lastWriteFailed();
     for(const course of courses.values()){course.completed=read(course);draw(course);}

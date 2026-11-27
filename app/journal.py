@@ -287,11 +287,16 @@ def journal_highlights(request: Request) -> dict:
 
 
 def journal_renderer_sha256() -> str:
-    """Identify the two fixed renderers without exposing code or local paths."""
+    """Identify fixed editorial renderers and packaged source without exposing content."""
     digest = hashlib.sha256(b"stazhno-journal-renderer-v1\0")
-    for name in ("journal.py", "journal_paths.py", "journal_guide.py", "community_author.py", "academy.py", "academy_content.py", "academy_builder.py", "public_discovery.py", "vacancy_pages.py"):
+    for name in ("journal.py", "journal_paths.py", "journal_guide.py", "community_author.py", "academy.py", "academy_content.py", "academy_builder.py", "academy_catalog.py", "academy_programs.py", "public_discovery.py", "vacancy_pages.py"):
         payload = Path(__file__).with_name(name).read_bytes()
         digest.update(name.encode("ascii") + b"\0" + len(payload).to_bytes(8, "big") + payload)
+    # A content-only update to a packaged editorial draft must also invalidate
+    # deployment parity, even before the new course is made public.
+    source = Path(__file__).resolve().parents[1] / "docs" / "academy-drafts" / "spreadsheets-basics.json"
+    payload = source.read_bytes()
+    digest.update(b"editorial-spreadsheets.json\0" + len(payload).to_bytes(8, "big") + payload)
     return digest.hexdigest()
 
 
@@ -328,8 +333,12 @@ def journal_manifest(request: Request) -> dict:
         ).hexdigest()
     paths = _public_sitemap_paths(request)
     pages["/sitemap.xml"] = hashlib.sha256(journal_sitemap(articles, paths, courses).body).hexdigest()
+    from .academy_programs import visible_programs
     return {"pages": pages, "count": len(articles), "renderer_sha256": journal_renderer_sha256(),
-            "academy_courses": {course["slug"]: [lesson["slug"] for lesson in course["lessons"]] for course in courses}}
+            "academy_courses": {course["slug"]: [lesson["slug"] for lesson in course["lessons"]] for course in courses},
+            "academy_revisions": {course["slug"]: course["revision"] for course in courses},
+            "academy_programs": {program["slug"]: [course["slug"] for course in program["courses"]]
+                                 for program in visible_programs(courses)}}
 
 
 def _public_sitemap_paths(request: Request) -> list[str]:

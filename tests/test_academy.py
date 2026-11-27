@@ -74,3 +74,71 @@ def test_editor_checklist_targets_and_legacy_readiness_match():
     assert any(item["lesson_step"] == "quiz" and item["field"] == "add-question" for item in details)
     ready = {key: COURSES[0][key] for key in ("title","description","audience","outcomes","lessons")}
     assert readiness_details(ready) == []
+
+
+def test_program_is_visible_only_with_all_approved_revisions(tmp_path, monkeypatch):
+    from copy import deepcopy
+    import json
+    from app import academy_programs
+    from app.db import database
+
+    first = deepcopy(COURSES[0])
+    second = deepcopy(first)
+    second.update(slug="course-test-program", revision=4, title="Учебный второй курс")
+    definition = {"slug":"digital-work", "title":"Цифровые навыки для работы",
+                  "description":"Последовательная учебная программа.", "goal":"Научиться применять цифровые инструменты.",
+                  "steps":((first["slug"],first["revision"]),(second["slug"],second["revision"]))}
+    monkeypatch.setattr(academy_programs, "PROGRAMS", (definition,))
+    path = "/academy/programs/digital-work"
+    assert academy_programs.visible_programs([first]) == []
+    assert path not in academy_pages([first])
+    assert path in academy_pages([first,second])
+    assert academy_programs.visible_programs([first,{**second,"revision":5}]) == []
+    app = create_app(str(tmp_path / "academy-program.sqlite"))
+    with TestClient(app, base_url="https://stazhno.ru") as visitor:
+        assert visitor.get(path).status_code == 404
+        assert path not in visitor.get("/academy").text
+        # Use only isolated fixture data; the live site is not modified.
+        draft = {key:second[key] for key in ("title","description","audience","outcomes","lessons")}
+        stamp = "2026-01-01T00:00:00+00:00"
+        with database(app.state.db_path) as db:
+            db.execute("""INSERT INTO academy_courses(slug,draft_json,published_json,state,version,created_at,updated_at,published_at)
+                          VALUES(?,?,?,'published',4,?,?,?)""",
+                       (second["slug"],json.dumps(draft),json.dumps(second),stamp,stamp,stamp))
+        page = visitor.get(path)
+        assert page.status_code == 200 and page.headers["cache-control"] == "no-store"
+        assert page.headers["x-robots-tag"] == "noindex, nofollow"
+        assert page.text.index(first["title"]) < page.text.index(second["title"])
+        assert page.text.count('class="ac-lesson-row ac-program-step"') == 2
+        assert path in visitor.get("/academy").text
+        assert path in visitor.get("/academy/" + first["slug"]).text
+        assert path in visitor.get("/academy/" + first["slug"] + "/" + first["lessons"][0]["slug"]).text
+        manifest = visitor.get("/api/public/journal/manifest").json()
+        assert manifest["academy_programs"] == {"digital-work":[first["slug"],second["slug"]]}
+        assert manifest["academy_revisions"] == {first["slug"]:first["revision"],second["slug"]:second["revision"]}
+        assert manifest["pages"][path] == hashlib.sha256(page.content).hexdigest()
+        assert "https://stazhno.ru" + path in visitor.get("/sitemap.xml").text
+        # An unpublished draft edit must not change the pinned publication.
+        with database(app.state.db_path) as db:
+            db.execute("UPDATE academy_courses SET state='draft',version=5 WHERE slug=?", (second["slug"],))
+        assert visitor.get(path).status_code == 200
+        with database(app.state.db_path) as db:
+            db.execute("UPDATE academy_courses SET published_json=? WHERE slug=?",
+                       (json.dumps({**second,"revision":6}),second["slug"]))
+        assert visitor.get(path).status_code == 404
+        assert path not in visitor.get("/academy").text
+        assert path not in visitor.get("/api/public/journal/manifest").json()["pages"]
+        with database(app.state.db_path) as db:
+            db.execute("UPDATE academy_courses SET published_json=NULL,state='hidden' WHERE slug=?", (second["slug"],))
+        assert visitor.get(path).status_code == 404
+        assert path not in visitor.get("/sitemap.xml").text
+
+
+def test_program_registry_rejects_duplicate_courses_and_invalid_revisions(monkeypatch):
+    import pytest
+    from app import academy_programs
+    for steps in ((("ai-basics",1),("ai-basics",1)),
+                  (("ai-basics",1),("course-test",0))):
+        monkeypatch.setattr(academy_programs,"PROGRAMS",({"slug":"test-program","steps":steps},))
+        with pytest.raises(ValueError):
+            list(academy_programs.configured_programs())
