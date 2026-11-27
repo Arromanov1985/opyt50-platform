@@ -13,3 +13,36 @@ Leaving the preview through either a numbered editor step or its forward action 
 - Assistant: manually entered topic and audience generate a local prompt. No external AI service is called. The pasted result is checked for exact supported fields, bounded structure, strict types and duplicate JSON keys. Invalid input must not echo contacts or change the saved draft. Review content and explicitly apply before saving.
 - Instructor overview: counts and search are scoped to the authorized own-course collection, not the public catalog or other authors' drafts. The total count used for the course limit is independent of filtering.
 - Verify an incomplete draft cannot be submitted, published versions remain unchanged until explicit approval, and legal/media activation gates remain disabled. Live deployment requires a successful version verification against the merged commit.
+
+## Local learner dashboard (issue #168)
+
+The public Academy uses the existing per-course, per-revision browser progress key.
+The catalog remains server-rendered and usable with JavaScript disabled. With
+JavaScript, native filter buttons expose all, in-progress and completed courses,
+using one card per public course and never sending progress or quiz answers to
+the server. A course is in progress only after at least one successful self-check.
+An in-progress card opens the first unfinished lesson; a completed card opens the
+course for repetition. Corrupt/oversized values and unknown lesson IDs are ignored,
+old revisions are not read, unavailable storage is explained, and cross-tab changes
+and back/forward restoration refresh the current catalog. No account sync,
+certificates, new API, database changes or live media activation.
+
+Regression coverage: complete course import, cancel and invalidation after source
+change, offline validation/save, two-lesson private preview reset, saved-draft
+reopen, and learner filters with current/old revisions, corrupt data, cross-tab
+updates, unavailable storage and mobile/desktop control widths.
+
+Storage failure handling: a short-lived dedicated write/delete probe detects
+read-only or quota-blocked local storage without modifying any saved course
+record. A failed actual save also sets a best-effort, tab-local session
+diagnostic (one boolean, no course IDs or answers), so a subsequent catalog
+visit warns even if a small probe succeeds. Successfully saved progress
+clears the diagnostic. Previously readable records still display. Tests cover
+blocked reads, blocked writes, a probe succeeding while the real save fails,
+and the no-JavaScript catalog fallback.
+
+The browser acceptance also creates and publishes a second course in the isolated
+test database, checks the active/completed filters across both courses, and
+withdraws the course to verify that stale local progress cannot keep a removed
+course in the catalog. The CI Python compilation gate runs before dependency
+installation and includes all browser test scripts.

@@ -257,12 +257,85 @@ document.addEventListener('DOMContentLoaded', () => {
     }
     courses.get(slug).nodes.push(node);
   }
-  function read(course) {
+  const learning = document.getElementById('ac-learning');
+  const catalogCards = [...document.querySelectorAll('#ac-course-grid .ac-course-card')];
+  const filters = learning ? [...learning.querySelectorAll('[data-ac-filter]')] : [];
+  let learningFilter = 'all';
+  // A readable storage can still reject writes (privacy restrictions or quota).
+  // Probe a dedicated, non-progress key; never overwrite a course's saved data.
+  const failureKey = 'stazhno-academy-last-write-failed';
+  function canWriteProgress() {
     try {
-      const raw = localStorage.getItem(course.key);
+      const key = 'stazhno-academy-v1:storage-probe';
+      localStorage.setItem(key, '1');
+      localStorage.removeItem(key);
+      return true;
+    } catch { return false; }
+  }
+  function lastWriteFailed() {
+    try { return sessionStorage.getItem(failureKey) === '1'; }
+    catch { return false; }
+  }
+  let storageWritable = canWriteProgress();
+  let writeFailed = lastWriteFailed();
+  function markWrite(failed) {
+    writeFailed = failed;
+    storageWritable = !failed;
+    // Diagnostic only: no course ID, progress, answers or personal data.
+    // Keep the last failure across navigation in this tab if possible.
+    try {
+      if (failed) sessionStorage.setItem(failureKey, '1');
+      else sessionStorage.removeItem(failureKey);
+    } catch { /* session storage may also be restricted */ }
+  }
+  function read(course) {
+    let raw;
+    try {
+      raw = localStorage.getItem(course.key);
+      course.storageUnavailable = false;
+    } catch {
+      course.storageUnavailable = true;
+      return new Set();
+    }
+    try {
       const parsed = raw && raw.length < 16000 ? JSON.parse(raw) : [];
       return new Set(Array.isArray(parsed) ? parsed.filter(item=>course.lessons.includes(item)) : []);
     } catch { return new Set(); }
+  }
+  function learningState(course) {
+    if (!course.completed.size) return 'new';
+    return course.completed.size === course.lessons.length ? 'complete' : 'active';
+  }
+  function drawLearning() {
+    if (!learning || !catalogCards.length) return;
+    const counts = {all:catalogCards.length, active:0, complete:0};
+    let shown = 0;
+    let unavailable = !storageWritable || writeFailed;
+    for (const card of catalogCards) {
+      const course = courses.get(card.dataset.acCourse);
+      const status = learningState(course);
+      if (status !== 'new') counts[status]++;
+      unavailable ||= course.storageUnavailable;
+      card.hidden = learningFilter !== 'all' && learningFilter !== status;
+      if (!card.hidden) shown++;
+    }
+    for (const button of filters) {
+      const filter = button.dataset.acFilter;
+      button.setAttribute('aria-pressed', String(learningFilter === filter));
+      button.querySelector('[data-ac-count]').textContent = '(' + counts[filter] + ')';
+    }
+    document.getElementById('ac-learning-count').textContent = 'Показано: ' + shown + ' из ' + counts.all + ' курсов';
+    document.getElementById('ac-learning-storage').hidden = !unavailable;
+    const empty = document.getElementById('ac-learning-empty');
+    empty.hidden = shown !== 0;
+    if (!shown) {
+      document.getElementById('ac-learning-empty-title').textContent = unavailable
+        ? 'Прогресс недоступен' : learningFilter === 'active' ? 'Нет начатых курсов' : 'Пока нет пройденных курсов';
+      document.getElementById('ac-learning-empty-text').textContent = unavailable
+        ? 'Проверьте разрешения и свободное место в хранилище браузера или выберите все курсы.'
+        : 'Выберите курс и успешно пройдите самопроверку в уроке.';
+    }
+    learning.hidden = false;
   }
   function say(course,message) {
     course.nodes.forEach(node => {
@@ -273,8 +346,9 @@ document.addEventListener('DOMContentLoaded', () => {
   function store(course) {
     try {
       localStorage.setItem(course.key,JSON.stringify(course.lessons.filter(item=>course.completed.has(item))));
+      markWrite(false);
       return true;
-    } catch { return false; }
+    } catch { markWrite(true); return false; }
   }
   function draw(course) {
     const count=course.completed.size,total=course.lessons.length;
@@ -289,7 +363,10 @@ document.addEventListener('DOMContentLoaded', () => {
       });
       node.querySelectorAll('[data-ac-reset]').forEach(button=>{button.hidden=false;button.disabled=count===0;});
       node.querySelectorAll('[data-ac-start]').forEach(link=>{
-        link.textContent=count===total?'Повторить курс →':count?'Продолжить курс →':'Открыть курс →';
+        const next=course.lessons.find(item=>!course.completed.has(item));
+        const url='/academy/'+encodeURIComponent(course.slug);
+        link.href=count&&next?url+'/'+encodeURIComponent(next):url;
+        link.textContent=count===total?'Повторить курс →':count?'Продолжить обучение →':'Открыть курс →';
       });
     }
     const resume=document.querySelector('[data-ac-resume]');
@@ -305,7 +382,7 @@ document.addEventListener('DOMContentLoaded', () => {
       button.addEventListener('click',()=>{
         if(!window.confirm('Сбросить прогресс этого курса в текущем браузере?'))return;
         let removed=true;
-        try{localStorage.removeItem(course.key);}catch{removed=false;}
+        try{localStorage.removeItem(course.key);}catch{removed=false;markWrite(true);}
         course.completed.clear();draw(course);
         say(course,removed?'Прогресс курса сброшен.':'Не удалось удалить данные из хранилища. Прогресс сброшен только на этой странице.');
         const result=document.getElementById('ac-quiz-result');if(result)result.textContent='';
@@ -315,8 +392,31 @@ document.addEventListener('DOMContentLoaded', () => {
       });
     }));
   }
+  drawLearning();
+  for (const button of filters) {
+    button.addEventListener('click', () => {
+      learningFilter = button.dataset.acFilter;
+      drawLearning();
+    });
+  }
+  document.querySelector('[data-ac-show-all]')?.addEventListener('click', () => {
+    learningFilter = 'all';
+    drawLearning();
+    filters.find(button=>button.dataset.acFilter==='all')?.focus();
+  });
   window.addEventListener('storage',event=>{
-    for(const course of courses.values())if(event.key===course.key||event.key===null){course.completed=read(course);draw(course);}
+    let changed=false;
+    for(const course of courses.values())if(event.key===course.key||event.key===null){course.completed=read(course);draw(course);changed=true;}
+    if(changed)drawLearning();
+  });
+  // Back/forward cache may restore an old catalog after finishing a lesson.
+  // Re-read only the current revision of each still-listed course.
+  window.addEventListener('pageshow',event=>{
+    if(!event.persisted||!learning)return;
+    storageWritable=canWriteProgress();
+    writeFailed=lastWriteFailed();
+    for(const course of courses.values()){course.completed=read(course);draw(course);}
+    drawLearning();
   });
   const form=document.getElementById('ac-quiz');
   if(form){
