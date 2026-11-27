@@ -31,8 +31,8 @@
   <link rel="stylesheet" href="/static/release09-mobile.css?v=b81b10106376">
   <link rel="stylesheet" href="/static/release13-taxonomy.css?v=1300">
   <title>СТАЖНО.РУ — работа и новые возможности после 50 лет</title>
-  <script src="/static/release02.js?v=62b59131b114" defer></script>
-  <script src="/static/app.js?v=72bb43efde8d" defer></script>
+  <script src="/static/release02.js?v=b7cc8d65f408" defer></script>
+  <script src="/static/app.js?v=858f8f8c4ecc" defer></script>
   <script src="/static/release03.js?v=9da20404439a" defer></script>
   <script src="/static/vacancy-wizard.js?v=b59564433a0b" defer></script>
   <script src="/static/release09-home.js?v=0901" defer></script>
@@ -130,9 +130,10 @@
             <button class="btn btn-outline jobs-reset" id="jobs-reset" type="button">Сбросить фильтры</button>
           </div>
         </details>
+        <p class="muted" id="jobs-search-note" role="status" hidden></p>
         <div class="jobs-result-meta"><span class="jobs-count" id="jobs-count" aria-live="polite"></span><div class="job-filter-summary" id="job-filter-summary" aria-live="polite"></div></div>
       </div>
-      <div id="public-jobs" class="job-grid"><div class="empty-state">Загружаем вакансии...</div></div>
+      <div id="public-jobs" class="job-grid" aria-busy="true"><div class="empty-state">Загружаем вакансии...</div></div>
       <div class="launch-note"><span aria-hidden="true">i</span><p><strong>Тестовый запуск.</strong> Поиск, профили, отклики и приглашения работают. Расчёты работодателей за открытие контакта пока проходят без реального списания.</p></div>
     </div></section>
     <section class="section how-section how-v08 how-v09" id="how"><div class="container">

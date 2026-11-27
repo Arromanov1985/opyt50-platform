@@ -5353,7 +5353,6 @@ async function start() {
   $('#account-open').addEventListener('click',()=>{ if (mayLeaveEditor()) showDashboard(true); });
   $('#logout').addEventListener('click',async()=>{ if (!mayLeaveEditor()) return; try { await api('/api/logout',{method:'POST'}); state.user=null; state.employerWorkQueueView=null; syncEmployerMatchAccount(); $('#account-content').innerHTML=''; await reloadUser(); await loadPublicJobs(); window.scrollTo({top:0,behavior:'smooth'}); toast('Вы вышли из аккаунта.'); } catch(e) { toast(e.message,true); }});
   $('#jobs-filter').addEventListener('click',loadPublicJobs);
-  $('#city-filter').addEventListener('keydown',e=>{if(e.key==='Enter')loadPublicJobs();});
   $('#account-content').addEventListener('click',captureEmployerWorkQueueNavigation,true);
   $('#account-content').addEventListener('click',handleDashboardClick);
   $('#account-content').addEventListener('input',handleDashboardInput);

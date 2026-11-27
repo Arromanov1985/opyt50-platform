@@ -178,16 +178,41 @@
         }
       });
     }
-    async function refreshFavorites() {
-      if (state.user?.role !== 'candidate') { favoriteVacancyIds = new Set(); return; }
-      const result = await api('/api/candidate/favorites');
-      favoriteVacancyIds = new Set((result.jobs || []).map(job => Number(job.id)));
+    const searchOwner = () => state.user ? state.user.role + ':' + state.user.id : 'guest';
+    // Start a fresh read for every caller (including after a mutation), but
+    // superseded callers must await the winning read before using the cache.
+    function ownedCandidateRefresh(path, empty, parse, assign) {
+      let latest = null;
+      return async function refresh() {
+        const owner = searchOwner();
+        if (state.user?.role !== 'candidate') {
+          latest = null;
+          assign(empty());
+          return;
+        }
+        const entry = {owner, promise:null};
+        latest = entry;
+        entry.promise = api(path).then(result => {
+          if (latest === entry && searchOwner() === owner) assign(parse(result));
+        });
+        let awaited = entry;
+        for (;;) {
+          try { await awaited.promise; }
+          catch(error) {
+            if (searchOwner() !== owner || latest?.owner !== owner) return;
+            if (latest === awaited) throw error;
+          }
+          if (searchOwner() !== owner || latest?.owner !== owner || latest === awaited) return;
+          awaited = latest;
+        }
+      };
     }
-    async function refreshMyApplications() {
-      if (state.user?.role !== 'candidate') { applicationByVacancy = new Map(); return; }
-      const result = await api('/api/candidate/applications');
-      applicationByVacancy = new Map((result.applications || []).map(a => [Number(a.vacancy_id), a]));
-    }
+    const refreshFavorites = ownedCandidateRefresh('/api/candidate/favorites',
+      () => new Set(), result => new Set((result.jobs || []).map(job => Number(job.id))),
+      value => { favoriteVacancyIds = value; });
+    const refreshMyApplications = ownedCandidateRefresh('/api/candidate/applications',
+      () => new Map(), result => new Map((result.applications || []).map(a => [Number(a.vacancy_id), a])),
+      value => { applicationByVacancy = value; });
     function jobApplicationAction(jobId, job = null) {
       // Prefer the server-annotated vacancy status; use separately fetched
       // applications only for routes that return unannotated public jobs.
@@ -264,26 +289,54 @@
         <div class="job-actions ${open && state.user?.role==='candidate' ? 'has-favorite' : ''}">${roleActions}<button type="button" class="btn ${detailsPrimary ? 'btn-primary' : 'btn-outline'} btn-tiny" data-v02-action="details" data-id="${id}">${detailsPrimary ? 'Условия и отклик' : 'Условия и описание'}</button></div><a class="job-share-link" href="/vacancies/${id}" aria-label="Открыть отдельную страницу вакансии ${esc(job.title)}">Открыть отдельной страницей <span aria-hidden="true">↗</span></a>${state.user?.role === 'candidate' ? jobApplicationReceipt(id, job) : ''}</article>`;
     };
 
+    // Snapshot each submitted query before awaiting account data. A late
+    // response or failure must never replace a newer search or account.
+    const publicJobFilters = [
+      ['profession-filter','q','Профессия'],
+      ['city-filter','city','Город'],
+      ['salary-filter','salary_min','Зарплата от'],
+      ['schedule-filter','schedule','График'],
+      ['employment-filter','employment','Занятость']
+    ];
+    let publicJobSerial = 0, requestedPublicQuery = null;
+    function publicJobQuery() {
+      const qs = new URLSearchParams(), active = [];
+      for (const [input,param,label] of publicJobFilters) {
+        const value = searchValue(input);
+        if (value) { qs.set(param,value); active.push([label,value,input]); }
+      }
+      const sort = searchValue('sort-filter') || 'recent';
+      qs.set('sort',sort);
+      return {qs, active, sort};
+    }
+    function updatePublicJobNote() {
+      const note = $('#jobs-search-note');
+      if (!note) return;
+      const changed = requestedPublicQuery !== null &&
+        publicJobQuery().qs.toString() !== requestedPublicQuery;
+      note.textContent = changed ? 'Условия изменены. Нажмите «Найти вакансии», чтобы применить их.' : '';
+      note.hidden = !changed;
+    }
     loadPublicJobs = async function() {
+      const serial = ++publicJobSerial, owner = searchOwner();
+      const current = () => serial === publicJobSerial && owner === searchOwner();
+      const {qs, active, sort} = publicJobQuery();
+      const grid = $('#public-jobs');
+      const count = $('#jobs-count');
+      const summary = $('#job-filter-summary');
+      requestedPublicQuery = qs.toString();
+      updatePublicJobNote();
+      grid.setAttribute('aria-busy','true');
+      count.textContent = 'Ищем вакансии…';
+      summary.replaceChildren();
+      grid.innerHTML = '<div class="empty-state">Подбираем вакансии по вашим условиям…</div>';
       try {
         await Promise.all([refreshMyApplications(), refreshFavorites()]);
-        const qs = new URLSearchParams();
-        const filters = [
-          ['profession-filter','q','Профессия'],
-          ['city-filter','city','Город'],
-          ['salary-filter','salary_min','Зарплата от'],
-          ['schedule-filter','schedule','График'],
-          ['employment-filter','employment','Занятость']
-        ];
-        const active = [];
-        for (const [input,param,label] of filters) {
-          const value=searchValue(input);
-          if(value){ qs.set(param,value); active.push([label,value,input]); }
-        }
-        const sort=searchValue('sort-filter') || 'recent';
-        qs.set('sort',sort);
+        if (!current()) return;
         const result = await api('/api/jobs?'+qs);
-        const jobs = result.jobs || [];
+        if (!current()) return;
+        if (!Array.isArray(result.jobs)) throw new Error('Сервер не вернул список вакансий.');
+        const jobs = result.jobs;
         $('#jobs-count').textContent = `Найдено: ${jobs.length}`;
         const sortLabels={salary_desc:'Сначала выше зарплата',salary_asc:'Сначала ниже зарплата'};
         if(sortLabels[sort]) active.push(['Сортировка',sortLabels[sort],'sort-filter']);
@@ -301,8 +354,16 @@
             ? '<div class="empty-state empty-state-action jobs-empty-state" role="status"><strong>По этим условиям вакансий пока нет.</strong><p>Попробуйте расширить поиск или посмотрите все доступные предложения.</p><button type="button" class="btn btn-outline" data-v02-action="reset-public-job-filters">Показать все вакансии</button></div>'
             : '<div class="empty-state empty-state-action jobs-empty-state" role="status"><strong>Открытых вакансий пока нет.</strong><p>Новые предложения появятся здесь после публикации работодателями. Пока можно посмотреть материалы о поиске работы.</p><a class="btn btn-outline" href="/journal">Перейти в журнал</a></div>';
       } catch(e) {
+        if (!current()) return;
+        count.textContent = 'Не удалось выполнить поиск';
+        summary.replaceChildren();
         toast(e.message,true);
-        $('#public-jobs').innerHTML='<div class="empty-state empty-state-action jobs-empty-state" role="status"><strong>Не удалось загрузить вакансии.</strong><p>Проверьте подключение и повторите поиск.</p><button type="button" class="btn btn-outline" data-v02-action="retry-public-jobs">Повторить поиск</button></div>';
+        grid.innerHTML='<div class="empty-state empty-state-action jobs-empty-state" role="status"><strong>Не удалось загрузить вакансии.</strong><p>Проверьте подключение и повторите поиск.</p><button type="button" class="btn btn-outline" data-v02-action="retry-public-jobs">Повторить поиск</button></div>';
+      } finally {
+        if (serial === publicJobSerial) {
+          grid.setAttribute('aria-busy','false');
+          updatePublicJobNote();
+        }
       }
     };
 
@@ -773,12 +834,14 @@
         if (state.tab === 'offers' || state.tab === 'overview') {
           try { await Promise.all([refreshMyApplications(), refreshFavorites()]); }
           catch (e) {
+            if (state.user?.role !== 'candidate' || state.user?.id !== ownerId) return;
             applicationByVacancy = new Map();
             favoriteVacancyIds = new Set();
             // Recommended jobs still return application_status, so a temporary
             // auxiliary-list failure must not hide the main recommendations.
           }
         }
+        if (state.user?.role !== 'candidate' || state.user?.id !== ownerId || state.tab !== originalTab) return;
         await oldCandidate();
         if (originalTab==='overview' && state.tab==='overview' && state.user?.id===ownerId) {
           const dashboard=document.getElementById('dashboard-main');
@@ -1497,15 +1560,18 @@
             return;
           }
           if(type==='apply'){
+            const owner = searchOwner();
             const fromDialog = $('#job-dialog').open && $('#job-dialog').contains(btn);
             try {
               await req('POST','/api/candidate/applications',{vacancy_id:id});
+              if (owner !== searchOwner()) return;
               await refreshMyApplications();
+              if (owner !== searchOwner()) return;
               syncVisibleApplicationCards(id);
               if(fromDialog){
                 // Preserve context and show the saved state instead of a second POST.
                 const action = $('#job-dialog .job-detail-action');
-                if(action){
+                if(action && btn.isConnected){
                   action.innerHTML = jobApplicationAction(id) + jobApplicationReceipt(id);
                   const receipt = action.querySelector('.job-application-receipt');
                   if(receipt){
@@ -1517,8 +1583,10 @@
               else await loadPublicJobs();
               toast('Отклик отправлен. Контакты остаются скрытыми до вашего согласия.');
             } catch(err) {
+              if (owner !== searchOwner()) return;
               if(/уже откликались|уже существует/.test(err.message)){
                 await refreshMyApplications();
+                if (owner !== searchOwner()) return;
                 if($('#job-dialog').open)$('#job-dialog').close();
                 state.tab='applications'; await showDashboard(true);
                 toast('Заявка уже существует. Открыта ваша история откликов.');
@@ -1558,7 +1626,14 @@
           toast('Вакансия удалена из избранного');
         }
         else if(type==='withdraw'){await req('POST',`/api/candidate/applications/${id}/withdraw`);await showDashboard();toast('Отклик отозван');}
-        else if(type==='reapply'){const result=await req('POST','/api/candidate/applications',{vacancy_id:id});await refreshMyApplications();syncVisibleApplicationCards(id);await showDashboard();toast(result.reapplied?'Отклик отправлен повторно':'Отклик отправлен');}
+        else if(type==='reapply'){
+          const owner=searchOwner();
+          const result=await req('POST','/api/candidate/applications',{vacancy_id:id});
+          if(owner!==searchOwner()) return;
+          await refreshMyApplications();
+          if(owner!==searchOwner()) return;
+          syncVisibleApplicationCards(id);await showDashboard();toast(result.reapplied?'Отклик отправлен повторно':'Отклик отправлен');
+        }
         else if(type==='filter-vacancy-updates'){
           if(!vacancyUpdatesFilters.includes(btn.dataset.filter)||state.user?.role!=='candidate') return;
           vacancyUpdatesFilter=btn.dataset.filter;
@@ -1870,7 +1945,15 @@
       if(action==='reset'){$('#reset-token').value=token;$('#reset-dialog').showModal();}
       if(action==='verify'){req('POST','/api/account/email/confirm',{token}).then(()=>toast('Email подтверждён.')).catch(e=>toast(e.message,true));}
     }
-    ['profession-filter','city-filter','salary-filter'].forEach(id=>$('#'+id).addEventListener('keydown',e=>{if(e.key==='Enter')loadPublicJobs();}));
+    [...publicJobFilters.map(([id])=>id),'sort-filter'].forEach(id => {
+      $('#'+id).addEventListener('input',updatePublicJobNote);
+    });
+    ['profession-filter','city-filter','salary-filter'].forEach(id=>$('#'+id).addEventListener('keydown',e=>{
+      if(e.key==='Enter' && !e.isComposing && !e.defaultPrevented) {
+        e.preventDefault();
+        loadPublicJobs();
+      }
+    }));
     ['schedule-filter','employment-filter','sort-filter'].forEach(id=>$('#'+id).addEventListener('change',loadPublicJobs));
     $('#jobs-reset').addEventListener('click',()=>{
       ['profession-filter','city-filter','salary-filter'].forEach(id=>$('#'+id).value='');

@@ -33,6 +33,85 @@ def login(page, email):
     expect(page.locator("#dashboard")).to_be_visible(timeout=15000)
 
 
+def verify_public_search_order(page):
+    # Hold the older request while the latest request completes. Exercise
+    # real UI handlers with a controlled browser route, not sleeps.
+    held = []
+    def intercept(route):
+        if "stale-test-search" in route.request.url:
+            held.append(route)
+        else:
+            route.continue_()
+
+    page.route("**/api/jobs?*", intercept)
+    try:
+        query = page.locator("#profession-filter")
+        note = page.locator("#jobs-search-note")
+        query.fill("stale-test-search")
+        expect(note).to_be_visible()
+        with page.expect_request(lambda request: "/api/jobs?" in request.url and
+                                 "stale-test-search" in request.url):
+            page.locator("#jobs-filter").click()
+        expect(page.locator("#public-jobs")).to_have_attribute("aria-busy","true")
+        expect(page.locator("#jobs-count")).to_contain_text("Ищем вакансии")
+        expect(page.locator("#job-filter-summary")).to_be_empty()
+        query.fill("Кладовщик")
+        expect(note).to_be_visible()
+        query.press("Enter")
+        expect(page.locator("#public-jobs .job-card")).to_have_count(1)
+        expect(page.locator("#public-jobs .job-card")).to_contain_text("Кладовщик")
+        expect(page.locator("#public-jobs")).to_have_attribute("aria-busy","false")
+        expect(note).to_be_hidden()
+        assert len(held) == 1
+        old = held.pop()
+        with page.expect_response(lambda response: "stale-test-search" in response.url):
+            old.fulfill(status=200, content_type="application/json", body='{"jobs":[]}')
+        # Round trip through the browser event loop so the delivered response
+        # has been processed before asserting that the newer UI survived.
+        page.evaluate("() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)))")
+        expect(page.locator("#jobs-count")).to_contain_text("Найдено: 1")
+        expect(page.locator("#job-filter-summary")).to_contain_text("Кладовщик")
+        expect(page.locator("#public-jobs .job-card")).to_have_count(1)
+
+        query.fill("stale-test-search")
+        with page.expect_request(lambda request: "/api/jobs?" in request.url and
+                                 "stale-test-search" in request.url):
+            page.locator("#jobs-filter").click()
+        expect(page.locator("#public-jobs")).to_have_attribute("aria-busy","true")
+        query.fill("Кладовщик")
+        page.locator("#jobs-filter").click()
+        expect(page.locator("#public-jobs .job-card")).to_have_count(1)
+        assert len(held) == 1
+        old = held.pop()
+        with page.expect_response(lambda response: "stale-test-search" in response.url):
+            old.fulfill(status=503, content_type="application/json", body='{"detail":"stale failure"}')
+        page.evaluate("() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)))")
+        expect(page.locator("#jobs-count")).to_contain_text("Найдено: 1")
+        expect(page.locator("#public-jobs .job-card")).to_have_count(1)
+        expect(page.locator("#public-jobs")).to_have_attribute("aria-busy","false")
+
+        # The newest failure has a distinct error and retry; it cannot be
+        # mistaken for zero matches or leave the previous result count.
+        page.route("**/api/jobs?*", lambda route: route.fulfill(
+            status=503, content_type="application/json", body='{"detail":"test failure"}'))
+        try:
+            page.locator("#jobs-filter").click()
+            expect(page.locator("#jobs-count")).to_have_text("Не удалось выполнить поиск")
+            expect(page.locator("[data-v02-action='retry-public-jobs']")).to_be_visible()
+            expect(page.locator("#job-filter-summary")).to_be_empty()
+            expect(page.locator("#public-jobs")).to_have_attribute("aria-busy","false")
+        finally:
+            page.unroute("**/api/jobs?*")
+        page.locator("[data-v02-action='retry-public-jobs']").click()
+        expect(page.locator("#public-jobs .job-card")).to_have_count(1)
+    finally:
+        for route in held:
+            route.abort()
+        page.unroute("**/api/jobs?*")
+    page.locator("#jobs-reset").click()
+    expect(page.locator("#public-jobs")).to_have_attribute("aria-busy","false")
+
+
 def run_browser(page, playwright):
     console_errors = []
     page.on("pageerror", lambda error: console_errors.append(str(error)))
@@ -82,6 +161,7 @@ def run_browser(page, playwright):
     page.get_by_role("link", name="Найти работу").first.click()
     assert page.evaluate("location.hash") == "#jobs"
     expect(page.locator("#guest-actions")).to_be_visible()
+    verify_public_search_order(page)
 
     mode = page.locator("#reading-mode-toggle")
     expect(mode).to_have_attribute("aria-pressed", "false")
@@ -445,8 +525,44 @@ def run_browser(page, playwright):
     expect(page.locator("#dashboard-main .saved-job")).to_have_count(2)
     page.locator("#dashboard-main .saved-job").filter(has_not_text="Кладовщик").first.locator("[data-v02-action='remove-favorite']").click()
     expect(page.locator("#dashboard-main .saved-job")).to_have_count(1)
-    page.locator("#public-jobs .job-card").filter(has_text="Кладовщик").locator("[data-v02-action='apply']").click()
+    # The real apply POST is followed by an applications refresh. A newer
+    # search starts a second read before the first completes. The dialog
+    # must keep the application pending until the winning cache is ready.
+    page.locator("#public-jobs .job-card").filter(has_text="Кладовщик").locator("[data-v02-action='details']").click()
+    apply_button = page.locator("#job-dialog [data-v02-action='apply']")
+    expect(apply_button).to_be_visible()
+    held_app_reads = []
+    def hold_app_reads(route):
+        if route.request.method == "GET":
+            held_app_reads.append(route)
+        else:
+            route.continue_()
+    def is_app_read(request):
+        return request.method == "GET" and request.url.endswith("/api/candidate/applications")
+    page.route("**/api/candidate/applications", hold_app_reads)
+    try:
+        with page.expect_request(is_app_read):
+            apply_button.click()
+        with page.expect_request(is_app_read):
+            page.evaluate("document.getElementById('jobs-filter').click()")
+        assert len(held_app_reads) == 2
+        stale = held_app_reads.pop(0)
+        with page.expect_response(lambda response: is_app_read(response.request)):
+            stale.fulfill(status=200, content_type="application/json", body='{"applications":[]}')
+        page.evaluate("() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)))")
+        expect(apply_button).to_be_disabled()
+        expect(page.locator("#job-dialog .job-application-receipt")).to_have_count(0)
+        current = held_app_reads.pop(0)
+        current.continue_()
+        expect(page.locator("#job-dialog .job-application-receipt")).to_contain_text("Отклик отправлен")
+        expect(apply_button).to_have_count(0)
+        expect(page.locator("#public-jobs")).to_have_attribute("aria-busy","false")
+    finally:
+        for route in held_app_reads:
+            route.abort()
+        page.unroute("**/api/candidate/applications", hold_app_reads)
     expect(page.locator("#toast")).to_contain_text("Отклик отправлен")
+    page.locator("#job-dialog-close").click()
     page.locator(".dashboard-tabs [data-tab='applications']").click()
     expect(page.locator("#dashboard-main")).to_contain_text("История откликов")
     expect(page.locator("#dashboard-main")).to_contain_text("Отправлен")
