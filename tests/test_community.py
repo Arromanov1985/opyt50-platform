@@ -2375,3 +2375,58 @@ def test_course_overview_counts_and_filters_only_authorized_own_courses(communit
     assert admin.get(url, params={"view": "review"}).json()["overview"] is None
     assert visitor.get(url).status_code == 401
     assert employer.get(url).status_code == 403
+
+
+def test_course_classification_is_versioned_and_compatible_with_old_clients(community):
+    from copy import deepcopy
+    import json
+    app, clients, ids = community
+    author, admin, visitor, outsider = (clients[key] for key in ("first", "admin", "visitor", "second"))
+    publish(clients, "first")
+    url = "/api/community/courses"
+    course = mutate(author, "POST", url, {"client_key": str(uuid4())}).json()["course"]
+    own = url + "/" + course["slug"]
+    public = "/academy/" + course["slug"]
+    moderation = "/api/admin/community/courses/" + course["slug"]
+    assert course["classification"] == {"category":"uncategorized", "level":"unspecified"}
+    assert "category" not in course["draft"] and "level" not in course["draft"]
+    data = deepcopy(COURSE_DRAFT)
+    for invalid in ({"category":"unknown"}, {"level":123}, {"category":"<script>"}):
+        assert mutate(author, "PUT", own, {**data, **invalid, "expected_version":course["version"]}).status_code == 422
+    saved = mutate(author, "PUT", own, {**data, "category":"professional", "level":"intermediate",
+                                       "expected_version":course["version"]})
+    assert saved.status_code == 200, saved.text
+    current = saved.json()["course"]
+    assert current["classification"] == {"category":"professional", "level":"intermediate"}
+    assert outsider.get(own).status_code == 404
+    old_client = mutate(author, "PUT", own, {**data, "expected_version":current["version"]}).json()["course"]
+    assert old_client["version"] == current["version"] and old_client["classification"] == current["classification"]
+    source = deepcopy(data)
+    source["lessons"][0].pop("slug")
+    source.update(category="digital", level="beginner")
+    imported = mutate(author, "POST", own + "/assistant/validate",
+                      {"expected_version":current["version"], "kind":"course", "source":json.dumps(source)})
+    assert imported.status_code == 200, imported.text
+    assert imported.json()["draft"]["category"] == "digital"
+    assert imported.json()["draft"]["level"] == "beginner"
+    assert author.get(own).json()["course"] == current
+    bad_import = mutate(author, "POST", own + "/assistant/validate",
+                        {"expected_version":current["version"], "kind":"course",
+                         "source":json.dumps({**source,"level":"invented"})})
+    assert bad_import.status_code == 422
+    pending = mutate(author, "POST", own + "/submit",
+                     {"expected_version":current["version"],"publish_consent":True}).json()["course"]
+    assert visitor.get(public).status_code == 404
+    assert admin.get(own).json()["course"]["classification"] == current["classification"]
+    assert mutate(admin, "PATCH", moderation, {"expected_version":pending["version"],"decision":"approve"}).status_code == 200
+    assert "Профессиональные навыки · Средний" in visitor.get(public).text
+    current = author.get(own).json()["course"]
+    changed = mutate(author, "PUT", own, {**data,"category":"digital","level":"beginner",
+                                         "expected_version":current["version"]}).json()["course"]
+    assert changed["classification"] == {"category":"digital","level":"beginner"}
+    assert "Профессиональные навыки · Средний" in visitor.get(public).text
+    assert "Цифровые навыки · Начальный" not in visitor.get(public).text
+    pending = mutate(author, "POST", own + "/submit",
+                     {"expected_version":changed["version"],"publish_consent":True}).json()["course"]
+    assert mutate(admin, "PATCH", moderation, {"expected_version":pending["version"],"decision":"approve"}).status_code == 200
+    assert "Цифровые навыки · Начальный" in visitor.get(public).text
