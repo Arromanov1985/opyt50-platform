@@ -79,7 +79,7 @@ def academy_index(courses=None):
         '<button type="button" data-ac-filter="active" aria-pressed="false" aria-controls="ac-course-grid">Продолжить обучение <span data-ac-count></span></button>'
         '<button type="button" data-ac-filter="complete" aria-pressed="false" aria-controls="ac-course-grid">Пройдено <span data-ac-count></span></button></div>'
         '<p class="ac-small" id="ac-learning-count" role="status"></p>'
-        '<p class="ac-small" id="ac-learning-storage" role="status" hidden>Хранилище браузера недоступно. Курсы открываются, но сохранённый прогресс не отображается.</p></section>'
+        '<p class="ac-small" id="ac-learning-storage" role="status" hidden>Браузер может не сохранять новые результаты. Уже сохранённый прогресс отображается, если доступен. Обучение можно продолжать.</p></section>'
         '<div class="ac-course-grid" id="ac-course-grid">' +
         ("".join(cards) or '<p>Пока нет опубликованных курсов.</p>') +
         '</div><section class="ac-panel ac-learning-empty" id="ac-learning-empty" hidden>'

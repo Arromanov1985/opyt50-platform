@@ -31,3 +31,12 @@ Regression coverage: complete course import, cancel and invalidation after sourc
 change, offline validation/save, two-lesson private preview reset, saved-draft
 reopen, and learner filters with current/old revisions, corrupt data, cross-tab
 updates, unavailable storage and mobile/desktop control widths.
+
+Storage failure handling: a short-lived dedicated write/delete probe detects
+read-only or quota-blocked local storage without modifying any saved course
+record. A failed actual save also sets a best-effort, tab-local session
+diagnostic (one boolean, no course IDs or answers), so a subsequent catalog
+visit warns even if a small probe succeeds. Successfully saved progress
+clears the diagnostic. Previously readable records still display. Tests cover
+blocked reads, blocked writes, a probe succeeding while the real save fails,
+and the no-JavaScript catalog fallback.

@@ -261,6 +261,33 @@ document.addEventListener('DOMContentLoaded', () => {
   const catalogCards = [...document.querySelectorAll('#ac-course-grid .ac-course-card')];
   const filters = learning ? [...learning.querySelectorAll('[data-ac-filter]')] : [];
   let learningFilter = 'all';
+  // A readable storage can still reject writes (privacy restrictions or quota).
+  // Probe a dedicated, non-progress key; never overwrite a course's saved data.
+  const failureKey = 'stazhno-academy-last-write-failed';
+  function canWriteProgress() {
+    try {
+      const key = 'stazhno-academy-v1:storage-probe';
+      localStorage.setItem(key, '1');
+      localStorage.removeItem(key);
+      return true;
+    } catch { return false; }
+  }
+  function lastWriteFailed() {
+    try { return sessionStorage.getItem(failureKey) === '1'; }
+    catch { return false; }
+  }
+  let storageWritable = canWriteProgress();
+  let writeFailed = lastWriteFailed();
+  function markWrite(failed) {
+    writeFailed = failed;
+    storageWritable = !failed;
+    // Diagnostic only: no course ID, progress, answers or personal data.
+    // Keep the last failure across navigation in this tab if possible.
+    try {
+      if (failed) sessionStorage.setItem(failureKey, '1');
+      else sessionStorage.removeItem(failureKey);
+    } catch { /* session storage may also be restricted */ }
+  }
   function read(course) {
     let raw;
     try {
@@ -283,7 +310,7 @@ document.addEventListener('DOMContentLoaded', () => {
     if (!learning || !catalogCards.length) return;
     const counts = {all:catalogCards.length, active:0, complete:0};
     let shown = 0;
-    let unavailable = false;
+    let unavailable = !storageWritable || writeFailed;
     for (const card of catalogCards) {
       const course = courses.get(card.dataset.acCourse);
       const status = learningState(course);
@@ -305,7 +332,7 @@ document.addEventListener('DOMContentLoaded', () => {
       document.getElementById('ac-learning-empty-title').textContent = unavailable
         ? 'Прогресс недоступен' : learningFilter === 'active' ? 'Нет начатых курсов' : 'Пока нет пройденных курсов';
       document.getElementById('ac-learning-empty-text').textContent = unavailable
-        ? 'Разрешите локальное хранилище браузера или выберите все курсы.'
+        ? 'Проверьте разрешения и свободное место в хранилище браузера или выберите все курсы.'
         : 'Выберите курс и успешно пройдите самопроверку в уроке.';
     }
     learning.hidden = false;
@@ -319,8 +346,9 @@ document.addEventListener('DOMContentLoaded', () => {
   function store(course) {
     try {
       localStorage.setItem(course.key,JSON.stringify(course.lessons.filter(item=>course.completed.has(item))));
+      markWrite(false);
       return true;
-    } catch { return false; }
+    } catch { markWrite(true); return false; }
   }
   function draw(course) {
     const count=course.completed.size,total=course.lessons.length;
@@ -354,7 +382,7 @@ document.addEventListener('DOMContentLoaded', () => {
       button.addEventListener('click',()=>{
         if(!window.confirm('Сбросить прогресс этого курса в текущем браузере?'))return;
         let removed=true;
-        try{localStorage.removeItem(course.key);}catch{removed=false;}
+        try{localStorage.removeItem(course.key);}catch{removed=false;markWrite(true);}
         course.completed.clear();draw(course);
         say(course,removed?'Прогресс курса сброшен.':'Не удалось удалить данные из хранилища. Прогресс сброшен только на этой странице.');
         const result=document.getElementById('ac-quiz-result');if(result)result.textContent='';
@@ -385,6 +413,8 @@ document.addEventListener('DOMContentLoaded', () => {
   // Re-read only the current revision of each still-listed course.
   window.addEventListener('pageshow',event=>{
     if(!event.persisted||!learning)return;
+    storageWritable=canWriteProgress();
+    writeFailed=lastWriteFailed();
     for(const course of courses.values()){course.completed=read(course);draw(course);}
     drawLearning();
   });

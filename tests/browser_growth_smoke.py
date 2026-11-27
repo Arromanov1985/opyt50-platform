@@ -476,6 +476,66 @@ def exercise(browser, base, receipts_path):
             expect(blocked.locator("a[data-ac-start]")).to_be_visible()
         finally:
             restricted.close()
+        # Read-only storage still shows previously saved progress, but must
+        # warn that new results might not be saved.
+        readonly = browser.new_context(viewport={"width":390,"height":844}, locale="ru-RU")
+        try:
+            readonly.add_init_script("""(() => {
+                const saved = """ + json.dumps([key, lessons[0]]) + """;
+                localStorage.setItem(saved[0], JSON.stringify([saved[1]]));
+                const set = Storage.prototype.setItem;
+                Storage.prototype.setItem = function(k, v) {
+                    if (this === localStorage && k.startsWith('stazhno-academy-v1:'))
+                        throw new DOMException('Read only', 'QuotaExceededError');
+                    return set.call(this, k, v);
+                };
+            })();""")
+            read_page = readonly.new_page()
+            read_page.goto(base + "/academy", wait_until="networkidle")
+            expect(read_page.locator("#ac-learning-storage")).to_be_visible()
+            expect(read_page.locator('[data-ac-filter="active"]')).to_contain_text("(1)")
+            expect(read_page.locator('a[data-ac-start]')).to_have_attribute("href", "/academy/ai-basics/clear-prompts")
+        finally:
+            readonly.close()
+        # A small probe may fit even when the actual progress write fails.
+        # Keep the diagnostic in the tab across navigation without storing answers.
+        quota = browser.new_context(viewport={"width":390,"height":844}, locale="ru-RU")
+        try:
+            quota.add_init_script("""(() => {
+                const set = Storage.prototype.setItem;
+                Storage.prototype.setItem = function(k, v) {
+                    if (this === localStorage && k.startsWith('stazhno-academy-v1:')
+                        && k !== 'stazhno-academy-v1:storage-probe')
+                        throw new DOMException('Quota exceeded', 'QuotaExceededError');
+                    return set.call(this, k, v);
+                };
+            })();""")
+            quota_page = quota.new_page()
+            quota_page.goto(base + "/academy", wait_until="networkidle")
+            expect(quota_page.locator("#ac-learning-storage")).to_be_hidden()
+            quota_page.goto(base + "/academy/ai-basics/what-ai-does", wait_until="networkidle")
+            quiz = quota_page.locator("#ac-quiz")
+            quiz.locator('input[name="q1"][value="1"]').check()
+            quiz.locator('input[name="q2"][value="2"]').check()
+            quiz.locator('button[type="submit"]').click()
+            expect(quota_page.locator("#ac-quiz-result")).to_contain_text("Браузер не сохранил прогресс")
+            quota_page.goto(base + "/academy", wait_until="networkidle")
+            expect(quota_page.locator("#ac-learning-storage")).to_be_visible()
+            expect(quota_page.locator('[data-ac-filter="active"]')).to_contain_text("(0)")
+            assert quota_page.evaluate("key => localStorage.getItem(key)", key) is None
+            assert quota_page.evaluate("localStorage.getItem('stazhno-academy-v1:storage-probe')") is None
+        finally:
+            quota.close()
+        no_script = browser.new_context(java_script_enabled=False)
+        try:
+            basic = no_script.new_page()
+            basic.goto(base + "/academy", wait_until="load")
+            expect(basic.locator("#ac-learning")).to_be_hidden()
+            expect(basic.locator("a[data-ac-start]")).to_have_attribute("href", "/academy/ai-basics")
+            basic.locator("a[data-ac-start]").click()
+            expect(basic.locator("h1")).to_have_text("Искусственный интеллект с нуля")
+        finally:
+            no_script.close()
         page.goto(base + "/academy/ai-basics", wait_until="networkidle")
         page.once("dialog", lambda dialog: dialog.accept())
         page.locator("[data-ac-reset]").click()
