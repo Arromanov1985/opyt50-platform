@@ -1,0 +1,51 @@
+name: STAZHNO public infrastructure diagnostics
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - 'scripts/prelaunch_public_diagnostics.py'
+      - 'tests/test_prelaunch_public_diagnostics.py'
+      - '.github/workflows/prelaunch-public-diagnostics.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'scripts/prelaunch_public_diagnostics.py'
+      - '.github/workflows/prelaunch-public-diagnostics.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  public-read-only:
+    runs-on: ubuntu-latest
+    timeout-minutes: 4
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: '3.13'
+      - name: Ensure public DNS utility is available
+        run: command -v dig >/dev/null || (sudo apt-get update -qq && sudo apt-get install -y -qq dnsutils)
+      - name: Anonymous public DNS and HTTPS checks
+        run: python -m scripts.prelaunch_public_diagnostics
+      - name: Display diagnostic evidence (not launch approval)
+        run: |
+          python - <<'PY'
+          import json
+          import os
+          report = json.load(open("prelaunch-public-diagnostics.json", encoding="utf-8"))
+          with open(os.environ["GITHUB_STEP_SUMMARY"], "a", encoding="utf-8") as out:
+              out.write("## СТАЖНО — внешняя диагностика (только чтение)\n\n")
+              out.write("Успешный запуск этой проверки не означает готовность к запуску.\n\n")
+              out.write("| Проверка | Результат |\n|---|---|\n")
+              for name, value in report.items():
+                  out.write(f"| {name} | {json.dumps(value, ensure_ascii=False)} |\n")
+          PY
+      - name: Store redacted public check results
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: stazhno-public-infrastructure-diagnostics
+          path: prelaunch-public-diagnostics.json
+          retention-days: 7
