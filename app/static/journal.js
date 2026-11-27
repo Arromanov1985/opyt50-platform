@@ -616,9 +616,12 @@ document.addEventListener('DOMContentLoaded', () => {
       for (const update of new Set(journeys.values())) update();
     } else journeys.get(event.key)?.();
   });
-  // Re-fetch currently published steps rather than restoring outdated editorial
-  // markup from back-forward cache. The persisted marks are read on the new page.
+  // BFCache restoration is not a new visit. Keep the rendered route
+  // usable offline and refresh only marks for its rendered step revisions.
+  // New navigations fetch current editorial markup (Cache-Control: no-store).
   window.addEventListener('pageshow', event => {
-    if (event.persisted) window.location.reload();
+    if (event.persisted) {
+      for (const update of new Set(journeys.values())) update();
+    }
   });
 });

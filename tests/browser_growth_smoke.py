@@ -629,6 +629,25 @@ def exercise_action_plans(browser, base):
         expect(other.locator("[data-jr-journey-count]")).to_have_text("Выполнено: 1 из 4")
         expect(other.locator("[data-jr-journey-check]").first).to_be_checked()
         assert page.evaluate("key => localStorage.getItem(key)", prefix + new_step) == "yes"
+        # Model BFCache restore in the already rendered document. Change
+        # same-tab storage directly so no storage event can update the UI.
+        restored_requests = []
+        def observe_restore(request):
+            restored_requests.append(request.url)
+        page.on("request", observe_restore)
+        try:
+            page.evaluate("""key => {
+                localStorage.setItem(key, 'yes');
+                document.body.dataset.journeyRestoreMarker = 'retained';
+                window.dispatchEvent(new PageTransitionEvent('pageshow', {persisted:true}));
+            }""", prefix + old_step)
+            expect(page.locator("[data-jr-journey-count]")).to_have_text("Выполнено: 1 из 4")
+            expect(page.locator("[data-jr-journey-check]").first).to_be_checked()
+            expect(page.locator("body")).to_have_attribute("data-journey-restore-marker", "retained")
+            page.evaluate("() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)))")
+            assert not restored_requests, restored_requests
+        finally:
+            page.remove_listener("request", observe_restore)
         assert not unexpected, unexpected
         assert not errors, errors
     finally:
