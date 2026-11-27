@@ -2231,3 +2231,49 @@ def test_private_rendition_preview_range_and_revocation(community, monkeypatch):
     assert visitor.get("/academy/"+slug).status_code==404
     assert mutate(author,"POST","/api/account/privacy-requests",{"kind":"stop_processing"}).status_code==201
     assert author.get(path).status_code==404
+
+
+def test_course_templates_are_private_editable_and_idempotent(community):
+    app, clients, ids = community
+    first, second, admin, visitor, employer = (
+        clients[key] for key in ("first", "second", "admin", "visitor", "employer"))
+    url = "/api/community/courses"
+    assert mutate(first, "POST", url, {"client_key": str(uuid4()), "template": "workshop"}).status_code == 409
+    publish(clients, "first")
+    options = first.get(url).json()["templates"]
+    assert {item["id"]: item["lesson_count"] for item in options} == {
+        "blank": 0, "workshop": 2, "professional": 4, "mentoring": 5,
+    }
+    assert mutate(first, "POST", url, {"client_key": str(uuid4()), "template": "unknown"}).status_code == 422
+    for item in options:
+        key = str(uuid4())
+        created = mutate(first, "POST", url, {"client_key": key, "template": item["id"]})
+        assert created.status_code == 200, created.text
+        course = created.json()["course"]
+        slug = course["slug"]
+        own = url + "/" + slug
+        assert course["state"] == "draft"
+        assert course["issues"]
+        assert course["lesson_count"] == item["lesson_count"] and course["minutes"] == item["minutes"]
+        assert course["draft"]["title"] == ""
+        assert visitor.get("/academy/" + slug).status_code == 404
+        assert second.get(own).status_code == 404
+        assert admin.get(own).status_code == 404
+        assert mutate(first, "POST", own + "/submit",
+                      {"expected_version": course["version"], "publish_consent": True}).status_code == 422
+        lessons = course["draft"]["lessons"]
+        assert len({lesson["slug"] for lesson in lessons}) == len(lessons)
+        for lesson in lessons:
+            assert lesson["title"] and not lesson["goal"]
+            assert not lesson["example"] and not lesson["practice"]
+            assert all(section[0] and section[1] == "" for section in lesson["sections"])
+            assert lesson["questions"][0]["correct"] is None
+            assert lesson["questions"][0]["options"] == ["", "", ""]
+        edited = mutate(first, "PUT", own, {**course["draft"], "title": "Мой собственный курс",
+                                          "expected_version": course["version"]})
+        assert edited.status_code == 200, edited.text
+        retry = mutate(first, "POST", url, {"client_key": key, "template": item["id"]})
+        assert retry.status_code == 200
+        assert retry.json()["course"]["slug"] == slug
+        assert retry.json()["course"]["draft"]["title"] == "Мой собственный курс"
+    assert len(first.get(url).json()["courses"]) == 4

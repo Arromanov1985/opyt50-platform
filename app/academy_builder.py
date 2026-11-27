@@ -110,8 +110,51 @@ class CourseDraft(CommunityModel):
         return self
 
 
+TemplateKey = Literal["blank", "workshop", "professional", "mentoring"]
+
+# Built-in outlines, not finished learning content. Each lesson requires
+# original text, a goal, a practical exercise and a real self-check.
+COURSE_TEMPLATES = {
+    "blank": ("С нуля", ()),
+    "workshop": ("Короткий практикум", (
+        ("Основы и пример решения", 15, ("Что нужно знать", "Пример решения")),
+        ("Самостоятельная практика", 15, ("Порядок действий", "Как проверить результат")),
+    )),
+    "professional": ("Профессиональный курс", (
+        ("Введение в тему", 15, ("Основные понятия", "Где применяется навык")),
+        ("Инструменты и методы работы", 20, ("Подготовка к работе", "Основные инструменты")),
+        ("Рабочие ситуации", 25, ("Разбор ситуации", "Типичные ошибки")),
+        ("Итоговая практика", 20, ("Самостоятельная работа", "Критерии результата")),
+    )),
+    "mentoring": ("Программа наставничества", (
+        ("Цели и план обучения", 15, ("Ожидаемый результат", "Порядок обучения")),
+        ("Передача опыта", 20, ("Ключевые принципы", "Разбор опыта")),
+        ("Практика с наставником", 25, ("Образец выполнения", "Обратная связь")),
+        ("Самостоятельное выполнение", 25, ("План работы", "Самостоятельная проверка")),
+        ("Подведение итогов", 15, ("Что получилось", "Следующие шаги")),
+    )),
+}
+
+
+def course_template_options() -> list[dict]:
+    return [{"id": key, "label": label, "lesson_count": len(lessons),
+             "minutes": sum(minutes for _, minutes, _ in lessons)}
+            for key, (label, lessons) in COURSE_TEMPLATES.items()]
+
+
+def new_course_draft(template: TemplateKey) -> CourseDraft:
+    _, lessons = COURSE_TEMPLATES[template]
+    return CourseDraft(lessons=[
+        Lesson(slug=f"lesson-{index}", title=title, minutes=minutes,
+               sections=[[heading, ""] for heading in headings],
+               questions=[Question(options=["", "", ""])])
+        for index, (title, minutes, headings) in enumerate(lessons, 1)
+    ])
+
+
 class CourseCreate(CommunityModel):
     client_key: UUID
+    template: TemplateKey = "blank"
 
 
 class CourseSave(CourseDraft):
@@ -354,7 +397,8 @@ def install_builder_routes(app, community_user, throttle, get_connection, allowe
         return _private({"courses":[_detail(db,row,user,False) for row in selected],"page":page,"has_more":more,
                          "can_create":not restricted and view=="own" and
                            (user["role"]=="admin" or (_profile(db,user["id"]) is not None and len(rows)<LIMIT)),
-                         "restricted":restricted,"limit":None if user["role"]=="admin" else LIMIT})
+                         "restricted":restricted,"limit":None if user["role"]=="admin" else LIMIT,
+                         "templates":course_template_options() if view=="own" and not restricted else []})
 
     @app.get("/api/community/courses/{slug}")
     def get_course(slug: str,user: dict=Depends(community_user),db=Depends(get_connection)):
@@ -382,7 +426,7 @@ def install_builder_routes(app, community_user, throttle, get_connection, allowe
         db.execute(
             """INSERT INTO academy_courses(slug,owner_id,draft_json,created_at,updated_at)
                VALUES(?,?,?,?,?) ON CONFLICT(slug) DO NOTHING""",
-            (slug,owner,_encoded(CourseDraft().model_dump()),stamp,stamp),
+            (slug,owner,_encoded(new_course_draft(data.template).model_dump()),stamp,stamp),
         )
         row=_row(db,slug)
         if not _is_editor(user,row):

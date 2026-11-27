@@ -1105,7 +1105,7 @@
 
   // A structured course studio. No user HTML, no markup syntax or hidden autosave.
   // The same in-memory draft survives tab changes and unsuccessful requests.
-  const studio={entry:null,draft:null,step:'info',lesson:0,lessonStep:'content',view:'own',page:1,key:null,loading:false,bound:false,previewPages:new Map(),previewMode:'author',previewAnswers:new Map(),previewChecked:false};
+  const studio={entry:null,draft:null,step:'info',lesson:0,lessonStep:'content',view:'own',page:1,key:null,createTemplate:'blank',loading:false,bound:false,previewPages:new Map(),previewMode:'author',previewAnswers:new Map(),previewChecked:false};
   const studioApi='/api/community/courses';
   const studioStates={draft:'Черновик',pending:'На проверке',published:'Опубликован',rejected:'На доработке',hidden:'Скрыт'};
   const studioSteps=[['info','Карточка курса'],['lessons','Уроки и задания'],['preview','Предпросмотр'],['publish','Публикация']];
@@ -1173,12 +1173,22 @@
     if(state.builderDirty)confirmAction('Есть несохранённые изменения','Если продолжить, введённый текст будет потерян. Сначала можно сохранить черновик.','Выйти без сохранения',action);
     else return action();
   }
+  function studioCreateControls(result){
+    const templates=Array.isArray(result.templates)?result.templates:[];
+    const selection=studio.key?studio.createTemplate:'blank';
+    return '<div class="studio-create"><label for="studio-template">Начать курс</label>'+
+      (templates.length?'<select id="studio-template" '+(studio.key?'disabled':'')+'>'+
+        templates.map(item=>'<option value="'+esc(item.id)+'" '+(item.id===selection?'selected':'')+'>'+
+          esc(item.label+(item.lesson_count?' · '+item.lesson_count+' уроков · '+item.minutes+' мин.':''))+'</option>').join('')+'</select>':'')+
+      '<p class="help">Шаблон задаёт структуру уроков. Наполнение, задания и ответы создаёт автор. Курс остаётся черновиком.</p>'+
+      studioButton('new',studio.key?'Повторить создание':'+ Новый курс','primary')+'</div>';
+  }
   async function studioList(){
     const result=await api(studioApi+'?view='+studio.view+'&page='+studio.page);
     studio.entry=null;studio.draft=null;studioResetQuiz();studio.previewMode='author';state.builderDirty=false;
     content.innerHTML='<section class="section-heading"><div><span class="eyebrow">АКАДЕМИЯ СТАЖНО</span><h1>Конструктор курсов</h1><p>Создавайте понятные учебные программы: уроки, практику и самопроверку.</p></div><a class="button secondary" href="/academy">Открыть Академию ↗</a></section>'+
       '<section class="panel studio-list-intro"><div><h2>'+(state.user.role==='admin'?'Редакция Академии':'Ваши курсы')+'</h2><p>Черновики видны только автору. Изменения опубликованного курса появятся после утверждения новой версии.</p></div>'+
-      (result.can_create?studioButton('new','+ Новый курс','primary'):'')+
+      (result.can_create?studioCreateControls(result):'')+
       (result.restricted?'<p class="notice warning">Обработка данных ограничена. Можно просматривать свои курсы и отзывать публикации.</p>':!result.can_create&&state.user.role==='candidate'?'<p class="help">Для создания курса сохраните профессиональный профиль. Максимум 10 курсов. <a href="/community/profile">Мой профиль</a></p>':'')+'</section>'+
       (state.user.role==='admin'?'<nav class="studio-tabs" aria-label="Курсы редакции">'+[['own','Курсы СТАЖНО'],['review','На проверке'],['published','Курсы участников']].map(([key,label])=>studioButton('view',label,studio.view===key?'primary':'secondary','data-view="'+key+'" aria-pressed="'+(studio.view===key)+'"')).join('')+'</nav>':'')+
       '<div class="studio-catalog">'+(result.courses.length?result.courses.map(course=>
@@ -1419,8 +1429,22 @@
     };
     try{
       if(action==='new'){
-        studio.loading=true;studio.key=studio.key||crypto.randomUUID();
-        await busy(content,async()=>{const result=await api(studioApi,{method:'POST',body:{client_key:studio.key}});studio.key=null;studioLoadEntry(result.course);});
+        studio.loading=true;
+        if(!studio.key){
+          studio.key=crypto.randomUUID();
+          studio.createTemplate=$('#studio-template')?.value||'blank';
+        }
+        await busy(content,async()=>{
+          const result=await api(studioApi,{method:'POST',body:{client_key:studio.key,template:studio.createTemplate}});
+          studio.key=null;studio.createTemplate='blank';studioLoadEntry(result.course);
+        });
+        // A lost response may mean the draft already exists. Keep the same
+        // request ID AND template on retry rather than creating another draft.
+        if(studio.key){
+          const selector=$('#studio-template');
+          if(selector){selector.value=studio.createTemplate;selector.disabled=true;}
+          if(button.isConnected)button.textContent='Повторить создание';
+        }
       }else if(action==='open'){
         studio.loading=true;
         const result=await api(studioApi+'/'+encodeURIComponent(button.dataset.slug));studioLoadEntry(result.course);

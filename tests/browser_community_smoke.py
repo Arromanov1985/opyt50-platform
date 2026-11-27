@@ -821,6 +821,27 @@ def run_browser(browser, base, database):
         assert checked(course_hidden.value)["course"]["state"] == "hidden"
         assert visitor.request.get(course_url).status == 404
 
+        # A ready-made outline is still private and incomplete, even for an administrator.
+        admin.locator('[data-studio="back"]').click()
+        expect(admin.locator("#studio-template")).to_be_visible()
+        admin.locator("#studio-template").select_option("professional")
+        admin.context.set_offline(True)
+        admin.locator('[data-studio="new"]').click()
+        expect(admin.locator(".form-error:visible")).to_contain_text("Не удалось связаться с сервером")
+        expect(admin.locator("#studio-template")).to_be_disabled()
+        expect(admin.locator('[data-studio="new"]')).to_have_text("Повторить создание")
+        admin.context.set_offline(False)
+        with admin.expect_response(lambda r: r.url.endswith("/api/community/courses") and r.request.method == "POST") as templated:
+            admin.locator('[data-studio="new"]').click()
+        outline = checked(templated.value)["course"]
+        assert outline["state"] == "draft" and outline["issues"] and outline["lesson_count"] == 4
+        assert visitor.request.get(base + "/academy/" + outline["slug"]).status == 404
+        admin.locator('[data-studio="next"]').click()
+        expect(admin.locator(".studio-lesson-select")).to_have_count(4)
+        expect(admin.locator(".studio-lesson-select").first).to_contain_text("Введение в тему")
+        expect(admin.locator('[data-studio-completion="0"]')).to_have_text("0 из 3 разделов")
+        capture(admin, "course-studio-template-mobile.png")
+
         # Author contribution: save, submit exact text, editorial approval and revoke.
         anna.set_viewport_size({"width": 390, "height": 844})
         anna.goto(base + "/community/author-articles", wait_until="networkidle")
