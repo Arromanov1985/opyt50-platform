@@ -174,3 +174,6 @@
 
 /* Templates are optional, private draft outlines. */
 .studio-list-intro>.studio-create{flex:1 1 270px;min-width:0;display:grid;gap:9px;max-width:420px}.studio-create label{font-weight:750}.studio-create select{width:100%;min-height:48px;padding:10px 12px;border:1px solid #b8cec0;border-radius:10px;background:white;color:inherit;font:inherit}.studio-create .help{margin:0}.studio-create .button{min-height:48px}.studio-create select:focus-visible{outline:3px solid #c88735;outline-offset:2px}@media(max-width:480px){.studio-list-intro>.studio-create{max-width:100%}}
+
+/* Manually assisted drafting. No external provider connection. */
+.studio-ai-numbers{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}.studio-field select{display:block;width:100%;min-height:46px;padding:12px;border:1px solid #b8cec0;border-radius:10px;background:white;color:inherit;font:inherit}.studio-ai-preview{border:1px solid var(--line);border-radius:12px;padding:14px;background:#f8fbf9}.studio-ai-preview .button{margin-top:12px;width:100%}.studio-ai-preview p{overflow-wrap:anywhere}#studio-ai-copy{margin-top:8px}@media(max-width:480px){.studio-ai-numbers{grid-template-columns:1fr}}

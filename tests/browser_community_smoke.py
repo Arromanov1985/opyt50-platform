@@ -841,6 +841,29 @@ def run_browser(browser, base, database):
         expect(admin.locator(".studio-lesson-select").first).to_contain_text("Введение в тему")
         expect(admin.locator('[data-studio-completion="0"]')).to_have_text("0 из 3 разделов")
         capture(admin, "course-studio-template-mobile.png")
+        # Manual AI assistant: no external call, checked JSON and explicit append.
+        admin.locator('[data-studio="assistant"]').click()
+        assistant = admin.locator("#studio-assistant-form")
+        assistant.locator("#studio-ai-kind").select_option("lesson")
+        assistant.locator("#studio-ai-topic").fill("Проверка учебной таблицы")
+        assistant.locator("#studio-ai-audience").fill("Начинающие")
+        assistant.locator("#studio-ai-generate").click()
+        expect(assistant.locator("#studio-ai-prompt")).to_have_value(re.compile("Подготовь черновик одного учебного урока"))
+        assistant.locator("#studio-ai-source").fill("bad json")
+        assistant.locator('button[type="submit"]').click()
+        expect(assistant.locator(".form-error")).to_be_visible()
+        assistant.locator("#studio-ai-source").fill('{"title":"Дополнительный урок","minutes":15,"goal":"Научиться проверять учебный результат","sections":[["Проверка","Сверьте исходные данные."]],"example":"Вымышленная таблица.","practice":"Сверьте две строки.","questions":[{"text":"Что проверить?","options":["Данные","Цвет"],"correct":0,"feedback":"Нужно сверить данные."}]}')
+        with admin.expect_response(lambda r: r.url.endswith("/assistant/validate") and r.request.method == "POST") as imported:
+            assistant.locator('button[type="submit"]').click()
+        assert checked(imported.value)["lesson"]["title"] == "Дополнительный урок"
+        expect(assistant.locator("#studio-ai-summary")).to_contain_text("Дополнительный урок")
+        expect(assistant.locator("#studio-ai-apply")).to_be_disabled()
+        assistant.locator("#studio-ai-confirm").check()
+        assistant.locator("#studio-ai-apply").click()
+        expect(admin.locator(".studio-lesson-select")).to_have_count(5)
+        expect(admin.locator("#studio-lessons-4-title")).to_have_value("Дополнительный урок")
+        expect(admin.locator("#studio-save")).to_be_enabled()
+        assert visitor.request.get(base + "/academy/" + outline["slug"]).status == 404
 
         # Author contribution: save, submit exact text, editorial approval and revoke.
         anna.set_viewport_size({"width": 390, "height": 844})

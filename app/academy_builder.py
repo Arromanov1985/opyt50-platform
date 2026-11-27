@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import json
 from typing import Literal
-from uuid import UUID
+from uuid import UUID, uuid4
 
 from fastapi import Depends, HTTPException, Query, Request
 from pydantic import Field, field_validator, model_validator
@@ -159,6 +159,64 @@ class CourseCreate(CommunityModel):
 
 class CourseSave(CourseDraft):
     expected_version: int = Field(ge=1)
+
+
+class AssistantImport(CommunityModel):
+    expected_version: int = Field(ge=1)
+    kind: Literal["course", "lesson"]
+    source: str = Field(min_length=2, max_length=180000)
+
+
+ASSISTANT_LESSON_FIELDS = {
+    "title", "minutes", "goal", "sections", "example", "practice", "questions",
+}
+
+
+def _unique_json_object(pairs):
+    result = {}
+    for key, value in pairs:
+        if key in result:
+            raise ValueError("Duplicate JSON field")
+        result[key] = value
+    return result
+
+
+def _reject_json_constant(value):
+    raise ValueError("Invalid JSON constant")
+
+
+def assistant_draft(data: AssistantImport) -> dict:
+    """Validate manually pasted text only; no AI, file, URL or storage access."""
+    try:
+        if len(data.source.encode("utf-8")) > 180000:
+            raise ValueError("Import exceeds byte budget")
+        payload = json.loads(data.source, object_pairs_hook=_unique_json_object,
+                             parse_constant=_reject_json_constant)
+        if data.kind == "course":
+            if type(payload) is not dict or set(payload) != set(DRAFT_FIELDS):
+                raise ValueError("Unexpected course fields")
+            raw_lessons = payload["lessons"]
+            if type(raw_lessons) is not list or not 1 <= len(raw_lessons) <= 12:
+                raise ValueError("Invalid lesson count")
+        else:
+            raw_lessons = [payload]
+        lessons = []
+        for raw in raw_lessons:
+            # Never accept existing IDs, media, owner, state, consent or version
+            # from a model response. Server generates independent lesson IDs.
+            if type(raw) is not dict or set(raw) != ASSISTANT_LESSON_FIELDS:
+                raise ValueError("Unexpected lesson fields")
+            lesson = Lesson.model_validate({**raw, "slug": "lesson-" + uuid4().hex}, strict=True)
+            lessons.append(lesson.model_dump(exclude={"media"}))
+        if data.kind == "lesson":
+            return {"lesson": lessons[0]}
+        draft = CourseDraft.model_validate({**payload, "lessons": lessons}, strict=True).model_dump()
+        for lesson in draft["lessons"]:
+            lesson.pop("media", None)
+        return {"draft": draft, "issues": readiness(draft)}
+    except (ValueError, TypeError, RecursionError, UnicodeError):
+        # Do not include pasted content or raw model-validation errors.
+        raise HTTPException(422, "Ответ не соответствует формату. Проверьте JSON, обязательные поля, длину текста и отсутствие контактов и ссылок.") from None
 
 
 def readiness_details(draft: dict) -> list[dict]:
@@ -432,6 +490,17 @@ def install_builder_routes(app, community_user, throttle, get_connection, allowe
         if not _is_editor(user,row):
             raise HTTPException(409,"Запрос уже использован")
         return _committed(db,{"course":_detail(db,row,user)})
+
+    @app.post("/api/community/courses/{slug}/assistant/validate")
+    def validate_assistant(slug: str, data: AssistantImport, user: dict=Depends(community_user),
+                           db=Depends(get_connection)):
+        access(user)
+        row = _row(db, slug)
+        editable(user, db, row)
+        _version(row, data.expected_version)
+        # Validation is deliberately non-mutating. Normal draft save and
+        # separate publication consent remain authoritative.
+        return _private(assistant_draft(data))
 
     @app.put("/api/community/courses/{slug}")
     def save(slug: str,data: CourseSave,user: dict=Depends(community_user),db=Depends(get_connection)):

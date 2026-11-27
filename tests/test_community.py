@@ -2277,3 +2277,47 @@ def test_course_templates_are_private_editable_and_idempotent(community):
         assert retry.json()["course"]["slug"] == slug
         assert retry.json()["course"]["draft"]["title"] == "Мой собственный курс"
     assert len(first.get(url).json()["courses"]) == 4
+
+
+def test_assistant_validates_only_and_preserves_draft_and_access(community):
+    from copy import deepcopy
+    import json
+
+    app, clients, ids = community
+    first, second, admin, visitor, employer = (
+        clients[key] for key in ("first", "second", "admin", "visitor", "employer"))
+    publish(clients, "first")
+    url = "/api/community/courses"
+    initial = mutate(first, "POST", url, {"client_key": str(uuid4()), "template": "workshop"}).json()["course"]
+    own = url + "/" + initial["slug"]
+    endpoint = own + "/assistant/validate"
+    draft = deepcopy(COURSE_DRAFT)
+    draft["lessons"][0].pop("slug")
+    body = {"expected_version": initial["version"], "kind": "course", "source": json.dumps(draft)}
+    response = mutate(first, "POST", endpoint, body)
+    assert response.status_code == 200, response.text
+    assert response.headers["cache-control"] == "no-store"
+    result = response.json()
+    assert not result["issues"]
+    assert result["draft"]["lessons"][0]["slug"].startswith("lesson-")
+    assert "media" not in result["draft"]["lessons"][0]
+    assert mutate(second, "POST", endpoint, body).status_code == 404
+    assert mutate(admin, "POST", endpoint, body).status_code == 404
+    assert mutate(employer, "POST", endpoint, body).status_code == 403
+    assert mutate(first, "POST", endpoint, {**body, "expected_version": initial["version"]+1}).status_code == 409
+    for bad in (
+        "not JSON",
+        '{"title":"duplicate","title":"value"}',
+        json.dumps({**draft, "state": "published"}),
+        json.dumps({**draft, "title": "Contact name@example.invalid"}),
+        json.dumps({**draft, "lessons": [{**draft["lessons"][0], "media": []}]}),
+        json.dumps({**draft, "lessons": [{**draft["lessons"][0], "slug": "existing-lesson"}]}),
+    ):
+        invalid = mutate(first, "POST", endpoint, {**body, "source": bad})
+        assert invalid.status_code == 422
+        assert "example.invalid" not in invalid.text
+    single = mutate(first, "POST", endpoint, {**body, "kind": "lesson", "source": json.dumps(draft["lessons"][0])})
+    assert single.status_code == 200
+    assert single.json()["lesson"]["title"] == draft["lessons"][0]["title"]
+    assert first.get(own).json()["course"] == initial
+    assert visitor.get("/academy/" + initial["slug"]).status_code == 404

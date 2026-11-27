@@ -1201,6 +1201,94 @@
   function studioLoadEntry(entry){
     studio.previewPages.clear();studioResetQuiz();studio.previewMode='author';studio.entry=entry;studio.draft=studioClone(entry.draft);studio.step=entry.can_edit?'info':'preview';studio.lesson=0;studio.lessonStep='content';state.builderDirty=false;studioRender();
   }
+  function studioAssistantPrompt(kind,topic,audience,count,minutes){
+    const lesson={title:'Название урока',minutes,goal:'Конкретный результат обучения',
+      sections:[['Заголовок блока','Учебный текст']],example:'Вымышленный пример',
+      practice:'Задание и способ проверки результата',
+      questions:[{text:'Вопрос',options:['Вариант 1','Вариант 2','Вариант 3'],correct:0,feedback:'Почему ответ верен'}]};
+    const schema=kind==='course'?{title:'Название курса',description:'Описание курса',audience:'Для кого курс',
+      outcomes:['Результат обучения'],lessons:[lesson]}:lesson;
+    return 'Подготовь черновик '+(kind==='course'?'учебного курса из '+count+' уроков':'одного учебного урока')+
+      ' для взрослой аудитории.\nТема: '+topic+'\nАудитория: '+audience+'\nПримерная длительность каждого урока: '+minutes+' мин.\n'+
+      'Используй понятный русский язык, практические примеры и самостоятельные задания. Не выдумывай факты, ссылки, квалификации или гарантии. Если факт нужно проверить, укажи это в тексте. Не включай персональные данные, контакты, ссылки, пароли, коммерческие тайны, чужие защищённые материалы. Примеры только вымышленные.\n'+
+      'Верни только один JSON-объект без Markdown и комментариев. Сохрани точные имена полей и типы, не добавляй идентификаторы, media или другие поля. '+
+      'sections: список блоков, каждый блок — массив из заголовка и одного-восьми абзацев; до 12 блоков. '+
+      'questions: один-десять вопросов, по два-пять разных вариантов; correct — индекс верного ответа с нуля; feedback — пояснение. '+
+      'Название до 180 символов, цель и описание до 600, абзац, пример и практика до 4000, вопрос и вариант до 500, пояснение до 1000. '+
+      'Для курса добавь результаты обучения (до 12, каждый до 500 символов). Заполни содержимое вместо примера структуры.\n'+JSON.stringify(schema,null,2);
+  }
+  function studioAssistant(){
+    if(!studioEditable())return;
+    const courseSlug=studio.entry.slug,version=studio.entry.version;
+    let validated=null;
+    openDialog('Помощник преподавателя','<p>Подготовьте запрос для выбранного вами ИИ, затем вставьте полученный ответ. СТАЖНО не подключается к внешним ИИ и не отправляет им данные автоматически.</p>'+
+      '<p class="notice warning">Не передавайте внешнему ИИ личные данные, контакты, документы, пароли или рабочую конфиденциальную информацию. Автор проверяет факты, права и ответы перед сохранением и публикацией.</p>'+
+      '<form id="studio-assistant-form" class="dialog-form"><div class="studio-field"><label for="studio-ai-kind">Что подготовить</label><select id="studio-ai-kind" name="kind"><option value="course">Курс целиком</option><option value="lesson">Новый урок (добавить)</option></select></div>'+
+      '<div class="studio-field"><label for="studio-ai-topic">Тема без личных данных</label><input id="studio-ai-topic" name="topic" maxlength="180" placeholder="Например, основы работы с таблицами"></div>'+
+      '<div class="studio-field"><label for="studio-ai-audience">Для кого</label><input id="studio-ai-audience" name="audience" maxlength="180" placeholder="Например, начинающие"></div>'+
+      '<div class="studio-ai-numbers"><div class="studio-field"><label for="studio-ai-count">Уроков в курсе</label><input id="studio-ai-count" name="count" type="number" min="1" max="12" value="4"></div><div class="studio-field"><label for="studio-ai-minutes">Минут на урок</label><input id="studio-ai-minutes" name="minutes" type="number" min="1" max="180" value="15"></div></div>'+
+      '<button type="button" class="button primary" id="studio-ai-generate">Подготовить запрос</button>'+
+      '<div class="studio-field"><label for="studio-ai-prompt">Готовый запрос</label><textarea id="studio-ai-prompt" rows="6" readonly></textarea><button type="button" class="button secondary" id="studio-ai-copy">Скопировать запрос</button><p id="studio-ai-copy-status" role="status" class="help"></p></div>'+
+      '<div class="studio-field"><label for="studio-ai-source">Вставьте ответ ИИ (JSON)</label><p class="help">Текст передаётся только на сервер СТАЖНО для проверки структуры. Не вставляйте реальные личные данные.</p><textarea id="studio-ai-source" name="source" rows="8" maxlength="180000"></textarea></div>'+
+      '<button type="submit" class="button secondary">Проверить структуру</button>'+
+      '<section id="studio-ai-preview" class="studio-ai-preview" hidden><h3>Результат проверки</h3><p id="studio-ai-summary" role="status"></p><p id="studio-ai-replace-note" class="notice warning"></p>'+
+      '<label class="consent-label"><input type="checkbox" id="studio-ai-confirm"><span>Я проверил текст, факты и права на материалы; хочу перенести этот результат в редактируемый черновик.</span></label>'+
+      '<button type="button" class="button primary" id="studio-ai-apply" disabled>Перенести в черновик</button></section><p class="form-error notice error" role="alert" hidden></p></form>');
+    const form=$('#studio-assistant-form'),kind=form.elements.kind,source=form.elements.source,confirm=$('#studio-ai-confirm'),apply=$('#studio-ai-apply');
+    const reset=()=>{validated=null;confirm.checked=false;apply.disabled=true;$('#studio-ai-preview').hidden=true;};
+    const refresh=()=>{apply.disabled=!validated||!confirm.checked;};
+    const clearError=()=>{const error=$('.form-error',form);if(error)error.hidden=true;};
+    kind.addEventListener('change',()=>{reset();$('#studio-ai-prompt').value='';form.elements.count.disabled=kind.value==='lesson';});
+    source.addEventListener('input',reset);
+    confirm.addEventListener('change',refresh);
+    $('#studio-ai-generate').addEventListener('click',()=>{
+      clearError();
+      const topic=form.elements.topic.value.trim(),audience=form.elements.audience.value.trim();
+      const count=Number(form.elements.count.value),minutes=Number(form.elements.minutes.value);
+      if(!topic||!audience||!Number.isInteger(minutes)||minutes<1||minutes>180||(kind.value==='course'&&(!Number.isInteger(count)||count<1||count>12))){
+        inlineError(form,'Укажите тему, аудиторию и допустимое количество уроков и минут.');return;
+      }
+      $('#studio-ai-prompt').value=studioAssistantPrompt(kind.value,topic,audience,count,minutes);
+      $('#studio-ai-copy-status').textContent='Запрос готов. Проверьте его перед копированием.';
+    });
+    $('#studio-ai-copy').addEventListener('click',async()=>{
+      const prompt=$('#studio-ai-prompt'),status=$('#studio-ai-copy-status');
+      if(!prompt.value){status.textContent='Сначала подготовьте запрос.';return;}
+      try{await navigator.clipboard.writeText(prompt.value);status.textContent='Запрос скопирован.';}
+      catch{prompt.focus();prompt.select();status.textContent='Выделен запрос. Скопируйте его вручную.';}
+    });
+    form.addEventListener('submit',async event=>{
+      event.preventDefault();reset();clearError();
+      const type=kind.value,text=source.value.trim();
+      if(!text){inlineError(form,'Вставьте JSON-ответ.');return;}
+      if(type==='course'&&studio.draft.lessons.some(item=>(item.media||[]).length)){inlineError(form,'Нельзя заменить курс с прикреплёнными файлами. Выберите добавление отдельного урока.');return;}
+      await busy(form,async()=>{
+        const result=await api(studioPath()+'/assistant/validate',{method:'POST',body:{expected_version:version,kind:type,source:text}});
+        validated={type,result};
+        const items=type==='course'?result.draft.lessons:[result.lesson];
+        $('#studio-ai-summary').textContent='Структура принята: '+items.length+' уроков. '+items.map(item=>item.title||'Без названия').join(' · ')+(type==='course'?' · Незакрытых пунктов проверки: '+result.issues.length:'')+'. Это не подтверждение достоверности.';
+        $('#studio-ai-replace-note').textContent=type==='course'?'Перенос заменит текущую карточку и программу в этой вкладке, включая несохранённые изменения. Сохранённая версия и публикация пока не изменятся.':'Урок будет добавлен в конец программы. Остальные уроки не изменятся.';
+        $('#studio-ai-preview').hidden=false;
+      });
+      refresh();
+      form.elements.count.disabled=kind.value==='lesson';
+    });
+    apply.addEventListener('click',()=>{
+      if(!validated||!confirm.checked||!studioEditable()||studio.entry.slug!==courseSlug||studio.entry.version!==version)return;
+      const {type,result}=validated;
+      let draft;
+      if(type==='course'){
+        if(studio.draft.lessons.some(item=>(item.media||[]).length)){inlineError(form,'Курс содержит прикреплённые файлы.');return;}
+        draft=studioClone(result.draft);
+      }else{
+        if(studio.draft.lessons.length>=30){inlineError(form,'В курсе уже 30 уроков.');return;}
+        draft=studioClone(studio.draft);draft.lessons.push(studioClone(result.lesson));
+      }
+      if(new TextEncoder().encode(JSON.stringify(draft)).length>180000){inlineError(form,'Курс слишком велик. Сократите текст.');return;}
+      studio.draft=draft;studio.step=type==='course'?'info':'lessons';studio.lesson=type==='course'?0:draft.lessons.length-1;studio.lessonStep='content';
+      studio.previewPages.clear();studioChange();closeDialog();studioRender();notice('Материал перенесён. Проверьте и сохраните черновик.');
+    });
+  }
   function studioInfo(){
     const d=studio.draft;
     return '<section class="panel studio-panel"><h2>1. Карточка курса</h2><p class="help">Эту информацию ученик увидит до начала обучения.</p>'+
@@ -1392,7 +1480,7 @@
     const d=studio.draft,e=studio.entry,editable=studioEditable();
     if(!editable&&['info','lessons'].includes(studio.step))studio.step='preview';
     content.innerHTML='<div class="studio-top"><div><button type="button" class="button secondary compact" data-studio="back">← Все курсы</button><span class="eyebrow">КОНСТРУКТОР КУРСОВ</span><h1 id="studio-course-title">'+esc(d.title||'Курс без названия')+'</h1><div class="status-line">'+statusBadge(e.state,studioStates)+'<span class="help" id="studio-total-time">'+d.lessons.length+' уроков · '+d.lessons.reduce((sum,l)=>sum+(Number(l.minutes)||0),0)+' мин.</span></div></div><div class="studio-save-area"><p class="help" id="studio-save-status" role="status">'+(state.builderDirty?'Есть несохранённые изменения':'Черновик сохранён')+'</p>'+
-      (editable?'<button type="button" class="button primary" id="studio-save" data-studio="save" '+(!state.builderDirty?'disabled':'')+'>Сохранить черновик</button>':'')+
+      (editable?'<button type="button" class="button primary" id="studio-save" data-studio="save" '+(!state.builderDirty?'disabled':'')+'>Сохранить черновик</button>'+studioButton('assistant','Помощник преподавателя'):'')+
       (e.has_publication?'<a class="button secondary" href="/academy/'+encodeURIComponent(e.slug)+'">Опубликованная версия ↗</a>':'')+'</div></div>'+
       (e.restricted?'<p class="notice warning">Доступны просмотр и отзыв согласия. Редактирование ограничено.</p>':'')+
       '<nav class="studio-steps" aria-label="Этапы создания курса">'+studioSteps.map(([key,label],i)=>'<button type="button" class="studio-step'+(key===studio.step?' current':'')+'" data-studio="step" data-step="'+key+'" '+(key===studio.step?'aria-current="step"':'')+' '+(!editable&&['info','lessons'].includes(key)?'disabled':'')+'><span class="studio-num">'+(i+1)+'</span><span>'+label+'</span></button>').join('')+'</nav>'+
@@ -1486,6 +1574,7 @@
       });
       else if(['approve','reject','hide'].includes(action))studioReview(action);
       else if(!studioEditable())return;
+      else if(action==='assistant')studioAssistant();
       else if(action==='fix-issue'&&!state.builderDirty){
         const issue=studio.entry.issue_locations?.[index];
         if(!issue||!['info','lessons'].includes(issue.step))return;
