@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+from pathlib import Path
 from typing import Literal
 from uuid import UUID, uuid4
 
@@ -115,7 +116,9 @@ class CourseDraft(CommunityModel):
         return self
 
 
-TemplateKey = Literal["blank", "workshop", "professional", "mentoring"]
+TemplateKey = Literal["blank", "workshop", "professional", "mentoring", "editorial-spreadsheets"]
+EDITORIAL_TEMPLATE = "editorial-spreadsheets"
+EDITORIAL_SLUG = "spreadsheets-basics"
 
 # Built-in outlines, not finished learning content. Each lesson requires
 # original text, a goal, a practical exercise and a real self-check.
@@ -141,10 +144,14 @@ COURSE_TEMPLATES = {
 }
 
 
-def course_template_options() -> list[dict]:
-    return [{"id": key, "label": label, "lesson_count": len(lessons),
-             "minutes": sum(minutes for _, minutes, _ in lessons)}
-            for key, (label, lessons) in COURSE_TEMPLATES.items()]
+def course_template_options(*, editorial=False) -> list[dict]:
+    options = [{"id": key, "label": label, "lesson_count": len(lessons),
+                "minutes": sum(minutes for _, minutes, _ in lessons)}
+               for key, (label, lessons) in COURSE_TEMPLATES.items()]
+    if editorial:
+        options.append({"id": EDITORIAL_TEMPLATE, "label": "Готовый редакционный курс: Электронные таблицы с нуля",
+                        "lesson_count": 6, "minutes": 95})
+    return options
 
 
 def new_course_draft(template: TemplateKey) -> CourseDraft:
@@ -302,6 +309,25 @@ def readiness(draft: dict) -> list[str]:
 
 def _encoded(data):
     return json.dumps(data, ensure_ascii=False, separators=(",", ":"))
+
+
+def editorial_course_draft() -> dict:
+    """Load one fixed packaged source through the same strict author importer."""
+    source_path = Path(__file__).resolve().parents[1] / "docs" / "academy-drafts" / "spreadsheets-basics.json"
+    try:
+        payload = json.loads(source_path.read_text(encoding="utf-8"))
+        payload.update(category="digital", level="beginner")
+        validated = assistant_draft(AssistantImport(expected_version=1, kind="course", source=_encoded(payload)))
+        draft = validated["draft"]
+        if validated["issues"] or len(draft["lessons"]) != 6:
+            raise ValueError("Incomplete editorial course")
+        # Keep stable lesson IDs across a source build; the database draft is
+        # written once, and later requests always reopen rather than replace it.
+        for index, lesson in enumerate(draft["lessons"], 1):
+            lesson["slug"] = f"lesson-{index}"
+        return draft
+    except (OSError, ValueError, TypeError, UnicodeError, HTTPException) as exc:
+        raise HTTPException(503, "Редакционный курс временно недоступен") from exc
 
 
 def init_academy(path):
@@ -487,7 +513,7 @@ def install_builder_routes(app, community_user, throttle, get_connection, allowe
                          "can_create":not restricted and view=="own" and
                            (user["role"]=="admin" or (_profile(db,user["id"]) is not None and total<LIMIT)),
                          "restricted":restricted,"limit":None if user["role"]=="admin" else LIMIT,
-                         "templates":course_template_options() if view=="own" and not restricted else [],
+                         "templates":course_template_options(editorial=user["role"]=="admin") if view=="own" and not restricted else [],
                          "overview":overview})
 
     @app.get("/api/community/courses/{slug}")
@@ -503,7 +529,10 @@ def install_builder_routes(app, community_user, throttle, get_connection, allowe
         owner=None if user["role"]=="admin" else actor
         if owner is not None and (not _active_account(db,owner) or _profile(db,owner) is None):
             raise HTTPException(409,"Сначала сохраните профессиональный профиль")
-        slug="course-"+data.client_key.hex
+        editorial = data.template == EDITORIAL_TEMPLATE
+        if editorial and user["role"] != "admin":
+            raise HTTPException(403, "Редакционный курс доступен только редакции")
+        slug=EDITORIAL_SLUG if editorial else "course-"+data.client_key.hex
         old=db.execute("SELECT * FROM academy_courses WHERE slug=?",(slug,)).fetchone()
         if old is not None:
             if not _is_editor(user,old):
@@ -513,10 +542,11 @@ def install_builder_routes(app, community_user, throttle, get_connection, allowe
             raise HTTPException(409,"Достигнут лимит курсов")
         throttle(db,actor,"academy-course-create",10,86400)
         stamp=_now()
+        draft = editorial_course_draft() if editorial else new_course_draft(data.template).model_dump(exclude=set(CATALOG_FIELDS))
         db.execute(
             """INSERT INTO academy_courses(slug,owner_id,draft_json,created_at,updated_at)
                VALUES(?,?,?,?,?) ON CONFLICT(slug) DO NOTHING""",
-            (slug,owner,_encoded(new_course_draft(data.template).model_dump(exclude=set(CATALOG_FIELDS))),stamp,stamp),
+            (slug,owner,_encoded(draft),stamp,stamp),
         )
         row=_row(db,slug)
         if not _is_editor(user,row):

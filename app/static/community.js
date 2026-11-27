@@ -1180,7 +1180,8 @@
       (templates.length?'<select id="studio-template" '+(studio.key?'disabled':'')+'>'+
         templates.map(item=>'<option value="'+esc(item.id)+'" '+(item.id===selection?'selected':'')+'>'+
           esc(item.label+(item.lesson_count?' · '+item.lesson_count+' уроков · '+item.minutes+' мин.':''))+'</option>').join('')+'</select>':'')+
-      '<p class="help">Шаблон задаёт структуру уроков. Наполнение, задания и ответы создаёт автор. Курс остаётся черновиком.</p>'+
+      '<p class="help">Обычный шаблон задаёт структуру уроков. Наполнение создаёт автор. Курс остаётся черновиком.</p>'+
+      (templates.some(item=>item.id==='editorial-spreadsheets')?'<p class="help">Готовый редакционный курс создаётся один раз; при повторном выборе открывается существующая версия без перезаписи. Проверьте содержание перед отдельной публикацией. Публикация исходной версии может включить курс в утверждённую программу.</p>':'')+
       studioButton('new',studio.key?'Повторить создание':'+ Новый курс','primary')+'</div>';
   }
   function studioOverview(result){

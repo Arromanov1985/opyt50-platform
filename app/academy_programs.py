@@ -3,9 +3,19 @@ from __future__ import annotations
 
 import re
 
-# Add an entry only after editorial approval of every referenced public
-# course and revision. No pending author data or future slugs in this registry.
-PROGRAMS: tuple[dict, ...] = ()
+# This first program is editorially curated from two reviewed course sources.
+# Its second course is created as a private draft by an explicit admin action,
+# never at startup. The approved original draft first publishes at revision 2.
+# No program is public unless both exact revisions are currently public.
+PROGRAMS: tuple[dict, ...] = (
+    {
+        "slug": "digital-work",
+        "title": "Цифровые навыки для работы",
+        "description": "Освойте электронные таблицы, затем используйте ИИ для подготовки и проверки рабочих материалов.",
+        "goal": "Самостоятельно подготовить небольшой рабочий отчёт на вымышленных данных, используя таблицы и ИИ с обязательной ручной проверкой.",
+        "steps": (("spreadsheets-basics", 2), ("ai-basics", 1)),
+    },
+)
 MAX_PROGRAM_COURSES = 12
 
 

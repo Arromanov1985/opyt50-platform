@@ -115,6 +115,7 @@ def test_program_is_visible_only_with_all_approved_revisions(tmp_path, monkeypat
         assert path in visitor.get("/academy/" + first["slug"] + "/" + first["lessons"][0]["slug"]).text
         manifest = visitor.get("/api/public/journal/manifest").json()
         assert manifest["academy_programs"] == {"digital-work":[first["slug"],second["slug"]]}
+        assert manifest["academy_revisions"] == {first["slug"]:first["revision"],second["slug"]:second["revision"]}
         assert manifest["pages"][path] == hashlib.sha256(page.content).hexdigest()
         assert "https://stazhno.ru" + path in visitor.get("/sitemap.xml").text
         # An unpublished draft edit must not change the pinned publication.

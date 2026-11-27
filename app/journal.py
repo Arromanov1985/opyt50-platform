@@ -331,6 +331,7 @@ def journal_manifest(request: Request) -> dict:
     from .academy_programs import visible_programs
     return {"pages": pages, "count": len(articles), "renderer_sha256": journal_renderer_sha256(),
             "academy_courses": {course["slug"]: [lesson["slug"] for lesson in course["lessons"]] for course in courses},
+            "academy_revisions": {course["slug"]: course["revision"] for course in courses},
             "academy_programs": {program["slug"]: [course["slug"] for course in program["courses"]]
                                  for program in visible_programs(courses)}}
 

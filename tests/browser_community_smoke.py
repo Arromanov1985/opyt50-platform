@@ -949,6 +949,23 @@ def run_browser(browser, base, database):
         # A ready-made outline is still private and incomplete, even for an administrator.
         admin.locator('[data-studio="back"]').click()
         expect(admin.locator("#studio-template")).to_be_visible()
+        # A fully reviewed editorial source is visible only as an admin creation
+        # option, and creates a single private draft without auto-publication.
+        admin.locator("#studio-template").select_option("editorial-spreadsheets")
+        with admin.expect_response(lambda r: r.url.endswith("/api/community/courses") and r.request.method == "POST") as editorial:
+            admin.locator('[data-studio="new"]').click()
+        ready = checked(editorial.value)["course"]
+        assert ready["slug"] == "spreadsheets-basics" and ready["state"] == "draft"
+        assert not ready["issues"] and ready["lesson_count"] == 6
+        expect(admin.locator("#studio-title")).to_have_value("Электронные таблицы с нуля")
+        expect(admin.locator("#studio-category")).to_have_value("digital")
+        assert visitor.request.get(base + "/academy/spreadsheets-basics").status == 404
+        admin.locator('[data-studio="back"]').click()
+        admin.locator("#studio-template").select_option("editorial-spreadsheets")
+        with admin.expect_response(lambda r: r.url.endswith("/api/community/courses") and r.request.method == "POST") as reopened:
+            admin.locator('[data-studio="new"]').click()
+        assert checked(reopened.value)["course"] == ready
+        admin.locator('[data-studio="back"]').click()
         admin.locator("#studio-template").select_option("professional")
         admin.context.set_offline(True)
         admin.locator('[data-studio="new"]').click()
