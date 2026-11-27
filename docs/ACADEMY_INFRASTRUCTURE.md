@@ -91,3 +91,22 @@ permissions as part of the read-only check. S3 object access credentials
 are separate from the cloud API token; store them only in the appropriate
 trusted server configuration. Revoke the cloud API token in Timeweb when
 no longer needed and remove its GitHub environment secret.
+
+
+## 6. Read-only infrastructure inventory
+
+After the token connection check, run **Timeweb STAZHNO infrastructure
+inventory** manually on main. It selects the already confirmed Common
+project (Общий проект) by exact name and checks the known app
+opytno-production by exact name. The project ID is optional. No raw API
+payloads, resource names/IDs, IP addresses, credentials or environment
+variables are logged. The summary contains HTTP codes, resource-presence
+booleans, and the target app's CPU/RAM configuration if provided.
+An unknown value is not evidence that a resource is absent.
+
+The App Platform list does not establish project membership on its own.
+The project-level server/bucket results are only presence checks for that
+selected project, not a claim that an existing resource can be reused.
+Inspect resource ownership, geography, existing workloads and access
+privately before selecting or provisioning infrastructure. No paid
+services are ordered and no API permissions are widened by this workflow.

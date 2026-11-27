@@ -1,0 +1,28 @@
+name: Timeweb STAZHNO infrastructure inventory
+on:
+  workflow_dispatch:
+    inputs:
+      project_id:
+        description: "Optional ID of the confirmed Common project; normally leave blank"
+        required: false
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  inventory:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    environment: timeweb-stazhno
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - name: Inspect target application and project resource availability
+        env:
+          TIMEWEB_CLOUD_TOKEN: ${{ secrets.TIMEWEB_CLOUD_TOKEN }}
+          PROJECT_ID: ${{ inputs.project_id }}
+        run: python3 -m scripts.timeweb_inventory
