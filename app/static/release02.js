@@ -179,21 +179,40 @@
       });
     }
     const searchOwner = () => state.user ? state.user.role + ':' + state.user.id : 'guest';
-    let favoriteRefresh = 0, applicationRefresh = 0;
-    async function refreshFavorites() {
-      const serial = ++favoriteRefresh, owner = searchOwner();
-      if (state.user?.role !== 'candidate') { favoriteVacancyIds = new Set(); return; }
-      const result = await api('/api/candidate/favorites');
-      if (serial !== favoriteRefresh || owner !== searchOwner()) return;
-      favoriteVacancyIds = new Set((result.jobs || []).map(job => Number(job.id)));
+    // Start a fresh read for every caller (including after a mutation), but
+    // superseded callers must await the winning read before using the cache.
+    function ownedCandidateRefresh(path, empty, parse, assign) {
+      let latest = null;
+      return async function refresh() {
+        const owner = searchOwner();
+        if (state.user?.role !== 'candidate') {
+          latest = null;
+          assign(empty());
+          return;
+        }
+        const entry = {owner, promise:null};
+        latest = entry;
+        entry.promise = api(path).then(result => {
+          if (latest === entry && searchOwner() === owner) assign(parse(result));
+        });
+        let awaited = entry;
+        for (;;) {
+          try { await awaited.promise; }
+          catch(error) {
+            if (searchOwner() !== owner || latest?.owner !== owner) return;
+            if (latest === awaited) throw error;
+          }
+          if (searchOwner() !== owner || latest?.owner !== owner || latest === awaited) return;
+          awaited = latest;
+        }
+      };
     }
-    async function refreshMyApplications() {
-      const serial = ++applicationRefresh, owner = searchOwner();
-      if (state.user?.role !== 'candidate') { applicationByVacancy = new Map(); return; }
-      const result = await api('/api/candidate/applications');
-      if (serial !== applicationRefresh || owner !== searchOwner()) return;
-      applicationByVacancy = new Map((result.applications || []).map(a => [Number(a.vacancy_id), a]));
-    }
+    const refreshFavorites = ownedCandidateRefresh('/api/candidate/favorites',
+      () => new Set(), result => new Set((result.jobs || []).map(job => Number(job.id))),
+      value => { favoriteVacancyIds = value; });
+    const refreshMyApplications = ownedCandidateRefresh('/api/candidate/applications',
+      () => new Map(), result => new Map((result.applications || []).map(a => [Number(a.vacancy_id), a])),
+      value => { applicationByVacancy = value; });
     function jobApplicationAction(jobId, job = null) {
       // Prefer the server-annotated vacancy status; use separately fetched
       // applications only for routes that return unannotated public jobs.
@@ -815,12 +834,14 @@
         if (state.tab === 'offers' || state.tab === 'overview') {
           try { await Promise.all([refreshMyApplications(), refreshFavorites()]); }
           catch (e) {
+            if (state.user?.role !== 'candidate' || state.user?.id !== ownerId) return;
             applicationByVacancy = new Map();
             favoriteVacancyIds = new Set();
             // Recommended jobs still return application_status, so a temporary
             // auxiliary-list failure must not hide the main recommendations.
           }
         }
+        if (state.user?.role !== 'candidate' || state.user?.id !== ownerId || state.tab !== originalTab) return;
         await oldCandidate();
         if (originalTab==='overview' && state.tab==='overview' && state.user?.id===ownerId) {
           const dashboard=document.getElementById('dashboard-main');
@@ -1539,15 +1560,18 @@
             return;
           }
           if(type==='apply'){
+            const owner = searchOwner();
             const fromDialog = $('#job-dialog').open && $('#job-dialog').contains(btn);
             try {
               await req('POST','/api/candidate/applications',{vacancy_id:id});
+              if (owner !== searchOwner()) return;
               await refreshMyApplications();
+              if (owner !== searchOwner()) return;
               syncVisibleApplicationCards(id);
               if(fromDialog){
                 // Preserve context and show the saved state instead of a second POST.
                 const action = $('#job-dialog .job-detail-action');
-                if(action){
+                if(action && btn.isConnected){
                   action.innerHTML = jobApplicationAction(id) + jobApplicationReceipt(id);
                   const receipt = action.querySelector('.job-application-receipt');
                   if(receipt){
@@ -1559,8 +1583,10 @@
               else await loadPublicJobs();
               toast('Отклик отправлен. Контакты остаются скрытыми до вашего согласия.');
             } catch(err) {
+              if (owner !== searchOwner()) return;
               if(/уже откликались|уже существует/.test(err.message)){
                 await refreshMyApplications();
+                if (owner !== searchOwner()) return;
                 if($('#job-dialog').open)$('#job-dialog').close();
                 state.tab='applications'; await showDashboard(true);
                 toast('Заявка уже существует. Открыта ваша история откликов.');
@@ -1600,7 +1626,14 @@
           toast('Вакансия удалена из избранного');
         }
         else if(type==='withdraw'){await req('POST',`/api/candidate/applications/${id}/withdraw`);await showDashboard();toast('Отклик отозван');}
-        else if(type==='reapply'){const result=await req('POST','/api/candidate/applications',{vacancy_id:id});await refreshMyApplications();syncVisibleApplicationCards(id);await showDashboard();toast(result.reapplied?'Отклик отправлен повторно':'Отклик отправлен');}
+        else if(type==='reapply'){
+          const owner=searchOwner();
+          const result=await req('POST','/api/candidate/applications',{vacancy_id:id});
+          if(owner!==searchOwner()) return;
+          await refreshMyApplications();
+          if(owner!==searchOwner()) return;
+          syncVisibleApplicationCards(id);await showDashboard();toast(result.reapplied?'Отклик отправлен повторно':'Отклик отправлен');
+        }
         else if(type==='filter-vacancy-updates'){
           if(!vacancyUpdatesFilters.includes(btn.dataset.filter)||state.user?.role!=='candidate') return;
           vacancyUpdatesFilter=btn.dataset.filter;

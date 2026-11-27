@@ -525,8 +525,44 @@ def run_browser(page, playwright):
     expect(page.locator("#dashboard-main .saved-job")).to_have_count(2)
     page.locator("#dashboard-main .saved-job").filter(has_not_text="Кладовщик").first.locator("[data-v02-action='remove-favorite']").click()
     expect(page.locator("#dashboard-main .saved-job")).to_have_count(1)
-    page.locator("#public-jobs .job-card").filter(has_text="Кладовщик").locator("[data-v02-action='apply']").click()
+    # The real apply POST is followed by an applications refresh. A newer
+    # search starts a second read before the first completes. The dialog
+    # must keep the application pending until the winning cache is ready.
+    page.locator("#public-jobs .job-card").filter(has_text="Кладовщик").locator("[data-v02-action='details']").click()
+    apply_button = page.locator("#job-dialog [data-v02-action='apply']")
+    expect(apply_button).to_be_visible()
+    held_app_reads = []
+    def hold_app_reads(route):
+        if route.request.method == "GET":
+            held_app_reads.append(route)
+        else:
+            route.continue_()
+    def is_app_read(request):
+        return request.method == "GET" and request.url.endswith("/api/candidate/applications")
+    page.route("**/api/candidate/applications", hold_app_reads)
+    try:
+        with page.expect_request(is_app_read):
+            apply_button.click()
+        with page.expect_request(is_app_read):
+            page.evaluate("document.getElementById('jobs-filter').click()")
+        assert len(held_app_reads) == 2
+        stale = held_app_reads.pop(0)
+        with page.expect_response(lambda response: is_app_read(response.request)):
+            stale.fulfill(status=200, content_type="application/json", body='{"applications":[]}')
+        page.evaluate("() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)))")
+        expect(apply_button).to_be_disabled()
+        expect(page.locator("#job-dialog .job-application-receipt")).to_have_count(0)
+        current = held_app_reads.pop(0)
+        current.continue_()
+        expect(page.locator("#job-dialog .job-application-receipt")).to_contain_text("Отклик отправлен")
+        expect(apply_button).to_have_count(0)
+        expect(page.locator("#public-jobs")).to_have_attribute("aria-busy","false")
+    finally:
+        for route in held_app_reads:
+            route.abort()
+        page.unroute("**/api/candidate/applications", hold_app_reads)
     expect(page.locator("#toast")).to_contain_text("Отклик отправлен")
+    page.locator("#job-dialog-close").click()
     page.locator(".dashboard-tabs [data-tab='applications']").click()
     expect(page.locator("#dashboard-main")).to_contain_text("История откликов")
     expect(page.locator("#dashboard-main")).to_contain_text("Отправлен")
