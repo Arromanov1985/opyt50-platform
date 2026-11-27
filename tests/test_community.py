@@ -2025,6 +2025,21 @@ def test_course_media_draft_isolation_and_publication_gate(community):
     assert second.get(own).status_code == 404
     assert visitor.get(public + "/first-lesson").status_code == 200
     assert own_file.id.hex not in visitor.get(public + "/first-lesson").text
+    # Full-course AI import cannot discard attached media, even through direct
+    # API calls. Validation of a separate new lesson remains non-mutating.
+    import json
+    source = deepcopy(text)
+    source["lessons"][0].pop("slug")
+    assistant = {"expected_version":changed["version"],"kind":"course",
+                 "source":json.dumps(source)}
+    endpoint = own + "/assistant/validate"
+    blocked = mutate(first,"POST",endpoint,assistant)
+    assert blocked.status_code == 409 and "файлы" in blocked.json()["detail"]
+    appended = mutate(first,"POST",endpoint,{**assistant,"kind":"lesson",
+                                             "source":json.dumps(source["lessons"][0])})
+    assert appended.status_code == 200 and appended.json()["lesson"]["title"] == source["lessons"][0]["title"]
+    assert first.get(own).json()["course"] == changed
+    assert own_file.id.hex not in visitor.get(public + "/first-lesson").text
     with database(app.state.db_path) as db:
         db.execute("UPDATE academy_media SET state='clean',sha256=? WHERE id=?",
                    ("a"*64, own_file.id.hex))
@@ -2035,6 +2050,14 @@ def test_course_media_draft_isolation_and_publication_gate(community):
     assert removed.status_code == 200 and not removed.json()["course"]["issues"]
     assert removed.json()["course"]["draft"] == text
     assert removed.json()["course"]["media_files"][0]["id"] == own_file.id.hex
+    detached = removed.json()["course"]
+    # Detaching and saving is the intentional recovery path. Stale versions
+    # are rejected; the still-published text snapshot remains untouched.
+    assert mutate(first,"POST",endpoint,assistant).status_code == 409
+    accepted = mutate(first,"POST",endpoint,{**assistant,"expected_version":detached["version"]})
+    assert accepted.status_code == 200 and not accepted.json()["issues"]
+    assert first.get(own).json()["course"] == detached
+    assert visitor.get(public + "/first-lesson").status_code == 200
 
 
 def test_opt_in_image_upload_and_sanitized_private_preview(community, monkeypatch):

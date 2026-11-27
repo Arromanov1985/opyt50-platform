@@ -560,6 +560,13 @@ def install_builder_routes(app, community_user, throttle, get_connection, allowe
         row = _row(db, slug)
         editable(user, db, row)
         _version(row, data.expected_version)
+        # A full replacement generates new lesson IDs and would discard the
+        # existing media associations. The author must deliberately detach and
+        # save first. Appending an independent lesson is still allowed.
+        if data.kind == "course" and any(
+            lesson.get("media") for lesson in json.loads(row["draft_json"])["lessons"]
+        ):
+            raise HTTPException(409, "Сначала уберите прикреплённые файлы и сохраните черновик или выберите добавление урока")
         # Validation is deliberately non-mutating. Normal draft save and
         # separate publication consent remain authoritative.
         return _private(assistant_draft(data))

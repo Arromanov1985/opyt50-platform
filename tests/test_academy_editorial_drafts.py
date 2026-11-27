@@ -29,3 +29,18 @@ def test_packaged_editorial_source_is_ready_and_has_stable_lessons():
     assert draft["category"] == "digital" and draft["level"] == "beginner"
     assert len(draft["lessons"]) == 6 and not readiness(draft)
     assert [lesson["slug"] for lesson in draft["lessons"]] == [f"lesson-{i}" for i in range(1,7)]
+
+
+def test_release_fingerprint_includes_packaged_editorial_source(monkeypatch):
+    from app.journal import journal_renderer_sha256
+
+    original = Path.read_bytes
+    expected = journal_renderer_sha256()
+    source = ROOT / "docs/academy-drafts/spreadsheets-basics.json"
+
+    def changed(path):
+        payload = original(path)
+        return payload + b" " if path.resolve() == source.resolve() else payload
+
+    monkeypatch.setattr(Path, "read_bytes", changed)
+    assert journal_renderer_sha256() != expected
