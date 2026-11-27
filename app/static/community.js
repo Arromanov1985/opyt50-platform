@@ -1466,6 +1466,7 @@
         const issue=studio.entry.issue_locations?.[index];
         if(!issue||!['info','lessons'].includes(issue.step))return;
         studio.step=issue.step;
+        studioResetQuiz();
         if(issue.step==='lessons'){
           studio.lesson=Number.isInteger(issue.lesson)?Math.max(0,Math.min(issue.lesson,studio.draft.lessons.length-1)):0;
           studio.lessonStep=['content','practice','quiz'].includes(issue.lesson_step)?issue.lesson_step:'content';
@@ -1481,7 +1482,7 @@
           target.focus({preventScroll:true});target.scrollIntoView({block:'center'});
         }
       }
-      else if(action==='lesson'){studio.lesson=index;studio.lessonStep='content';studioRender();}
+      else if(action==='lesson'){studio.lesson=index;studioResetQuiz();studio.lessonStep='content';studioRender();}
       else if(action==='lesson-step'){studio.lessonStep=button.dataset.step;studioRender();}
       else if(action==='lesson-next'){if(studio.lessonStep==='content')studio.lessonStep='practice';else if(studio.lessonStep==='practice')studio.lessonStep='quiz';else studio.step='preview';studioRender();}
       else if(action==='add-lesson'&&studio.draft.lessons.length<30){studio.draft.lessons.push(newStudioLesson());studio.lesson=studio.draft.lessons.length-1;studio.lessonStep='content';structural();}
