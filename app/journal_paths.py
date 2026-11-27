@@ -181,6 +181,7 @@ def path_detail(slug: str, articles: list[dict]) -> HTMLResponse:
         '<div class="jr-journey-actions"><a class="jr-primary" data-jr-journey-resume href="#step-' +
         _e(path["steps"][0]["article"]["slug"]) + '">Начать с первого шага →</a>'
         '<button type="button" class="jr-save-button" data-jr-journey-reset>Сбросить отметки</button></div></div>'
+        '<noscript><p>Задания доступны без JavaScript. Чтобы отмечать выполненные шаги в браузере, включите JavaScript.</p></noscript>'
         f'<ol class="jr-path-steps">{steps}</ol></section>'
         '<aside class="jr-bottom" id="jr-journey-next"><h2>Готовы к следующему шагу?</h2>'
         '<p>Выберите подходящее действие, когда закончите чтение.</p>'

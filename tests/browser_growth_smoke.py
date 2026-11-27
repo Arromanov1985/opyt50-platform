@@ -602,7 +602,7 @@ def exercise_action_plans(browser, base):
         expect(page.locator("[data-jr-journey-count]")).to_have_text("Выполнено: 0 из 4")
         expect(other.locator("[data-jr-journey-count]")).to_have_text("Выполнено: 0 из 4")
         assert page.evaluate("localStorage.getItem('stazhno-journey-v1:nayti-rabotu')") is None
-        page.evaluate("localStorage.setItem('stazhno-journey-v1:nayti-rabotu', '[\\"obsolete:123\\",42]')")
+        page.evaluate("value => localStorage.setItem('stazhno-journey-v1:nayti-rabotu', value)", json.dumps(["obsolete:123", 42]))
         page.reload(wait_until="networkidle")
         expect(page.locator("[data-jr-journey-count]")).to_have_text("Выполнено: 0 из 4")
         page.evaluate("localStorage.setItem('stazhno-journey-v1:nayti-rabotu', 'invalid')")
