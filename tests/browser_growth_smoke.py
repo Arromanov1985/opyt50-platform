@@ -571,7 +571,9 @@ def exercise_action_plans(browser, base):
         checks = page.locator("[data-jr-journey-check]")
         expect(checks).to_have_count(4)
         expect(page.locator("[data-jr-journey-count]")).to_have_text("Выполнено: 0 из 4")
-        assert not page.evaluate("localStorage.getItem('stazhno-journey-v1:nayti-rabotu')")
+        prefix = "stazhno-journey-v1:nayti-rabotu:"
+        old_step = checks.first.get_attribute("data-jr-journey-check")
+        assert not page.evaluate("key => localStorage.getItem(key)", prefix + old_step)
         checks.nth(0).focus()
         checks.nth(0).press("Space")
         expect(checks.nth(0)).to_be_checked()
@@ -601,13 +603,32 @@ def exercise_action_plans(browser, base):
         page.locator("[data-jr-journey-reset]").click()
         expect(page.locator("[data-jr-journey-count]")).to_have_text("Выполнено: 0 из 4")
         expect(other.locator("[data-jr-journey-count]")).to_have_text("Выполнено: 0 из 4")
-        assert page.evaluate("localStorage.getItem('stazhno-journey-v1:nayti-rabotu')") is None
-        page.evaluate("value => localStorage.setItem('stazhno-journey-v1:nayti-rabotu', value)", json.dumps(["obsolete:123", 42]))
+        assert page.evaluate("prefix => Object.keys(localStorage).filter(k=>k.startsWith(prefix))", prefix) == []
+        page.evaluate("key => localStorage.setItem(key, 'invalid')", prefix + old_step)
+        page.evaluate("key => localStorage.setItem(key, 'yes')", prefix + "obsolete:" + "f"*24)
         page.reload(wait_until="networkidle")
         expect(page.locator("[data-jr-journey-count]")).to_have_text("Выполнено: 0 из 4")
-        page.evaluate("localStorage.setItem('stazhno-journey-v1:nayti-rabotu', 'invalid')")
-        page.reload(wait_until="networkidle")
-        expect(page.locator("[data-jr-journey-count]")).to_have_text("Выполнено: 0 из 4")
+        # Simulate an editorial revision while another tab keeps the older
+        # rendered steps. Both ordinary changes and resetting in the stale
+        # tab must preserve the current revision's mark.
+        old_digest = old_step.split(":")[1]
+        new_step = old_step.split(":")[0] + ":" + ("e"*24 if old_digest != "e"*24 else "d"*24)
+        page.locator("[data-jr-journey-check]").first.check()
+        def newer_revision(route):
+            response = route.fetch()
+            html = response.text()
+            assert old_step in html
+            route.fulfill(response=response, body=html.replace(old_step, new_step))
+        other.route("**/journal/paths/nayti-rabotu", newer_revision)
+        other.goto(url, wait_until="networkidle")
+        expect(other.locator("[data-jr-journey-check]").first).not_to_be_checked()
+        other.locator("[data-jr-journey-check]").first.check()
+        page.locator("[data-jr-journey-check]").nth(1).check()
+        expect(other.locator("[data-jr-journey-count]")).to_have_text("Выполнено: 2 из 4")
+        page.locator("[data-jr-journey-reset]").click()
+        expect(other.locator("[data-jr-journey-count]")).to_have_text("Выполнено: 1 из 4")
+        expect(other.locator("[data-jr-journey-check]").first).to_be_checked()
+        assert page.evaluate("key => localStorage.getItem(key)", prefix + new_step) == "yes"
         assert not unexpected, unexpected
         assert not errors, errors
     finally:

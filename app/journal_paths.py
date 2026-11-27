@@ -176,7 +176,8 @@ def path_detail(slug: str, articles: list[dict]) -> HTMLResponse:
         '<h2>Мой план действий</h2><p data-jr-journey-count role="status"></p>'
         f'<progress max="{len(path["steps"])}" value="0" aria-label="Выполненные шаги"></progress>'
         '<p>Отметки хранятся только в этом браузере, не связаны с аккаунтом и не передаются серверу. '
-        'На общем устройстве их могут увидеть другие пользователи браузера.</p>'
+        'На общем устройстве их могут увидеть другие пользователи браузера. Сброс действует на шаги текущей редакции. '
+        'Чтобы удалить все старые отметки, очистите данные сайта в настройках браузера.</p>'
         '<p class="jr-journey-warning" data-jr-journey-warning role="status" hidden></p>'
         '<div class="jr-journey-actions"><a class="jr-primary" data-jr-journey-resume href="#step-' +
         _e(path["steps"][0]["article"]["slug"]) + '">Начать с первого шага →</a>'
