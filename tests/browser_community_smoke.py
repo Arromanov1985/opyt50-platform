@@ -746,6 +746,8 @@ def run_browser(browser, base, database):
         admin.locator("#studio-description").fill("Научитесь проверять данные и оформлять простой учебный отчёт.")
         admin.locator("#studio-audience").fill("Для начинающих пользователей")
         admin.locator("#studio-outcomes").fill("Проверять данные в таблице")
+        admin.locator("#studio-category").select_option("professional")
+        admin.locator("#studio-level").select_option("intermediate")
         admin.locator('[data-studio="next"]').click()
         admin.locator('[data-studio="add-lesson"]').first.click()
         expect(admin.locator('[data-studio-completion="0"]')).to_have_text("0 из 3 разделов")
@@ -826,6 +828,7 @@ def run_browser(browser, base, database):
             admin.locator("#studio-save").click()
         saved_course = checked(course_saved.value)["course"]
         assert not saved_course["issues"], saved_course["issues"]
+        assert saved_course["classification"] == {"category":"professional","level":"intermediate"}
         assert visitor.request.get(course_url).status == 404
         admin.locator('[data-studio="step"][data-step="publish"]').click()
         expect(admin.locator(".studio-ready")).to_be_visible()
@@ -863,6 +866,29 @@ def run_browser(browser, base, database):
         expect(created).to_be_visible()
         expect(builtin).to_be_hidden()
         expect(visitor.locator('[data-ac-filter="complete"]')).to_contain_text("(1)")
+        # Discovery combines with learning status, searches case-insensitively
+        # and never modifies browser progress or sends search terms to a server.
+        visitor.locator("#ac-category").select_option("digital")
+        expect(visitor.locator("#ac-learning-empty")).to_contain_text("Курсы не найдены")
+        visitor.locator('[data-ac-filter="active"]').click()
+        expect(builtin).to_be_visible()
+        expect(created).to_be_hidden()
+        visitor.locator("#ac-level").select_option("intermediate")
+        expect(visitor.locator("#ac-learning-empty")).to_be_visible()
+        visitor.locator("#ac-reset-filters").click()
+        expect(builtin).to_be_visible()
+        expect(created).to_be_visible()
+        visitor.locator("#ac-course-search").fill("УЧЕБНОЙ ТАБЛИЦЕЙ")
+        expect(created).to_be_visible()
+        expect(builtin).to_be_hidden()
+        visitor.locator("#ac-course-search").fill("несуществующий учебный запрос")
+        expect(visitor.locator("#ac-learning-empty")).to_contain_text("Курсы не найдены")
+        visitor.locator('[data-ac-show-all]').click()
+        expect(visitor.locator("#ac-course-search")).to_have_value("")
+        expect(visitor.locator("#ac-category")).to_have_value("all")
+        expect(visitor.locator("#ac-level")).to_have_value("all")
+        expect(builtin).to_be_visible()
+        expect(created).to_be_visible()
         admin.locator('[data-studio="withdraw"]').click()
         with admin.expect_response(lambda r: r.url.endswith("/courses/" + course["slug"] + "/publication") and r.request.method == "DELETE") as course_hidden:
             admin.locator("#confirm-community-action").click()

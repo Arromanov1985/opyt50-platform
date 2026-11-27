@@ -261,6 +261,11 @@ document.addEventListener('DOMContentLoaded', () => {
   const catalogCards = [...document.querySelectorAll('#ac-course-grid .ac-course-card')];
   const filters = learning ? [...learning.querySelectorAll('[data-ac-filter]')] : [];
   let learningFilter = 'all';
+  const discovery = document.getElementById('ac-discovery-form');
+  const queryInput = document.getElementById('ac-course-search');
+  const categoryInput = document.getElementById('ac-category');
+  const levelInput = document.getElementById('ac-level');
+  const normalizeSearch = value => String(value || '').toLocaleLowerCase('ru-RU').replaceAll('ё','е').trim();
   // A readable storage can still reject writes (privacy restrictions or quota).
   // Probe a dedicated, non-progress key; never overwrite a course's saved data.
   const failureKey = 'stazhno-academy-last-write-failed';
@@ -311,12 +316,20 @@ document.addEventListener('DOMContentLoaded', () => {
     const counts = {all:catalogCards.length, active:0, complete:0};
     let shown = 0;
     let unavailable = !storageWritable || writeFailed;
+    const words = normalizeSearch(queryInput?.value).split(/\s+/).filter(Boolean);
+    const category = categoryInput?.value || 'all';
+    const level = levelInput?.value || 'all';
+    const narrowed = words.length > 0 || category !== 'all' || level !== 'all';
     for (const card of catalogCards) {
       const course = courses.get(card.dataset.acCourse);
       const status = learningState(course);
       if (status !== 'new') counts[status]++;
       unavailable ||= course.storageUnavailable;
-      card.hidden = learningFilter !== 'all' && learningFilter !== status;
+      const searchable = normalizeSearch(card.dataset.acSearch);
+      const matches = words.every(word=>searchable.includes(word)) &&
+        (category === 'all' || category === card.dataset.acCategory) &&
+        (level === 'all' || level === card.dataset.acLevel);
+      card.hidden = !matches || (learningFilter !== 'all' && learningFilter !== status);
       if (!card.hidden) shown++;
     }
     for (const button of filters) {
@@ -329,10 +342,11 @@ document.addEventListener('DOMContentLoaded', () => {
     const empty = document.getElementById('ac-learning-empty');
     empty.hidden = shown !== 0;
     if (!shown) {
-      document.getElementById('ac-learning-empty-title').textContent = unavailable
-        ? 'Прогресс недоступен' : learningFilter === 'active' ? 'Нет начатых курсов' : 'Пока нет пройденных курсов';
-      document.getElementById('ac-learning-empty-text').textContent = unavailable
-        ? 'Проверьте разрешения и свободное место в хранилище браузера или выберите все курсы.'
+      document.getElementById('ac-learning-empty-title').textContent = narrowed
+        ? 'Курсы не найдены' : unavailable ? 'Прогресс недоступен' : learningFilter === 'active' ? 'Нет начатых курсов' : 'Пока нет пройденных курсов';
+      document.getElementById('ac-learning-empty-text').textContent = narrowed
+        ? 'Измените запрос, направление, уровень или статус обучения.'
+        : unavailable ? 'Проверьте разрешения и свободное место в хранилище браузера или выберите все курсы.'
         : 'Выберите курс и успешно пройдите самопроверку в уроке.';
     }
     learning.hidden = false;
@@ -399,11 +413,18 @@ document.addEventListener('DOMContentLoaded', () => {
       drawLearning();
     });
   }
-  document.querySelector('[data-ac-show-all]')?.addEventListener('click', () => {
+  function resetDiscovery() {
     learningFilter = 'all';
+    discovery?.reset();
     drawLearning();
     filters.find(button=>button.dataset.acFilter==='all')?.focus();
-  });
+  }
+  discovery?.addEventListener('submit',event=>{event.preventDefault();drawLearning();});
+  queryInput?.addEventListener('input',drawLearning);
+  categoryInput?.addEventListener('change',drawLearning);
+  levelInput?.addEventListener('change',drawLearning);
+  document.getElementById('ac-reset-filters')?.addEventListener('click',resetDiscovery);
+  document.querySelector('[data-ac-show-all]')?.addEventListener('click',resetDiscovery);
   window.addEventListener('storage',event=>{
     let changed=false;
     for(const course of courses.values())if(event.key===course.key||event.key===null){course.completed=read(course);draw(course);changed=true;}

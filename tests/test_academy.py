@@ -46,6 +46,10 @@ def test_academy_is_free_public_and_includes_release_manifest(tmp_path):
         for name in ("all", "active", "complete"):
             assert f'data-ac-filter="{name}"' in catalog
         assert catalog.count('class="ac-course-card"') == len(COURSES)
+        assert 'data-ac-category="digital"' in catalog
+        assert 'data-ac-level="beginner"' in catalog
+        assert 'id="ac-course-search"' in catalog
+        assert 'id="ac-category"' in catalog and 'id="ac-level"' in catalog
         assert 'href="/academy/ai-basics"' in catalog
         assert visitor.get("/academy/unknown").status_code == 404
         assert visitor.get("/academy/ai-basics/unknown").status_code == 404

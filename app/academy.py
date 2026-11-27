@@ -7,6 +7,7 @@ from fastapi import HTTPException, Request
 from fastapi.responses import HTMLResponse
 
 from .academy_content import COURSES
+from .academy_catalog import CATEGORIES, LEVELS, catalog_classification
 
 
 def _e(value) -> str:
@@ -53,12 +54,31 @@ def _page(title, description, path, body):
                         headers={"Cache-Control": "no-store"})
 
 
+def _classification_label(course):
+    classification = catalog_classification(course)
+    return CATEGORIES[classification["category"]] + " · " + LEVELS[classification["level"]]
+
+
+def _catalog_options(options, all_label):
+    return '<option value="all">' + _e(all_label) + '</option>' + "".join(
+        '<option value="' + _e(key) + '">' + _e(label) + '</option>'
+        for key, label in options.items()
+    )
+
+
 def academy_index(courses=None):
     cards = []
     for course in (COURSES if courses is None else courses):
+        classification = catalog_classification(course)
+        searchable = " ".join([course["title"], course["description"], course["audience"],
+                               *course["outcomes"], _classification_label(course)])
         cards.append(
-            '<article class="ac-course-card"' + _progress_attrs(course) + '>'
-            '<p class="ac-eyebrow">Бесплатно · Самостоятельно</p><h2><a href="' + _url(course) + '">' +
+            '<article class="ac-course-card"' + _progress_attrs(course) +
+            ' data-ac-category="' + _e(classification["category"]) +
+            '" data-ac-level="' + _e(classification["level"]) +
+            '" data-ac-search="' + _e(searchable) + '">'
+            '<p class="ac-eyebrow">Бесплатно · Самостоятельно</p><p class="ac-classification">' +
+            _e(_classification_label(course)) + '</p><h2><a href="' + _url(course) + '">' +
             _e(course["title"]) + '</a></h2><p>' + _e(course["description"]) + '</p><p class="ac-small">' +
             str(len(course["lessons"])) + ' уроков · около ' +
             str(sum(lesson["minutes"] for lesson in course["lessons"])) +
@@ -78,6 +98,14 @@ def academy_index(courses=None):
         '<button type="button" data-ac-filter="all" aria-pressed="true" aria-controls="ac-course-grid">Все курсы <span data-ac-count></span></button>'
         '<button type="button" data-ac-filter="active" aria-pressed="false" aria-controls="ac-course-grid">Продолжить обучение <span data-ac-count></span></button>'
         '<button type="button" data-ac-filter="complete" aria-pressed="false" aria-controls="ac-course-grid">Пройдено <span data-ac-count></span></button></div>'
+        '<p class="ac-small">Счётчики статусов относятся ко всему каталогу.</p>'
+        '<form id="ac-discovery-form" class="ac-discovery" role="search" aria-label="Поиск и фильтры курсов">'
+        '<div><label for="ac-course-search">Поиск по курсам</label><input type="search" id="ac-course-search" maxlength="120" placeholder="Название или навык"></div>'
+        '<div><label for="ac-category">Направление</label><select id="ac-category">' +
+        _catalog_options(CATEGORIES, "Все направления") + '</select></div>'
+        '<div><label for="ac-level">Уровень</label><select id="ac-level">' +
+        _catalog_options(LEVELS, "Любой уровень") + '</select></div>'
+        '<button type="button" id="ac-reset-filters" class="jr-save-button">Сбросить фильтры</button></form>'
         '<p class="ac-small" id="ac-learning-count" role="status"></p>'
         '<p class="ac-small" id="ac-learning-storage" role="status" hidden>Браузер может не сохранять новые результаты. Уже сохранённый прогресс отображается, если доступен. Обучение можно продолжать.</p></section>'
         '<div class="ac-course-grid" id="ac-course-grid">' +
@@ -105,7 +133,8 @@ def academy_course(slug: str, courses=None):
     body = (
         '<div class="jr-breadcrumb"><a href="/academy">Обучение</a> / ' + _e(course["title"]) +
         '</div><section class="jr-hero"><span class="jr-kicker">БЕСПЛАТНЫЙ КУРС</span><h1>' +
-        _e(course["title"]) + '</h1><p>' + _e(course["description"]) + '</p></section>'
+        _e(course["title"]) + '</h1><p>' + _e(course["description"]) +
+        '</p><p class="ac-hero-classification">' + _e(_classification_label(course)) + '</p></section>'
         '<div class="ac-course-layout"><section class="ac-panel"><h2>Что вы освоите</h2><ul>' +
         outcomes + '</ul><h2>Для кого этот курс</h2><p>' + _e(course["audience"]) +
         '</p><p>' + (_e(course["author_public_name"]) + ' · <a href="/people/' + _e(course["author_public_id"]) + '">Профиль автора</a>' if course.get("author_public_id") else 'Редакционный курс СТАЖНО') + '</p><p>Выполняйте задания самостоятельно. Курсы не подтверждают квалификацию.</p><a class="jr-primary" data-ac-resume href="' +

@@ -1298,6 +1298,11 @@
       if(type==='course'){
         if(studio.draft.lessons.some(item=>(item.media||[]).length)){inlineError(form,'Курс содержит прикреплённые файлы.');return;}
         draft=studioClone(result.draft);
+        // Importing older course JSON must not silently discard the author's
+        // current manual classifications (including unsaved selections).
+        for(const field of ['category','level']){
+          if(!Object.hasOwn(draft,field)&&Object.hasOwn(studio.draft,field))draft[field]=studio.draft[field];
+        }
       }else{
         if(studio.draft.lessons.length>=30){inlineError(form,'В курсе уже 30 уроков.');return;}
         draft=studioClone(studio.draft);draft.lessons.push(studioClone(result.lesson));
@@ -1307,11 +1312,26 @@
       studio.previewPages.clear();studioChange();closeDialog();studioRender();notice('Материал перенесён. Проверьте и сохраните черновик.');
     });
   }
+  function studioClassificationValue(field){
+    return studio.draft[field]??studio.entry.classification?.[field]??'';
+  }
+  function studioClassificationSelect(field,label){
+    const options=studio.entry.catalog_options?.[field]||{};
+    if(!Object.keys(options).length)return '';
+    const current=studioClassificationValue(field);
+    return '<div class="studio-field"><label for="studio-'+field+'">'+esc(label)+'</label><select id="studio-'+field+'" data-studio-path="'+field+'">'+
+      Object.entries(options).map(([value,name])=>'<option value="'+esc(value)+'" '+(current===value?'selected':'')+'>'+esc(name)+'</option>').join('')+'</select></div>';
+  }
+  function studioClassificationText(){
+    return ['category','level'].map(field=>studio.entry.catalog_options?.[field]?.[studioClassificationValue(field)]).filter(Boolean).join(' · ');
+  }
   function studioInfo(){
     const d=studio.draft;
     return '<section class="panel studio-panel"><h2>1. Карточка курса</h2><p class="help">Эту информацию ученик увидит до начала обучения.</p>'+
       studioField('Название курса','title',d.title,{max:180,placeholder:'Например, Основы работы с таблицами'})+
       studioField('Краткое описание','description',d.description,{area:true,max:600,help:'Что человек научится делать и зачем ему этот курс?'})+
+      studioClassificationSelect('category','Направление обучения')+studioClassificationSelect('level','Уровень сложности')+
+      '<p class="help">Направление и уровень помогают ученику найти курс. Они меняются в каталоге только после публикации новой версии.</p>'+
       studioField('Для кого этот курс','audience',d.audience,{area:true,max:600,placeholder:'Начинающие, без специальной подготовки...'})+
       '<div class="studio-field"><label for="studio-outcomes">Результаты обучения</label><p class="help">Один результат на строку, до 12 строк. Например: «Составлять простой отчёт в таблице».</p><textarea id="studio-outcomes" data-studio-list="outcomes" rows="5" maxlength="6000">'+esc(d.outcomes.join('\n'))+'</textarea></div>'+
       '<div class="actions">'+studioButton('next','Перейти к урокам →','primary')+'</div></section>';
@@ -1467,7 +1487,7 @@
   }
   function studioPreview(){
     const d=studio.draft,lesson=d.lessons[studio.lesson];
-    return '<section class="panel studio-panel"><span class="eyebrow">ПРЕДПРОСМОТР · НЕ ОПУБЛИКОВАНО</span><h2>'+esc(d.title||'Курс без названия')+'</h2><p>'+esc(d.description||'Описание ещё не заполнено')+'</p><p class="help">'+esc(d.audience)+'</p><h3>Результаты обучения</h3><ul>'+d.outcomes.filter(Boolean).map(item=>'<li>'+esc(item)+'</li>').join('')+'</ul><h3>Программа</h3><ol>'+d.lessons.map((item,index)=>'<li>'+studioButton('preview-lesson',esc(item.title||'Урок '+(index+1))+' · '+item.minutes+' мин.',index===studio.lesson?'primary':'secondary','data-index="'+index+'"')+'</li>').join('')+'</ol></section>'+
+    return '<section class="panel studio-panel"><span class="eyebrow">ПРЕДПРОСМОТР · НЕ ОПУБЛИКОВАНО</span><h2>'+esc(d.title||'Курс без названия')+'</h2><p>'+esc(d.description||'Описание ещё не заполнено')+'</p><p class="help">'+esc(studioClassificationText())+'</p><p class="help">'+esc(d.audience)+'</p><h3>Результаты обучения</h3><ul>'+d.outcomes.filter(Boolean).map(item=>'<li>'+esc(item)+'</li>').join('')+'</ul><h3>Программа</h3><ol>'+d.lessons.map((item,index)=>'<li>'+studioButton('preview-lesson',esc(item.title||'Урок '+(index+1))+' · '+item.minutes+' мин.',index===studio.lesson?'primary':'secondary','data-index="'+index+'"')+'</li>').join('')+'</ol></section>'+
       (lesson?'<section class="panel studio-panel studio-preview"><span class="eyebrow">УРОК '+(studio.lesson+1)+' ИЗ '+d.lessons.length+' · '+lesson.minutes+' МИН.</span><div class="studio-tabs" aria-label="Режим предпросмотра">'+[['author','Как автор'],['student','Как ученик']].map(([key,label])=>studioButton('preview-mode',label,studio.previewMode===key?'primary':'secondary','data-mode="'+key+'" aria-pressed="'+(studio.previewMode===key)+'"')).join('')+'</div><h2>'+esc(lesson.title||'Урок без названия')+'</h2><p>'+esc(lesson.goal)+'</p>'+
       lesson.sections.map(section=>'<section><h3>'+esc(section[0]||'Заголовок блока')+'</h3>'+section.slice(1).map(p=>'<p class="multiline">'+esc(p)+'</p>').join('')+'</section>').join('')+
       studioMediaPreview(lesson)+'<h3>Практический пример</h3><div class="studio-example multiline">'+esc(lesson.example)+'</div><h3>Попробуйте сами</h3><p class="multiline">'+esc(lesson.practice)+'</p><h3>Вопросы для самопроверки</h3>'+

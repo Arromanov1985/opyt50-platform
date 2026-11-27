@@ -9,6 +9,9 @@ from fastapi import Depends, HTTPException, Query, Request
 from pydantic import Field, field_validator, model_validator
 
 from .academy_content import COURSES
+from .academy_catalog import (
+    CATALOG_FIELDS, CATEGORIES, LEVELS, CourseCategory, CourseLevel, catalog_classification,
+)
 from .community import (
     CommunityModel, ModerationInput, PublishInput, VersionInput, PAGE_SIZE,
     _active_account, _committed, _is_published, _lock_actors, _now, _profile, _public_text,
@@ -83,6 +86,8 @@ class Lesson(CommunityModel):
 
 
 class CourseDraft(CommunityModel):
+    category: CourseCategory | None = None
+    level: CourseLevel | None = None
     title: str = Field(default="", max_length=180)
     description: str = Field(default="", max_length=600)
     audience: str = Field(default="", max_length=600)
@@ -193,7 +198,8 @@ def assistant_draft(data: AssistantImport) -> dict:
         payload = json.loads(data.source, object_pairs_hook=_unique_json_object,
                              parse_constant=_reject_json_constant)
         if data.kind == "course":
-            if type(payload) is not dict or set(payload) != set(DRAFT_FIELDS):
+            if (type(payload) is not dict or not set(DRAFT_FIELDS).issubset(payload)
+                    or not set(payload).issubset((*DRAFT_FIELDS, *CATALOG_FIELDS))):
                 raise ValueError("Unexpected course fields")
             raw_lessons = payload["lessons"]
             if type(raw_lessons) is not list or not 1 <= len(raw_lessons) <= 12:
@@ -211,6 +217,9 @@ def assistant_draft(data: AssistantImport) -> dict:
         if data.kind == "lesson":
             return {"lesson": lessons[0]}
         draft = CourseDraft.model_validate({**payload, "lessons": lessons}, strict=True).model_dump()
+        for key in CATALOG_FIELDS:
+            if draft[key] is None:
+                draft.pop(key)
         for lesson in draft["lessons"]:
             lesson.pop("media", None)
         return {"draft": draft, "issues": readiness(draft)}
@@ -302,7 +311,7 @@ def init_academy(path):
             db.execute(
                 """INSERT INTO academy_courses(slug,draft_json,published_json,state,version,created_at,updated_at,published_at)
                    VALUES(?,?,?,'published',1,?,?,?) ON CONFLICT(slug) DO NOTHING""",
-                (course["slug"], _encoded({key: course[key] for key in DRAFT_FIELDS}),
+                (course["slug"], _encoded({key: course[key] for key in (*DRAFT_FIELDS, *CATALOG_FIELDS) if key in course}),
                  _encoded(course), now, now, now),
             )
 
@@ -400,7 +409,9 @@ def _detail(db, row, user, full=True):
         dto["image_preview_enabled"] = bool(private_view and image_upload_ready())
         dto["rendition_preview_enabled"] = bool(private_view and rendition_preview_ready())
         checklist = readiness_details(draft)
-        dto.update(draft={key:draft[key] for key in DRAFT_FIELDS},
+        dto.update(draft={key:draft[key] for key in (*DRAFT_FIELDS,*CATALOG_FIELDS) if key in draft},
+                   classification=catalog_classification(draft, row["slug"]),
+                   catalog_options={"category": CATEGORIES, "level": LEVELS},
                    issues=[issue["message"] for issue in checklist], issue_locations=checklist,
                    restricted=user["role"]=="candidate" and not _active_account(db,user["id"]),
                    can_submit=user["role"]=="admin" or _is_published(db,user["id"]))
@@ -505,7 +516,7 @@ def install_builder_routes(app, community_user, throttle, get_connection, allowe
         db.execute(
             """INSERT INTO academy_courses(slug,owner_id,draft_json,created_at,updated_at)
                VALUES(?,?,?,?,?) ON CONFLICT(slug) DO NOTHING""",
-            (slug,owner,_encoded(new_course_draft(data.template).model_dump()),stamp,stamp),
+            (slug,owner,_encoded(new_course_draft(data.template).model_dump(exclude=set(CATALOG_FIELDS))),stamp,stamp),
         )
         row=_row(db,slug)
         if not _is_editor(user,row):
@@ -531,14 +542,25 @@ def install_builder_routes(app, community_user, throttle, get_connection, allowe
         row=_row(db,slug)
         editable(user,db,row)
         _version(row,data.expected_version)
+        previous = json.loads(row["draft_json"])
         draft=data.model_dump(exclude={"expected_version"})
+        # Old clients omit the optional metadata; preserve existing selections.
+        # Explicit null clears a selection; legacy rows need no rewrite.
+        for key in CATALOG_FIELDS:
+            if key not in data.model_fields_set:
+                if key in previous:
+                    draft[key] = previous[key]
+                else:
+                    draft.pop(key)
+            elif draft[key] is None:
+                draft.pop(key)
         # Preserve unchanged legacy text-only JSON and version behavior.
         for lesson in draft["lessons"]:
             if not lesson.get("media"):
                 lesson.pop("media", None)
         from .academy_media_registry import validate_media_references
         validate_media_references(db, slug, draft)
-        if json.loads(row["draft_json"])==draft:
+        if previous==draft:
             return _committed(db,{"course":_detail(db,row,user)})
         throttle(db,user["id"],"academy-course-save",120,3600)
         result=db.execute(
