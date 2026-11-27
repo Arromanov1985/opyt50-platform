@@ -178,14 +178,20 @@
         }
       });
     }
+    const searchOwner = () => state.user ? state.user.role + ':' + state.user.id : 'guest';
+    let favoriteRefresh = 0, applicationRefresh = 0;
     async function refreshFavorites() {
+      const serial = ++favoriteRefresh, owner = searchOwner();
       if (state.user?.role !== 'candidate') { favoriteVacancyIds = new Set(); return; }
       const result = await api('/api/candidate/favorites');
+      if (serial !== favoriteRefresh || owner !== searchOwner()) return;
       favoriteVacancyIds = new Set((result.jobs || []).map(job => Number(job.id)));
     }
     async function refreshMyApplications() {
+      const serial = ++applicationRefresh, owner = searchOwner();
       if (state.user?.role !== 'candidate') { applicationByVacancy = new Map(); return; }
       const result = await api('/api/candidate/applications');
+      if (serial !== applicationRefresh || owner !== searchOwner()) return;
       applicationByVacancy = new Map((result.applications || []).map(a => [Number(a.vacancy_id), a]));
     }
     function jobApplicationAction(jobId, job = null) {
@@ -264,26 +270,54 @@
         <div class="job-actions ${open && state.user?.role==='candidate' ? 'has-favorite' : ''}">${roleActions}<button type="button" class="btn ${detailsPrimary ? 'btn-primary' : 'btn-outline'} btn-tiny" data-v02-action="details" data-id="${id}">${detailsPrimary ? 'Условия и отклик' : 'Условия и описание'}</button></div><a class="job-share-link" href="/vacancies/${id}" aria-label="Открыть отдельную страницу вакансии ${esc(job.title)}">Открыть отдельной страницей <span aria-hidden="true">↗</span></a>${state.user?.role === 'candidate' ? jobApplicationReceipt(id, job) : ''}</article>`;
     };
 
+    // Snapshot each submitted query before awaiting account data. A late
+    // response or failure must never replace a newer search or account.
+    const publicJobFilters = [
+      ['profession-filter','q','Профессия'],
+      ['city-filter','city','Город'],
+      ['salary-filter','salary_min','Зарплата от'],
+      ['schedule-filter','schedule','График'],
+      ['employment-filter','employment','Занятость']
+    ];
+    let publicJobSerial = 0, requestedPublicQuery = null;
+    function publicJobQuery() {
+      const qs = new URLSearchParams(), active = [];
+      for (const [input,param,label] of publicJobFilters) {
+        const value = searchValue(input);
+        if (value) { qs.set(param,value); active.push([label,value,input]); }
+      }
+      const sort = searchValue('sort-filter') || 'recent';
+      qs.set('sort',sort);
+      return {qs, active, sort};
+    }
+    function updatePublicJobNote() {
+      const note = $('#jobs-search-note');
+      if (!note) return;
+      const changed = requestedPublicQuery !== null &&
+        publicJobQuery().qs.toString() !== requestedPublicQuery;
+      note.textContent = changed ? 'Условия изменены. Нажмите «Найти вакансии», чтобы применить их.' : '';
+      note.hidden = !changed;
+    }
     loadPublicJobs = async function() {
+      const serial = ++publicJobSerial, owner = searchOwner();
+      const current = () => serial === publicJobSerial && owner === searchOwner();
+      const {qs, active, sort} = publicJobQuery();
+      const grid = $('#public-jobs');
+      const count = $('#jobs-count');
+      const summary = $('#job-filter-summary');
+      requestedPublicQuery = qs.toString();
+      updatePublicJobNote();
+      grid.setAttribute('aria-busy','true');
+      count.textContent = 'Ищем вакансии…';
+      summary.replaceChildren();
+      grid.innerHTML = '<div class="empty-state">Подбираем вакансии по вашим условиям…</div>';
       try {
         await Promise.all([refreshMyApplications(), refreshFavorites()]);
-        const qs = new URLSearchParams();
-        const filters = [
-          ['profession-filter','q','Профессия'],
-          ['city-filter','city','Город'],
-          ['salary-filter','salary_min','Зарплата от'],
-          ['schedule-filter','schedule','График'],
-          ['employment-filter','employment','Занятость']
-        ];
-        const active = [];
-        for (const [input,param,label] of filters) {
-          const value=searchValue(input);
-          if(value){ qs.set(param,value); active.push([label,value,input]); }
-        }
-        const sort=searchValue('sort-filter') || 'recent';
-        qs.set('sort',sort);
+        if (!current()) return;
         const result = await api('/api/jobs?'+qs);
-        const jobs = result.jobs || [];
+        if (!current()) return;
+        if (!Array.isArray(result.jobs)) throw new Error('Сервер не вернул список вакансий.');
+        const jobs = result.jobs;
         $('#jobs-count').textContent = `Найдено: ${jobs.length}`;
         const sortLabels={salary_desc:'Сначала выше зарплата',salary_asc:'Сначала ниже зарплата'};
         if(sortLabels[sort]) active.push(['Сортировка',sortLabels[sort],'sort-filter']);
@@ -301,8 +335,16 @@
             ? '<div class="empty-state empty-state-action jobs-empty-state" role="status"><strong>По этим условиям вакансий пока нет.</strong><p>Попробуйте расширить поиск или посмотрите все доступные предложения.</p><button type="button" class="btn btn-outline" data-v02-action="reset-public-job-filters">Показать все вакансии</button></div>'
             : '<div class="empty-state empty-state-action jobs-empty-state" role="status"><strong>Открытых вакансий пока нет.</strong><p>Новые предложения появятся здесь после публикации работодателями. Пока можно посмотреть материалы о поиске работы.</p><a class="btn btn-outline" href="/journal">Перейти в журнал</a></div>';
       } catch(e) {
+        if (!current()) return;
+        count.textContent = 'Не удалось выполнить поиск';
+        summary.replaceChildren();
         toast(e.message,true);
-        $('#public-jobs').innerHTML='<div class="empty-state empty-state-action jobs-empty-state" role="status"><strong>Не удалось загрузить вакансии.</strong><p>Проверьте подключение и повторите поиск.</p><button type="button" class="btn btn-outline" data-v02-action="retry-public-jobs">Повторить поиск</button></div>';
+        grid.innerHTML='<div class="empty-state empty-state-action jobs-empty-state" role="status"><strong>Не удалось загрузить вакансии.</strong><p>Проверьте подключение и повторите поиск.</p><button type="button" class="btn btn-outline" data-v02-action="retry-public-jobs">Повторить поиск</button></div>';
+      } finally {
+        if (serial === publicJobSerial) {
+          grid.setAttribute('aria-busy','false');
+          updatePublicJobNote();
+        }
       }
     };
 
@@ -1870,7 +1912,15 @@
       if(action==='reset'){$('#reset-token').value=token;$('#reset-dialog').showModal();}
       if(action==='verify'){req('POST','/api/account/email/confirm',{token}).then(()=>toast('Email подтверждён.')).catch(e=>toast(e.message,true));}
     }
-    ['profession-filter','city-filter','salary-filter'].forEach(id=>$('#'+id).addEventListener('keydown',e=>{if(e.key==='Enter')loadPublicJobs();}));
+    [...publicJobFilters.map(([id])=>id),'sort-filter'].forEach(id => {
+      $('#'+id).addEventListener('input',updatePublicJobNote);
+    });
+    ['profession-filter','city-filter','salary-filter'].forEach(id=>$('#'+id).addEventListener('keydown',e=>{
+      if(e.key==='Enter' && !e.isComposing && !e.defaultPrevented) {
+        e.preventDefault();
+        loadPublicJobs();
+      }
+    }));
     ['schedule-filter','employment-filter','sort-filter'].forEach(id=>$('#'+id).addEventListener('change',loadPublicJobs));
     $('#jobs-reset').addEventListener('click',()=>{
       ['profession-filter','city-filter','salary-filter'].forEach(id=>$('#'+id).value='');
