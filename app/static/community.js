@@ -1565,8 +1565,17 @@
       else if(action==='filter-reset'&&!studio.entry&&studio.view==='own'){
         studio.loading=true;await busy(content,()=>studioList({page:1,query:'',status:'all'}));
       }
-      else if(action==='step'){studio.step=button.dataset.step;studioRender();}
-      else if(action==='next'){studio.step=studio.step==='info'?'lessons':'publish';studioRender();}
+      else if(action==='step'){
+        const target=button.dataset.step;
+        if(!studioSteps.some(([key])=>key===target))return;
+        if(!studioEditable()&&['info','lessons'].includes(target))return;
+        if(studio.step==='preview'&&target!=='preview')studioResetQuiz();
+        studio.step=target;studioRender();
+      }
+      else if(action==='next'){
+        if(studio.step==='preview')studioResetQuiz();
+        studio.step=studio.step==='info'?'lessons':'publish';studioRender();
+      }
       else if(action==='preview-lesson'){
         if(Number.isInteger(index)&&index>=0&&index<studio.draft.lessons.length){
           studio.lesson=index;studioResetQuiz();studioRender();
