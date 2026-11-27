@@ -47,6 +47,104 @@ COMMUNITY_PRIVATE_ROUTES = {
 }
 
 
+# Private account, hiring and operational endpoints must never disclose
+# their response bodies to this anonymous diagnostic, even on HTTP 200.
+CORE_PRIVATE_ROUTES = {
+    "account_export": "/api/account/data-export",
+    "account_privacy": "/api/account/privacy-requests",
+    "candidate_invitations": "/api/candidate/invitations",
+    "employer_vacancies": "/api/employer/vacancies",
+    "employer_invitations": "/api/employer/invitations",
+    "admin_security": "/api/admin/security-status",
+    "admin_privacy": "/api/admin/privacy-requests",
+    "admin_growth": "/api/admin/growth",
+    "admin_mail": "/api/admin/mail-diagnostics",
+}
+
+
+def probe_health():
+    """Require a real health JSON response, not merely HTTP 200."""
+    request = Request(BASE + "/api/health", method="GET",
+                      headers={"User-Agent": "Stazhno-Preview-ReadOnly-Probe/1.0",
+                               "Cache-Control": "no-cache"})
+    try:
+        with build_opener(NoRedirect).open(request, timeout=10) as response:
+            if response.status != 200 or not response.headers.get("Content-Type", "").lower().startswith("application/json"):
+                return {"status": response.status, "result": "invalid-health-response"}
+            payload = response.read(4097)
+            if len(payload) > 4096:
+                return {"status": response.status, "result": "invalid-health-response"}
+            data = json.loads(payload)
+            healthy = isinstance(data, dict) and data.get("status") == "ok"
+            return {"status": response.status, "result": "healthy" if healthy else "invalid-health-response"}
+    except HTTPError as error:
+        return {"status": error.code, "result": "http-error"}
+    except (ValueError, TypeError, UnicodeError):
+        return {"result": "invalid-health-response"}
+    except (URLError, OSError, ssl.SSLError, TimeoutError):
+        return {"result": "connection-error"}
+
+
+def probe_prelaunch_guard():
+    """Observe the deployed read-only registration notice and indexing guard.
+
+    This is not a live POST test and cannot certify server enforcement.
+    The latter is covered by isolated production-mode API regression tests.
+    Never send credentials, registration data or mutation requests.
+    """
+    root = str(Path(__file__).resolve().parents[1])
+    if root not in sys.path:
+        sys.path.insert(0, root)
+    from app.legal_config import legal_approved, legal_release_sha256
+    from urllib.parse import urlsplit
+
+    approved = legal_approved()
+    expected_revision = legal_release_sha256()
+    canonical = urlsplit(BASE).hostname in {"stazhno.ru", "www.stazhno.ru"}
+    # Even after approval the technical host remains non-indexable.
+    block_indexing = not approved or not canonical
+    request = Request(BASE + "/?legal_revision_check=" + expected_revision[:16], method="GET",
+                      headers={"User-Agent": "Stazhno-Preview-ReadOnly-Probe/1.0",
+                               "Cache-Control": "no-cache", "Pragma": "no-cache"})
+    try:
+        with build_opener(NoRedirect).open(request, timeout=12) as response:
+            if response.status != 200 or not response.headers.get("Content-Type", "").lower().startswith("text/html"):
+                return {"status": response.status, "result": "invalid-home-response"}
+            payload = response.read(1_000_001)
+            if len(payload) > 1_000_000:
+                return {"status": response.status, "result": "invalid-home-response"}
+            html = payload.decode("utf-8", errors="replace")
+            observed_revision = response.headers.get("X-Stazhno-Legal-Revision", "")
+            ready = 'yes' if approved else 'no'
+            signup_closed = 'name="prelaunch-signup-closed"' in html
+            notice_present = 'id="prelaunch-public-notice"' in html
+            robots = {token.strip() for token in response.headers.get("X-Robots-Tag", "").lower().split(",")}
+            cache = {token.strip() for token in response.headers.get("Cache-Control", "").lower().split(",")}
+            checks = {
+                "legal_revision": observed_revision == expected_revision,
+                "legal_profile_marker": f'name="legal-profile-ready" content="{ready}"' in html
+                    and f'name="legal-profile-ready" content="{"no" if approved else "yes"}"' not in html,
+                "signup_state": (not signup_closed) if approved else
+                    'name="prelaunch-signup-closed" content="yes"' in html,
+                "visible_notice_state": (not notice_present) if approved else
+                    notice_present and "Регистрация закрыта" in html,
+                "index_policy": ({"noindex", "nofollow"} <= robots) if block_indexing else
+                    not ({"noindex", "nofollow"} & robots),
+                "no_store": "no-store" in cache,
+            }
+            if not checks["legal_revision"]:
+                result = "legal-revision-mismatch"
+            elif not all(checks.values()):
+                result = "approved-markers-missing" if approved else "prelaunch-markers-missing"
+            else:
+                result = "approved-markers-confirmed" if approved else "prelaunch-markers-confirmed"
+            return {"status": response.status, "result": result, "checks": checks}
+    except HTTPError as error:
+        return {"status": error.code, "result": "http-error"}
+    except (URLError, OSError, ssl.SSLError, TimeoutError):
+        return {"result": "connection-error"}
+
+
 def git_blob_revision(path):
     payload = path.read_bytes()
     return hashlib.sha1(
@@ -466,10 +564,11 @@ def probe_public_search_metadata():
     if root not in sys.path:
         sys.path.insert(0, root)
     from app.journal import journal_sitemap
+    from app.legal_config import legal_approved
     from urllib.parse import urlsplit
 
     host = urlsplit(BASE).hostname
-    is_canonical = host in {"stazhno.ru", "www.stazhno.ru"}
+    is_canonical = host in {"stazhno.ru", "www.stazhno.ru"} and legal_approved()
     robots = (
         "User-agent: *\nDisallow: /api/\nSitemap: https://stazhno.ru/sitemap.xml\n"
         if is_canonical else "User-agent: *\nDisallow: /\n"
@@ -544,8 +643,12 @@ def main():
     except OSError:
         result["dns"] = "resolution-failed"
     if result["dns"] == "resolved":
-        for path in ("/api/health", "/"):
-            result["paths"][path] = probe(path)
+        result["paths"]["/api/health"] = probe_health()
+        result["paths"]["/"] = probe("/")
+        result["prelaunch_guard"] = probe_prelaunch_guard()
+        result["core_private_api"] = {
+            name: probe_private_route(path) for name, path in CORE_PRIVATE_ROUTES.items()
+        }
         result["deployed_assets"] = {
             name: probe_asset("/static/" + name, STATIC / name)
             for name in CHECKED_ASSETS
@@ -570,6 +673,10 @@ def main():
             "/api/health": {"result": "not-tested-dns-failure"},
             "/": {"result": "not-tested-dns-failure"},
         }
+        result["prelaunch_guard"] = {"result": "not-tested-dns-failure"}
+        result["core_private_api"] = {
+            name: {"result": "not-tested-dns-failure"} for name in CORE_PRIVATE_ROUTES
+        }
         result["deployed_assets"] = {
             name: {"result": "not-tested-dns-failure"} for name in CHECKED_ASSETS
         }
@@ -589,7 +696,7 @@ def main():
         }
     result["assessment"] = (
         "preview-health-reachable"
-        if result["paths"]["/api/health"].get("status") == 200
+        if result["paths"]["/api/health"].get("result") == "healthy"
         else "preview-unverified"
     )
     asset_results = [item["result"] for item in result["deployed_assets"].values()]
@@ -609,8 +716,23 @@ def main():
         item["result"] == "route-present-method-protected"
         for item in result["backend_routes"].values()
     )
-    if frontend_matches and backend_matches and journal_matches and search_matches and community_matches:
+    prelaunch_matches = result["prelaunch_guard"]["result"] in {
+        "prelaunch-markers-confirmed", "approved-markers-confirmed"
+    }
+    core_matches = all(item["result"] == "present-and-protected"
+                       for item in result["core_private_api"].values())
+    health_matches = result["paths"]["/api/health"]["result"] == "healthy"
+    if result["dns"] != "resolved":
+        result["release_evidence"] = "unverified"
+    elif (frontend_matches and backend_matches and journal_matches and search_matches
+            and community_matches and core_matches and prelaunch_matches and health_matches):
         result["release_evidence"] = "frontend-and-backend-match"
+    elif not health_matches:
+        result["release_evidence"] = "health-unverified"
+    elif not core_matches:
+        result["release_evidence"] = "private-api-unverified"
+    elif not prelaunch_matches:
+        result["release_evidence"] = "prelaunch-guard-unverified"
     elif "mismatch" in asset_results or html_result == "mismatch":
         result["release_evidence"] = "frontend-version-mismatch"
     elif frontend_matches and not backend_matches:

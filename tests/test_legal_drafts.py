@@ -183,3 +183,52 @@ def test_prelaunch_public_home_is_readonly_and_nonindexable(monkeypatch, tmp_pat
         assert "publicSignupClosed()" in client_script
         assert "registerButton.disabled = true" in client_script
         assert "button.disabled = true" in client_script
+
+
+def test_legal_release_evidence_matches_runtime_and_changes_with_each_input(monkeypatch, tmp_path):
+    from app import legal_config
+
+    expected = legal_config.legal_release_sha256()
+    assert len(expected) == 64
+    app = create_app(str(tmp_path / "legal-revision.sqlite"))
+    with TestClient(app, base_url="https://preview.twc1.net") as client:
+        monkeypatch.setenv("OPYT50_PUBLIC_URL", "https://preview.twc1.net")
+        page = client.get("/")
+        assert page.status_code == 200
+        assert page.headers["X-Stazhno-Legal-Revision"] == expected
+        assert 'name="legal-profile-ready" content="no"' in page.text
+        # Exercise approved rendering only in a synthetic test fixture. No
+        # tracked legal documents or actual legal approval are changed.
+        monkeypatch.setattr(legal_config, "readiness_failures", lambda *a, **kw: [])
+        page = client.get("/")
+        assert page.headers["X-Stazhno-Legal-Revision"] == expected
+        assert 'name="legal-profile-ready" content="yes"' in page.text
+        assert 'id="prelaunch-public-notice"' not in page.text
+
+    original = Path.read_bytes
+    inputs = [
+        legal_config.PROFILE_PATH, legal_config.APPROVAL_PATH,
+        legal_config.ROOT / "docs/legal/RETENTION_REGISTER.json",
+        Path(legal_config.__file__),
+        *(Path(legal_config.__file__).with_name("legal_templates") / name
+          for name in ("privacy.html", "terms.html", "consent.html")),
+    ]
+    for source in inputs:
+        with monkeypatch.context() as context:
+            def changed(path):
+                value = original(path)
+                return value + b" " if path.resolve() == source.resolve() else value
+            context.setattr(Path, "read_bytes", changed)
+            assert legal_config.legal_release_sha256() != expected
+        with monkeypatch.context() as context:
+            def missing(path):
+                if path.resolve() == source.resolve():
+                    raise FileNotFoundError("fixture missing")
+                return original(path)
+            context.setattr(Path, "read_bytes", missing)
+            assert legal_config.legal_release_sha256() != expected
+
+
+def test_docker_includes_runtime_legal_inputs():
+    docker = (Path(__file__).parents[1] / "Dockerfile").read_text(encoding="utf-8")
+    assert "COPY docs/legal/LEGAL_APPROVAL.md docs/legal/RETENTION_REGISTER.json ./docs/legal/" in docker

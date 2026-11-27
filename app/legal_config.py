@@ -7,6 +7,7 @@ from __future__ import annotations
 
 from functools import lru_cache
 from html import escape
+import hashlib
 import json
 from pathlib import Path
 import re
@@ -86,6 +87,33 @@ def readiness_failures(profile: dict | None = None, approval_text: str | None = 
     if not all(re.search(pattern, approval_text) for pattern in requirements):
         errors.append("missing written legal and owner signoff")
     return errors
+
+
+def legal_release_sha256() -> str:
+    """Fingerprint fixed, version-controlled legal inputs, not private records.
+
+    The digest identifies deployed files only. It does not establish legal
+    validity or certify any person's signature. Missing inputs are distinct
+    from empty files so an incomplete package cannot match the checkout.
+    """
+    files = (
+        ("legal_config.py", Path(__file__)),
+        ("legal_operator.json", PROFILE_PATH),
+        ("LEGAL_APPROVAL.md", APPROVAL_PATH),
+        ("RETENTION_REGISTER.json", ROOT / "docs" / "legal" / "RETENTION_REGISTER.json"),
+        *((name, Path(__file__).with_name("legal_templates") / name)
+          for name in ("privacy.html", "terms.html", "consent.html")),
+    )
+    digest = hashlib.sha256(b"stazhno-legal-release-v1\0")
+    for name, path in files:
+        digest.update(name.encode("ascii") + b"\0")
+        try:
+            payload = path.read_bytes()
+        except FileNotFoundError:
+            digest.update(b"missing\0")
+        else:
+            digest.update(b"present\0" + len(payload).to_bytes(8, "big") + payload)
+    return digest.hexdigest()
 
 
 def legal_approved() -> bool:

@@ -5,6 +5,7 @@ RUN pip install --no-cache-dir -r requirements-postgres.txt
 COPY app ./app
 COPY scripts ./scripts
 COPY docs/academy-drafts/spreadsheets-basics.json ./docs/academy-drafts/spreadsheets-basics.json
+COPY docs/legal/LEGAL_APPROVAL.md docs/legal/RETENTION_REGISTER.json ./docs/legal/
 RUN useradd -r -u 10001 opyt
 USER opyt
 EXPOSE 8000
