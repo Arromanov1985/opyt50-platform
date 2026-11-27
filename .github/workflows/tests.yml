@@ -63,7 +63,7 @@ jobs:
         run: python tests/browser_candidate_comparison_smoke.py
       - name: Upload candidate comparison visual review
         if: always() && github.event_name == 'pull_request'
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: stazhno-candidate-comparison-review
           path: comparison-review/
@@ -75,7 +75,7 @@ jobs:
         run: python tests/browser_profile_editor_smoke.py
       - name: Upload profile editor visual review
         if: always() && github.event_name == 'pull_request'
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: stazhno-profile-review
           path: profile-review/
@@ -87,7 +87,7 @@ jobs:
         run: python tests/browser_growth_smoke.py
       - name: Upload growth visual review
         if: always() && github.event_name == 'pull_request'
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: stazhno-growth-review
           path: growth-review/
@@ -102,7 +102,7 @@ jobs:
         run: python tests/browser_community_smoke.py
       - name: Upload community visual review
         if: always() && github.event_name == 'pull_request'
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: stazhno-community-review
           path: community-review/
@@ -115,7 +115,7 @@ jobs:
         run: python tests/browser_visual_review.py
       - name: Upload PR visual review
         if: always() && github.event_name == 'pull_request'
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: stazhno-ux-review
           path: visual-review/
@@ -145,7 +145,7 @@ jobs:
         run: python tests/browser_timeweb_public_review.py
       - name: Upload actual public Timeweb screenshots
         if: always() && github.event_name == 'pull_request'
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: stazhno-timeweb-public-review
           path: timeweb-public-review/
@@ -153,7 +153,7 @@ jobs:
           retention-days: 7
       - name: Upload Timeweb preview reachability report
         if: always() && (github.event_name == 'pull_request' || github.ref == 'refs/heads/main')
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: stazhno-preview-reachability
           path: preview-reachability.json
