@@ -165,3 +165,6 @@
 .studio-media-image { display: block; max-width: 100%; height: auto; border-radius: 12px; margin: .75rem auto; }
 
 .studio-media-player { display: block; width: 100%; max-width: 100%; max-height: 480px; margin: .75rem auto; }
+
+/* Draft progress is descriptive, never an authorization or publication signal. */
+.studio-lesson-caption{display:grid;gap:4px;min-width:0}.studio-lesson-caption small{display:block;font-size:.82em;font-weight:500;color:#3e6550}.studio-tabs [data-studio="lesson-step"]{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;white-space:normal}.studio-tabs [data-studio="lesson-step"] small{font-size:.8em;font-weight:500}.studio-issues li{margin-bottom:12px}.studio-issues li .button{display:block;margin-top:7px;white-space:normal;text-align:left;max-width:100%}
