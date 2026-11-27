@@ -23,7 +23,7 @@ def test_published_paths_have_counted_cta_and_aggregate_only(tmp_path: Path):
             page = client.get("/journal/paths/" + path["slug"])
             assert page.status_code == 200
             assert "data-growth-action=" in page.text
-            assert "/static/journal.js?v=9" in page.text
+            assert "/static/journal.js?v=10" in page.text
             action = "community_click" if path["href"] == "/community" else "jobs_click"
             assert 'data-growth-action="' + action + '"' in page.text
             assert post(client, source, "view").status_code == 204

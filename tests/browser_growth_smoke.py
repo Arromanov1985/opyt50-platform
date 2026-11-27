@@ -554,6 +554,130 @@ def exercise(browser, base, receipts_path):
         admin_context.close()
 
 
+def exercise_action_plans(browser, base):
+    url = base + "/journal/paths/nayti-rabotu"
+    context = browser.new_context(viewport={"width": 390, "height": 844}, locale="ru-RU")
+    errors = []
+    unexpected = []
+    # Existing anonymous aggregate view counters are not part of local progress.
+    # Do not change the separate growth report's fixture counts.
+    context.route("**/api/growth/event", lambda route: route.fulfill(status=204))
+    context.on("request", lambda request: unexpected.append(request.url)
+               if request.method != "GET" and not request.url.endswith("/api/growth/event") else None)
+    try:
+        page = context.new_page()
+        page.on("pageerror", lambda error: errors.append(str(error)))
+        page.goto(url, wait_until="networkidle")
+        checks = page.locator("[data-jr-journey-check]")
+        expect(checks).to_have_count(4)
+        expect(page.locator("[data-jr-journey-count]")).to_have_text("Выполнено: 0 из 4")
+        prefix = "stazhno-journey-v1:nayti-rabotu:"
+        old_step = checks.first.get_attribute("data-jr-journey-check")
+        assert not page.evaluate("key => localStorage.getItem(key)", prefix + old_step)
+        checks.nth(0).focus()
+        checks.nth(0).press("Space")
+        expect(checks.nth(0)).to_be_checked()
+        expect(page.locator("[data-jr-journey-count]")).to_have_text("Выполнено: 1 из 4")
+        other = context.new_page()
+        other.goto(url, wait_until="networkidle")
+        expect(other.locator("[data-jr-journey-check]").first).to_be_checked()
+        other.locator("[data-jr-journey-check]").nth(1).check()
+        expect(checks.nth(1)).to_be_checked()
+        expect(page.locator("[data-jr-journey-count]")).to_have_text("Выполнено: 2 из 4")
+        page.goto(base + "/journal/paths", wait_until="networkidle")
+        card = page.locator('[data-jr-journey="nayti-rabotu"]')
+        expect(card.locator("[data-jr-journey-count]")).to_have_text("Выполнено: 2 из 4")
+        expect(card.locator("[data-jr-journey-resume]")).to_have_attribute("href", "/journal/paths/nayti-rabotu#step-sobesedovanie-posle-50")
+        expect(page.locator('[data-jr-journey="novye-navyki"] [data-jr-journey-count]')).to_have_text("Выполнено: 0 из 3")
+        card.locator("[data-jr-journey-resume]").click()
+        expect(page).to_have_url(url + "#step-sobesedovanie-posle-50")
+        page.locator("[data-jr-journey-check]").nth(2).check()
+        page.locator("[data-jr-journey-check]").nth(3).check()
+        expect(page.locator("[data-jr-journey-resume]")).to_have_attribute("href", "#jr-journey-next")
+        for width in (320, 390, 768, 1280):
+            page.set_viewport_size({"width": width, "height": 844})
+            if page.locator("#reading-mode-toggle").get_attribute("aria-pressed") != "true":
+                page.locator("#reading-mode-toggle").click()
+            no_overflow(page)
+        capture(page, "journey-completed-large")
+        page.locator("[data-jr-journey-reset]").click()
+        expect(page.locator("[data-jr-journey-count]")).to_have_text("Выполнено: 0 из 4")
+        expect(other.locator("[data-jr-journey-count]")).to_have_text("Выполнено: 0 из 4")
+        assert page.evaluate("prefix => Object.keys(localStorage).filter(k=>k.startsWith(prefix))", prefix) == []
+        page.evaluate("key => localStorage.setItem(key, 'invalid')", prefix + old_step)
+        page.evaluate("key => localStorage.setItem(key, 'yes')", prefix + "obsolete:" + "f"*24)
+        page.reload(wait_until="networkidle")
+        expect(page.locator("[data-jr-journey-count]")).to_have_text("Выполнено: 0 из 4")
+        # Simulate an editorial revision while another tab keeps the older
+        # rendered steps. Both ordinary changes and resetting in the stale
+        # tab must preserve the current revision's mark.
+        old_digest = old_step.split(":")[1]
+        new_step = old_step.split(":")[0] + ":" + ("e"*24 if old_digest != "e"*24 else "d"*24)
+        page.locator("[data-jr-journey-check]").first.check()
+        def newer_revision(route):
+            response = route.fetch()
+            html = response.text()
+            assert old_step in html
+            route.fulfill(response=response, body=html.replace(old_step, new_step))
+        other.route("**/journal/paths/nayti-rabotu", newer_revision)
+        other.goto(url, wait_until="networkidle")
+        expect(other.locator("[data-jr-journey-check]").first).not_to_be_checked()
+        other.locator("[data-jr-journey-check]").first.check()
+        page.locator("[data-jr-journey-check]").nth(1).check()
+        expect(other.locator("[data-jr-journey-count]")).to_have_text("Выполнено: 2 из 4")
+        page.locator("[data-jr-journey-reset]").click()
+        expect(other.locator("[data-jr-journey-count]")).to_have_text("Выполнено: 1 из 4")
+        expect(other.locator("[data-jr-journey-check]").first).to_be_checked()
+        assert page.evaluate("key => localStorage.getItem(key)", prefix + new_step) == "yes"
+        # Model BFCache restore in the already rendered document. Change
+        # same-tab storage directly so no storage event can update the UI.
+        restored_requests = []
+        def observe_restore(request):
+            restored_requests.append(request.url)
+        page.on("request", observe_restore)
+        try:
+            page.evaluate("""key => {
+                localStorage.setItem(key, 'yes');
+                document.body.dataset.journeyRestoreMarker = 'retained';
+                window.dispatchEvent(new PageTransitionEvent('pageshow', {persisted:true}));
+            }""", prefix + old_step)
+            expect(page.locator("[data-jr-journey-count]")).to_have_text("Выполнено: 1 из 4")
+            expect(page.locator("[data-jr-journey-check]").first).to_be_checked()
+            expect(page.locator("body")).to_have_attribute("data-journey-restore-marker", "retained")
+            page.evaluate("() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)))")
+            assert not restored_requests, restored_requests
+        finally:
+            page.remove_listener("request", observe_restore)
+        assert not unexpected, unexpected
+        assert not errors, errors
+    finally:
+        context.close()
+
+    restricted = browser.new_context(viewport={"width":390,"height":844}, locale="ru-RU")
+    try:
+        restricted.route("**/api/growth/event", lambda route: route.fulfill(status=204))
+        restricted.add_init_script("Object.defineProperty(window, 'localStorage', {get() {throw new Error('blocked');}});")
+        page = restricted.new_page()
+        page.goto(url, wait_until="networkidle")
+        expect(page.locator("[data-jr-journey-warning]")).to_be_visible()
+        page.locator("[data-jr-journey-check]").first.check()
+        expect(page.locator("[data-jr-journey-count]")).to_have_text("Выполнено: 1 из 4")
+        expect(page.locator("[data-jr-journey-warning]")).to_be_visible()
+    finally:
+        restricted.close()
+
+    no_script = browser.new_context(java_script_enabled=False)
+    try:
+        page = no_script.new_page()
+        page.goto(url, wait_until="load")
+        expect(page.locator("[data-jr-journey-progress]")).to_be_hidden()
+        expect(page.locator(".jr-journey-task")).to_have_count(4)
+        expect(page.locator(".jr-journey-task").first).to_be_visible()
+        expect(page.locator(".jr-path-step").first.locator('a').first).to_have_attribute("href", "/journal/kak-pokazat-opyt-v-profile")
+    finally:
+        no_script.close()
+
+
 def main():
     OUTPUT.mkdir(parents=True, exist_ok=True)
     with socket.socket() as port_socket:
@@ -592,6 +716,7 @@ def main():
                         options["executable_path"] = os.environ["PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH"]
                     browser = playwright.chromium.launch(**options)
                     try:
+                        exercise_action_plans(browser, base)
                         exercise(browser, base, receipts_path)
                     finally:
                         browser.close()

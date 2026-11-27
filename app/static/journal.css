@@ -171,3 +171,23 @@ body.comfortable-view .jr-topic-grid{grid-template-columns:repeat(2,minmax(0,1fr
 /* Educational programs reuse the course and lesson components. */
 .ac-program-summary{margin-bottom:24px}.ac-program-heading{margin-top:26px}.ac-program-step .jr-primary{margin-top:8px;min-height:48px;box-sizing:border-box;max-width:100%;white-space:normal}.ac-program-summary [hidden],.ac-program-step [hidden]{display:none!important}.ac-program-step>div{min-width:0;overflow-wrap:anywhere}.ac-program-summary a:focus-visible,.ac-program-step a:focus-visible{outline:3px solid #c88735;outline-offset:3px}
 @media(max-width:620px){.ac-program-summary .jr-primary,.ac-program-step .jr-primary{display:block;text-align:center;width:100%}}
+
+/* Practical reading journeys: accessible native controls and local progress. */
+.jr-journey-plan{margin:26px 0 38px}
+.jr-journey-summary{border:1px solid #D3E8DA;border-radius:18px;background:#fff;padding:22px}
+.jr-journey-summary h2{margin:0 0 8px;font-size:1.4em}
+.jr-journey-summary p{margin:8px 0;color:#426354}
+.jr-journey-summary [data-jr-journey-count],.jr-journey-card-progress [data-jr-journey-count]{font-weight:700;color:#153f35}
+.jr-journey-summary progress,.jr-journey-card-progress progress{width:100%;height:14px;accent-color:#176749;display:block;margin:8px 0}
+.jr-journey-card-progress p{font-size:.95em;flex:none}
+.jr-journey-actions{display:flex;gap:12px;flex-wrap:wrap;align-items:center;margin-top:16px}
+.jr-journey-task{margin-top:16px!important;padding:12px 14px;border-radius:10px;background:#f1f7f3}
+.jr-journey-check{display:flex;gap:12px;align-items:center;min-height:48px;padding:8px 10px;border:1px solid #bcd8c6;border-radius:12px;cursor:pointer;line-height:1.4;font-weight:700}
+.jr-journey-check input{appearance:auto;accent-color:#176749;width:24px;height:24px;margin:0;flex-shrink:0}
+.jr-journey-check:focus-within{outline:3px solid #e9a33e;outline-offset:3px}
+.jr-journey-done{border-color:#77aa8a;background:#f3faf5}
+.jr-journey-done .jr-path-number{background:#176749;color:white}
+.jr-journey-warning{color:#8a4c16!important;font-weight:700}
+.jr-path-step[id]{scroll-margin-top:20px}
+.jr-journey-plan [hidden],.jr-journey-card-progress[hidden]{display:none!important}
+@media(max-width:480px){.jr-journey-summary{padding:16px}.jr-journey-actions{flex-direction:column;align-items:stretch}.jr-journey-actions a,.jr-journey-actions button{width:100%;text-align:center}.jr-journey-check{align-items:flex-start;font-size:1rem}}
