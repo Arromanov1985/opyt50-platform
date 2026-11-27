@@ -2312,6 +2312,12 @@ def test_assistant_validates_only_and_preserves_draft_and_access(community):
         json.dumps({**draft, "title": "Contact name@example.invalid"}),
         json.dumps({**draft, "lessons": [{**draft["lessons"][0], "media": []}]}),
         json.dumps({**draft, "lessons": [{**draft["lessons"][0], "slug": "existing-lesson"}]}),
+        json.dumps({**draft, "lessons": [{**draft["lessons"][0], "minutes": "15"}]}),
+        json.dumps({**draft, "lessons": [draft["lessons"][0]] * 13}),
+        json.dumps({**draft, "lessons": [{**draft["lessons"][0], "questions": [
+            {**draft["lessons"][0]["questions"][0], "correct": "0"}
+        ]}]}),
+        json.dumps(draft).replace('"minutes": 15', '"minutes": 15, "minutes": 20'),
     ):
         invalid = mutate(first, "POST", endpoint, {**body, "source": bad})
         assert invalid.status_code == 422
